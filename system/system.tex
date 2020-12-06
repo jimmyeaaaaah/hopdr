@@ -1,0 +1,199 @@
+\documentclass[runningheads]{llncs}
+\usepackage{amsmath, amssymb}
+\usepackage{mathtools}
+\usepackage{braket}
+\usepackage{stmaryrd}
+\usepackage{tikz}
+\usepackage{mathpartir}
+\usepackage{pifont}
+\usepackage{multirow}
+\usepackage{graphicx}
+
+\newcommand \nhz{\(\nu\text{HFL}_\mathbb{Z}\)}
+\newcommand \hflz {\(\text{HFL}_\mathbb{Z}\)}
+
+\newcommand \true {\textbf{tt}}
+\newcommand \false {\textbf{ff}}
+\newcommand \predicate {\textbf{p}}
+\newcommand \arith {\textbf{a}}
+\newcommand \operator {\mathbin{\textbf{op}}}
+
+\newcommand \stypeint {\textbf{Int}}
+\newcommand \stypebool {\bullet}
+\newcommand \srtype {\rho} % simple result type
+\newcommand \satype {\eta} % simple argument type
+\newcommand \senv {\Gamma}
+\newcommand \wt[3][]{\ifthenelse{\isempty{#1}}{\senv}{\senv, #1} \vdash_H #2: #3}
+
+\newcommand \constraint {\theta}
+\newcommand \refty {\tau}
+\newcommand \typeint[1]{{#1} : \stypeint}
+\newcommand \typebool[1]{\stypebool \langle #1 \rangle}
+
+\newcommand {\semt}[1]{[\!|#1|\!]}
+
+
+\begin{document}
+
+\section{Notation}
+
+Sequence: \(\tilde{x}\) is an abbreviation of \(x_1, \cdots, x_n\)
+
+\section{First Order}
+
+\subsection{refinement type}
+
+Syntax
+
+\begin{align*}
+  &\textit{arithmetic expressions} &
+  \arith &::=
+  n
+  \mid
+  x
+  \mid
+  \operator(\arith_1, \cdots, \arith_n)
+  \\
+  &\textit{constraint formulas}&
+  \constraint &::=
+  \true
+  \mid \false
+  \mid \predicate(\arith_1, \cdots, \arith_n)
+  \mid \constraint_1 \land \constraint_2
+  \mid \constraint_1 \lor \constraint_2
+  \\
+  &\textit{refinement types}&
+  \refty &::=
+  \typebool{\theta}
+  \mid \typeint{x} \rightarrow \refty
+\end{align*}
+
+\begin{align*}
+    \semt{\typebool{\theta}}(\alpha)
+\enn{align*}
+
+
+\subsection{type system}
+
+The same as APLAS20
+
+\subsection{transformer}
+
+\begin{align*}
+    F(\Gamma)
+    &= \Gamma \cup \{ F: \typeint{x_1} \rightarrow \cdots
+    \rightarrow \typeint{x_n} \rightarrow \typebool{\theta} \\
+    &\mid
+    F x_1 \cdots x_n = \psi, \Gamma, x_1: \stypeint, \cdots, x_n: \stypeint
+    \vdash^{-} \psi: \typebool{\theta}\ \}
+\end{align*}
+
+
+\subsection{PDR}
+
+Assume that the first order \nhz{} formula is given in HES-style as follows:
+\begin{align*}
+    F_1 \tilde{x_i} &=_{\nu} \psi_1 \\
+    F_2 \tilde{x_i} &=_{\nu} \psi_2 \\
+    &\vdots\\
+    F_n \tilde{x_n} &=_{\nu} \psi_n
+\end{align*}
+
+And we consider the validity checking problem of \(\psi\).
+
+Let \(N\) be the number of current expansion. We hold \(\Gamma_0, \cdots,
+\Gamma_N\) as current under approximations of type environments.
+
+Note that \(dom(\Gamma_i) = \{F_1, \cdots, F_n\}\).
+
+For first-order case, we can directly calculate the weakest precondition.
+
+\subsubsection{Candidate Model}
+
+(Here, we only consider "linear" predicates)
+
+A candidate model is a triple of a predicate, the arguments of the predicate
+and index: \(\langle F, \tilde{x} = \tilde{c}, i\rangle\).
+
+\subsubsection{Valid}
+
+For \(i < N\), valid if \(\Gamma_{i+1} \rightarrow  \Gamma_i\) and \(\Gamma_i
+\vdash \psi: \typebool{\top}\).
+
+Note \(\Gamma \rightarrow \Gamma'\) is defined as follows:
+
+\subsubsection{Model}
+
+If \(\langle F, \tilde{c}, 0\rangle\), the given instance is evaluated to false.
+
+
+\subsubsection{Candidate}
+
+If \(\Gamma_i \lnot \models \psi\),
+produce candidate \(\langle \langle F, \tilde{c'}, i\langle\)
+if there is an application \(F \tilde{c'}\); otherwise,
+the instance is false.
+
+\subsubsection{Unfold}
+
+If \(\Gamma_N \models^{-} \psi\),
+and current index is \(N\) then,
+update \(N \leftarrow N + 1\) and
+append \(\Gamma_N = \{F: \tilde{x} \rightarrow \bot \mid F \in
+dom(\Gamma_N)\}\).
+
+\subsubsection{G-Conflict}
+
+Assume a candidate model \(\langle F_k, \tilde{c}, i + 1 \rangle\) for \(0 \leq i <
+N\). For a assignment type \(F: \tau \in F(\Gamma_i)\),
+if \(\models \semt{\tau}(\tilde{c})\) holds, then
+
+\begin{align*}
+    \Gamma_j = \Gamma_j \cup \{F: \tau\} \quad \quad (j \leq i + 1)
+\end{align*}
+
+Note: finding \(\tau \in F(\Gamma_i)\) and \(\models \semt{\tau}(\tilde{c})\)
+
+\begin{enumerate}
+    \item calculate the weakest precondition of \(\Gamma_i\)
+    \item calculate interpolant between the current candidate and the weakest
+        precondition
+\end{enumerate}
+
+\subsubsection{Decide}
+
+Given a candidate model \(\langle F_k, \tilde{c}, i + 1 \rangle\) for \(0 \leq i <
+N\).
+For any \(F: \tau \in F(\Gamma_i)\),
+if \(\not \models \semt{\tau}(\tilde{c})\), then there is an application \(F_l
+\tilde{c'}\). So, we add the candidate model \(\langle F_l, \tilde{c'},
+i\rangle\).
+
+\subsection{Example}
+
+\begin{align*}
+    X x &=_\nu x \neq 0 \land X\ (x + 1) \\
+    \psi  &=_\nu \forall x. x < 0 \lor X\ x
+\end{align*}
+
+We abbreviate \(\typeint{x}\) for \(x\), and \(\typebool{\theta}\) for
+\(\theta\) in the following example.
+
+\begin{itemize}
+    \item Initialize: \(\Gamma_0 = \{X: x \rightarrow \top\}\)
+    \item Unfold: \(\Gamma_0, \Gamma_1^0 = \{X: x \rightarrow \bot\}\)
+    \item Candidate: \(\langle X, 1, 1 \rangle \mid \Gamma_0, \Gamma_1^0\)
+    \item Conflict: \(\Gamma_0, \Gamma_1^1 = \{x \rightarrow x \geq 1\}\)
+        since \(X: x \rightarrow x \geq 1 \in F(\Gamma_0)\) and \(\models 1 \geq 1\)
+    \item Unfold: \(\Gamma_0, \Gamma_1^1, \Gamma_2^0 = \{X: x \rightarrow \bot\}\)
+    \item Candidate and Conflicts: \(\Gamma_0, \Gamma_1^1, \Gamma_2^1 = \{x \rightarrow x \geq 1\}\)
+    \item Valid since \(\Gamma_2^1 \vdash \psi: \typebool{\top} \)
+        and \(\Gamma_2^1 \rightarrow \Gamma_1^1\)
+\end{itemize}
+
+\section{Higher Order}
+
+TBD
+
+
+\end{document}
