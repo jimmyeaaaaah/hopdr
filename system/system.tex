@@ -12,12 +12,34 @@
 \newcommand \nhz{\(\nu\text{HFL}_\mathbb{Z}\)}
 \newcommand \hflz {\(\text{HFL}_\mathbb{Z}\)}
 
+\newcommand\COL{\mathbin{:}}
+
+% nhz syntax
 \newcommand \true {\textbf{tt}}
 \newcommand \false {\textbf{ff}}
 \newcommand \predicate {\textbf{p}}
 \newcommand \arith {\textbf{a}}
 \newcommand \operator {\mathbin{\textbf{op}}}
+\newcommand \term {M}
+\newcommand \atom {A}
+\newcommand \goal {G}
+\newcommand \definite {D}
 
+% nu HFLz semantics
+\newcommand {\val}[1]{[\![#1]\!]}
+\newcommand {\vwt}[3][]{\val{\wt{#2}{#3}}(\alpha\ifthenelse{\isempty{#1}}{}{[#1]})}
+\newcommand {\wta}[3]{\Gamma, #1 \vdash_H #2 : #3}
+\newcommand {\vwta}[3]{\val{\wta{#1}{#2}{#3}}(\alpha)}
+
+\newcommand {\valfun}{\alpha}
+\newcommand {\domain}[1]{\mathcal{D}_{#1}}
+\newcommand {\order}[1]{\sqsubseteq_{#1}}
+\newcommand {\join}[1]{\sqcap_#1}
+\newcommand {\meet}[1]{\sqcup_#1}
+\newcommand \gfp {\textbf{gfp}}
+
+
+% simple type
 \newcommand \stypeint {\textbf{Int}}
 \newcommand \stypebool {\bullet}
 \newcommand \srtype {\rho} % simple result type
@@ -25,29 +47,62 @@
 \newcommand \senv {\Gamma}
 \newcommand \wt[3][]{\ifthenelse{\isempty{#1}}{\senv}{\senv, #1} \vdash_H #2: #3}
 
+% refinement type syntax
 \newcommand \constraint {\theta}
 \newcommand \refty {\tau}
 \newcommand \typeint[1]{{#1} : \stypeint}
 \newcommand \typebool[1]{\stypebool \langle #1 \rangle}
 
-\newcommand {\semt}[1]{[\!|#1|\!]}
+% refinement type judgement
+\newcommand \refines[2]{#1:: #2}
+\newcommand \tenv {\Gamma}
+\newcommand \wf[2][]{\tenv \vdash \refines{#1}{#2}}
+
+% refinement type semantics
+\newcommand {\semt}[1]{(\!|#1|\!)}
+\newcommand {\mjudge}[2]{\tenv \models #1: #2}
+\newcommand {\semsbt}[3][]{\tenv; \ifthenelse{\isempty{#1}}{\dcnstr}{#1} \models #2 \subtypeRelation #3}
+\newcommand {\wsemsbt}[4][]{\tenv; \ifthenelse{\isempty{#1}}{\dcnstr}{#1} \models #2 \subtypeRelation_{#4} #3}
+\newcommand {\srt}[2]{\semt{\wf{#1}{#2}}(\alpha)}
+\newcommand {\srtg}[3][]{\semt{\wf{#2}{#3}}(\alpha[#1])}
+\newcommand {\vc}[1]{[\!|#1|\!]}
+\newcommand {\vtenv}[2][]{\val{#2}({\ifthenelse{\isempty{#1}}{\valfun}{#1}})}
 
 
 \begin{document}
 
-\section{Review of PDR}
+\section{Higher-order PDR}
 
-The transii
+The target problem is \nhz{} validity checking.
+For the syntax of the target language, we adopt the following HES-like language,
+which is equivalent to \nhz{} since we can translate them mutually.
 
-\section{Notation}
+\subsection{Target Language}
 
-Sequence: \(\tilde{x}\) is an abbreviation of \(x_1, \cdots, x_n\)
+\begin{align*}
+    \goal &\quad ::= \quad
+          G \land G
+          \mid G \lor G
+          \mid \forall x. G
+          \mid \atom
+          \mid \constraint
+         \\
+    \definite &\quad ::= \quad X x_1 \cdots x_n =_\nu G
+          \\
+    \atom &\quad ::= \quad X\ M_1\ \cdots\ M_k\\
+    \constraint &\quad ::= \quad \cdots
+\end{align*}
 
-\section{First Order}
+We consider every definite formulas and goal formulas are simply typed.
+
+Then \nhz{} validity checking is that given definite formulas
+\( X_1 \bar{x_1} = \psi_1, \cdots X_n \bar{x_n} =  \psi_n \)
+and a goal formula \( \psi \),
+we check the validity of \( \psi \).
 
 \subsection{refinement type}
 
-Syntax
+\subsubsection{Syntax}
 
 \begin{align*}
   &\textit{arithmetic expressions} &
@@ -70,108 +125,117 @@ Syntax
   \refty &::=
   \typebool{\theta}
   \mid \typeint{x} \rightarrow \refty
+  \mid \refty_1 \rightarrow \refty_2
+  \mid \refty_1 \land \refty_2
 \end{align*}
 
-%\begin{align*}
-%    {\typebool{\theta}}(\alpha)
-%\enn{align*}
+\subsubsection{Semantics}
 
+\begin{align*}
+    \srt{\constraint}{\stypebool} &= \{\val{\tenv \vdash_c \constraint}(\alpha), \top \}\\
+    \srt{\typeint{x} \rightarrow \refty}{\stypeint \rightarrow \srtype} &=
+      \{f \in \domain{\stypeint \rightarrow \srtype} \mid \forall v \in \domain{\stypeint}. \\
+          &\quad \quad f(v) \in \semt{\tenv, x \vdash \refty:: \srtype}(\alpha[x \mapsto v])\\
+    \srt{\refty_1 \rightarrow \refty_2}{\srtype_1 \rightarrow \srtype_2} &= \{f \in \domain{\srtype_1 \rightarrow \srtype_2} \mid \forall v \in
+        \srt{\refty_1}{\srtype_1}. \\
+          &\quad \quad \quad f(v) \in \srt{\refty_2}{\srtype_2}\}
+\end{align*}
 
 \subsection{type system}
 
-The same as APLAS20
+The same one as APLAS20
 
-\subsection{transformer}
+\subsection{algorithm}
+
+During the execution of the following algorithm,
+we hold two states: candidates and current environments.
+To specify them, we use notation \( M \mid \mid S \), where
+\( M \) specify candidates and \( S \) is a current environment.
+
+In an environment, there is two variables:
+a current expansion number \( N \)
+and a sequence of type environment \( \{\Gamma_i\}_{i \in \{1, \cdots, N\}} \).
+
+A candidate is a triple of a relational variable, a number and a refinement type.
+
+The input of this algorithm is definite formulas \(\{F_i\}_i\) and a goal formula
+\(\psi\).
+
+Then, let \( \Gamma_\true \) be \( \{F_i: \top\}_i \)
+and \( \Gamma_\false \) be \( \{F_i: \bot \}_i \).
 
 \begin{align*}
-    F(\Gamma)
-    &= \Gamma \cup \{ F: \typeint{x_1} \rightarrow \cdots
-    \rightarrow \typeint{x_n} \rightarrow \typebool{\theta} \\
-    &\mid
-    F x_1 \cdots x_n = \psi, \Gamma, x_1: \stypeint, \cdots, x_n: \stypeint
-    \vdash^{-} \psi: \typebool{\theta}\ \}
+    \textbf{Initialize} &\quad
+        \Longrightarrow
+        \epsilon \mid \mid [N \leftarrow 0, \Gamma_0 \leftarrow \Gamma_\true]
+        &&\\
+    \textbf{Valid} &\quad
+        \epsilon \mid \mid A \Longrightarrow \textit{Valid}
+        &&\quad \textbf{if} \ \Gamma_{i} \vdash \Gamma_{i-1}, i < N
+        \\
+    \textbf{Unfold} &\quad
+        \epsilon \mid \mid A \Longrightarrow
+        \epsilon \mid \mid [\Gamma_{N+1} \leftarrow \Gamma_\false, N \leftarrow N + 1]
+        &&\\
+    %\textbf{Induction} &\quad
+    %    \epsilon \mid \mid
+    %    &&\\
+    \textbf{Candidate} &\quad
+        \epsilon \mid \mid A
+        \Longrightarrow
+        \langle X, N, \tau \rangle \mid \mid A
+        && \quad \textbf{if} \ \Gamma_N \not \vdash \psi \COL
+        \typebool{\true},\\
+        &&&\quad (X, \tau) = \textbf{CEX}(\Gamma, \psi, \typebool{true})
+        \\
+    \textbf{Conflict} &\quad
+        \langle X, i + 1, \tau \rangle M\mid \mid A
+        \Longrightarrow
+        M \mid \mid A[\Gamma_j \leftarrow \Gamma_j \cup \Gamma]_{j=1}^{i+1}
+        &&\quad \textbf{if} \ \Gamma \subset \Gamma_i, \Gamma \vdash X \COL \tau
+        \\
+    \textbf{Decide} &\quad
+        \langle X, i + 1, \tau \rangle M\mid \mid A
+        \Longrightarrow
+        \langle X', i, \tau' \rangle \langle X, i + 1, \tau \rangle M\mid \mid A \mid \mid A
+        &&\quad \textbf{if} \ \Gamma_i \not\vdash X \COL \tau,\\
+        &&&\quad (X', \tau') = \textbf{CEX}(\Gamma_i, X, \tau)
+        \\
+    \textbf{Model} &\quad
+        \langle X, 0, \tau \rangle \mid \mid A \Rightarrow Model?
+        &&\\
 \end{align*}
 
 
-\subsection{PDR}
+\subsubsection{Algorithm of \( \mathbf{CEX} \)}
 
-Assume that the first order \nhz{} formula is given in HES-style as follows:
+Input is a type environment \( \Gamma \), a goal formula \( \psi \)
+or a relational variable \( X \) and a refinement type \( \tau \).
+
+We consider the following two operators:
 \begin{align*}
-    F_1 \tilde{x_i} &=_{\nu} \psi_1 \\
-    F_2 \tilde{x_i} &=_{\nu} \psi_2 \\
-    &\vdots\\
-    F_n \tilde{x_n} &=_{\nu} \psi_n
+    \psi \Downarrow \typebool{\constraint} \quad
+        &= \quad \psi \land \constraint
+        \\
+    \psi \Downarrow \typeint{x} \to \tau   \quad
+        &= \quad \lambda x. \psi \Downarrow \tau
+        \\
+    \psi \Downarrow \tau_1 \to \tau_2 \quad
+        &= \quad \lambda f. \psi \land f \in \tau_1 \Downarrow \tau_2
+        \\
+    \psi \in \typebool{\constraint} \quad
+        &= \quad \not \theta \lor \psi
+        \\
+    \psi \in \typeint{x} \to \tau   \quad
+        &
+        \\
+    \psi \in \tau_1 \to \tau_2 \quad
+        &
+        \\
 \end{align*}
 
-And we consider the validity checking problem of \(\psi\).
-
-Let \(N\) be the number of current expansion. We hold \(\Gamma_0, \cdots,
-\Gamma_N\) as current under approximations of type environments.
-
-Note that \(dom(\Gamma_i) = \{F_1, \cdots, F_n\}\).
-
-For first-order case, we can directly calculate the weakest precondition.
-
-\subsubsection{Candidate Model}
-
-(Here, we only consider "linear" predicates)
-
-A candidate model is a triple of a predicate, the arguments of the predicate
-and index: \(\langle F, \tilde{x} = \tilde{c}, i\rangle\).
-
-\subsubsection{Valid}
-
-For \(i < N\), valid if \(\Gamma_{i+1} \rightarrow  \Gamma_i\) and \(\Gamma_i
-\vdash \psi: \typebool{\top}\).
-
-Note \(\Gamma \rightarrow \Gamma'\) is defined as follows:
-
-\subsubsection{Model}
-
-If \(\langle F, \tilde{c}, 0\rangle\), the given instance is evaluated to false.
-
-
-\subsubsection{Candidate}
-
-If \(\Gamma_i \lnot \models \psi\),
-produce candidate \(\langle \langle F, \tilde{c'}, i\langle\)
-if there is an application \(F \tilde{c'}\); otherwise,
-the instance is false.
-
-\subsubsection{Unfold}
-
-If \(\Gamma_N \models^{-} \psi\),
-and current index is \(N\) then,
-update \(N \leftarrow N + 1\) and
-append \(\Gamma_N = \{F: \tilde{x} \rightarrow \bot \mid F \in
-dom(\Gamma_N)\}\).
-
-\subsubsection{G-Conflict}
-
-Assume a candidate model \(\langle F_k, \tilde{c}, i + 1 \rangle\) for \(0 \leq i <
-N\). For a assignment type \(F: \tau \in F(\Gamma_i)\),
-if \(\models \semt{\tau}(\tilde{c})\) holds, then
-
-\begin{align*}
-    \Gamma_j = \Gamma_j \cup \{F: \tau\} \quad \quad (j \leq i + 1)
-\end{align*}
-
-Note: finding \(\tau \in F(\Gamma_i)\) and \(\models \semt{\tau}(\tilde{c})\)
-
-\begin{enumerate}
-    \item calculate the weakest precondition of \(\Gamma_i\)
-    \item calculate interpolant between the current candidate and the weakest
-        precondition
-\end{enumerate}
-
-\subsubsection{Decide}
-
-Given a candidate model \(\langle F_k, \tilde{c}, i + 1 \rangle\) for \(0 \leq i <
-N\).
-For any \(F: \tau \in F(\Gamma_i)\),
-if \(\not \models \semt{\tau}(\tilde{c})\), then there is an application \(F_l
-\tilde{c'}\). So, we add the candidate model \(\langle F_l, \tilde{c'},
-i\rangle\).
+For a refinement type \( \tau \),
+we write \( \sigma_\tau \) for \( \true \downarrow \tau \).
 
 \subsection{Example}
 
@@ -195,8 +259,5 @@ We abbreviate \(\typeint{x}\) for \(x\), and \(\typebool{\theta}\) for
         and \(\Gamma_2^1 \rightarrow \Gamma_1^1\)
 \end{itemize}
 
-\section{Higher Order}
-
-TBD
 
 \end{document}
