@@ -145,6 +145,48 @@ we check the validity of \( \psi \).
 
 The same one as APLAS20
 
+\subsection{transformer}
+
+TODO: kaku
+
+\begin{align*}
+    F(\Gamma)
+    &= \Gamma \cup \{ F: \typeint{x_1} \rightarrow \cdots
+    \rightarrow \typeint{x_n} \rightarrow \typebool{\theta} \\
+    &\mid
+    F x_1 \cdots x_n = \psi, \Gamma, x_1: \stypeint, \cdots, x_n: \stypeint
+    \vdash^{-} \psi: \typebool{\theta}\ \}
+\end{align*}
+
+\subsection{interpolation}
+
+We consider the interpolation of types by subtyping. That is, given two
+refinement types \( \tau_1, \tau_2\) such that \( \tau_1 \prec \tau_2 \),
+we try to find a refinement type \( \tau \) such that \( \tau_1 \prec \tau \prec
+\tau_2 \) where the free variables of \( \tau \) is a subset of the free
+variables of \( \tau_1 \) and \( \tau_2 \).
+
+We assume that we have an algorithm for craig interpolation.
+Then, it is easy to interpolate just by comparing the refinement type at the
+same position.
+
+For example, assume \(
+(\typeint{x} \to \typebool{\theta_1}) \to \typebool{\theta_2}
+\prec
+(\typeint{x} \to \typebool{\theta_1'}) \to \typebool{\theta_2'}
+\), we consider two craig interpolations as follows
+\begin{align*}
+    &\theta_2' \rightarrow \theta_2'' \rightarrow \theta_2\\
+    &\theta_1' \rightarrow \theta_1'' \rightarrow \theta_1.
+\end{align*}
+Then we consider the refinement type
+\( \tau = \typeint{x} \to \typebool{\theta_1''}) \to \typebool{\theta_2''} \).
+From the construction, \( \tau_1 \prec \tau \prec \tau_2 \) holds.
+
+\begin{align*}
+\end{align*}
+
+
 \subsection{algorithm}
 
 During the execution of the following algorithm,
@@ -209,9 +251,6 @@ and \( \Gamma_\false \) be \( \{F_i: \bot \}_i \).
 
 \subsubsection{Algorithm of \( \mathbf{CEX} \)}
 
-Input is a type environment \( \Gamma \), a goal formula \( \psi \)
-or a relational variable \( X \) and a refinement type \( \tau \).
-
 We consider the following two operators:
 \begin{align*}
     \psi \Downarrow \typebool{\constraint} \quad
@@ -224,18 +263,50 @@ We consider the following two operators:
         &= \quad \lambda f. \psi \land f \in \tau_1 \Downarrow \tau_2
         \\
     \psi \in \typebool{\constraint} \quad
-        &= \quad \not \theta \lor \psi
+        &= \quad \lnot \theta \lor \psi
         \\
     \psi \in \typeint{x} \to \tau   \quad
-        &
+        &= \quad \forall x. \psi\ x \in \tau
         \\
     \psi \in \tau_1 \to \tau_2 \quad
-        &
+        &= \quad \psi\ (\true \Downarrow \tau_1) \in \tau_2
         \\
 \end{align*}
 
 For a refinement type \( \tau \),
-we write \( \sigma_\tau \) for \( \true \downarrow \tau \).
+we write \( \sigma_\tau \) for \( \true \Downarrow \tau \),
+which is proved to be a semantically least element which has
+type \( \tau \).
+
+Then we consider the algorithm of CEX.
+Input is a type environment \( \Gamma \), a goal formula \( \psi \)
+or a relational variable \( X \) and a refinement type \( \tau \).
+
+First, let the clause named \( X \) \( X x_1 \cdots x_n =_\nu \psi_X \).
+Therefore, the refinement type \( \tau \) must be a kind of
+\( \sigma_1 \rightarrow \cdots \rightarrow \sigma_n \rightarrow
+\typebool{\theta} \).
+Then, we consider all the occurences of relational variables and higher-order
+argument variables by the corresponding refinement types.
+For example, assume that \(X k = X (\lambda x. \forall y. x < y \lor k\ x) \),
+\( \Gamma = \{ X: (\typeint{x} \rightarrow \typebool{x \geq 0}) \rightarrow
+\typebool{\true} \)
+and \( \tau = (x \to \typebool{x > 0}) \to \typebool{\true}\),
+we can reduce the body of \( X \) to
+\( (\lambda k. \forall x. x < 0 \lor k\ x)
+(\lambda x. \forall y. x < y \lor (\lambda x. x > 0)\ x)
+\). And considering the \( \beta \) transform, this can be reduced to
+\( \forall x. x < 0 \lor \forall y. x < y \lor x > 0\). We let this formula \(
+\varphi \).
+
+Now, from the assumption that the we cannot derive the judgement,
+\( \true \Rightarrow \varphi \) i.e. \( \varphi \) does not hold.
+Then we get the counterexample of this formula by using SMT solver.
+For the above formula, we have \( x = 0, y = -1 \).
+
+By replacing the variable, we can generate a candidate
+\( (X, (\typeint{x} \to \typebool{x < -1 \lor x \geq 0}) \rightarrow
+\typebool{\true}) \).
 
 \subsection{Example}
 
@@ -259,5 +330,10 @@ We abbreviate \(\typeint{x}\) for \(x\), and \(\typebool{\theta}\) for
         and \(\Gamma_2^1 \rightarrow \Gamma_1^1\)
 \end{itemize}
 
+\subsection{Example 2}
+
+\begin{align*}
+    Sum
+\end{align*}
 
 \end{document}
