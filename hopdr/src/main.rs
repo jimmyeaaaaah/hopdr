@@ -1,8 +1,23 @@
 pub mod formula;
 pub mod engine;
 pub mod smt;
+pub mod parse;
+pub mod util;
+pub mod preprocess;
+
+use nom::error::VerboseError;
+
 
 fn main() {
-    let v = formula::parse::parse("hello");
-    println!("{:?}", v);
+    let (_, f) = parse::parse::<VerboseError<&str>>(
+        "
+        S n m k = (n != 0 | k m) & (n = 0 | S (n - 1) (m + n) k);
+        K m n = m <= n;
+        M n = S n 0 (K n);
+         ",
+    )
+    .unwrap();
+    for fml in f.formulas.iter() {
+        println!("{}", fml);
+    }
 }

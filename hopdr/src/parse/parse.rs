@@ -1,0 +1,154 @@
+use super::hes::{Expr, Formula, NuFormula};
+use crate::util::P;
+use crate::formula::{Op, Pred};
+use nom::{
+    branch::alt,
+    bytes::complete::{tag, take_while},
+    character::complete::{alpha1, char, digit1, one_of},
+    combinator::{map, map_res, opt},
+    error::ParseError,
+    multi::{fold_many0, separated_list},
+    sequence::{pair, preceded},
+    IResult,
+};
+use std::str::FromStr;
+
+fn sp<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, &'a str, E> {
+    let chars = " \t\r\n";
+    take_while(move |c| chars.contains(c))(input)
+}
+
+fn sp1<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, char, E> {
+    one_of(" \t\r\n")(input)
+}
+
+fn ident<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, &'a str, E> {
+    alpha1(input)
+}
+
+fn parse_var<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Expr, E> {
+    let (input, ident) = preceded(sp, ident)(input)?;
+    Ok((input, Expr::Var(String::from(ident))))
+}
+
+fn parse_par<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Expr, E> {
+    let (input, _) = preceded(sp, char('('))(input)?;
+    let (input, expr) = parse_expr(input)?;
+    let (input, _) = preceded(sp, char(')'))(input)?;
+    Ok((input, expr))
+}
+
+fn parse_bool<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Expr, E> {
+    alt((
+        map(tag("true"), |_| Expr::True),
+        map(tag("false"), |_| Expr::False),
+    ))(input)
+}
+
+// 負の数
+fn parse_num<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Expr, E> {
+    let (input, num) = map_res(preceded(sp, digit1), FromStr::from_str)(input)?;
+    Ok((input, Expr::Num(num)))
+}
+
+fn pred<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Pred, E> {
+    alt((
+        map(tag(">"), |_| Pred::Gt),
+        map(tag("<="), |_| Pred::Le),
+        map(tag("="), |_| Pred::Eq),
+        map(tag("!="), |_| Pred::Neq),
+    ))(input)
+}
+
+fn op1<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Op, E> {
+    alt((map(tag("+"), |_| Op::Add), map(tag("-"), |_| Op::Sub)))(input)
+}
+
+fn op2<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Op, E> {
+    let (i, _) = char('*')(input)?;
+    Ok((i, Op::Mul))
+}
+
+fn parse_atom<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Expr, E> {
+    alt((parse_var, parse_par, parse_num, parse_bool))(input)
+}
+
+fn parse_arith2<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Expr, E> {
+    let (input, e1) = preceded(sp, parse_atom)(input)?;
+    fold_many0(
+        pair(preceded(sp, op2), preceded(sp, parse_atom)),
+        e1,
+        |e1, (op, e2)| Expr::Op(op, P(e1), P(e2)),
+    )(input)
+}
+
+fn parse_arith<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Expr, E> {
+    let (input, e1) = preceded(sp, parse_arith2)(input)?;
+    fold_many0(
+        pair(preceded(sp, op1), preceded(sp, parse_arith2)),
+        e1,
+        |e1, (op, e2)| Expr::Op(op, P(e1), P(e2)),
+    )(input)
+}
+
+fn parse_pred<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Expr, E> {
+    let (input, e1) = preceded(sp, parse_arith)(input)?;
+    fold_many0(
+        pair(preceded(sp, pred), preceded(sp, parse_arith)),
+        e1,
+        |e1, (pred, e2)| Expr::Pred(pred, P(e1), P(e2)),
+    )(input)
+}
+
+fn parse_app<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Expr, E> {
+    let (input, e1) = preceded(sp, parse_pred)(input)?;
+    fold_many0(pair(sp1, preceded(sp, parse_pred)), e1, |e1, (_, e2)| {
+        Expr::App(P(e1), P(e2))
+    })(input)
+}
+
+fn parse_and<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Expr, E> {
+    let (input, e1) = preceded(sp, parse_app)(input)?;
+    fold_many0(
+        pair(preceded(sp, char('&')), preceded(sp, parse_app)),
+        e1,
+        |e1, (_, e2)| Expr::And(P(e1), P(e2)),
+    )(input)
+}
+
+fn parse_or<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Expr, E> {
+    let (input, e1) = preceded(sp, parse_and)(input)?;
+    fold_many0(
+        pair(preceded(sp, char('|')), preceded(sp, parse_and)),
+        e1,
+        |e1, (_, e2)| Expr::Or(P(e1), P(e2)),
+    )(input)
+}
+
+fn parse_expr<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Expr, E> {
+    alt((parse_or, parse_var))(input)
+}
+
+fn parse_hes<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, NuFormula, E> {
+    let (input, id) = preceded(sp, map(ident, String::from))(input)?;
+    let (input, args) = separated_list(sp1, preceded(sp, map(ident, String::from)))(input)?;
+    let (input, _) = preceded(sp, char('='))(input)?;
+    let (input, expr) = preceded(sp, parse_expr)(input)?;
+    let (input, _) = preceded(sp, char(';'))(input)?;
+    Ok((input, NuFormula { id, args, expr }))
+}
+
+pub fn parse<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Formula, E> {
+    let v = Vec::new();
+    let (input, formulas) = fold_many0(parse_hes, v, |mut v, hes| {
+        v.push(hes);
+        v
+    })(input)?;
+
+    Ok((input, Formula { formulas }))
+}
+
+#[test]
+fn test_parse() {
+    parse_or("a | b").unwrap();
+}

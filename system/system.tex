@@ -233,8 +233,10 @@ and \( \Gamma_\false \) be \( \{F_i: \bot \}_i \).
     \textbf{Conflict} &\quad
         \langle X, i + 1, \tau \rangle M\mid \mid A
         \Longrightarrow
-        M \mid \mid A[\Gamma_j \leftarrow \Gamma_j \cup \Gamma]_{j=1}^{i+1}
-        &&\quad \textbf{if} \ \Gamma \subset \Gamma_i, \Gamma \vdash X \COL \tau
+        M \mid \mid A[\Gamma_j \leftarrow \Gamma_j \cup \{X: \tau''\}]_{j=1}^{i+1}
+        \tau
+        &&\quad \textbf{if} X: \tau' \in F(\Gamma), \tau' \prec \tau''
+        \prec \tau
         \\
     \textbf{Decide} &\quad
         \langle X, i + 1, \tau \rangle M\mid \mid A

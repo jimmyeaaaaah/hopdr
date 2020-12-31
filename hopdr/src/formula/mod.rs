@@ -1,5 +1,7 @@
 pub mod parse;
 
+use std::fmt;
+
 #[derive(Copy, Clone, Debug)]
 pub enum Op {
     Add,
@@ -9,6 +11,22 @@ pub enum Op {
     Mod
 }
 
+impl fmt::Display for Op {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Op::Add => "+",
+                Op::Sub => "-",
+                Op::Mul => "*",
+                Op::Div => "/",
+                Op::Mod => "%",
+            }
+        )
+    }
+}
+
 #[derive(Copy, Clone, Debug)]
 pub enum Pred {
     Eq,
@@ -16,6 +34,22 @@ pub enum Pred {
     Leq,
     Gt
 }
+
+impl fmt::Display for Pred {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Pred::Le => "<=",
+                Pred::Gt => ">",
+                Pred::Eq => "=",
+                Pred::Neq => "!=",
+            }
+        )
+    }
+}
+
 
 #[derive(Clone, Debug)]
 pub enum Constraint {
