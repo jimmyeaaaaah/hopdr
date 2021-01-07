@@ -41,7 +41,7 @@ impl fmt::Display for Pred {
             f,
             "{}",
             match self {
-                Pred::Le => "<=",
+                Pred::Leq => "<=",
                 Pred::Gt => ">",
                 Pred::Eq => "=",
                 Pred::Neq => "!=",
@@ -67,8 +67,15 @@ pub struct Variable {
 }
 
 #[derive(Clone, Debug)]
+pub enum Fixpoint {
+    Greatest,
+    Least,
+}
+
+#[derive(Clone, Debug)]
 pub struct Clause {
     body: Vec<Variable>,
     constraint: Constraint,
-    head: Variable
+    head: Variable,
+    fixpoint: Fixpoint,
 }

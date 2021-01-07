@@ -1,11 +1,11 @@
-use super::hes::{Expr, Formula, NuFormula};
+use super::hes::{Expr, Problem, NuHFLzValidityChecking, Clause};
 use crate::util::P;
 use crate::formula::{Op, Pred};
 use nom::{
     branch::alt,
     bytes::complete::{tag, take_while},
     character::complete::{alpha1, char, digit1, one_of},
-    combinator::{map, map_res, opt},
+    combinator::{map, map_res},
     error::ParseError,
     multi::{fold_many0, separated_list},
     sequence::{pair, preceded},
@@ -54,7 +54,7 @@ fn parse_num<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Exp
 fn pred<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Pred, E> {
     alt((
         map(tag(">"), |_| Pred::Gt),
-        map(tag("<="), |_| Pred::Le),
+        map(tag("<="), |_| Pred::Leq),
         map(tag("="), |_| Pred::Eq),
         map(tag("!="), |_| Pred::Neq),
     ))(input)
@@ -129,26 +129,23 @@ fn parse_expr<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Ex
     alt((parse_or, parse_var))(input)
 }
 
-fn parse_hes<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, NuFormula, E> {
+fn parse_hes<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Clause, E> {
     let (input, id) = preceded(sp, map(ident, String::from))(input)?;
     let (input, args) = separated_list(sp1, preceded(sp, map(ident, String::from)))(input)?;
     let (input, _) = preceded(sp, char('='))(input)?;
     let (input, expr) = preceded(sp, parse_expr)(input)?;
     let (input, _) = preceded(sp, char(';'))(input)?;
-    Ok((input, NuFormula { id, args, expr }))
+    Ok((input, Clause { id, args, expr }))
 }
 
-pub fn parse<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Formula, E> {
+pub fn parse<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Problem, E> {
     let v = Vec::new();
-    let (input, formulas) = fold_many0(parse_hes, v, |mut v, hes| {
+    let (input, mut formulas) = fold_many0(parse_hes, v, |mut v, hes| {
         v.push(hes);
         v
     })(input)?;
+    // tentative
+    let toplevel = formulas.pop().unwrap().expr;
 
-    Ok((input, Formula { formulas }))
-}
-
-#[test]
-fn test_parse() {
-    parse_or("a | b").unwrap();
+    Ok((input, Problem::NuHFLZValidityChecking(NuHFLzValidityChecking{ formulas, toplevel })))
 }

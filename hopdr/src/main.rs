@@ -17,7 +17,8 @@ fn main() {
          ",
     )
     .unwrap();
-    for fml in f.formulas.iter() {
+    let parse::Problem::NuHFLZValidityChecking(nvc) = f;
+    for fml in nvc.formulas.iter() {
         println!("{}", fml);
     }
 }
