@@ -3,8 +3,7 @@ use std::cell::RefCell;
 
 
 use crate::util::P;
-use crate::formula::{Op, Pred};
-use super::simple_type;
+use crate::formula::{Op, Pred, Type as SimpleType};
 use crate::parse;
 
 type Ident = String;
@@ -25,7 +24,7 @@ pub enum Expr {
 #[derive(Clone, Debug)]
 pub struct Variable {
     pub id: Ident,
-    pub ty: simple_type::Type,
+    pub ty: SimpleType,
 }
 
 #[derive(Clone, Debug)]
@@ -45,12 +44,15 @@ pub struct ValidityChecking {
 struct TypeVariable {
     id: u64 
 }
-static TYVAR_COUNTER: RefCell<u64> = RefCell::new(0);
+static mut TYVAR_COUNTER: u64 = 0;
 impl TypeVariable {
     fn new() -> TypeVariable {
-        let counter = TYVAR_COUNTER.borrow_mut();
-        let id= *counter;
-        *counter = *counter + 1;
+        let id = 
+            unsafe {
+                let tmp= TYVAR_COUNTER;
+                TYVAR_COUNTER += 1;
+                tmp
+            };
         TypeVariable{id}
     }
 }
@@ -75,43 +77,65 @@ impl Clause {
     fn from(vc: parse::Clause) -> Clause {
         unimplemented!()
     }
+}
+
+impl parse::Expr {
+    fn append_constraints(&self, ty: TmpType, env: &Environment, constraints: &mut Vec<Constraint>) {
+        use parse::Expr::*;
+       // match self {
+       //     Var(x) => 
+       // }
+       unimplemented!()
+    }
+}
+
+impl parse::Clause {
     fn gen_tmp_type(&self) -> TmpType {
         let ret_ty= TmpType::new_type_variable();
         let mut current_ty = ret_ty;
-        for arg in self.args.iter() {
+        for _arg in self.args.iter() {
             let arg_ty = TmpType::new_type_variable();
-            current_ty = TmpType::new_type_arrow(arg_ty, ret_ty);
+            current_ty = TmpType::new_type_arrow(arg_ty, current_ty);
         }
         current_ty
     }
+    
+    fn append_constraints(&self, env: &Environment, constraints: &mut Vec<Constraint>) {
+        //self.expr.append_constraints(env, constraints);
+    }
 }
+
+struct Environment<'a> {
+    map: HashMap<&'a str, TmpType>
+}
+
+impl<'a> Environment<'a> {
+    fn new() -> Environment<'a> {
+        Environment{map: HashMap::new()}
+    }
+    fn add(&mut self, id: &'a str, ty: TmpType) {
+        self.map.insert(id, ty);
+    }
+}
+
+fn generate_global_environment<'a>(formulas: &'a Vec<parse::Clause>) -> Environment<'a> {
+    let mut env = Environment::new();
+    for formula in formulas.iter() {
+        let ty = formula.gen_tmp_type();
+        env.add(&formula.id, ty);
+    }
+    env
+}
+
 
 struct Constraint {
     left: TmpType,
     right: TmpType
 }
 
-struct Environment {
-    map: HashMap<Ident, TmpType>
-}
-
-impl Environment {
-    fn new() -> Environment {
-        Environment{map: HashMap::new()}
-    }
-    fn add(&mut self, id: Ident, ty: TmpType) {
-        self.map.insert(id, ty);
-    }
-}
-
-fn generate_global_environment(formulas: Vec<parse::Clause>) -> Environment {
-    for formula in formulas.iter() {
-        formula.
-    }
-    unimplemented!()
-}
 
 fn typing(formulas: Vec<parse::Clause>) -> Vec<Clause> {
+    let env = generate_global_environment(&formulas);
     unimplemented!()
 }
 

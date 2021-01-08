@@ -1,4 +1,4 @@
-use super::hes::{Expr, Problem, NuHFLzValidityChecking, Clause};
+use super::hes::{Fixpoint, Expr, Problem, NuHFLzValidityChecking, Clause};
 use crate::util::P;
 use crate::formula::{Op, Pred};
 use nom::{
@@ -135,7 +135,8 @@ fn parse_hes<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Cla
     let (input, _) = preceded(sp, char('='))(input)?;
     let (input, expr) = preceded(sp, parse_expr)(input)?;
     let (input, _) = preceded(sp, char(';'))(input)?;
-    Ok((input, Clause { id, args, expr }))
+    let fixpoint = Fixpoint::Greatest;
+    Ok((input, Clause { fixpoint, id, args, expr }))
 }
 
 pub fn parse<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Problem, E> {

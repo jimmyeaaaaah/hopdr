@@ -1,6 +1,9 @@
-pub mod parse;
+pub mod ty;
+pub mod pcsp;
 
 use std::fmt;
+pub use crate::formula::ty::*;
+pub use crate::util::P;
 
 #[derive(Copy, Clone, Debug)]
 pub enum Op {
@@ -55,27 +58,20 @@ impl fmt::Display for Pred {
 pub enum Constraint {
     True,
     False,
-    Op(Op, Box<Constraint>, Box<Constraint>),
-    Pred(Pred, Box<Constraint>, Box<Constraint>),
-    Conj(Box<Constraint>, Box<Constraint>),
-    Disj(Box<Constraint>, Box<Constraint>)
+    Op(Op, P<Constraint>, P<Constraint>),
+    Pred(Pred, P<Constraint>, P<Constraint>),
+    Conj(P<Constraint>, P<Constraint>),
+    Disj(P<Constraint>, P<Constraint>)
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub struct Variable {
     id: u64,
+    ty: Type,
 }
 
 #[derive(Clone, Debug)]
 pub enum Fixpoint {
     Greatest,
     Least,
-}
-
-#[derive(Clone, Debug)]
-pub struct Clause {
-    body: Vec<Variable>,
-    constraint: Constraint,
-    head: Variable,
-    fixpoint: Fixpoint,
 }
