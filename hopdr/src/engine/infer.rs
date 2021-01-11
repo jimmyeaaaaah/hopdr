@@ -1,14 +1,8 @@
 use std::{hint::unreachable_unchecked, unimplemented};
-use super::{Problem, Clause, Goal};
+use super::{Problem, Clause, Goal, VerificationResult};
 use crate::formula::pcsp::PCSP;
 
 // APLAS20
-
-pub enum VerificationResult {
-    Valid,
-    Invalid,
-    Unknown,
-}
 
 pub enum InferError {
     Msg(&'static str),

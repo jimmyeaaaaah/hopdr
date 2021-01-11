@@ -1,9 +1,12 @@
+use std::{collections::HashMap, unimplemented};
+
 use crate::formula::{Constraint};
 use crate::util::P;
 
-#[derive(Clone, Copy, Debug)]
+type Ident = u64;
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Variable {
-    id: u64,
+    id: Ident,
 }
 
 pub enum Sigma {
@@ -15,4 +18,14 @@ pub enum Tau {
     Proposition(Constraint),
     Intersection(P<Tau>, P<Tau>),
     Arrow(P<Sigma>, P<Tau>)
+}
+
+pub struct Environment{
+    map: HashMap<Variable, Tau>
+}
+
+impl Environment {
+    fn merge(&mut self, env: &Environment) {
+        unimplemented!()
+    }
 }

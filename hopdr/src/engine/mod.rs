@@ -1,8 +1,15 @@
 mod rtype;
 mod infer;
+mod pdr;
 
 use crate::formula::{Constraint, Variable};
 use crate::util::P;
+
+pub enum VerificationResult {
+    Valid,
+    Invalid,
+    Unknown,
+}
 
 #[derive(Clone, Debug)]
 pub struct Atom {
