@@ -1,5 +1,5 @@
-use std::{collections::HashMap, thread::current, unimplemented};
-use std::cell::RefCell;
+use std::{collections::HashMap, unimplemented};
+
 
 
 use crate::util::{P, global_counter};
@@ -69,14 +69,14 @@ impl TmpType {
 }
 
 impl Clause {
-    fn from(vc: parse::Clause) -> Clause {
+    fn from(_vc: parse::Clause) -> Clause {
         unimplemented!()
     }
 }
 
 impl parse::Expr {
-    fn append_constraints(&self, ty: TmpType, env: &Environment, constraints: &mut Vec<Constraint>) {
-        use parse::Expr::*;
+    fn append_constraints(&self, _ty: TmpType, _env: &Environment, _constraints: &mut Vec<Constraint>) {
+        
        // match self {
        //     Var(x) => 
        // }
@@ -95,7 +95,7 @@ impl parse::Clause {
         current_ty
     }
     
-    fn append_constraints(&self, env: &Environment, constraints: &mut Vec<Constraint>) {
+    fn append_constraints(&self, _env: &Environment, _constraints: &mut Vec<Constraint>) {
         //self.expr.append_constraints(env, constraints);
     }
 }
@@ -130,7 +130,7 @@ struct Constraint {
 
 
 fn typing(formulas: Vec<parse::Clause>) -> Vec<Clause> {
-    let env = generate_global_environment(&formulas);
+    let _env = generate_global_environment(&formulas);
     unimplemented!()
 }
 
@@ -140,7 +140,7 @@ impl ValidityChecking {
        // gamma: type environment
        // unify
        match vc {
-           parse::Problem::NuHFLZValidityChecking(vc) => {
+           parse::Problem::NuHFLZValidityChecking(_vc) => {
                 unimplemented!()
            }
        }

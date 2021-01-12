@@ -1,4 +1,4 @@
-use std::{hint::unreachable_unchecked, unimplemented};
+use std::{unimplemented};
 use super::{Problem, Clause, Goal, VerificationResult};
 use crate::formula::pcsp::PCSP;
 
@@ -9,7 +9,7 @@ pub enum InferError {
 }
 
 impl Goal {
-    fn infer(&self, constraints: &mut Vec<PCSP>) -> Result<(), InferError> {
+    fn infer(&self, _constraints: &mut Vec<PCSP>) -> Result<(), InferError> {
         unimplemented!()
     }
 }
@@ -21,6 +21,6 @@ impl Clause {
     }
 }
 
-fn infer(problem: Problem) -> VerificationResult {
+fn infer(_problem: Problem) -> VerificationResult {
     unimplemented!();
 }

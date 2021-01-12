@@ -1,5 +1,5 @@
-use std::{hint::unreachable_unchecked, unimplemented};
-use super::{Problem, Clause, Goal, VerificationResult};
+use std::{unimplemented};
+use super::{Problem, VerificationResult};
 use super::rtype::Environment;
 
 
@@ -29,7 +29,9 @@ enum RefuteOrCex<A, B> {
 
 impl<'a> HoPDR<'a> {
     fn new(problem: &'a Problem) -> HoPDR<'a> {
-        HoPDR{models: Vec::new(), expand_cnt: 0, envs: Vec::new(), problem}
+        let mut hopdr = HoPDR{models: Vec::new(), expand_cnt: 0, envs: Vec::new(), problem};
+        hopdr.initialize();
+        hopdr
     }
 
     fn check_valid(&self) -> Option<Candidate> {
@@ -40,19 +42,24 @@ impl<'a> HoPDR<'a> {
         unimplemented!()
     }
 
-    fn unfold(&mut self) {
+    fn initialize(&mut self) {
 
+    }
+
+    fn unfold(&mut self) {
+        self.expand_cnt += 1;
+        self.envs.append(unimplemented!())
     }
 
     fn valid(&mut self) -> PDRResult {
         unimplemented!()
     }
 
-    fn candidate(&mut self, c: Candidate) {
+    fn candidate(&mut self, _c: Candidate) {
 
     }
 
-    fn is_refutable(&self, c: &Candidate) -> RefuteOrCex<Environment, Candidate> {
+    fn is_refutable(&self, _c: &Candidate) -> RefuteOrCex<Environment, Candidate> {
         unimplemented!()
     }
 
@@ -75,7 +82,7 @@ impl<'a> HoPDR<'a> {
         }
     }
 
-    fn conflict(&mut self, candidate: Candidate, refute_env: Environment) {
+    fn conflict(&mut self, _candidate: Candidate, _refute_env: Environment) {
 
     }
 
@@ -98,6 +105,6 @@ impl<'a> HoPDR<'a> {
 }
 
 
-fn infer(problem: Problem) -> VerificationResult {
+fn infer(_problem: Problem) -> VerificationResult {
     unimplemented!()
 }

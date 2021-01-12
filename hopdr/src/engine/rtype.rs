@@ -1,7 +1,7 @@
 use std::{collections::HashMap, rc::Rc, unimplemented};
 
 use crate::formula::{Constraint, Type as SType};
-use crate::util::{global_counter, P};
+use crate::util::{global_counter};
 
 type Ident = u64;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -50,12 +50,13 @@ impl TauKind {
 }
 
 pub struct Environment{
-    map: HashMap<Variable, Tau>
+    // Vector: an instant intersection
+    map: HashMap<Variable, Vec<Tau>>
 }
 
 
 impl Environment {
-    fn merge(&mut self, env: &Environment) {
+    fn merge(&mut self, _env: &Environment) {
         unimplemented!()
     }
 
@@ -63,12 +64,18 @@ impl Environment {
         Environment{map: HashMap::new()}
     }
 
-    fn add(&mut self, v: Variable, t: TauKind) {
-        self.map.insert(v, Tau::new(t));
+    fn add_(&mut self, v: Variable, t: Tau) {
+        match self.map.get_mut(&v) {
+            Some(v) => {v.push(t);},
+            None => {self.map.insert(v, vec![t]);}
+        }
     }
 
-    fn add_top(&mut self, v: Variable, st: &SType) {
+    pub fn add(&mut self, v: Variable, t: TauKind) {
+        self.add_(v, Tau::new(t))
+    }
+
+    pub fn add_top(&mut self, v: Variable, st: &SType) {
         self.add(v, TauKind::new_top(st));
     }
-
 }
