@@ -4,6 +4,7 @@ pub mod pcsp;
 use std::fmt;
 pub use crate::formula::ty::*;
 pub use crate::util::P;
+use crate::util::{global_counter};
 
 #[derive(Copy, Clone, Debug)]
 pub enum Op {
@@ -64,10 +65,22 @@ pub enum Constraint {
     Disj(P<Constraint>, P<Constraint>)
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct Ident {
+    id: u64,
+}
+
+impl Ident {
+    pub fn fresh() -> Ident {
+        let id = global_counter();
+        Ident { id }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Variable {
-    id: u64,
-    ty: Type,
+    pub id: Ident,
+    pub ty: Type,
 }
 
 #[derive(Clone, Debug)]

@@ -1,25 +1,11 @@
 use std::{collections::HashMap, rc::Rc, unimplemented};
 
-use crate::formula::{Constraint, Type as SType};
-use crate::util::{global_counter};
-
-type Ident = u64;
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct Variable {
-    id: Ident,
-}
-
-impl Variable {
-    fn fresh() -> Variable {
-        let id = global_counter();
-        Variable{ id }
-    }
-}
+use crate::formula::{Constraint, Type as SType, Ident};
 
 pub enum TauKind {
     Proposition(Constraint),
     Intersection(Tau, Tau),
-    IArrow(Variable, Tau),
+    IArrow(Ident, Tau),
     Arrow(Tau, Tau)
 }
 
@@ -30,7 +16,7 @@ impl TauKind {
         match st {
             SType::Proposition => TauKind::Proposition(Constraint::True),
             SType::Arrow(x, y) if **x == SType::Integer => 
-                TauKind::IArrow(Variable::fresh(), Tau::new(TauKind::new_top(y))),
+                TauKind::IArrow(Ident::fresh(), Tau::new(TauKind::new_top(y))),
             SType::Arrow(x, y) => 
                 TauKind::Arrow(Tau::new(TauKind::new_bot(x)), Tau::new(TauKind::new_top(y))),
             SType::Integer => panic!("integer occurs at the result position"),
@@ -41,7 +27,7 @@ impl TauKind {
         match st {
             SType::Proposition => TauKind::Proposition(Constraint::True),
             SType::Arrow(x, y) if **x == SType::Integer => 
-                TauKind::IArrow(Variable::fresh(), Tau::new(TauKind::new_top(y))),
+                TauKind::IArrow(Ident::fresh(), Tau::new(TauKind::new_top(y))),
             SType::Arrow(x, y) => 
                 TauKind::Arrow(Tau::new(TauKind::new_top(x)), Tau::new(TauKind::new_top(y))),
             SType::Integer => panic!("integer occurs at the result position"),
@@ -51,31 +37,31 @@ impl TauKind {
 
 pub struct Environment{
     // Vector: an instant intersection
-    map: HashMap<Variable, Vec<Tau>>
+    map: HashMap<Ident, Vec<Tau>>
 }
 
 
 impl Environment {
-    fn merge(&mut self, _env: &Environment) {
+    pub fn merge(&mut self, _env: &Environment) {
         unimplemented!()
     }
 
-    fn new() -> Environment {
+    pub fn new() -> Environment {
         Environment{map: HashMap::new()}
     }
 
-    fn add_(&mut self, v: Variable, t: Tau) {
+    fn add_(&mut self, v: Ident, t: Tau) {
         match self.map.get_mut(&v) {
             Some(v) => {v.push(t);},
             None => {self.map.insert(v, vec![t]);}
         }
     }
 
-    pub fn add(&mut self, v: Variable, t: TauKind) {
+    pub fn add(&mut self, v: Ident, t: TauKind) {
         self.add_(v, Tau::new(t))
     }
 
-    pub fn add_top(&mut self, v: Variable, st: &SType) {
+    pub fn add_top(&mut self, v: Ident, st: &SType) {
         self.add(v, TauKind::new_top(st));
     }
 }

@@ -48,7 +48,10 @@ impl<'a> HoPDR<'a> {
 
     fn unfold(&mut self) {
         self.expand_cnt += 1;
-        self.envs.append(unimplemented!())
+        let mut new_env = Environment::new();
+        for c in self.problem.clauses.iter() {
+            new_env.add_top(c.head.id, &c.head.ty)
+        }
     }
 
     fn valid(&mut self) -> PDRResult {
