@@ -1,7 +1,7 @@
 use std::fmt;
 use std::ops::Deref;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct P<T: ?Sized> {
     ptr: Box<T>,
 }
@@ -24,5 +24,14 @@ impl<T: ?Sized> Deref for P<T> {
 
     fn deref(&self) -> &T {
         &self.ptr
+    }
+}
+
+static mut TYVAR_COUNTER: u64 = 0;
+pub fn global_counter() -> u64 {
+    unsafe {
+        let tmp= TYVAR_COUNTER;
+        TYVAR_COUNTER += 1;
+        tmp
     }
 }

@@ -38,4 +38,6 @@ pub struct Problem {
     top: Goal,
 }
 
+impl Clause {}
+
 //fn infer_nu_validity(vc: )

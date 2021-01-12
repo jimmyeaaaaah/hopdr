@@ -13,6 +13,7 @@ struct Candidate {
     env: Environment,
     index: u64,
 }
+
 struct HoPDR<'a> {
     models: Vec<Candidate>,
     expand_cnt: u64,
@@ -40,7 +41,7 @@ impl<'a> HoPDR<'a> {
     }
 
     fn unfold(&mut self) {
-        unimplemented!()
+
     }
 
     fn valid(&mut self) -> PDRResult {
@@ -50,7 +51,6 @@ impl<'a> HoPDR<'a> {
     fn candidate(&mut self, c: Candidate) {
 
     }
-
 
     fn is_refutable(&self, c: &Candidate) -> RefuteOrCex<Environment, Candidate> {
         unimplemented!()

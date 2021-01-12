@@ -2,7 +2,7 @@ use std::{collections::HashMap, thread::current, unimplemented};
 use std::cell::RefCell;
 
 
-use crate::util::P;
+use crate::util::{P, global_counter};
 use crate::formula::{Op, Pred, Type as SimpleType};
 use crate::parse;
 
@@ -44,15 +44,10 @@ pub struct ValidityChecking {
 struct TypeVariable {
     id: u64 
 }
-static mut TYVAR_COUNTER: u64 = 0;
+
 impl TypeVariable {
     fn new() -> TypeVariable {
-        let id = 
-            unsafe {
-                let tmp= TYVAR_COUNTER;
-                TYVAR_COUNTER += 1;
-                tmp
-            };
+        let id = global_counter();
         TypeVariable{id}
     }
 }
