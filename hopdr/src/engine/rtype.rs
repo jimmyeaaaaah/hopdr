@@ -1,6 +1,6 @@
 use std::{collections::HashMap, ffi::FromBytesWithNulError, rc::Rc, unimplemented};
 
-use crate::formula::{Constraint, Ident, P, Type as SType, TypeKind as StypeKind, Variable};
+use crate::formula::{Constraint, Ident, P, Type as SType, TypeKind as StypeKind, Variable, Op};
 use super::{Clause, Goal, GoalExpr, Atom, AtomKind, ConstKind};
 
 #[derive(Debug)]
@@ -14,18 +14,40 @@ pub enum TauKind {
 pub type Tau = P<TauKind>;
 
 impl Tau {
-    fn mk_prop_ty(c: &Constraint) -> Tau {
-        Tau::new(TauKind::Proposition(c.clone()))
+    fn mk_prop_ty(c: Constraint) -> Tau {
+        Tau::new(TauKind::Proposition(c))
     }
 
     fn mk_intersection(x: Tau, y: Tau) -> Tau {
         Tau::new(TauKind::Intersection(x, y))
     }
 
-    fn app_const_int(&self, v: i64) -> Tau {
+    fn mk_iarrow(id: Ident, t: Tau) -> Tau {
+        Tau::new(TauKind::IArrow(id, t))
+    }
+
+    fn mk_arrow(t: Tau, s: Tau) -> Tau {
+        Tau::new(TauKind::Arrow(t, s))
+    }
+
+    fn app(&self, v: &Op) -> Tau {
         match &**self {
-            TauKind::IArrow(x, t) => unimplemented!(),
+            TauKind::IArrow(x, t) => t.subst(x, v),
             _ => panic!("program error: tried to app integer to non-integer arrow type"),
+        }
+    }
+
+    // \tau[v/x]
+    fn subst(&self, x: &Ident, v: &Op) -> Tau {
+        match &**self {
+            TauKind::Proposition(c) => Tau::mk_prop_ty(c.subst(x, v)),
+            TauKind::Intersection(r, l) => 
+                Tau::mk_intersection(r.subst(x, v), l.subst(x, v)),
+            TauKind::IArrow(id, body) if id == x => self.clone(),
+            TauKind::IArrow(id, body) => 
+                Tau::mk_iarrow(*id, body.subst(x, v)),
+            TauKind::Arrow(l, r) => 
+                Tau::mk_arrow(l.subst(x, v), r.subst(x, v))
         }
     }
 }
@@ -101,15 +123,16 @@ pub enum Error {
 fn type_check_atom(atom: &Atom, env: &Environment) -> Tau {
     use AtomKind::*;
     use ConstKind::*;
-    match &**atom {
-        Var(v) => env.get(v).unwrap(),
-        App(x, Const(Int(x))) => {
-            let t = type_check_atom(x, env);
-            t.app(x)
-        }
-        Abs(_, _) => {}
-        Const(c) => panic!("program error")
-    }
+    unimplemented!()
+    //match &**atom {
+    //    Var(v) => env.get(v).unwrap(),
+    //    App(x, Const(Int(x))) => {
+    //        let t = type_check_atom(x, env);
+    //        t.app(x)
+    //    }
+    //    Abs(_, _) => {}
+    //    Const(c) => panic!("program error")
+    //}
 }
 
 fn type_check_goal(goal: &Goal, tenv: &Environment) -> Constraint {

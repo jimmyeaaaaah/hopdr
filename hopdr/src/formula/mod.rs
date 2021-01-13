@@ -8,7 +8,7 @@ pub use crate::util::P;
 use crate::util::{global_counter};
 
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum PredKind {
     Eq,
     Neq,
@@ -30,7 +30,7 @@ impl fmt::Display for PredKind {
         )
     }
 }
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum OpKind {
     Add,
     Sub,
@@ -56,8 +56,10 @@ impl fmt::Display for OpKind {
 }
 
 #[derive(Debug)]
-pub enum OpExpr{
+pub enum OpExpr {
     Op(OpKind, Op, Op),
+    Var(Ident),
+    Const(i64),
 }
 
 pub type Op = P<OpExpr>;
@@ -65,6 +67,16 @@ pub type Op = P<OpExpr>;
 impl Op {
     fn mk_bin_op(op: OpKind, x: Op, y: Op) -> Op {
         Op::new(OpExpr::Op(op, x, y))
+    }
+
+    fn subst(&self, id: &Ident, v: &Op) -> Op {
+        match &**self {
+            OpExpr::Op(k, x, y) => 
+                Op::mk_bin_op(*k, x.subst(id, v), y.subst(id, v)),
+            
+            OpExpr::Var(id2) if id == id2 => v.clone(),
+            _ => self.clone(),
+        }
     }
 }
 
@@ -81,7 +93,6 @@ pub enum ConstraintExpr {
 pub type Constraint = P<ConstraintExpr>;
 
 impl Constraint {
-
     pub fn mk_true() -> Constraint {
         Constraint::new(ConstraintExpr::True)
     }
@@ -99,6 +110,29 @@ impl Constraint {
     }
     pub fn mk_disj(x: Constraint, y: Constraint) -> Constraint {
         Constraint::new(ConstraintExpr::Disj(x, y))
+    }
+
+    pub fn mk_pred(k: PredKind, v: Vec<Op>) -> Constraint {
+        Constraint::new(ConstraintExpr::Pred(k, v))
+    }
+
+    // \theta[v/x]
+    pub fn subst(&self, x: &Ident, v: &Op) -> Constraint {
+        use ConstraintExpr::*;
+        match &**self {
+            True | False => self.clone(),
+            Pred(k, ops) => {
+                let mut new_ops = Vec::new();
+                for op in ops.iter() {
+                    new_ops.push(op.subst(x, v));
+                }
+                Constraint::mk_pred(*k, new_ops)
+            },
+            Conj(r, l) => Constraint::mk_conj(r.subst(x, v), l.subst(x, v)),
+            Disj(r, l) => Constraint::mk_disj(r.subst(x, v), l.subst(x, v)),
+            Univ(var, cstr) => 
+                Constraint::mk_univ(var.clone(), cstr.subst(x, v)),
+        }
     }
 }
 
