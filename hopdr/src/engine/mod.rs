@@ -2,6 +2,8 @@ mod rtype;
 mod infer;
 mod pdr;
 
+use std::rc::Rc;
+
 use crate::formula::{Constraint, Variable};
 use crate::util::P;
 
@@ -16,23 +18,25 @@ pub struct Atom {
 
 }
 
-#[derive(Clone, Debug)]
-pub enum Goal {
+#[derive(Debug)]
+pub enum GoalExpr {
     Atom(Atom),
     Constr(Constraint),
-    Conj(P<Goal>, P<Goal>),
-    Disj(P<Goal>, P<Goal>),
-    Univ(Variable, P<Goal>)
+    Conj(Goal, Goal),
+    Disj(Goal, Goal),
+    Univ(Variable, Goal)
 }
 
-#[derive(Clone, Debug)]
+pub type Goal = P<GoalExpr>;
+
+#[derive(Debug)]
 pub struct Clause {
     body: Goal,
     head: Variable,
     args: Vec<Variable>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct Problem {
     clauses: Vec<Clause>,
     top: Goal,

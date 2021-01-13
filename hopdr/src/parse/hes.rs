@@ -1,4 +1,4 @@
-use crate::formula::{Pred, Op};
+use crate::formula::{PredKind, OpKind};
 use crate::util::P;
 
 use std::fmt;
@@ -27,8 +27,8 @@ pub enum Expr {
     Num(i64),
     True,
     False,
-    Op(Op, P<Expr>, P<Expr>),
-    Pred(Pred, P<Expr>, P<Expr>),
+    Op(OpKind, P<Expr>, P<Expr>),
+    Pred(PredKind, P<Expr>, P<Expr>),
     App(P<Expr>, P<Expr>),
     And(P<Expr>, P<Expr>),
     Or(P<Expr>, P<Expr>),
@@ -83,7 +83,7 @@ pub struct NuHFLzValidityChecking {
 }
 
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum Problem {
     NuHFLZValidityChecking(NuHFLzValidityChecking)
 }

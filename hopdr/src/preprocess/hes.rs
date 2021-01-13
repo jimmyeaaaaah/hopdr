@@ -3,19 +3,19 @@ use std::{collections::HashMap, unimplemented};
 
 
 use crate::util::{P, global_counter};
-use crate::formula::{Op, Pred, Type as SimpleType};
+use crate::formula::{Op, PredKind, Type as SimpleType};
 use crate::parse;
 
 type Ident = String;
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum Expr {
     Var(Ident),
     Num(i64),
     True,
     False,
     Op(Op, P<Expr>, P<Expr>),
-    Pred(Pred, P<Expr>, P<Expr>),
+    Pred(PredKind, P<Expr>, P<Expr>),
     App(P<Expr>, P<Expr>),
     And(P<Expr>, P<Expr>),
     Or(P<Expr>, P<Expr>),
@@ -27,7 +27,7 @@ pub struct Variable {
     pub ty: SimpleType,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct Clause {
     pub id: Ident,
     pub args: Vec<Variable>,
@@ -35,7 +35,7 @@ pub struct Clause {
 }
 
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct ValidityChecking {
     pub formulas: Vec<Clause>,
     pub toplevel: Expr,

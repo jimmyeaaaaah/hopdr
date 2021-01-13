@@ -2,18 +2,20 @@ use std::fmt;
 use crate::util::P;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum Type {
+pub enum TypeKind {
     Proposition,
     Integer,
-    Arrow(P<Type>, P<Type>)
+    Arrow(Type, Type)
 }
 
-impl fmt::Display for Type {
+impl fmt::Display for TypeKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Type::Proposition => write!(f, "bool"),
-            Type::Integer => write!(f, "integer"),
-            Type::Arrow(x, y) => write!(f, "{} -> {}", x, y),
+            TypeKind::Proposition => write!(f, "bool"),
+            TypeKind::Integer => write!(f, "integer"),
+            TypeKind::Arrow(x, y) => write!(f, "{} -> {}", x, y),
         }
     }
 }
+
+pub type Type = P<TypeKind>;

@@ -1,6 +1,6 @@
 use super::hes::{Fixpoint, Expr, Problem, NuHFLzValidityChecking, Clause};
 use crate::util::P;
-use crate::formula::{Op, Pred};
+use crate::formula::{OpKind, PredKind};
 use nom::{
     branch::alt,
     bytes::complete::{tag, take_while},
@@ -51,22 +51,22 @@ fn parse_num<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Exp
     Ok((input, Expr::Num(num)))
 }
 
-fn pred<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Pred, E> {
+fn pred<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, PredKind, E> {
     alt((
-        map(tag(">"), |_| Pred::Gt),
-        map(tag("<="), |_| Pred::Leq),
-        map(tag("="), |_| Pred::Eq),
-        map(tag("!="), |_| Pred::Neq),
+        map(tag(">"), |_| PredKind::Gt),
+        map(tag("<="), |_| PredKind::Leq),
+        map(tag("="), |_| PredKind::Eq),
+        map(tag("!="), |_| PredKind::Neq),
     ))(input)
 }
 
-fn op1<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Op, E> {
-    alt((map(tag("+"), |_| Op::Add), map(tag("-"), |_| Op::Sub)))(input)
+fn op1<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, OpKind, E> {
+    alt((map(tag("+"), |_| OpKind::Add), map(tag("-"), |_| OpKind::Sub)))(input)
 }
 
-fn op2<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Op, E> {
+fn op2<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, OpKind, E> {
     let (i, _) = char('*')(input)?;
-    Ok((i, Op::Mul))
+    Ok((i, OpKind::Mul))
 }
 
 fn parse_atom<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Expr, E> {
