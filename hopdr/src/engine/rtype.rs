@@ -1,7 +1,7 @@
-use std::{collections::HashMap, rc::Rc, unimplemented};
+use std::{collections::HashMap, ffi::FromBytesWithNulError, rc::Rc, unimplemented};
 
-use crate::formula::{Constraint, Ident, P, Type as SType, TypeKind as StypeKind};
-use super::{Clause, Goal, GoalExpr, Atom};
+use crate::formula::{Constraint, Ident, P, Type as SType, TypeKind as StypeKind, Variable};
+use super::{Clause, Goal, GoalExpr, Atom, AtomKind, ConstKind};
 
 #[derive(Debug)]
 pub enum TauKind {
@@ -18,8 +18,15 @@ impl Tau {
         Tau::new(TauKind::Proposition(c.clone()))
     }
 
-    fn mk_conj_ty(x: &Tau, y: &Tau) -> Tau {
-        unimplemented!()
+    fn mk_intersection(x: Tau, y: Tau) -> Tau {
+        Tau::new(TauKind::Intersection(x, y))
+    }
+
+    fn app_const_int(&self, v: i64) -> Tau {
+        match &**self {
+            TauKind::IArrow(x, t) => unimplemented!(),
+            _ => panic!("program error: tried to app integer to non-integer arrow type"),
+        }
     }
 }
 
@@ -51,7 +58,7 @@ impl TauKind {
 
 pub struct Environment{
     // Vector: an instant intersection
-    map: HashMap<Ident, Vec<Tau>>
+    map: HashMap<Ident, Tau>
 }
 
 
@@ -65,10 +72,13 @@ impl Environment {
     }
 
     fn add_(&mut self, v: Ident, t: Tau) {
-        match self.map.get_mut(&v) {
-            Some(v) => {v.push(t);},
-            None => {self.map.insert(v, vec![t]);}
-        }
+        match self.map.get(&v) {
+            Some(s) => {
+                let t = Tau::mk_intersection(s.clone(), t.clone());
+                self.map.insert(v, t)
+            },
+            None => self.map.insert(v, t)
+        };
     }
 
     pub fn add(&mut self, v: Ident, t: TauKind) {
@@ -78,6 +88,10 @@ impl Environment {
     pub fn add_top(&mut self, v: Ident, st: &SType) {
         self.add(v, TauKind::new_top(st));
     }
+
+    pub fn get(&self, v: &Variable) -> Option<Tau> {
+        self.map.get(&v.id).map(|v| v.clone())
+    }
 }
 
 pub enum Error {
@@ -85,14 +99,30 @@ pub enum Error {
 }
 
 fn type_check_atom(atom: &Atom, env: &Environment) -> Tau {
-    unimplemented!()
+    use AtomKind::*;
+    use ConstKind::*;
+    match &**atom {
+        Var(v) => env.get(v).unwrap(),
+        App(x, Const(Int(x))) => {
+            let t = type_check_atom(x, env);
+            t.app(x)
+        }
+        Abs(_, _) => {}
+        Const(c) => panic!("program error")
+    }
 }
 
 fn type_check_goal(goal: &Goal, tenv: &Environment) -> Constraint {
     use GoalExpr::*;
     let f = type_check_goal;
     match &**goal {
-        Atom(atom) => unimplemented!(),
+        Atom(atom) => {
+            let t = type_check_atom(atom, tenv);
+            match &*t {
+                TauKind::Proposition(c) => c.clone(),
+                _ => panic!("program error. The result type of atom must be prop.")
+            }
+        },
         Constr(c) => c.clone(),
         Conj(x, y) => Constraint::mk_conj(f(x, tenv), f(y, tenv)),
         Disj(x, y) => Constraint::mk_disj(f(x, tenv), f(y, tenv)),
@@ -101,4 +131,5 @@ fn type_check_goal(goal: &Goal, tenv: &Environment) -> Constraint {
 }
 
 fn type_check_clause(clause: &Clause, rty: Tau, env: &Environment) {
+
 }

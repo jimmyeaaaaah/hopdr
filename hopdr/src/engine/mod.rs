@@ -13,10 +13,23 @@ pub enum VerificationResult {
     Unknown,
 }
 
-#[derive(Clone, Debug)]
-pub struct Atom {
-
+#[derive(Debug)]
+pub enum ConstKind {
+    Int(i64),
+    Bool(bool),
 }
+
+pub type Const = P<ConstKind>;
+
+#[derive(Debug)]
+pub enum AtomKind {
+    Var(Variable),
+    Const(Const),
+    App(Atom, Atom),
+    Abs(Variable, Atom)
+}
+
+pub type Atom = P<AtomKind>;
 
 #[derive(Debug)]
 pub enum GoalExpr {
