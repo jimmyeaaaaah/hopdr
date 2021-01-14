@@ -21,7 +21,8 @@ impl Tau {
     pub fn rty(&self) -> Atom {
         use TauKind::*;
         match &**self {
-            TauKind::Proposition(x) => 
+            TauKind::Proposition(x) => x.clone(),
+            _ => unimplemented!()
         }
     }
     // generate constraints by considering subtype s <= t
@@ -37,11 +38,7 @@ impl Tau {
             (Arrow(t1, s1), Arrow(t2, s2)) => {
                 Tau::subtype_inner(s1, s2, assumption, constraints);
             },
-            (Intersection(_, _), Intersection(_, _)) => {
-                unimplemented!()
-            },
             _ => panic!("program error: invalid subtyping")
-
         }
     }
 }
