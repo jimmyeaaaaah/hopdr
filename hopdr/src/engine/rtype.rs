@@ -6,6 +6,7 @@ use super::{Clause, Goal, GoalExpr, Atom, AtomKind, ConstKind};
 #[derive(Debug)]
 pub enum TauKind {
     Proposition(Constraint),
+    Intersection(Tau, Tau),
     IArrow(Ident, Tau),
     Arrow(Tau, Tau),
 }
@@ -17,9 +18,9 @@ impl Tau {
         Tau::new(TauKind::Proposition(c))
     }
 
-    //fn mk_intersection(x: Tau, y: Tau) -> Tau {
-    //    Tau::new(TauKind::Intersection(x, y))
-    //}
+    fn mk_intersection(x: Tau, y: Tau) -> Tau {
+        Tau::new(TauKind::Intersection(x, y))
+    }
 
     fn mk_iarrow(id: Ident, t: Tau) -> Tau {
         Tau::new(TauKind::IArrow(id, t))
@@ -40,8 +41,8 @@ impl Tau {
     fn subst(&self, x: &Ident, v: &Op) -> Tau {
         match &**self {
             TauKind::Proposition(c) => Tau::mk_prop_ty(c.subst(x, v)),
-            //TauKind::Intersection(r, l) => 
-            //    Tau::mk_intersection(r.subst(x, v), l.subst(x, v)),
+            TauKind::Intersection(r, l) => 
+                Tau::mk_intersection(r.subst(x, v), l.subst(x, v)),
             TauKind::IArrow(id, _body) if id == x => self.clone(),
             TauKind::IArrow(id, body) => 
                 Tau::mk_iarrow(*id, body.subst(x, v)),
@@ -90,29 +91,9 @@ impl TauKind {
     }
 }
 
-pub enum IntersectionKind {
-    True,
-    Tau(Tau),
-    Intersection(Intersection, Intersection)
-}
-pub type Intersection = P<IntersectionKind>;
-
-impl Intersection {
-    fn mk_tau(t: &Tau) -> Intersection {
-        Intersection::new(IntersectionKind::Tau(t.clone()))
-    }
-    fn conjoin(&self, y: &Tau) -> Intersection {
-        Intersection::new(
-            IntersectionKind::Intersection(
-                self.clone(), 
-                Intersection::mk_tau(y)))
-
-    }
-}
-
 pub struct Environment{
     // Assumption: all variables are alpha-renamed.
-    map: HashMap<Ident, Intersection>,
+    map: HashMap<Ident, Tau>,
     imap: IntegerEnvironment,
 }
 
@@ -129,10 +110,10 @@ impl Environment {
     fn add_(&mut self, v: Ident, t: Tau) {
         match self.map.get(&v) {
             Some(s) => {
-                let t = s.conjoin(&t);
+                let t = Tau::mk_intersection(s.clone(), t.clone());
                 self.map.insert(v, t)
             },
-            None => self.map.insert(v, Intersection::mk_tau(&t))
+            None => self.map.insert(v, t)
         };
     }
 
@@ -144,7 +125,7 @@ impl Environment {
         self.tadd(v, TauKind::new_top(st));
     }
 
-    pub fn tget(&self, v: &Ident) -> Option<Intersection> {
+    pub fn tget(&self, v: &Ident) -> Option<Tau> {
         self.map.get(v).map(|v| v.clone())
     }
 
