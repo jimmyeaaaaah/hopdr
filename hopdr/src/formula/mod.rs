@@ -1,7 +1,7 @@
 pub mod ty;
 pub mod pcsp;
 
-use std::fmt;
+use std::{collections::HashSet, fmt};
 use std::{collections::HashMap, rc::Rc, unimplemented};
 pub use crate::formula::ty::*;
 pub use crate::util::P;
@@ -65,8 +65,16 @@ pub enum OpExpr {
 pub type Op = P<OpExpr>;
 
 impl Op {
-    fn mk_bin_op(op: OpKind, x: Op, y: Op) -> Op {
+    pub fn mk_bin_op(op: OpKind, x: Op, y: Op) -> Op {
         Op::new(OpExpr::Op(op, x, y))
+    }
+
+    pub fn mk_const(x: i64) -> Op {
+        Op::new(OpExpr::Const(x))
+    }
+
+    pub fn mk_var(x: Ident) -> Op {
+        Op::new(OpExpr::Var(x))
     }
 
     fn subst(&self, id: &Ident, v: &Op) -> Op {

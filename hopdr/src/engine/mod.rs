@@ -4,7 +4,7 @@ mod pdr;
 
 use std::rc::Rc;
 
-use crate::formula::{Constraint, Variable};
+use crate::formula::{Constraint, Variable, Ident, Op, IntegerEnvironment};
 use crate::util::P;
 
 pub enum VerificationResult {
@@ -23,13 +23,17 @@ pub type Const = P<ConstKind>;
 
 #[derive(Debug)]
 pub enum AtomKind {
-    Var(Variable),
+    Var(Ident),
     Const(Const),
     App(Atom, Atom),
-    Abs(Variable, Atom)
+    //Abs(Variable, Atom)
 }
 
 pub type Atom = P<AtomKind>;
+
+
+impl Atom {
+}
 
 #[derive(Debug)]
 pub enum GoalExpr {

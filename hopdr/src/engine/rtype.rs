@@ -1,6 +1,6 @@
-use std::{collections::HashMap, ffi::FromBytesWithNulError, rc::Rc, unimplemented};
+use std::{collections::{HashMap, HashSet}, ffi::FromBytesWithNulError, rc::Rc, unimplemented};
 
-use crate::formula::{Constraint, Ident, P, Type as SType, TypeKind as StypeKind, Variable, Op};
+use crate::formula::{Constraint, Ident, P, Type as SType, TypeKind as StypeKind, Variable, Op, IntegerEnvironment};
 use super::{Clause, Goal, GoalExpr, Atom, AtomKind, ConstKind};
 
 #[derive(Debug)]
@@ -79,8 +79,8 @@ impl TauKind {
 }
 
 pub struct Environment{
-    // Vector: an instant intersection
-    map: HashMap<Ident, Tau>
+    // Assumption: all variables are alpha-renamed.
+    map: HashMap<Ident, Tau>,
 }
 
 
@@ -111,28 +111,60 @@ impl Environment {
         self.add(v, TauKind::new_top(st));
     }
 
-    pub fn get(&self, v: &Variable) -> Option<Tau> {
-        self.map.get(&v.id).map(|v| v.clone())
+    pub fn get(&self, v: &Ident) -> Option<Tau> {
+        self.map.get(v).map(|v| v.clone())
+    }
+
+    pub fn exists(&self, v: &Ident) -> bool {
+        match self.map.get(v) {
+            Some(_) => true,
+            None => false,
+        }
     }
 }
+
 
 pub enum Error {
     TypeError,
 }
 
-fn type_check_atom(atom: &Atom, env: &Environment) -> Tau {
+fn int_expr(atom: &Atom, env: &Environment) -> Option<Op> {
     use AtomKind::*;
     use ConstKind::*;
-    unimplemented!()
-    //match &**atom {
-    //    Var(v) => env.get(v).unwrap(),
-    //    App(x, Const(Int(x))) => {
-    //        let t = type_check_atom(x, env);
-    //        t.app(x)
-    //    }
-    //    Abs(_, _) => {}
-    //    Const(c) => panic!("program error")
-    //}
+    match &**atom {
+        Const(c) =>  {
+            match &**c {
+                Int(x) => Some(Op::mk_const(*x)),
+                _ => None,
+            }
+        },
+        // the given refinement type must be well-refined. That is,
+        // if variable `v` is not in `env`, then it must be a variable 
+        // of type Integer.
+        Var(v) if !env.exists(v) => Some(Op::mk_var(v.clone())),
+        _ => None,
+    }
+}
+
+fn type_check_atom(atom: &Atom, env: &Environment) -> Tau {
+    use AtomKind::*;
+    match &**atom {
+        App(x, arg) => {
+            let ie = int_expr(arg, env);
+            let t = type_check_atom(x, env);
+            match ie {
+                Some(op) => {
+                    t.app(&op)
+                },
+                None => {
+                    // subtyping
+                    unimplemented!()
+                }
+            }
+        },
+        Var(v) => env.get(v).unwrap(),
+        Const(c) => panic!("program error"),
+    }
 }
 
 fn type_check_goal(goal: &Goal, tenv: &Environment) -> Constraint {
@@ -154,5 +186,5 @@ fn type_check_goal(goal: &Goal, tenv: &Environment) -> Constraint {
 }
 
 fn type_check_clause(clause: &Clause, rty: Tau, env: &Environment) {
-
+    unimplemented!()
 }
