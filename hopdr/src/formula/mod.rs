@@ -64,6 +64,19 @@ pub enum OpExpr {
 
 pub type Op = P<OpExpr>;
 
+pub struct IntegerEnvironment {
+    imap: HashSet<Ident>,
+}
+
+impl IntegerEnvironment {
+    pub fn new() -> IntegerEnvironment {
+        IntegerEnvironment{ imap: HashSet::new() }
+    }
+    pub fn exists(&self, id: &Ident) -> bool {
+        self.imap.get(id).is_some()
+    }
+}
+
 impl Op {
     pub fn mk_bin_op(op: OpKind, x: Op, y: Op) -> Op {
         Op::new(OpExpr::Op(op, x, y))

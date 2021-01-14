@@ -50,6 +50,19 @@ impl Tau {
                 Tau::mk_arrow(l.subst(x, v), r.subst(x, v))
         }
     }
+
+    fn arrow_unwrap(&self) -> (Tau, Tau) {
+        match &**self {
+            TauKind::Arrow(x, y) => (x.clone(), y.clone()),
+            _ => panic!("unwrap fail")
+        }
+    }
+
+    // infer the greatest refinement type t such that
+    //   arrow_type <= arg_t -> t 
+    fn infer_greatest_type(arrow_type: Tau, arg_t: Tau) {
+
+    }
 }
 
 impl TauKind {
@@ -81,6 +94,7 @@ impl TauKind {
 pub struct Environment{
     // Assumption: all variables are alpha-renamed.
     map: HashMap<Ident, Tau>,
+    imap: IntegerEnvironment,
 }
 
 
@@ -90,7 +104,7 @@ impl Environment {
     }
 
     pub fn new() -> Environment {
-        Environment{map: HashMap::new()}
+        Environment{map: HashMap::new(), imap: IntegerEnvironment::new()}
     }
 
     fn add_(&mut self, v: Ident, t: Tau) {
@@ -103,23 +117,24 @@ impl Environment {
         };
     }
 
-    pub fn add(&mut self, v: Ident, t: TauKind) {
+    pub fn tadd(&mut self, v: Ident, t: TauKind) {
         self.add_(v, Tau::new(t))
     }
 
     pub fn add_top(&mut self, v: Ident, st: &SType) {
-        self.add(v, TauKind::new_top(st));
+        self.tadd(v, TauKind::new_top(st));
     }
 
-    pub fn get(&self, v: &Ident) -> Option<Tau> {
+    pub fn tget(&self, v: &Ident) -> Option<Tau> {
         self.map.get(v).map(|v| v.clone())
     }
 
-    pub fn exists(&self, v: &Ident) -> bool {
-        match self.map.get(v) {
-            Some(_) => true,
-            None => false,
-        }
+    pub fn texists(&self, v: &Ident) -> bool {
+        self.map.get(v).is_some()
+    }
+
+    pub fn iexists(&self, v: &Ident) -> bool {
+        self.imap.exists(v)
     }
 }
 
@@ -138,10 +153,7 @@ fn int_expr(atom: &Atom, env: &Environment) -> Option<Op> {
                 _ => None,
             }
         },
-        // the given refinement type must be well-refined. That is,
-        // if variable `v` is not in `env`, then it must be a variable 
-        // of type Integer.
-        Var(v) if !env.exists(v) => Some(Op::mk_var(v.clone())),
+        Var(v) if env.iexists(v) => Some(Op::mk_var(v.clone())),
         _ => None,
     }
 }
@@ -157,12 +169,13 @@ fn type_check_atom(atom: &Atom, env: &Environment) -> Tau {
                     t.app(&op)
                 },
                 None => {
-                    // subtyping
+                    let s = type_check_atom(arg, env);
+                    let result_t = Tau::infer_greatest_type(t, s);
                     unimplemented!()
                 }
             }
         },
-        Var(v) => env.get(v).unwrap(),
+        Var(v) => env.tget(v).unwrap(),
         Const(c) => panic!("program error"),
     }
 }
