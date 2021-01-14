@@ -1,7 +1,7 @@
 use std::{unimplemented};
 use super::{Problem, Clause, Goal, VerificationResult};
 use crate::formula::pcsp::PCSP;
-use crate::formula::{Constraint, Ident, P, Op};
+use crate::formula::{Constraint, Ident, P};
 
 // APLAS20
 

@@ -1,6 +1,6 @@
 use std::{collections::{HashMap, HashSet}, ffi::FromBytesWithNulError, rc::Rc, unimplemented};
 
-use crate::formula::{Constraint, Ident, P, Type as SType, TypeKind as StypeKind, Variable, Op, IntegerEnvironment};
+use crate::formula::{Constraint, Ident, P, Type as SType, TypeKind as StypeKind, Op, IntegerEnvironment};
 use super::{Clause, Goal, GoalExpr, Atom, AtomKind, ConstKind};
 
 #[derive(Debug)]
@@ -43,7 +43,7 @@ impl Tau {
             TauKind::Proposition(c) => Tau::mk_prop_ty(c.subst(x, v)),
             TauKind::Intersection(r, l) => 
                 Tau::mk_intersection(r.subst(x, v), l.subst(x, v)),
-            TauKind::IArrow(id, body) if id == x => self.clone(),
+            TauKind::IArrow(id, _body) if id == x => self.clone(),
             TauKind::IArrow(id, body) => 
                 Tau::mk_iarrow(*id, body.subst(x, v)),
             TauKind::Arrow(l, r) => 
@@ -60,7 +60,7 @@ impl Tau {
 
     // infer the greatest refinement type t such that
     //   arrow_type <= arg_t -> t 
-    fn infer_greatest_type(arrow_type: Tau, arg_t: Tau) {
+    fn infer_greatest_type(_arrow_type: Tau, _arg_t: Tau) {
 
     }
 }
@@ -170,13 +170,13 @@ fn type_check_atom(atom: &Atom, env: &Environment) -> Tau {
                 },
                 None => {
                     let s = type_check_atom(arg, env);
-                    let result_t = Tau::infer_greatest_type(t, s);
+                    let _result_t = Tau::infer_greatest_type(t, s);
                     unimplemented!()
                 }
             }
         },
         Var(v) => env.tget(v).unwrap(),
-        Const(c) => panic!("program error"),
+        Const(_c) => panic!("program error"),
     }
 }
 
@@ -198,6 +198,6 @@ fn type_check_goal(goal: &Goal, tenv: &Environment) -> Constraint {
     }
 }
 
-fn type_check_clause(clause: &Clause, rty: Tau, env: &Environment) {
+fn type_check_clause(_clause: &Clause, _rty: Tau, _env: &Environment) {
     unimplemented!()
 }

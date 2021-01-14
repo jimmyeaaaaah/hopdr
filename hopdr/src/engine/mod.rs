@@ -2,9 +2,9 @@ mod rtype;
 mod infer;
 mod pdr;
 
-use std::rc::Rc;
 
-use crate::formula::{Constraint, Variable, Ident, Op, IntegerEnvironment};
+
+use crate::formula::{Constraint, Variable, Ident};
 use crate::util::P;
 
 pub enum VerificationResult {

@@ -2,7 +2,7 @@ pub mod ty;
 pub mod pcsp;
 
 use std::{collections::HashSet, fmt};
-use std::{collections::HashMap, rc::Rc, unimplemented};
+
 pub use crate::formula::ty::*;
 pub use crate::util::P;
 use crate::util::{global_counter};
