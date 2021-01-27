@@ -6,7 +6,6 @@ use super::{Clause, Goal, GoalExpr, Atom, AtomKind, ConstKind};
 #[derive(Debug)]
 pub enum TauKind {
     Proposition(Constraint),
-    Intersection(Tau, Tau),
     IArrow(Ident, Tau),
     Arrow(Tau, Tau),
 }
@@ -16,10 +15,6 @@ pub type Tau = P<TauKind>;
 impl Tau {
     fn mk_prop_ty(c: Constraint) -> Tau {
         Tau::new(TauKind::Proposition(c))
-    }
-
-    fn mk_intersection(x: Tau, y: Tau) -> Tau {
-        Tau::new(TauKind::Intersection(x, y))
     }
 
     fn mk_iarrow(id: Ident, t: Tau) -> Tau {
@@ -41,8 +36,6 @@ impl Tau {
     fn subst(&self, x: &Ident, v: &Op) -> Tau {
         match &**self {
             TauKind::Proposition(c) => Tau::mk_prop_ty(c.subst(x, v)),
-            TauKind::Intersection(r, l) => 
-                Tau::mk_intersection(r.subst(x, v), l.subst(x, v)),
             TauKind::IArrow(id, _body) if id == x => self.clone(),
             TauKind::IArrow(id, body) => 
                 Tau::mk_iarrow(*id, body.subst(x, v)),
@@ -60,8 +53,7 @@ impl Tau {
 
     // infer the greatest refinement type t such that
     //   arrow_type <= arg_t -> t 
-    fn infer_greatest_type(_arrow_type: Tau, _arg_t: Tau) {
-
+    fn infer_greatest_type(_arrow_type: &Tau, _arg_t: &Tau) {
     }
 }
 
@@ -93,7 +85,7 @@ impl TauKind {
 
 pub struct Environment{
     // Assumption: all variables are alpha-renamed.
-    map: HashMap<Ident, Tau>,
+    map: HashMap<Ident, Vec<Tau>>,
     imap: IntegerEnvironment,
 }
 
@@ -108,13 +100,14 @@ impl Environment {
     }
 
     fn add_(&mut self, v: Ident, t: Tau) {
-        match self.map.get(&v) {
+        match self.map.get_mut(&v) {
             Some(s) => {
-                let t = Tau::mk_intersection(s.clone(), t.clone());
-                self.map.insert(v, t)
+                s.push(t);
             },
-            None => self.map.insert(v, t)
-        };
+            None => {
+                self.map.insert(v, vec![t]);
+            },
+        }
     }
 
     pub fn tadd(&mut self, v: Ident, t: TauKind) {
@@ -125,16 +118,16 @@ impl Environment {
         self.tadd(v, TauKind::new_top(st));
     }
 
-    pub fn tget(&self, v: &Ident) -> Option<Tau> {
-        self.map.get(v).map(|v| v.clone())
-    }
-
     pub fn texists(&self, v: &Ident) -> bool {
         self.map.get(v).is_some()
     }
 
     pub fn iexists(&self, v: &Ident) -> bool {
         self.imap.exists(v)
+    }
+
+    pub fn tget<'a>(&'a self, v: &Ident) -> Option<&'a Vec<Tau>> {
+        self.map.get(v)
     }
 }
 
@@ -158,24 +151,30 @@ fn int_expr(atom: &Atom, env: &Environment) -> Option<Op> {
     }
 }
 
-fn type_check_atom(atom: &Atom, env: &Environment) -> Tau {
+fn type_check_atom(atom: &Atom, env: &Environment) -> Vec<Tau> {
     use AtomKind::*;
     match &**atom {
         App(x, arg) => {
             let ie = int_expr(arg, env);
-            let t = type_check_atom(x, env);
+            let ts = type_check_atom(x, env);
             match ie {
                 Some(op) => {
-                    t.app(&op)
+                    ts.into_iter().map(|t| t.app(&op)).collect()
                 },
                 None => {
-                    let s = type_check_atom(arg, env);
-                    let _result_t = Tau::infer_greatest_type(t, s);
-                    unimplemented!()
+                    let ss = type_check_atom(arg, env);
+                    let result_ts = Vec::new();
+                    for t in ts.iter() {
+                        for s in ss.iter() {
+                            let _result_t = Tau::infer_greatest_type(t, s);
+                            unimplemented!()
+                        }
+                    }
+                    result_ts
                 }
             }
         },
-        Var(v) => env.tget(v).unwrap(),
+        Var(v) => env.tget(v).unwrap().clone(),
         Const(_c) => panic!("program error"),
     }
 }
@@ -185,11 +184,17 @@ fn type_check_goal(goal: &Goal, tenv: &Environment) -> Constraint {
     let f = type_check_goal;
     match &**goal {
         Atom(atom) => {
-            let t = type_check_atom(atom, tenv);
-            match &*t {
-                TauKind::Proposition(c) => c.clone(),
-                _ => panic!("program error. The result type of atom must be prop.")
+            let ts = type_check_atom(atom, tenv);
+            let mut ret_constr = Constraint::mk_false();
+            for t in ts.iter() {
+                match &**t {
+                    TauKind::Proposition(c) => {
+                        ret_constr = Constraint::mk_disj(ret_constr, c.clone())
+                    },
+                    _ => panic!("program error. The result type of atom must be prop.")
+                }
             }
+            ret_constr
         },
         Constr(c) => c.clone(),
         Conj(x, y) => Constraint::mk_conj(f(x, tenv), f(y, tenv)),
