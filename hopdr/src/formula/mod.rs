@@ -3,6 +3,8 @@ pub mod pcsp;
 
 use std::{collections::HashSet, fmt};
 
+use rpds::Stack;
+
 pub use crate::formula::ty::*;
 pub use crate::util::P;
 use crate::util::{global_counter};
@@ -64,16 +66,30 @@ pub enum OpExpr {
 
 pub type Op = P<OpExpr>;
 
+#[derive(Clone)]
 pub struct IntegerEnvironment {
-    imap: HashSet<Ident>,
+    imap: Stack<Ident>,
 }
 
 impl IntegerEnvironment {
     pub fn new() -> IntegerEnvironment {
-        IntegerEnvironment{ imap: HashSet::new() }
+        IntegerEnvironment{ imap: Stack::new() }
     }
     pub fn exists(&self, id: &Ident) -> bool {
-        self.imap.get(id).is_some()
+        for i in self.imap.iter() {
+            if i == id {
+                return true;
+            }
+        }
+        return false;
+    }
+    pub fn variables(&self) -> Vec<Ident> {
+        // assumes alpha-renamed
+        self.imap.iter().copied().collect()
+    }
+    pub fn add(mut self, v: Ident) -> IntegerEnvironment {
+        self.imap.push_mut(v);
+        self
     }
 }
 
@@ -101,6 +117,18 @@ impl Op {
     }
 }
 
+pub trait Top {
+    fn mk_true() -> Self;
+}
+
+pub trait Conjunctive {
+    fn mk_conj(x: Self, y: Self) -> Self;
+}
+
+pub trait Subst {
+    fn subst(&self, x: &Ident, v: &Op) -> Self;
+}
+
 #[derive(Debug)]
 pub enum ConstraintExpr {
     True,
@@ -113,32 +141,21 @@ pub enum ConstraintExpr {
 
 pub type Constraint = P<ConstraintExpr>;
 
-impl Constraint {
-    pub fn mk_true() -> Constraint {
+impl Top for Constraint {
+    fn mk_true() -> Constraint {
         Constraint::new(ConstraintExpr::True)
     }
+}
 
-    pub fn mk_false() -> Constraint {
-        Constraint::new(ConstraintExpr::False)
-    }
-
-    pub fn mk_univ(v: Variable, c: Constraint) -> Constraint {
-        Constraint::new(ConstraintExpr::Univ(v, c))
-    }
-
-    pub fn mk_conj(x: Constraint, y: Constraint) -> Constraint {
+impl Conjunctive for Constraint {
+    fn mk_conj(x: Constraint, y: Constraint) -> Constraint {
         Constraint::new(ConstraintExpr::Conj(x, y))
     }
-    pub fn mk_disj(x: Constraint, y: Constraint) -> Constraint {
-        Constraint::new(ConstraintExpr::Disj(x, y))
-    }
+}
 
-    pub fn mk_pred(k: PredKind, v: Vec<Op>) -> Constraint {
-        Constraint::new(ConstraintExpr::Pred(k, v))
-    }
-
+impl Subst for Constraint {
     // \theta[v/x]
-    pub fn subst(&self, x: &Ident, v: &Op) -> Constraint {
+    fn subst(&self, x: &Ident, v: &Op) -> Constraint {
         use ConstraintExpr::*;
         match &**self {
             True | False => self.clone(),
@@ -154,6 +171,24 @@ impl Constraint {
             Univ(var, cstr) => 
                 Constraint::mk_univ(var.clone(), cstr.subst(x, v)),
         }
+    }
+}
+
+impl Constraint {
+    pub fn mk_false() -> Constraint {
+        Constraint::new(ConstraintExpr::False)
+    }
+
+    pub fn mk_univ(v: Variable, c: Constraint) -> Constraint {
+        Constraint::new(ConstraintExpr::Univ(v, c))
+    }
+
+    pub fn mk_disj(x: Constraint, y: Constraint) -> Constraint {
+        Constraint::new(ConstraintExpr::Disj(x, y))
+    }
+
+    pub fn mk_pred(k: PredKind, v: Vec<Op>) -> Constraint {
+        Constraint::new(ConstraintExpr::Pred(k, v))
     }
 }
 

@@ -1,7 +1,7 @@
 use std::{mem::uninitialized, unimplemented};
 use super::{Problem, Clause, Goal, VerificationResult};
 use crate::formula::pcsp::{PCSP, Atom};
-use crate::formula::{Constraint, Ident, P};
+use crate::formula::{Constraint, Ident, P, Conjunctive};
 
 // APLAS20
 
@@ -30,7 +30,7 @@ impl Tau {
         use TauKind::*;
         match (&**s, &**t) {
             (Proposition(x), Proposition(y)) => {
-                constraints.push(PCSP::new(&Atom::mk_conj(&assumption, y), x));
+                constraints.push(PCSP::new(&Atom::mk_conj(assumption.clone(), y.clone()), x));
             },
             (IArrow(i, t), IArrow(i2, t2)) => {
                 Tau::subtype_inner(t, t2, assumption, constraints);

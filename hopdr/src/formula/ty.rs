@@ -19,3 +19,10 @@ impl fmt::Display for TypeKind {
 }
 
 pub type Type = P<TypeKind>;
+
+impl Type {
+    // should be a singleton object..
+    fn mk_type_prop() -> Type {
+        Type::new(TypeKind::Proposition)
+    }
+}
