@@ -95,13 +95,18 @@ impl<C: Subst> Tau<C> {
             _ => panic!("unwrap fail")
         }
     }
-}
 
-fn generate_template(environment: &Environment, st: &SType) -> Tau<pcsp::Atom> {
-    //match &**st {
-    //    STypeKind::Integer => Variable::new()
-    //}
-    unimplemented!()
+    fn rty<'a>(&'a self) -> &'a C {
+        match &**self {
+            TauKind::Proposition(c) => c,
+            // rty(iarrow(x, v)) should be \exists x. rty(v)
+            // but here, implicitly all free variables are captured by 
+            // some universal quantifier when pcsp constraints are passed 
+            // to a background solver.
+            TauKind::IArrow(_, t) => t.rty(),
+            TauKind::Arrow(_, t) => t.rty(),
+        }
+    }
 }
 
 
@@ -119,8 +124,30 @@ fn infer_greatest_type(environment: &Environment, arrow_type: Ty, arg_t: Ty) {
     generate_constraint(&lhs, &rhs, &mut v);
 }
 
-fn generate_constraint(lhs: &Tau<pcsp::Atom>, rhs: &Tau<pcsp::Atom>, v: &mut Vec<pcsp::PCSP>) {
+fn generate_constraint_inner(rty: pcsp::Atom, lhs: &Tau<pcsp::Atom>, rhs: &Tau<pcsp::Atom>, constraints: &mut Vec<pcsp::PCSP>) {
+    match (&**lhs, &**rhs) {
+        (TauKind::Proposition(c1), TauKind::Proposition(c2)) => {
+            let c2 = pcsp::Atom::mk_conj(rty, c2.clone());
+            let c1 = c1.clone();
+            let cnstr = pcsp::PCSP::new(c2, c1);
+            constraints.push(cnstr);
+        },
+        (TauKind::IArrow(x1, t1), TauKind::IArrow(x2, t2)) => {
+            // let t2 = t2[x1/x2]
+            let t2 = t2.subst(x1, &Op::mk_var(*x2));
+            generate_constraint_inner(rty, t1, &t2, constraints);
+        },
+        (TauKind::Arrow(t1, s1), TauKind::Arrow(t2, s2)) => {
+            generate_constraint_inner(rty.clone(), s1, s2, constraints);
+            let rt = s2.rty().clone();
+            generate_constraint_inner(pcsp::Atom::mk_conj(rt, rty), t2, t1, constraints);
+        },
+        (_, _) => panic!("program error: tried to compare {:?} <= {:?}", lhs, rhs)
+    }
+}
 
+fn generate_constraint(lhs: &Tau<pcsp::Atom>, rhs: &Tau<pcsp::Atom>, constraints: &mut Vec<pcsp::PCSP>) {
+    generate_constraint_inner(pcsp::Atom::mk_true(), lhs, rhs, constraints)
 }
 
 

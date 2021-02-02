@@ -68,7 +68,7 @@ pub struct PCSP {
 }
 
 impl PCSP {
-    pub fn new(body: &Atom, head: &Atom) -> PCSP {
-        PCSP { body: body.clone(), head: head.clone() }
+    pub fn new(body: Atom, head: Atom) -> PCSP {
+        PCSP { body, head }
     }
 }
