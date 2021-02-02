@@ -8,17 +8,18 @@ use crate::util::P;
 pub enum AtomKind {
     True, // equivalent to Constraint(True). just for optimization purpose
     Constraint(Constraint),
-    Predicate(Ident, Vec<Ident>),
+    Predicate(Ident, Vec<Op>),
     Conj(Atom, Atom),
 }
 pub type Atom = P<AtomKind>;
 
 impl Atom {
-    pub fn mk_pred(ident: Ident, args: Vec<Ident>) -> Atom {
+    pub fn mk_pred(ident: Ident, args: Vec<Op>) -> Atom {
         Atom::new(AtomKind::Predicate(ident, args))
     }
     pub fn fresh_pred(args: Vec<Ident>) -> Atom {
         let ident = Ident::fresh();
+        let args = args.iter().map(|a| Op::mk_var(a.clone())).collect();
         Atom::mk_pred(ident, args)
     }
 }
@@ -55,8 +56,20 @@ impl Conjunctive for Atom {
 }
 
 impl Subst for Atom {
-    fn subst(&self, _x: &Ident, _v: &super::Op) -> Self {
-        unimplemented!()
+    fn subst(&self, x: &Ident, v: &super::Op) -> Self {
+        match &**self {
+            AtomKind::True => self.clone(),
+            AtomKind::Conj(lhs, rhs) => {
+                Atom::mk_conj(lhs.subst(x, v), rhs.subst(x, v))
+            },
+            AtomKind::Constraint(c) => {
+                Atom::mk_constraint(c.subst(x, v))
+            },
+            AtomKind::Predicate(a, ops) => {
+                let ops = ops.iter().map(|op| op.subst(x, v)).collect();
+                Atom::mk_pred(*x, ops)
+            }
+        }
     }
 }
 
