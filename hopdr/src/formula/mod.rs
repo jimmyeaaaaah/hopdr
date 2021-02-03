@@ -211,6 +211,18 @@ pub struct VariableS {
 }
 pub type Variable = P<VariableS>;
 
+impl Variable {
+    pub fn mk(id: Ident, ty: Type) -> Variable {
+        Variable::new(VariableS{ id, ty })
+    }
+    pub fn id(&self) -> Ident {
+        self.id
+    }
+    pub fn ty(&self) -> &Type {
+        &self.ty
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum Fixpoint {
     Greatest,

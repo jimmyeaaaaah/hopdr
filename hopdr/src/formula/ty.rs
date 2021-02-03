@@ -22,7 +22,13 @@ pub type Type = P<TypeKind>;
 
 impl Type {
     // should be a singleton object..
-    fn mk_type_prop() -> Type {
+    pub fn mk_type_prop() -> Type {
         Type::new(TypeKind::Proposition)
+    }
+    pub fn mk_type_int() -> Type {
+        Type::new(TypeKind::Proposition)
+    }
+    pub fn mk_type_arrow(lhs: Type, rhs: Type) -> Type {
+        Type::new(TypeKind::Arrow(lhs, rhs))
     }
 }
