@@ -2,7 +2,7 @@ use std::{collections::{HashMap, HashSet}, ffi::FromBytesWithNulError, rc::Rc, u
 
 use crate::formula::{Constraint, Top, Subst, Conjunctive, Ident, P, Type as SType, TypeKind as STypeKind, Op, IntegerEnvironment};
 use crate::formula::pcsp;
-use super::{Clause, Goal, GoalExpr, Atom, AtomKind, ConstKind};
+use super::{Clause, Goal, GoalKind, Atom, AtomKind, ConstKind};
 
 #[derive(Debug)]
 pub enum TauKind<C> {
@@ -274,7 +274,7 @@ fn type_check_atom( atom: &Atom, env: &Environment) -> Vec<Tau<Constraint>> {
 }
 
 fn type_check_goal(goal: &Goal, tenv: &Environment) -> Constraint {
-    use GoalExpr::*;
+    use GoalKind::*;
     let f = type_check_goal;
     match goal.kind() {
         Atom(atom) => {

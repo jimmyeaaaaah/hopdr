@@ -22,10 +22,10 @@ pub enum ConstKind {
 pub type Const = P<ConstKind>;
 
 impl Const {
-    fn mk_int(v: i64) -> Const {
+    pub fn mk_int(v: i64) -> Const {
         Const::new(ConstKind::Int(v))
     }
-    fn mk_bool(v: bool) -> Const {
+    pub fn mk_bool(v: bool) -> Const {
         Const::new(ConstKind::Bool(v))
     }
 }
@@ -42,19 +42,19 @@ pub type Atom = P<AtomKind>;
 
 
 impl Atom {
-    fn mk_var(ident: Ident) -> Atom {
+    pub fn mk_var(ident: Ident) -> Atom {
         Atom::new(AtomKind::Var(ident))
     }
-    fn mk_const(ct: Const) -> Atom {
+    pub fn mk_const(ct: Const) -> Atom {
         Atom::new(AtomKind::Const(ct))
     }
-    fn mk_app(lhs: Atom, rhs: Atom) -> Atom {
+    pub fn mk_app(lhs: Atom, rhs: Atom) -> Atom {
         Atom::new(AtomKind::App(lhs, rhs))
     }
 }
 
 #[derive(Debug)]
-pub enum GoalExpr {
+pub enum GoalKind {
     Atom(Atom),
     Constr(Constraint),
     Conj(Goal, Goal),
@@ -62,11 +62,23 @@ pub enum GoalExpr {
     Univ(Variable, Goal)
 }
 
-pub type Goal = P<GoalExpr>;
+pub type Goal = P<GoalKind>;
 
 impl Goal {
     pub fn mk_atom(x: Atom) -> Goal {
-        Goal::new(GoalExpr::Atom(x))
+        Goal::new(GoalKind::Atom(x))
+    }
+    pub fn mk_constr(x: Constraint) -> Goal {
+        Goal::new(GoalKind::Constr(x))
+    }
+    pub fn mk_conj(lhs: Goal, rhs: Goal) -> Goal {
+        Goal::new(GoalKind::Conj(lhs, rhs))
+    }
+    pub fn mk_disj(lhs: Goal, rhs: Goal) -> Goal {
+        Goal::new(GoalKind::Disj(lhs, rhs))
+    }
+    pub fn mk_univ(x: Variable, g: Goal) -> Goal {
+        Goal::new(GoalKind::Univ(x, g))
     }
 }
 
