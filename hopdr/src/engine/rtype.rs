@@ -17,7 +17,7 @@ pub type Ty = Tau<Constraint>;
 
 impl Ty {
     fn clone_with_template(&self, env: IntegerEnvironment) -> Tau<pcsp::Atom> {
-        match &**self {
+        match self.kind() {
             TauKind::Proposition(_) => {
                 let args = env.variables();
                 let a = pcsp::Atom::fresh_pred(args);
@@ -39,7 +39,7 @@ impl Ty {
 
 impl From<Tau<Constraint>> for Tau<pcsp::Atom> {
     fn from(from: Tau<Constraint>) -> Tau<pcsp::Atom> {
-        match &*from {
+        match from.kind() {
             TauKind::Proposition(c) => {
                 Tau::mk_prop_ty(c.clone().into())
             },
@@ -58,7 +58,7 @@ impl From<Tau<Constraint>> for Tau<pcsp::Atom> {
 impl<C: Subst> Subst for Tau<C> {
     // \tau[v/x]
     fn subst(&self, x: &Ident, v: &Op) -> Tau<C> {
-        match &**self {
+        match self.kind() {
             TauKind::Proposition(c) => Tau::mk_prop_ty(c.subst(x, v)),
             TauKind::IArrow(id, _body) if id == x => self.clone(),
             TauKind::IArrow(id, body) => 
@@ -83,21 +83,21 @@ impl<C: Subst> Tau<C> {
     }
 
     fn app(&self, v: &Op) -> Tau<C> {
-        match &**self {
+        match self.kind() {
             TauKind::IArrow(x, t) => t.subst(x, v),
             _ => panic!("program error: tried to app integer to non-integer arrow type"),
         }
     }
 
     fn arrow_unwrap(&self) -> (Tau<C>, Tau<C>) {
-        match &**self {
+        match self.kind() {
             TauKind::Arrow(x, y) => (x.clone(), y.clone()),
             _ => panic!("unwrap fail")
         }
     }
 
     fn rty<'a>(&'a self) -> &'a C {
-        match &**self {
+        match self.kind() {
             TauKind::Proposition(c) => c,
             // rty(iarrow(x, v)) should be \exists x. rty(v)
             // but here, implicitly all free variables are captured by 
@@ -125,7 +125,7 @@ fn infer_greatest_type(environment: &Environment, arrow_type: Ty, arg_t: Ty) {
 }
 
 fn generate_constraint_inner(rty: pcsp::Atom, lhs: &Tau<pcsp::Atom>, rhs: &Tau<pcsp::Atom>, constraints: &mut Vec<pcsp::PCSP>) {
-    match (&**lhs, &**rhs) {
+    match (lhs.kind(), rhs.kind()) {
         (TauKind::Proposition(c1), TauKind::Proposition(c2)) => {
             let c2 = pcsp::Atom::mk_conj(rty, c2.clone());
             let c1 = c1.clone();
@@ -154,7 +154,7 @@ fn generate_constraint(lhs: &Tau<pcsp::Atom>, rhs: &Tau<pcsp::Atom>, constraints
 impl TyKind {
     fn new_top(st: &SType) -> TyKind {
         use STypeKind::*;
-        match &**st {
+        match st.kind() {
             Proposition => TauKind::Proposition(Constraint::mk_true()),
             Arrow(x, y) if **x == Integer => 
                 TauKind::IArrow(Ident::fresh(), Tau::new(TauKind::new_top(y))),
@@ -166,7 +166,7 @@ impl TyKind {
 
     fn new_bot(st: &SType) -> TyKind {
         use STypeKind::*;
-        match &**st {
+        match st.kind() {
             Proposition => TauKind::Proposition(Constraint::mk_false()),
             Arrow(x, y) if **x == Integer => 
                 TauKind::IArrow(Ident::fresh(), Tau::new(TauKind::new_top(y))),
@@ -233,9 +233,9 @@ pub enum Error {
 fn int_expr(atom: &Atom, env: &Environment) -> Option<Op> {
     use AtomKind::*;
     use ConstKind::*;
-    match &**atom {
+    match atom.kind() {
         Const(c) =>  {
-            match &**c {
+            match c.kind() {
                 Int(x) => Some(Op::mk_const(*x)),
                 _ => None,
             }
@@ -247,7 +247,7 @@ fn int_expr(atom: &Atom, env: &Environment) -> Option<Op> {
 
 fn type_check_atom( atom: &Atom, env: &Environment) -> Vec<Tau<Constraint>> {
     use AtomKind::*;
-    match &**atom {
+    match atom.kind() {
         App(x, arg) => {
             let ie = int_expr(arg, env);
             let ts = type_check_atom(x, env);
@@ -276,12 +276,12 @@ fn type_check_atom( atom: &Atom, env: &Environment) -> Vec<Tau<Constraint>> {
 fn type_check_goal(goal: &Goal, tenv: &Environment) -> Constraint {
     use GoalExpr::*;
     let f = type_check_goal;
-    match &**goal {
+    match goal.kind() {
         Atom(atom) => {
             let ts = type_check_atom(atom, tenv);
             let mut ret_constr = Constraint::mk_false();
             for t in ts.iter() {
-                match &**t {
+                match t.kind() {
                     TauKind::Proposition(c) => {
                         ret_constr = Constraint::mk_disj(ret_constr, c.clone())
                     },

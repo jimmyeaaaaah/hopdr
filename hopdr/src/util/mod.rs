@@ -13,6 +13,12 @@ pub fn P<T: 'static>(value: T) -> P<T> {
     }
 }
 
+impl <T> P<T> {
+    pub fn kind<'a>(&'a self) -> &'a T {
+        &*self.ptr
+    }
+}
+
 impl<T> P<T> {
     pub fn new(v: T) -> P<T> {
         P { ptr: Rc::new(v) } 
@@ -21,7 +27,7 @@ impl<T> P<T> {
 
 impl<T: fmt::Display> fmt::Display for P<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(&**self, f)
+        fmt::Display::fmt(self.kind(), f)
     }
 }
 
@@ -52,7 +58,7 @@ macro_rules! rc_wrapper {
 
         impl<T: fmt::Display> fmt::Display for $element {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                fmt::Display::fmt(&**self, f)
+                fmt::Display::fmt(self.kind(), f)
             }
         }
         

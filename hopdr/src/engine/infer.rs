@@ -28,7 +28,7 @@
 //    // generate constraints by considering subtype s <= t
 //    fn subtype_inner(s: &Tau, t: &Tau, assumption: Atom, constraints: &mut Vec<PCSP>) {
 //        use TauKind::*;
-//        match (&**s, &**t) {
+//        match (&**s, t) {
 //            (Proposition(x), Proposition(y)) => {
 //                constraints.push(PCSP::new(&Atom::mk_conj(assumption.clone(), y.clone()), x));
 //            },

@@ -107,7 +107,7 @@ impl Op {
     }
 
     fn subst(&self, id: &Ident, v: &Op) -> Op {
-        match &**self {
+        match self.kind() {
             OpExpr::Op(k, x, y) => 
                 Op::mk_bin_op(*k, x.subst(id, v), y.subst(id, v)),
             
@@ -157,7 +157,7 @@ impl Subst for Constraint {
     // \theta[v/x]
     fn subst(&self, x: &Ident, v: &Op) -> Constraint {
         use ConstraintExpr::*;
-        match &**self {
+        match self.kind() {
             True | False => self.clone(),
             Pred(k, ops) => {
                 let mut new_ops = Vec::new();

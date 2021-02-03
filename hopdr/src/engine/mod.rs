@@ -21,6 +21,15 @@ pub enum ConstKind {
 
 pub type Const = P<ConstKind>;
 
+impl Const {
+    fn mk_int(v: i64) -> Const {
+        Const::new(ConstKind::Int(v))
+    }
+    fn mk_bool(v: bool) -> Const {
+        Const::new(ConstKind::Bool(v))
+    }
+}
+
 #[derive(Debug)]
 pub enum AtomKind {
     Var(Ident),
@@ -33,6 +42,15 @@ pub type Atom = P<AtomKind>;
 
 
 impl Atom {
+    fn mk_var(ident: Ident) -> Atom {
+        Atom::new(AtomKind::Var(ident))
+    }
+    fn mk_const(ct: Const) -> Atom {
+        Atom::new(AtomKind::Const(ct))
+    }
+    fn mk_app(lhs: Atom, rhs: Atom) -> Atom {
+        Atom::new(AtomKind::App(lhs, rhs))
+    }
 }
 
 #[derive(Debug)]
@@ -45,6 +63,12 @@ pub enum GoalExpr {
 }
 
 pub type Goal = P<GoalExpr>;
+
+impl Goal {
+    pub fn mk_atom(x: Atom) -> Goal {
+        Goal::new(GoalExpr::Atom(x))
+    }
+}
 
 #[derive(Debug)]
 pub struct Clause {
@@ -59,6 +83,11 @@ pub struct Problem {
     top: Goal,
 }
 
-impl Clause {}
+
+impl Clause {
+    pub fn new(body: Goal, head: Variable, args: Vec<Variable>) -> Clause {
+        Clause { body, head, args }
+    }
+}
 
 //fn infer_nu_validity(vc: )

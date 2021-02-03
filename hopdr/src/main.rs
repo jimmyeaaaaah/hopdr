@@ -24,4 +24,6 @@ fn main() {
     for fml in nvc.formulas.iter() {
         println!("{}", fml);
     }
+
+    //let clause = engine::Clause::new()
 }

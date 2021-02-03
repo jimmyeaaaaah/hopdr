@@ -57,7 +57,7 @@ impl Conjunctive for Atom {
 
 impl Subst for Atom {
     fn subst(&self, x: &Ident, v: &super::Op) -> Self {
-        match &**self {
+        match self.kind() {
             AtomKind::True => self.clone(),
             AtomKind::Conj(lhs, rhs) => {
                 Atom::mk_conj(lhs.subst(x, v), rhs.subst(x, v))
