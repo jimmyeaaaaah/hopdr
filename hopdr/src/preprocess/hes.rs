@@ -1,25 +1,60 @@
 use std::{collections::HashMap, unimplemented};
 
+use lazy_static::lazy;
 use rpds::HashTrieMap;
 
-use crate::util::{P, global_counter};
+use crate::util::{P, Unique, global_counter};
 use crate::formula::{OpKind, PredKind, Type as SimpleType};
 use crate::parse;
 
 type Ident = String;
 
 #[derive(Debug)]
-pub enum Expr {
+pub enum ExprKind {
     Var(Ident),
     Num(i64),
     True,
     False,
-    Op(OpKind, P<Expr>, P<Expr>),
-    Pred(PredKind, P<Expr>, P<Expr>),
-    App(P<Expr>, P<Expr>),
-    And(P<Expr>, P<Expr>),
-    Or(P<Expr>, P<Expr>),
-    Univ(Ident, P<Expr>)
+    Op(OpKind, Expr, Expr),
+    Pred(PredKind, Expr, Expr),
+    App(Expr, Expr),
+    And(Expr, Expr),
+    Or(Expr, Expr),
+    Univ(Ident, Expr)
+}
+type Expr = Unique<ExprKind>;
+
+impl Expr {
+    pub fn mk_var(x: Ident) -> Expr {
+        Expr::new(ExprKind::Var(x))
+    }
+    pub fn mk_num(x: i64) -> Expr {
+        Expr::new(ExprKind::Num(x))
+    }
+    pub fn mk_true() -> Expr {
+        Expr::new(ExprKind::True)
+    }
+    pub fn mk_false() -> Expr {
+        Expr::new(ExprKind::False)
+    }
+    pub fn mk_op(op: OpKind, e1: Expr, e2:Expr) -> Expr {
+        Expr::new(ExprKind::Op(op, e1, e2))
+    }
+    pub fn mk_pred(pred: PredKind, e1: Expr, e2:Expr) -> Expr {
+        Expr::new(ExprKind::Pred(pred, e1, e2))
+    }
+    pub fn mk_app(e1: Expr, e2:Expr) -> Expr {
+        Expr::new(ExprKind::App(e1, e2))
+    }
+    pub fn mk_and(e1: Expr, e2:Expr) -> Expr {
+        Expr::new(ExprKind::And(e1, e2))
+    }
+    pub fn mk_or(e1: Expr, e2:Expr) -> Expr {
+        Expr::new(ExprKind::Or(e1, e2))
+    }
+    pub fn mk_univ(id: Ident, e:Expr) -> Expr {
+        Expr::new(ExprKind::Univ(id, e))
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -68,29 +103,48 @@ enum TmpTypeKind {
 
 type TmpType = P<TmpTypeKind>;
 
-
 impl TmpType {
-    fn new_type_variable() -> TmpType {
+    fn fresh_type_variable() -> TmpType {
         TmpType::new(TmpTypeKind::Var(TypeVariable::new()))
     }
-    fn new_type_arrow(arg: TmpType, ret: TmpType) -> TmpType {
+    fn mk_arrow(arg: TmpType, ret: TmpType) -> TmpType {
         TmpType::new(TmpTypeKind::Arrow(arg, ret))
     }
+    fn mk_int() -> TmpType {
+        TmpType::new(TmpTypeKind::Integer)
+    }
+    fn mk_prop() -> TmpType {
+        TmpType::new(TmpTypeKind::Proposition)
+    }
 }
+
+
+#[derive(Clone)]
+struct TmpTypeCache {
+    int: TmpType,
+    prop: TmpType,
+}
+
+impl TmpTypeCache {
+    fn new() -> TmpTypeCache {
+        TmpTypeCache{ int: TmpType::mk_int(), prop: TmpType::mk_prop() }
+    }
+}
+
 
 impl Expr {
     pub fn from(e: parse::Expr) -> Expr {
         match e.into() {
-            parse::ExprKind::Var(v) => Expr::Var(v),
-            parse::ExprKind::Num(x) => Expr::Num(x),
-            parse::ExprKind::True => Expr::True,
-            parse::ExprKind::False => Expr::False,
-            parse::ExprKind::Op(op, e1, e2) => Expr::Op(op, P::new(Expr::from(e1)), P::new(Expr::from(e2))),
-            parse::ExprKind::Pred(p, e1, e2) => Expr::Pred(p, P::new(Expr::from(e1)), P::new(Expr::from(e2))),
-            parse::ExprKind::App(e1, e2) => Expr::App(P::new(Expr::from(e1)), P::new(Expr::from(e2))),
-            parse::ExprKind::And(e1, e2) => Expr::And(P::new(Expr::from(e1)), P::new(Expr::from(e2))),
-            parse::ExprKind::Or(e1, e2) => Expr::Or(P::new(Expr::from(e1)), P::new(Expr::from(e2))),
-            parse::ExprKind::Univ(x, e) => Expr::Univ(x, P::new(Expr::from(e))),
+            parse::ExprKind::Var(v) => Expr::mk_var(v),
+            parse::ExprKind::Num(x) => Expr::mk_num(x),
+            parse::ExprKind::True => Expr::mk_true(),
+            parse::ExprKind::False => Expr::mk_false(),
+            parse::ExprKind::Op(op, e1, e2) => Expr::mk_op(op, Expr::from(e1), Expr::from(e2)),
+            parse::ExprKind::Pred(p, e1, e2) => Expr::mk_pred(p, Expr::from(e1), Expr::from(e2)),
+            parse::ExprKind::App(e1, e2) => Expr::mk_app(Expr::from(e1), Expr::from(e2)),
+            parse::ExprKind::And(e1, e2) => Expr::mk_and(Expr::from(e1), Expr::from(e2)),
+            parse::ExprKind::Or(e1, e2) => Expr::mk_or(Expr::from(e1), Expr::from(e2)),
+            parse::ExprKind::Univ(x, e) => Expr::mk_univ(x, Expr::from(e)),
             _ => panic!("not implemented"),
             // parse::Expr::Fix(_, _, _) => {}
             // parse::Expr::Abs(_, _) => {}
@@ -99,53 +153,93 @@ impl Expr {
     }
 }
 
+impl Expr {
+    fn append_constraints<'a>(&'a self, env: &mut Environment<'a>, constraints: &mut Constraints) -> TmpType {
+        match self.kind() {
+            ExprKind::Var(ident) => env.get(ident).unwrap(),
+            ExprKind::Num(_) => TmpType::mk_int(),
+            ExprKind::True | ExprKind::False => TmpType::mk_prop(),
+            ExprKind::Op(_, e1, e2) => {
+                let t1 = e1.append_constraints(env, constraints);
+                let t2 = e2.append_constraints(env, constraints);
+                constraints.add(t1, env.mk_int());
+                constraints.add(t2, env.mk_int());
+                env.mk_int()
+            },
+            ExprKind::Pred(_, e1, e2) => {
+                let t1 = e1.append_constraints(env, constraints);
+                let t2 = e2.append_constraints(env, constraints);
+                constraints.add(t1, env.mk_int());
+                constraints.add(t2, env.mk_int());
+                env.mk_prop()
+            },
+            ExprKind::App(e1, e2) => {
+                let t1 = e1.append_constraints(env, constraints);
+                let t2 = e2.append_constraints(env, constraints);
+                let ret_t = TmpType::fresh_type_variable();
+                constraints.add(t1, TmpType::mk_arrow(t2, ret_t.clone()));
+                ret_t
+            },
+            ExprKind::And(e1, e2) | ExprKind::Or(e1, e2) => {
+                let t1 = e1.append_constraints(env, constraints);
+                let t2 = e2.append_constraints(env, constraints);
+                constraints.add(t1, env.mk_prop());
+                constraints.add(t2, env.mk_prop());
+                env.mk_prop()
+            },
+            ExprKind::Univ(_, e) => {
+                let t = e.append_constraints(env, constraints);
+                constraints.add(t, env.mk_prop());
+                env.mk_prop()
+            }
+        }
+    }
+}
+
 impl Clause<TmpType> {
     pub fn from(vc: parse::Clause) -> Clause<TmpType> {
-        let t = vc.gen_tmp_type();
+        let t = TmpType::fresh_type_variable();
         let id = VariableS::new(vc.id, t);
         let expr = Expr::from(vc.expr);
         let c = Clause{id,args: vc.args, expr};
         c
     }
-    fn append_constraints<'a>(&'a self, mut env: Environment<'a>, _constraints: &mut Vec<Constraint>) {
-        let ret_ty= TmpType::new_type_variable();
-        let mut current_ty = ret_ty;
+    fn append_constraints<'a>(&'a self, mut env: Environment<'a>, constraints: &mut Constraints) {
+        let ret_ty= TmpType::fresh_type_variable();
+        let mut current_ty = ret_ty.clone();
         for arg in self.args.iter() {
-            let arg_ty = TmpType::new_type_variable();
-            current_ty = TmpType::new_type_arrow(arg_ty.clone(), current_ty);
+            let arg_ty = TmpType::fresh_type_variable();
+            current_ty = TmpType::mk_arrow(arg_ty.clone(), current_ty);
             env.add(arg, arg_ty);
         }
+        constraints.add(current_ty, self.id.ty.clone());
+        let t = self.expr.append_constraints(&mut env, constraints);
+        constraints.add(t, ret_ty)
     }
 }
 
 
 #[derive(Clone)]
 struct Environment<'a> {
-    map: HashTrieMap<&'a str, TmpType>
-}
-
-impl parse::Clause {
-    fn gen_tmp_type(&self) -> TmpType {
-        let ret_ty= TmpType::new_type_variable();
-        //let mut current_ty = ret_ty;
-        //for _arg in self.args.iter() {
-        //    let arg_ty = TmpType::new_type_variable();
-        //    current_ty = TmpType::new_type_arrow(arg_ty, current_ty);
-        //}
-        ret_ty 
-    }
-    
-}
-
-impl parse::Clause {
+    map: HashTrieMap<&'a str, TmpType>,
+    type_cache: TmpTypeCache,
 }
 
 impl<'a> Environment<'a> {
     fn new() -> Environment<'a> {
-        Environment{map: HashTrieMap::new()}
+        Environment{map: HashTrieMap::new(), type_cache: TmpTypeCache::new() }
     }
     fn add(&mut self, id: &'a str, ty: TmpType) {
         self.map.insert(id, ty);
+    }
+    fn get(&self, id: &'a str) -> Option<TmpType> {
+        self.map.get(id).cloned()
+    }
+    fn mk_int(&self) -> TmpType {
+        self.type_cache.int.clone()
+    }
+    fn mk_prop(&self) -> TmpType {
+        self.type_cache.prop.clone()
     }
 }
 
@@ -163,11 +257,26 @@ struct Constraint {
     right: TmpType
 }
 
+impl Constraint {
+    fn new(left: TmpType, right: TmpType) -> Constraint {
+        Constraint{ left, right }
+    }
+}
+
+struct Constraints(Vec<Constraint>);
+impl Constraints {
+    fn new() -> Constraints {
+        Constraints(Vec::new())
+    }
+    fn add(&mut self, left: TmpType, right: TmpType) {
+        self.0.push(Constraint::new(left, right))
+    }
+}
 
 fn typing(formulas: Vec<parse::Clause>) -> Vec<Clause<SimpleType>> {
     let formulas = formulas.into_iter().map(|x| Clause::<TmpType>::from(x)).collect();
     let env = generate_global_environment(&formulas);
-    let mut constraints = Vec::new();
+    let mut constraints = Constraints::new();
     for clause in formulas.iter() {
         clause.append_constraints(env.clone(), &mut constraints);
     }
