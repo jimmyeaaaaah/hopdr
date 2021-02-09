@@ -21,8 +21,9 @@ fn main() {
          ",
     )
     .unwrap();
-    let parse::Problem::NuHFLZValidityChecking(nvc) = f;
-    for fml in nvc.formulas.iter() {
+
+    let vc = preprocess::hes::ValidityChecking::from(f);
+    for fml in vc.formulas.iter() {
         println!("{}", fml);
     }
 

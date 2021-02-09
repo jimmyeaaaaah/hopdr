@@ -1,4 +1,4 @@
-use std::{collections::HashMap, error::Error, unimplemented};
+use std::{collections::HashMap, error::Error, fmt, mem::uninitialized, unimplemented};
 
 use lazy_static::lazy;
 use rpds::HashTrieMap;
@@ -23,6 +23,23 @@ pub enum ExprKind {
     Univ(Ident, Expr)
 }
 type Expr = Unique<ExprKind>;
+
+impl fmt::Display for Expr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.kind() {
+            ExprKind::Var(id) => write!(f, "{}", id),
+            ExprKind::Op(op, e1, e2) => write!(f, "({} {} {})", e1, op, e2),
+            ExprKind::Pred(pred, e1, e2) => write!(f, "({} {} {})", e1, pred, e2),
+            ExprKind::App(e1, e2) => write!(f, "({} {})", e1, e2),
+            ExprKind::And(e1, e2) => write!(f, "({} & {})", e1, e2),
+            ExprKind::Or(e1, e2) => write!(f, "({} | {})", e1, e2),
+            ExprKind::Num(x) => write!(f, "{}", x),
+            ExprKind::True => write!(f, "true"),
+            ExprKind::False => write!(f, "false"),
+            ExprKind::Univ(id, e) => write!(f, "∀{}. {}", id, e),
+        }
+    }
+}
 
 impl Expr {
     pub fn mk_var(x: Ident) -> Expr {
@@ -62,6 +79,12 @@ pub struct VariableS<Ty> {
     pub id: Ident,
     pub ty: Ty,
 }
+impl <Ty: fmt::Display> fmt::Display for VariableS<Ty> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}: {}", self.id, self.ty)
+    }
+}
+
 type Variable = VariableS<SimpleType>;
 
 impl VariableS<TmpType> {
@@ -75,6 +98,16 @@ pub struct Clause<Ty> {
     pub id: VariableS<Ty>,
     pub args: Vec<Ident>,
     pub expr: Expr,
+}
+
+impl <Ty: fmt::Display> fmt::Display for Clause<Ty> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.id)?;
+        for arg in self.args.iter() {
+            write!(f, " {}", arg)?;
+        }
+        write!(f, " = {}", self.expr)
+    }
 }
 
 #[derive(Debug)]
@@ -163,9 +196,6 @@ impl Expr {
             parse::ExprKind::Or(e1, e2) => Expr::mk_or(Expr::from(e1), Expr::from(e2)),
             parse::ExprKind::Univ(x, e) => Expr::mk_univ(x, Expr::from(e)),
             _ => panic!("not implemented"),
-            // parse::Expr::Fix(_, _, _) => {}
-            // parse::Expr::Abs(_, _) => {}
-            // parse::Expr::Exist(_, _) => {}
         }
     }
 }
@@ -173,7 +203,7 @@ impl Expr {
 impl Expr {
     fn append_constraints<'a>(&'a self, env: &mut Environment<'a>, constraints: &mut Constraints) -> TmpType {
         match self.kind() {
-            ExprKind::Var(ident) => env.get(ident).unwrap(),
+            ExprKind::Var(ident) => env.get(ident).expect(&format!("not found {}", ident)),
             ExprKind::Num(_) => TmpType::mk_int(),
             ExprKind::True | ExprKind::False => TmpType::mk_prop(),
             ExprKind::Op(_, e1, e2) => {
@@ -339,6 +369,7 @@ impl Constraints {
 
 fn typing(formulas: Vec<parse::Clause>) -> Vec<Clause<SimpleType>> {
     let formulas = formulas.into_iter().map(|x| Clause::<TmpType>::from(x)).collect();
+            println!("waiwai");
     let ty_subst = 
         {
             let env = generate_global_environment(&formulas);
@@ -357,11 +388,15 @@ fn typing(formulas: Vec<parse::Clause>) -> Vec<Clause<SimpleType>> {
     ).collect()
 }
 
-impl ValidityChecking {
+impl From<parse::Problem> for ValidityChecking {
     fn from(vc: parse::Problem) -> ValidityChecking {
        match vc {
-           parse::Problem::NuHFLZValidityChecking(_vc) => {
-                unimplemented!()
+           parse::Problem::NuHFLZValidityChecking(mut vc) => {
+               // adhoc
+               vc.formulas.push(parse::Clause { id: "!!TOPLEVEL!!".to_string(), args: Vec::new(), expr: vc.toplevel, fixpoint: parse::Fixpoint::Greatest });
+               let mut formulas = typing(vc.formulas);
+               let toplevel = formulas.pop().unwrap().expr;
+               ValidityChecking{formulas, toplevel}
            }
        }
     }

@@ -70,7 +70,7 @@ impl <T> Unique<T> {
         &*self.ptr
     }
     pub fn into(self) -> T {
-        self.into()
+        *self.ptr
     }
 }
 
