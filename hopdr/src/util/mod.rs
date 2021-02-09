@@ -1,6 +1,7 @@
 use std::{fmt, rc::Rc};
 use std::ops::Deref;
 
+// readonly pointer 
 #[derive(Debug, Eq, PartialEq)]
 pub struct P<T: ?Sized> {
     ptr: Rc<T>,
@@ -45,6 +46,48 @@ impl<T> Clone for P<T> {
     }
 }
 
+// unique pointer
+#[derive(Debug, Eq, PartialEq)]
+pub struct Unique<T: ?Sized> {
+    ptr: Box<T>,
+}
+
+#[allow(non_snake_case)]
+pub fn Unique<T: 'static>(value: T) -> Unique<T> {
+    Unique {
+        ptr: Box::new(value),
+    }
+}
+
+impl <T> Unique<T> {
+    pub fn kind<'a>(&'a self) -> &'a T {
+        &*self.ptr
+    }
+    pub fn into(self) -> T {
+        self.into()
+    }
+}
+
+impl<T> Unique<T> {
+    pub fn new(v: T) -> Unique<T> {
+        Unique { ptr: Box::new(v) } 
+    }
+}
+
+impl<T: fmt::Display> fmt::Display for Unique<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(self.kind(), f)
+    }
+}
+
+impl<T: ?Sized> Deref for Unique<T> {
+    type Target = T;
+
+    fn deref(&self) -> &T {
+        &self.ptr
+    }
+}
+
 macro_rules! rc_wrapper {
     ($element: ident: $ty: ty) => {
         pub struct $element {
@@ -81,3 +124,4 @@ pub fn global_counter() -> u64 {
         tmp
     }
 }
+

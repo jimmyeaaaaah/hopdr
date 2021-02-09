@@ -1,5 +1,4 @@
 use super::hes::{Fixpoint, Expr, Problem, NuHFLzValidityChecking, Clause};
-use crate::util::P;
 use crate::formula::{OpKind, PredKind};
 use nom::{
     branch::alt,
@@ -28,7 +27,7 @@ fn ident<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, &'a str
 
 fn parse_var<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Expr, E> {
     let (input, ident) = preceded(sp, ident)(input)?;
-    Ok((input, Expr::Var(String::from(ident))))
+    Ok((input, Expr::mk_var(String::from(ident))))
 }
 
 fn parse_par<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Expr, E> {
@@ -40,15 +39,15 @@ fn parse_par<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Exp
 
 fn parse_bool<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Expr, E> {
     alt((
-        map(tag("true"), |_| Expr::True),
-        map(tag("false"), |_| Expr::False),
+        map(tag("true"), |_| Expr::mk_true()),
+        map(tag("false"), |_| Expr::mk_false()),
     ))(input)
 }
 
 // 負の数
 fn parse_num<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Expr, E> {
     let (input, num) = map_res(preceded(sp, digit1), FromStr::from_str)(input)?;
-    Ok((input, Expr::Num(num)))
+    Ok((input, Expr::mk_num(num)))
 }
 
 fn pred<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, PredKind, E> {
@@ -78,7 +77,7 @@ fn parse_arith2<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, 
     fold_many0(
         pair(preceded(sp, op2), preceded(sp, parse_atom)),
         e1,
-        |e1, (op, e2)| Expr::Op(op, P(e1), P(e2)),
+        |e1, (op, e2)| Expr::mk_op(op, e1, e2),
     )(input)
 }
 
@@ -87,7 +86,7 @@ fn parse_arith<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, E
     fold_many0(
         pair(preceded(sp, op1), preceded(sp, parse_arith2)),
         e1,
-        |e1, (op, e2)| Expr::Op(op, P(e1), P(e2)),
+        |e1, (op, e2)| Expr::mk_op(op, e1, e2),
     )(input)
 }
 
@@ -96,14 +95,14 @@ fn parse_pred<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Ex
     fold_many0(
         pair(preceded(sp, pred), preceded(sp, parse_arith)),
         e1,
-        |e1, (pred, e2)| Expr::Pred(pred, P(e1), P(e2)),
+        |e1, (pred, e2)| Expr::mk_pred(pred, e1, e2),
     )(input)
 }
 
 fn parse_app<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Expr, E> {
     let (input, e1) = preceded(sp, parse_pred)(input)?;
     fold_many0(pair(sp1, preceded(sp, parse_pred)), e1, |e1, (_, e2)| {
-        Expr::App(P(e1), P(e2))
+        Expr::mk_app(e1, e2)
     })(input)
 }
 
@@ -112,7 +111,7 @@ fn parse_and<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Exp
     fold_many0(
         pair(preceded(sp, char('&')), preceded(sp, parse_app)),
         e1,
-        |e1, (_, e2)| Expr::And(P(e1), P(e2)),
+        |e1, (_, e2)| Expr::mk_and(e1, e2),
     )(input)
 }
 
@@ -121,7 +120,7 @@ fn parse_or<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Expr
     fold_many0(
         pair(preceded(sp, char('|')), preceded(sp, parse_and)),
         e1,
-        |e1, (_, e2)| Expr::Or(P(e1), P(e2)),
+        |e1, (_, e2)| Expr::mk_or(e1, e2),
     )(input)
 }
 

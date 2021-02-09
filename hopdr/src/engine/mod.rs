@@ -86,7 +86,7 @@ impl Goal {
 pub struct Clause {
     body: Goal,
     head: Variable,
-    args: Vec<Variable>,
+    args: Vec<Variable>, // Vec<Ident> ??
 }
 
 #[derive(Debug)]
