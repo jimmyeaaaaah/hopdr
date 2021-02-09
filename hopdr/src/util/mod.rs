@@ -46,6 +46,12 @@ impl<T> Clone for P<T> {
     }
 }
 
+impl<T> From<T> for P<T> {
+    fn from(x: T) -> P<T> {
+        P::new(x)
+    }
+}
+
 // unique pointer
 #[derive(Debug, Eq, PartialEq)]
 pub struct Unique<T: ?Sized> {

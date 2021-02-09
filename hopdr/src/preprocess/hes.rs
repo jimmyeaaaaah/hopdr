@@ -1,4 +1,4 @@
-use std::{collections::HashMap, unimplemented};
+use std::{collections::HashMap, error::Error, unimplemented};
 
 use lazy_static::lazy;
 use rpds::HashTrieMap;
@@ -83,6 +83,8 @@ pub struct ValidityChecking {
     pub toplevel: Expr,
 }
 
+
+#[derive(PartialEq, Eq, Hash, Clone)]
 struct TypeVariable {
     id: u64 
 }
@@ -115,6 +117,21 @@ impl TmpType {
     }
     fn mk_prop() -> TmpType {
         TmpType::new(TmpTypeKind::Proposition)
+    }
+    fn subst(&self, ty_subst: &HashMap<TypeVariable, SimpleType>) -> SimpleType {
+        match self.kind() {
+            TmpTypeKind::Proposition => SimpleType::mk_type_prop(),
+            TmpTypeKind::Integer => SimpleType::mk_type_int(),
+            TmpTypeKind::Arrow(t1, t2) => SimpleType::mk_type_arrow(t1.subst(ty_subst), t2.subst(ty_subst)),
+            TmpTypeKind::Var(ty_var) => ty_subst.get(ty_var).unwrap().clone(),
+        }
+    }
+    fn occur(&self, v: &TypeVariable) -> bool {
+        match self.kind() {
+            TmpTypeKind::Arrow(t1, t2) => t1.occur(v) || t2.occur(v),
+            TmpTypeKind::Var(x) if x == v => true,
+            _ => false,
+        }
     }
 }
 
@@ -261,6 +278,17 @@ impl Constraint {
     fn new(left: TmpType, right: TmpType) -> Constraint {
         Constraint{ left, right }
     }
+    fn kind<'a>(&'a self) -> (&'a TmpTypeKind, &'a TmpTypeKind) {
+        let left = self.left.kind();
+        let right = self.right.kind();
+        (left, right)
+    }
+}
+
+#[derive(Debug)]
+enum TypeError {
+    Error,
+    OccurenceCheck,
 }
 
 struct Constraints(Vec<Constraint>);
@@ -271,23 +299,66 @@ impl Constraints {
     fn add(&mut self, left: TmpType, right: TmpType) {
         self.0.push(Constraint::new(left, right))
     }
+    fn subst(&mut self, x: TypeVariable, t: TmpType) {
+
+    }
+    fn solve(&mut self) -> Result<HashMap<TypeVariable, SimpleType>, TypeError> {
+        let ty_subst= HashMap::new();
+        loop {
+            use TmpTypeKind::*;
+            match self.0.pop() {
+                None => break Ok(ty_subst),
+                Some(c) => {
+                    let rhs = c.right.clone();
+                    match c.kind() {
+                        (Proposition, Proposition) |
+                        (Integer, Integer) => {},
+                        (Var(x), Var(y)) if x == y => {},
+                        (Var(x), t) => {
+                            if rhs.occur(x) {
+                                break Err(TypeError::OccurenceCheck);
+                            }
+                            self.subst(x.clone(), rhs);
+                        },
+                        (t, Var(x)) => {
+                            let lhs = c.left;
+                            let rhs = c.right;
+                            self.add(rhs, lhs);
+                        },
+                        (Arrow(t1, s1), Arrow(t2, s2)) => {
+                            self.add(t1.clone(), t2.clone());
+                            self.add(s1.clone(), s2.clone());
+                        }
+                        _ => break Err(TypeError::Error)
+                    }
+                }
+            }
+        }
+    }
 }
 
 fn typing(formulas: Vec<parse::Clause>) -> Vec<Clause<SimpleType>> {
     let formulas = formulas.into_iter().map(|x| Clause::<TmpType>::from(x)).collect();
-    let env = generate_global_environment(&formulas);
-    let mut constraints = Constraints::new();
-    for clause in formulas.iter() {
-        clause.append_constraints(env.clone(), &mut constraints);
-    }
-    unimplemented!()
+    let ty_subst = 
+        {
+            let env = generate_global_environment(&formulas);
+            let mut constraints = Constraints::new();
+            for clause in formulas.iter() {
+                clause.append_constraints(env.clone(), &mut constraints);
+            }
+            constraints.solve().unwrap()
+        };
+    formulas.into_iter().map(
+        |clause| {
+            let ty = clause.id.ty.subst(&ty_subst);
+            let id = VariableS{id: clause.id.id, ty: ty};
+            Clause{ id, expr: clause.expr, args: clause.args }
+        }
+    ).collect()
 }
 
 impl ValidityChecking {
     fn from(vc: parse::Problem) -> ValidityChecking {
-       // simple type checking
-       // gamma: type environment
-       // unify
        match vc {
            parse::Problem::NuHFLZValidityChecking(_vc) => {
                 unimplemented!()
