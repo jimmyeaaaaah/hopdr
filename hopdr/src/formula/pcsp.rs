@@ -1,8 +1,7 @@
 use std::unimplemented;
 
-use super::{Conjunctive, Constraint, Top, Subst, Ident, Op, Variable};
+use super::{Conjunctive, Constraint, Ident, Op, Subst, Top, Variable};
 use crate::util::P;
-
 
 #[derive(Debug)]
 pub enum AtomKind {
@@ -37,7 +36,6 @@ impl From<Constraint> for Atom {
     }
 }
 
-
 impl Top for Atom {
     fn mk_true() -> Self {
         Atom::new(AtomKind::True)
@@ -50,7 +48,7 @@ impl Conjunctive for Atom {
         match (&*x, &*y) {
             (True, _) => y.clone(),
             (_, True) => x.clone(),
-            _ => Atom::new(Conj(x.clone(), y.clone()))
+            _ => Atom::new(Conj(x.clone(), y.clone())),
         }
     }
 }
@@ -59,12 +57,8 @@ impl Subst for Atom {
     fn subst(&self, x: &Ident, v: &super::Op) -> Self {
         match self.kind() {
             AtomKind::True => self.clone(),
-            AtomKind::Conj(lhs, rhs) => {
-                Atom::mk_conj(lhs.subst(x, v), rhs.subst(x, v))
-            },
-            AtomKind::Constraint(c) => {
-                Atom::mk_constraint(c.subst(x, v))
-            },
+            AtomKind::Conj(lhs, rhs) => Atom::mk_conj(lhs.subst(x, v), rhs.subst(x, v)),
+            AtomKind::Constraint(c) => Atom::mk_constraint(c.subst(x, v)),
             AtomKind::Predicate(a, ops) => {
                 let ops = ops.iter().map(|op| op.subst(x, v)).collect();
                 Atom::mk_pred(*x, ops)
@@ -72,7 +66,6 @@ impl Subst for Atom {
         }
     }
 }
-
 
 #[derive(Debug)]
 pub struct PCSP {

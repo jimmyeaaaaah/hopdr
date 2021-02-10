@@ -1,4 +1,4 @@
-use super::hes::{Fixpoint, Expr, Problem, NuHFLzValidityChecking, Clause};
+use super::hes::{Clause, Expr, Fixpoint, NuHFLzValidityChecking, Problem};
 use crate::formula::{OpKind, PredKind};
 use nom::{
     branch::alt,
@@ -60,7 +60,10 @@ fn pred<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, PredKind
 }
 
 fn op1<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, OpKind, E> {
-    alt((map(tag("+"), |_| OpKind::Add), map(tag("-"), |_| OpKind::Sub)))(input)
+    alt((
+        map(tag("+"), |_| OpKind::Add),
+        map(tag("-"), |_| OpKind::Sub),
+    ))(input)
 }
 
 fn op2<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, OpKind, E> {
@@ -135,7 +138,15 @@ fn parse_hes<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Cla
     let (input, expr) = preceded(sp, parse_expr)(input)?;
     let (input, _) = preceded(sp, char(';'))(input)?;
     let fixpoint = Fixpoint::Greatest;
-    Ok((input, Clause { fixpoint, id, args, expr }))
+    Ok((
+        input,
+        Clause {
+            fixpoint,
+            id,
+            args,
+            expr,
+        },
+    ))
 }
 
 pub fn parse<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Problem, E> {
@@ -147,5 +158,8 @@ pub fn parse<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Pro
     // tentative
     let toplevel = formulas.pop().unwrap().expr;
 
-    Ok((input, Problem::NuHFLZValidityChecking(NuHFLzValidityChecking{ formulas, toplevel })))
+    Ok((
+        input,
+        Problem::NuHFLZValidityChecking(NuHFLzValidityChecking { formulas, toplevel }),
+    ))
 }

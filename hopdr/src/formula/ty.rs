@@ -1,11 +1,11 @@
-use std::fmt;
 use crate::util::P;
+use std::fmt;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum TypeKind {
     Proposition,
     Integer,
-    Arrow(Type, Type)
+    Arrow(Type, Type),
 }
 
 impl fmt::Display for TypeKind {

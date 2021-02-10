@@ -1,10 +1,9 @@
-use crate::formula::{PredKind, OpKind};
+use crate::formula::{OpKind, PredKind};
 use crate::util::Unique;
 
 use std::fmt;
 
 type Ident = String;
-
 
 #[derive(Clone, Debug)]
 pub enum Fixpoint {
@@ -12,13 +11,16 @@ pub enum Fixpoint {
     Least,
 }
 
-
 impl fmt::Display for Fixpoint {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", match self {
-            Fixpoint::Greatest => "ν",
-            Fixpoint::Least => "μ",
-        })
+        write!(
+            f,
+            "{}",
+            match self {
+                Fixpoint::Greatest => "ν",
+                Fixpoint::Least => "μ",
+            }
+        )
     }
 }
 
@@ -54,31 +56,31 @@ impl Expr {
     pub fn mk_false() -> Expr {
         Expr::new(ExprKind::False)
     }
-    pub fn mk_op(op: OpKind, e1: Expr, e2:Expr) -> Expr {
+    pub fn mk_op(op: OpKind, e1: Expr, e2: Expr) -> Expr {
         Expr::new(ExprKind::Op(op, e1, e2))
     }
-    pub fn mk_pred(pred: PredKind, e1: Expr, e2:Expr) -> Expr {
+    pub fn mk_pred(pred: PredKind, e1: Expr, e2: Expr) -> Expr {
         Expr::new(ExprKind::Pred(pred, e1, e2))
     }
-    pub fn mk_app(e1: Expr, e2:Expr) -> Expr {
+    pub fn mk_app(e1: Expr, e2: Expr) -> Expr {
         Expr::new(ExprKind::App(e1, e2))
     }
-    pub fn mk_and(e1: Expr, e2:Expr) -> Expr {
+    pub fn mk_and(e1: Expr, e2: Expr) -> Expr {
         Expr::new(ExprKind::And(e1, e2))
     }
-    pub fn mk_or(e1: Expr, e2:Expr) -> Expr {
+    pub fn mk_or(e1: Expr, e2: Expr) -> Expr {
         Expr::new(ExprKind::Or(e1, e2))
     }
-    pub fn mk_fix(f: Fixpoint, id: Ident, e:Expr) -> Expr {
+    pub fn mk_fix(f: Fixpoint, id: Ident, e: Expr) -> Expr {
         Expr::new(ExprKind::Fix(f, id, e))
     }
-    pub fn mk_abs(id: Ident, e:Expr) -> Expr {
+    pub fn mk_abs(id: Ident, e: Expr) -> Expr {
         Expr::new(ExprKind::Abs(id, e))
     }
-    pub fn mk_univ(id: Ident, e:Expr) -> Expr {
+    pub fn mk_univ(id: Ident, e: Expr) -> Expr {
         Expr::new(ExprKind::Univ(id, e))
     }
-    pub fn mk_exist(id: Ident, e:Expr) -> Expr {
+    pub fn mk_exist(id: Ident, e: Expr) -> Expr {
         Expr::new(ExprKind::Exist(id, e))
     }
 }
@@ -95,14 +97,13 @@ impl fmt::Display for Expr {
             ExprKind::Num(x) => write!(f, "{}", x),
             ExprKind::True => write!(f, "true"),
             ExprKind::False => write!(f, "false"),
-            ExprKind::Fix (op, id, e)=> write!(f, "{}{}. {}", op, id, e),
+            ExprKind::Fix(op, id, e) => write!(f, "{}{}. {}", op, id, e),
             ExprKind::Abs(id, e) => write!(f, "λ{}. {}", id, e),
             ExprKind::Univ(id, e) => write!(f, "∀{}. {}", id, e),
-            ExprKind::Exist(id, e) => write!(f, "∃{}. {}", id, e)
+            ExprKind::Exist(id, e) => write!(f, "∃{}. {}", id, e),
         }
     }
 }
-
 
 // Clone should be removed
 // reason: https://github.com/Geal/nom/issues/1132
@@ -130,10 +131,9 @@ pub struct NuHFLzValidityChecking {
     pub toplevel: Expr,
 }
 
-
 #[derive(Debug)]
 pub enum Problem {
-    NuHFLZValidityChecking(NuHFLzValidityChecking)
+    NuHFLZValidityChecking(NuHFLzValidityChecking),
 }
 
 // techniqual reason in parse
@@ -150,7 +150,7 @@ impl Clone for Expr {
             ExprKind::Num(x) => Expr::mk_num(*x),
             ExprKind::True => Expr::mk_true(),
             ExprKind::False => Expr::mk_false(),
-            ExprKind::Fix (op, id, e)=> Expr::mk_fix(op.clone(), id.clone(), e.clone()),
+            ExprKind::Fix(op, id, e) => Expr::mk_fix(op.clone(), id.clone(), e.clone()),
             ExprKind::Abs(id, e) => Expr::mk_abs(id.clone(), e.clone()),
             ExprKind::Univ(id, e) => Expr::mk_univ(id.clone(), e.clone()),
             ExprKind::Exist(id, e) => Expr::mk_exist(id.clone(), e.clone()),

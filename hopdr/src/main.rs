@@ -3,17 +3,15 @@ extern crate lazy_static;
 #[macro_use]
 extern crate log;
 
-
-pub mod formula;
 pub mod engine;
-pub mod smt;
+pub mod formula;
 pub mod parse;
-pub mod util;
 pub mod preprocess;
+pub mod smt;
+pub mod util;
 
 use formula::Type;
 use nom::error::VerboseError;
-
 
 fn main() {
     env_logger::init();
@@ -45,7 +43,6 @@ fn main() {
 
     //let args = vec![n, k];
     //let s = Ident::fresh();
-
 
     //let clause = engine::Clause::new()
 }

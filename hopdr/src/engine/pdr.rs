@@ -1,12 +1,11 @@
-use std::{unimplemented};
-use super::{Problem, VerificationResult};
 use super::rtype::Environment;
-
+use super::{Problem, VerificationResult};
+use std::unimplemented;
 
 enum PDRResult {
     Valid,
     Invalid,
-    Unknown
+    Unknown,
 }
 
 struct Candidate {
@@ -21,7 +20,6 @@ struct HoPDR<'a> {
     problem: &'a Problem,
 }
 
-
 enum RefuteOrCex<A, B> {
     Refutable(A),
     Cex(B),
@@ -29,7 +27,12 @@ enum RefuteOrCex<A, B> {
 
 impl<'a> HoPDR<'a> {
     fn new(problem: &'a Problem) -> HoPDR<'a> {
-        let mut hopdr = HoPDR{models: Vec::new(), expand_cnt: 0, envs: Vec::new(), problem};
+        let mut hopdr = HoPDR {
+            models: Vec::new(),
+            expand_cnt: 0,
+            envs: Vec::new(),
+            problem,
+        };
         hopdr.initialize();
         hopdr
     }
@@ -42,9 +45,7 @@ impl<'a> HoPDR<'a> {
         unimplemented!()
     }
 
-    fn initialize(&mut self) {
-
-    }
+    fn initialize(&mut self) {}
 
     fn unfold(&mut self) {
         self.expand_cnt += 1;
@@ -58,9 +59,7 @@ impl<'a> HoPDR<'a> {
         unimplemented!()
     }
 
-    fn candidate(&mut self, _c: Candidate) {
-
-    }
+    fn candidate(&mut self, _c: Candidate) {}
 
     fn is_refutable(&self, _c: &Candidate) -> RefuteOrCex<Environment, Candidate> {
         unimplemented!()
@@ -69,25 +68,21 @@ impl<'a> HoPDR<'a> {
     fn check_feasible(&mut self) -> PDRResult {
         loop {
             match self.models.pop() {
-                Some(c) => {
-                    match self.is_refutable(&c) {
-                        RefuteOrCex::Refutable(env) => {
-                            self.conflict(c, env);
-                        },
-                        RefuteOrCex::Cex(c2) => {
-                            self.models.push(c);
-                            self.decide(c2);
-                        }
+                Some(c) => match self.is_refutable(&c) {
+                    RefuteOrCex::Refutable(env) => {
+                        self.conflict(c, env);
+                    }
+                    RefuteOrCex::Cex(c2) => {
+                        self.models.push(c);
+                        self.decide(c2);
                     }
                 },
-                None => { return PDRResult::Unknown }
+                None => return PDRResult::Unknown,
             }
         }
     }
 
-    fn conflict(&mut self, _candidate: Candidate, _refute_env: Environment) {
-
-    }
+    fn conflict(&mut self, _candidate: Candidate, _refute_env: Environment) {}
 
     fn decide(&mut self, candidate: Candidate) {
         self.models.push(candidate);
@@ -99,14 +94,13 @@ impl<'a> HoPDR<'a> {
                 Some(candidate) => {
                     self.candidate(candidate);
                     self.check_feasible();
-                },
-                None if self.check_inductive() => {return self.valid()}
-                None => self.unfold()
+                }
+                None if self.check_inductive() => return self.valid(),
+                None => self.unfold(),
             }
         }
     }
 }
-
 
 fn infer(_problem: Problem) -> VerificationResult {
     unimplemented!()

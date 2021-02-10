@@ -4,9 +4,9 @@ use fmt::Formatter;
 use lazy_static::lazy;
 use rpds::HashTrieMap;
 
-use crate::util::{P, Unique, global_counter};
 use crate::formula::{OpKind, PredKind, Type as SimpleType};
 use crate::parse;
+use crate::util::{global_counter, Unique, P};
 
 type Ident = String;
 
@@ -21,7 +21,7 @@ pub enum ExprKind {
     App(Expr, Expr),
     And(Expr, Expr),
     Or(Expr, Expr),
-    Univ(Ident, Expr)
+    Univ(Ident, Expr),
 }
 type Expr = Unique<ExprKind>;
 
@@ -55,22 +55,22 @@ impl Expr {
     pub fn mk_false() -> Expr {
         Expr::new(ExprKind::False)
     }
-    pub fn mk_op(op: OpKind, e1: Expr, e2:Expr) -> Expr {
+    pub fn mk_op(op: OpKind, e1: Expr, e2: Expr) -> Expr {
         Expr::new(ExprKind::Op(op, e1, e2))
     }
-    pub fn mk_pred(pred: PredKind, e1: Expr, e2:Expr) -> Expr {
+    pub fn mk_pred(pred: PredKind, e1: Expr, e2: Expr) -> Expr {
         Expr::new(ExprKind::Pred(pred, e1, e2))
     }
-    pub fn mk_app(e1: Expr, e2:Expr) -> Expr {
+    pub fn mk_app(e1: Expr, e2: Expr) -> Expr {
         Expr::new(ExprKind::App(e1, e2))
     }
-    pub fn mk_and(e1: Expr, e2:Expr) -> Expr {
+    pub fn mk_and(e1: Expr, e2: Expr) -> Expr {
         Expr::new(ExprKind::And(e1, e2))
     }
-    pub fn mk_or(e1: Expr, e2:Expr) -> Expr {
+    pub fn mk_or(e1: Expr, e2: Expr) -> Expr {
         Expr::new(ExprKind::Or(e1, e2))
     }
-    pub fn mk_univ(id: Ident, e:Expr) -> Expr {
+    pub fn mk_univ(id: Ident, e: Expr) -> Expr {
         Expr::new(ExprKind::Univ(id, e))
     }
 }
@@ -80,7 +80,7 @@ pub struct VariableS<Ty> {
     pub id: Ident,
     pub ty: Ty,
 }
-impl <Ty: fmt::Display> fmt::Display for VariableS<Ty> {
+impl<Ty: fmt::Display> fmt::Display for VariableS<Ty> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}: {}", self.id, self.ty)
     }
@@ -90,7 +90,7 @@ type Variable = VariableS<SimpleType>;
 
 impl VariableS<TmpType> {
     fn new(id: Ident, ty: TmpType) -> VariableS<TmpType> {
-        VariableS{ id, ty }
+        VariableS { id, ty }
     }
 }
 
@@ -101,7 +101,7 @@ pub struct Clause<Ty> {
     pub expr: Expr,
 }
 
-impl <Ty: fmt::Display> fmt::Display for Clause<Ty> {
+impl<Ty: fmt::Display> fmt::Display for Clause<Ty> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.id)?;
         for arg in self.args.iter() {
@@ -112,15 +112,14 @@ impl <Ty: fmt::Display> fmt::Display for Clause<Ty> {
 }
 
 #[derive(Debug)]
-pub struct ValidityChecking { 
+pub struct ValidityChecking {
     pub formulas: Vec<Clause<SimpleType>>,
     pub toplevel: Expr,
 }
 
-
 #[derive(PartialEq, Eq, Hash, Clone, Debug)]
 struct TypeVariable {
-    id: u64 
+    id: u64,
 }
 
 impl fmt::Display for TypeVariable {
@@ -132,7 +131,7 @@ impl fmt::Display for TypeVariable {
 impl TypeVariable {
     fn new() -> TypeVariable {
         let id = global_counter();
-        TypeVariable{id}
+        TypeVariable { id }
     }
 }
 
@@ -141,7 +140,7 @@ enum TmpTypeKind {
     Proposition,
     Integer,
     Arrow(TmpType, TmpType),
-    Var(TypeVariable)
+    Var(TypeVariable),
 }
 
 type TmpType = P<TmpTypeKind>;
@@ -149,13 +148,12 @@ impl fmt::Display for TmpTypeKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             TmpTypeKind::Proposition => write!(f, "prop"),
-            TmpTypeKind::Integer=> write!(f, "int"),
+            TmpTypeKind::Integer => write!(f, "int"),
             TmpTypeKind::Arrow(t1, t2) => write!(f, "{} -> {}", t1, t2),
             TmpTypeKind::Var(t) => write!(f, "{}", t),
         }
     }
 }
-
 
 impl TmpType {
     fn fresh_type_variable() -> TmpType {
@@ -192,14 +190,16 @@ impl TmpType {
             Integer => SimpleType::mk_type_int(),
             Arrow(t1, t2) => SimpleType::mk_type_arrow(t1.force(), t2.force()),
             Var(ty_var) => {
-                warn!("{} is not constrained in the process of type checking", ty_var);
+                warn!(
+                    "{} is not constrained in the process of type checking",
+                    ty_var
+                );
                 warn!("{} is regarded as integer", ty_var);
                 SimpleType::mk_type_int()
-            },
+            }
         }
     }
 }
-
 
 #[derive(Clone, Debug)]
 struct TmpTypeCache {
@@ -209,10 +209,12 @@ struct TmpTypeCache {
 
 impl TmpTypeCache {
     fn new() -> TmpTypeCache {
-        TmpTypeCache{ int: TmpType::mk_int(), prop: TmpType::mk_prop() }
+        TmpTypeCache {
+            int: TmpType::mk_int(),
+            prop: TmpType::mk_prop(),
+        }
     }
 }
-
 
 impl Expr {
     pub fn from(e: parse::Expr) -> Expr {
@@ -233,7 +235,11 @@ impl Expr {
 }
 
 impl Expr {
-    fn append_constraints<'a>(&'a self, env: &mut Environment<'a>, constraints: &mut Constraints) -> TmpType {
+    fn append_constraints<'a>(
+        &'a self,
+        env: &mut Environment<'a>,
+        constraints: &mut Constraints,
+    ) -> TmpType {
         match self.kind() {
             ExprKind::Var(ident) => env.get(ident).expect(&format!("not found {}", ident)),
             ExprKind::Num(_) => TmpType::mk_int(),
@@ -244,28 +250,28 @@ impl Expr {
                 constraints.add(t1, env.mk_int());
                 constraints.add(t2, env.mk_int());
                 env.mk_int()
-            },
+            }
             ExprKind::Pred(_, e1, e2) => {
                 let t1 = e1.append_constraints(env, constraints);
                 let t2 = e2.append_constraints(env, constraints);
                 constraints.add(t1, env.mk_int());
                 constraints.add(t2, env.mk_int());
                 env.mk_prop()
-            },
+            }
             ExprKind::App(e1, e2) => {
                 let t1 = e1.append_constraints(env, constraints);
                 let t2 = e2.append_constraints(env, constraints);
                 let ret_t = TmpType::fresh_type_variable();
                 constraints.add(t1, TmpType::mk_arrow(t2, ret_t.clone()));
                 ret_t
-            },
+            }
             ExprKind::And(e1, e2) | ExprKind::Or(e1, e2) => {
                 let t1 = e1.append_constraints(env, constraints);
                 let t2 = e2.append_constraints(env, constraints);
                 constraints.add(t1, env.mk_prop());
                 constraints.add(t2, env.mk_prop());
                 env.mk_prop()
-            },
+            }
             ExprKind::Univ(_, e) => {
                 let t = e.append_constraints(env, constraints);
                 constraints.add(t, env.mk_prop());
@@ -280,13 +286,17 @@ impl Clause<TmpType> {
         let t = TmpType::fresh_type_variable();
         let id = VariableS::new(vc.id, t);
         let expr = Expr::from(vc.expr);
-        let c = Clause{id,args: vc.args, expr};
+        let c = Clause {
+            id,
+            args: vc.args,
+            expr,
+        };
         c
     }
     fn append_constraints<'a>(&'a self, mut env: Environment<'a>, constraints: &mut Constraints) {
         debug!("{}", &env);
         debug!("{}", self);
-        let ret_ty= TmpType::fresh_type_variable();
+        let ret_ty = TmpType::fresh_type_variable();
         let mut current_ty = ret_ty.clone();
         for arg in self.args.iter() {
             let arg_ty = TmpType::fresh_type_variable();
@@ -298,7 +308,6 @@ impl Clause<TmpType> {
         constraints.add(t, ret_ty)
     }
 }
-
 
 #[derive(Clone, Debug)]
 struct Environment<'a> {
@@ -318,7 +327,10 @@ impl fmt::Display for Environment<'_> {
 
 impl<'a> Environment<'a> {
     fn new() -> Environment<'a> {
-        Environment{map: HashTrieMap::new(), type_cache: TmpTypeCache::new() }
+        Environment {
+            map: HashTrieMap::new(),
+            type_cache: TmpTypeCache::new(),
+        }
     }
     fn add(&mut self, id: &'a str, ty: TmpType) {
         self.map = self.map.insert(id, ty);
@@ -342,15 +354,14 @@ fn generate_global_environment<'a>(formulas: &'a Vec<Clause<TmpType>>) -> Enviro
     env
 }
 
-
 struct Constraint {
     left: TmpType,
-    right: TmpType
+    right: TmpType,
 }
 
 impl Constraint {
     fn new(left: TmpType, right: TmpType) -> Constraint {
-        Constraint{ left, right }
+        Constraint { left, right }
     }
     fn kind<'a>(&'a self) -> (&'a TmpTypeKind, &'a TmpTypeKind) {
         let left = self.left.kind();
@@ -377,7 +388,7 @@ impl Constraints {
         unimplemented!()
     }
     fn solve(&mut self) -> Result<TySubst, TypeError> {
-        let mut ty_subst= TySubst::new();
+        let mut ty_subst = TySubst::new();
         loop {
             use TmpTypeKind::*;
             match self.0.pop() {
@@ -385,26 +396,25 @@ impl Constraints {
                 Some(c) => {
                     let rhs = c.right.clone();
                     match c.kind() {
-                        (Proposition, Proposition) |
-                        (Integer, Integer) => {},
-                        (Var(x), Var(y)) if x == y => {},
+                        (Proposition, Proposition) | (Integer, Integer) => {}
+                        (Var(x), Var(y)) if x == y => {}
                         (Var(x), _) => {
                             if rhs.occur(x) {
                                 break Err(TypeError::OccurenceCheck);
                             }
                             self.subst(x.clone(), rhs.clone());
                             ty_subst.add(x.clone(), rhs);
-                        },
+                        }
                         (_, Var(_)) => {
                             let lhs = c.left;
                             let rhs = c.right;
                             self.add(rhs, lhs);
-                        },
+                        }
                         (Arrow(t1, s1), Arrow(t2, s2)) => {
                             self.add(t1.clone(), t2.clone());
                             self.add(s1.clone(), s2.clone());
                         }
-                        _ => break Err(TypeError::Error)
+                        _ => break Err(TypeError::Error),
                     }
                 }
             }
@@ -432,47 +442,62 @@ impl TySubst {
         match t.kind() {
             TmpTypeKind::Proposition => SimpleType::mk_type_prop(),
             TmpTypeKind::Integer => SimpleType::mk_type_int(),
-            TmpTypeKind::Arrow(t1, t2) => SimpleType::mk_type_arrow(self.subst(t1.clone()), self.subst(t2.clone())),
-            TmpTypeKind::Var(ty_var) => {
-                match self.0.get(ty_var) {
-                    Some(t) => t.force(),
-                    None => panic!("substitution of type variable failed")
-                }
+            TmpTypeKind::Arrow(t1, t2) => {
+                SimpleType::mk_type_arrow(self.subst(t1.clone()), self.subst(t2.clone()))
             }
+            TmpTypeKind::Var(ty_var) => match self.0.get(ty_var) {
+                Some(t) => t.force(),
+                None => panic!("substitution of type variable failed"),
+            },
         }
     }
 }
 
 fn typing(formulas: Vec<parse::Clause>) -> Vec<Clause<SimpleType>> {
-    let formulas = formulas.into_iter().map(|x| Clause::<TmpType>::from(x)).collect();
-    let ty_subst = 
-        {
-            let env = generate_global_environment(&formulas);
-            let mut constraints = Constraints::new();
-            for clause in formulas.iter() {
-                clause.append_constraints(env.clone(), &mut constraints);
-            }
-            constraints.solve().unwrap()
-        };
-    formulas.into_iter().map(
-        |clause| {
-            let ty = ty_subst.subst(clause.id.ty);
-            let id = VariableS{id: clause.id.id, ty: ty};
-            Clause{ id, expr: clause.expr, args: clause.args }
+    let formulas = formulas
+        .into_iter()
+        .map(|x| Clause::<TmpType>::from(x))
+        .collect();
+    let ty_subst = {
+        let env = generate_global_environment(&formulas);
+        let mut constraints = Constraints::new();
+        for clause in formulas.iter() {
+            clause.append_constraints(env.clone(), &mut constraints);
         }
-    ).collect()
+        constraints.solve().unwrap()
+    };
+    formulas
+        .into_iter()
+        .map(|clause| {
+            let ty = ty_subst.subst(clause.id.ty);
+            let id = VariableS {
+                id: clause.id.id,
+                ty: ty,
+            };
+            Clause {
+                id,
+                expr: clause.expr,
+                args: clause.args,
+            }
+        })
+        .collect()
 }
 
 impl From<parse::Problem> for ValidityChecking {
     fn from(vc: parse::Problem) -> ValidityChecking {
-       match vc {
-           parse::Problem::NuHFLZValidityChecking(mut vc) => {
-               // adhoc
-               vc.formulas.push(parse::Clause { id: "!!TOPLEVEL!!".to_string(), args: Vec::new(), expr: vc.toplevel, fixpoint: parse::Fixpoint::Greatest });
-               let mut formulas = typing(vc.formulas);
-               let toplevel = formulas.pop().unwrap().expr;
-               ValidityChecking{formulas, toplevel}
-           }
-       }
+        match vc {
+            parse::Problem::NuHFLZValidityChecking(mut vc) => {
+                // adhoc
+                vc.formulas.push(parse::Clause {
+                    id: "!!TOPLEVEL!!".to_string(),
+                    args: Vec::new(),
+                    expr: vc.toplevel,
+                    fixpoint: parse::Fixpoint::Greatest,
+                });
+                let mut formulas = typing(vc.formulas);
+                let toplevel = formulas.pop().unwrap().expr;
+                ValidityChecking { formulas, toplevel }
+            }
+        }
     }
 }

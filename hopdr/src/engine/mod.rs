@@ -1,10 +1,8 @@
-mod rtype;
 mod infer;
 mod pdr;
+mod rtype;
 
-
-
-use crate::formula::{Constraint, Variable, Ident};
+use crate::formula::{Constraint, Ident, Variable};
 use crate::util::P;
 
 pub enum VerificationResult {
@@ -40,7 +38,6 @@ pub enum AtomKind {
 
 pub type Atom = P<AtomKind>;
 
-
 impl Atom {
     pub fn mk_var(ident: Ident) -> Atom {
         Atom::new(AtomKind::Var(ident))
@@ -59,7 +56,7 @@ pub enum GoalKind {
     Constr(Constraint),
     Conj(Goal, Goal),
     Disj(Goal, Goal),
-    Univ(Variable, Goal)
+    Univ(Variable, Goal),
 }
 
 pub type Goal = P<GoalKind>;
@@ -94,7 +91,6 @@ pub struct Problem {
     clauses: Vec<Clause>,
     top: Goal,
 }
-
 
 impl Clause {
     pub fn new(body: Goal, head: Variable, args: Vec<Variable>) -> Clause {

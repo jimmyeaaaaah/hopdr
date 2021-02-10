@@ -1,21 +1,20 @@
-pub mod ty;
 pub mod pcsp;
+pub mod ty;
 
 use std::{collections::HashSet, fmt};
 
 use rpds::Stack;
 
 pub use crate::formula::ty::*;
+use crate::util::global_counter;
 pub use crate::util::P;
-use crate::util::{global_counter};
-
 
 #[derive(Clone, Copy, Debug)]
 pub enum PredKind {
     Eq,
     Neq,
     Leq,
-    Gt
+    Gt,
 }
 
 impl fmt::Display for PredKind {
@@ -38,7 +37,7 @@ pub enum OpKind {
     Sub,
     Mul,
     Div,
-    Mod
+    Mod,
 }
 
 impl fmt::Display for OpKind {
@@ -73,7 +72,7 @@ pub struct IntegerEnvironment {
 
 impl IntegerEnvironment {
     pub fn new() -> IntegerEnvironment {
-        IntegerEnvironment{ imap: Stack::new() }
+        IntegerEnvironment { imap: Stack::new() }
     }
     pub fn exists(&self, id: &Ident) -> bool {
         for i in self.imap.iter() {
@@ -108,9 +107,8 @@ impl Op {
 
     fn subst(&self, id: &Ident, v: &Op) -> Op {
         match self.kind() {
-            OpExpr::Op(k, x, y) => 
-                Op::mk_bin_op(*k, x.subst(id, v), y.subst(id, v)),
-            
+            OpExpr::Op(k, x, y) => Op::mk_bin_op(*k, x.subst(id, v), y.subst(id, v)),
+
             OpExpr::Var(id2) if id == id2 => v.clone(),
             _ => self.clone(),
         }
@@ -165,11 +163,10 @@ impl Subst for Constraint {
                     new_ops.push(op.subst(x, v));
                 }
                 Constraint::mk_pred(*k, new_ops)
-            },
+            }
             Conj(r, l) => Constraint::mk_conj(r.subst(x, v), l.subst(x, v)),
             Disj(r, l) => Constraint::mk_disj(r.subst(x, v), l.subst(x, v)),
-            Univ(var, cstr) => 
-                Constraint::mk_univ(var.clone(), cstr.subst(x, v)),
+            Univ(var, cstr) => Constraint::mk_univ(var.clone(), cstr.subst(x, v)),
         }
     }
 }
@@ -213,7 +210,7 @@ pub type Variable = P<VariableS>;
 
 impl Variable {
     pub fn mk(id: Ident, ty: Type) -> Variable {
-        Variable::new(VariableS{ id, ty })
+        Variable::new(VariableS { id, ty })
     }
     pub fn id(&self) -> Ident {
         self.id

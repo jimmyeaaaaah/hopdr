@@ -1,7 +1,7 @@
-use std::{fmt, rc::Rc};
 use std::ops::Deref;
+use std::{fmt, rc::Rc};
 
-// readonly pointer 
+// readonly pointer
 #[derive(Debug, Eq, PartialEq)]
 pub struct P<T: ?Sized> {
     ptr: Rc<T>,
@@ -14,7 +14,7 @@ pub fn P<T: 'static>(value: T) -> P<T> {
     }
 }
 
-impl <T> P<T> {
+impl<T> P<T> {
     pub fn kind<'a>(&'a self) -> &'a T {
         &*self.ptr
     }
@@ -22,7 +22,7 @@ impl <T> P<T> {
 
 impl<T> P<T> {
     pub fn new(v: T) -> P<T> {
-        P { ptr: Rc::new(v) } 
+        P { ptr: Rc::new(v) }
     }
 }
 
@@ -42,7 +42,9 @@ impl<T: ?Sized> Deref for P<T> {
 
 impl<T> Clone for P<T> {
     fn clone(&self) -> P<T> {
-        P { ptr: self.ptr.clone() }
+        P {
+            ptr: self.ptr.clone(),
+        }
     }
 }
 
@@ -65,7 +67,7 @@ pub fn Unique<T: 'static>(value: T) -> Unique<T> {
     }
 }
 
-impl <T> Unique<T> {
+impl<T> Unique<T> {
     pub fn kind<'a>(&'a self) -> &'a T {
         &*self.ptr
     }
@@ -76,7 +78,7 @@ impl <T> Unique<T> {
 
 impl<T> Unique<T> {
     pub fn new(v: T) -> Unique<T> {
-        Unique { ptr: Box::new(v) } 
+        Unique { ptr: Box::new(v) }
     }
 }
 
@@ -97,7 +99,7 @@ impl<T: ?Sized> Deref for Unique<T> {
 macro_rules! rc_wrapper {
     ($element: ident: $ty: ty) => {
         pub struct $element {
-            ptr: Rc<$ty>
+            ptr: Rc<$ty>,
         }
         impl $element {
             pub fn new(elem: $ty) -> $element {
@@ -110,24 +112,22 @@ macro_rules! rc_wrapper {
                 fmt::Display::fmt(self.kind(), f)
             }
         }
-        
+
         impl<T: ?Sized> Deref for $element {
             type Target = T;
-        
+
             fn deref(&self) -> &T {
                 &self.ptr
             }
-        } 
-    }
+        }
+    };
 }
-
 
 static mut TYVAR_COUNTER: u64 = 0;
 pub fn global_counter() -> u64 {
     unsafe {
-        let tmp= TYVAR_COUNTER;
+        let tmp = TYVAR_COUNTER;
         TYVAR_COUNTER += 1;
         tmp
     }
 }
-

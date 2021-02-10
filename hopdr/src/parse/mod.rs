@@ -1,5 +1,5 @@
-mod parse;
 mod hes;
+mod parse;
 
-pub use parse::parse;
 pub use hes::*;
+pub use parse::parse;
