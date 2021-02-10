@@ -149,7 +149,7 @@ impl fmt::Display for TmpTypeKind {
         match self {
             TmpTypeKind::Proposition => write!(f, "prop"),
             TmpTypeKind::Integer => write!(f, "int"),
-            TmpTypeKind::Arrow(t1, t2) => write!(f, "{} -> {}", t1, t2),
+            TmpTypeKind::Arrow(t1, t2) => write!(f, "({} -> {})", t1, t2),
             TmpTypeKind::Var(t) => write!(f, "{}", t),
         }
     }
@@ -294,16 +294,16 @@ impl Clause<TmpType> {
         c
     }
     fn append_constraints<'a>(&'a self, mut env: Environment<'a>, constraints: &mut Constraints) {
-        debug!("{}", &env);
-        debug!("{}", self);
         let ret_ty = TmpType::fresh_type_variable();
         let mut current_ty = ret_ty.clone();
-        for arg in self.args.iter() {
+        for arg in self.args.iter().rev() {
             let arg_ty = TmpType::fresh_type_variable();
             current_ty = TmpType::mk_arrow(arg_ty.clone(), current_ty);
             env.add(arg, arg_ty);
         }
         constraints.add(current_ty, self.id.ty.clone());
+        debug!("{}", &env);
+        debug!("{}", self);
         let t = self.expr.append_constraints(&mut env, constraints);
         constraints.add(t, ret_ty)
     }
@@ -359,6 +359,12 @@ struct Constraint {
     right: TmpType,
 }
 
+impl fmt::Display for Constraint {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{} = {}", self.left, self.right)
+    }
+}
+
 impl Constraint {
     fn new(left: TmpType, right: TmpType) -> Constraint {
         Constraint { left, right }
@@ -369,7 +375,10 @@ impl Constraint {
         (left, right)
     }
     fn subst(&self, x: TypeVariable, t: TmpType) -> Constraint {
-        Constraint::new(self.left.subst(x.clone(), t.clone()), self.right.subst(x, t))
+        Constraint::new(
+            self.left.subst(x.clone(), t.clone()),
+            self.right.subst(x, t),
+        )
     }
 }
 
@@ -380,6 +389,17 @@ enum TypeError {
 }
 
 struct Constraints(Vec<Constraint>);
+
+impl fmt::Display for Constraints {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "[constraints]\n")?;
+        for c in self.0.iter() {
+            write!(f, "{}\n", c)?;
+        }
+        write!(f, "\n")
+    }
+}
+
 impl Constraints {
     fn new() -> Constraints {
         Constraints(Vec::new())
@@ -421,10 +441,10 @@ impl Constraints {
                         (Arrow(t1, s1), Arrow(t2, s2)) => {
                             self.add(t1.clone(), t2.clone());
                             self.add(s1.clone(), s2.clone());
-                        },
+                        }
                         _ => {
                             debug!("tried to unify {} = {}", c.left, c.right);
-                            break Err(TypeError::Error)
+                            break Err(TypeError::Error);
                         }
                     }
                 }
@@ -433,6 +453,7 @@ impl Constraints {
     }
 }
 
+#[derive(Debug)]
 struct TySubst(HashMap<TypeVariable, TmpType>);
 
 impl TySubst {
@@ -475,6 +496,7 @@ fn typing(formulas: Vec<parse::Clause>) -> Vec<Clause<SimpleType>> {
         for clause in formulas.iter() {
             clause.append_constraints(env.clone(), &mut constraints);
         }
+        println!("{}", constraints);
         constraints.solve().unwrap()
     };
     formulas

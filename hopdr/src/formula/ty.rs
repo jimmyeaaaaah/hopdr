@@ -13,7 +13,7 @@ impl fmt::Display for TypeKind {
         match self {
             TypeKind::Proposition => write!(f, "bool"),
             TypeKind::Integer => write!(f, "integer"),
-            TypeKind::Arrow(x, y) => write!(f, "{} -> {}", x, y),
+            TypeKind::Arrow(x, y) => write!(f, "({} -> {})", x, y),
         }
     }
 }
@@ -26,7 +26,7 @@ impl Type {
         Type::new(TypeKind::Proposition)
     }
     pub fn mk_type_int() -> Type {
-        Type::new(TypeKind::Proposition)
+        Type::new(TypeKind::Integer)
     }
     pub fn mk_type_arrow(lhs: Type, rhs: Type) -> Type {
         Type::new(TypeKind::Arrow(lhs, rhs))

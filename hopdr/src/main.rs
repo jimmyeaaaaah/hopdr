@@ -19,8 +19,9 @@ fn main() {
     debug!("starting up");
     let (_, f) = parse::parse::<VerboseError<&str>>(
         "
+        S n m k = (n != 0 | k m) & (n = 0 | S (n - 1) (m + n) k);
         K m n = m <= n;
-        M = (K 1) 2;
+        M = S 1 2 (K 1);
          ",
     )
     .unwrap();
