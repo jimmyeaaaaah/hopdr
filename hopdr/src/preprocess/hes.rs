@@ -1,5 +1,6 @@
 use std::{collections::HashMap, error::Error, fmt, mem::uninitialized, unimplemented};
 
+use fmt::Formatter;
 use lazy_static::lazy;
 use rpds::HashTrieMap;
 
@@ -117,9 +118,15 @@ pub struct ValidityChecking {
 }
 
 
-#[derive(PartialEq, Eq, Hash, Clone)]
+#[derive(PartialEq, Eq, Hash, Clone, Debug)]
 struct TypeVariable {
     id: u64 
+}
+
+impl fmt::Display for TypeVariable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "'var_{}", self.id)
+    }
 }
 
 impl TypeVariable {
@@ -129,6 +136,7 @@ impl TypeVariable {
     }
 }
 
+#[derive(Debug)]
 enum TmpTypeKind {
     Proposition,
     Integer,
@@ -137,6 +145,17 @@ enum TmpTypeKind {
 }
 
 type TmpType = P<TmpTypeKind>;
+impl fmt::Display for TmpTypeKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TmpTypeKind::Proposition => write!(f, "prop"),
+            TmpTypeKind::Integer=> write!(f, "int"),
+            TmpTypeKind::Arrow(t1, t2) => write!(f, "{} -> {}", t1, t2),
+            TmpTypeKind::Var(t) => write!(f, "{}", t),
+        }
+    }
+}
+
 
 impl TmpType {
     fn fresh_type_variable() -> TmpType {
@@ -151,12 +170,12 @@ impl TmpType {
     fn mk_prop() -> TmpType {
         TmpType::new(TmpTypeKind::Proposition)
     }
-    fn subst(&self, ty_subst: &HashMap<TypeVariable, SimpleType>) -> SimpleType {
+    fn subst(&self, k: TypeVariable, t: TmpType) -> TmpType {
+        use TmpTypeKind::*;
         match self.kind() {
-            TmpTypeKind::Proposition => SimpleType::mk_type_prop(),
-            TmpTypeKind::Integer => SimpleType::mk_type_int(),
-            TmpTypeKind::Arrow(t1, t2) => SimpleType::mk_type_arrow(t1.subst(ty_subst), t2.subst(ty_subst)),
-            TmpTypeKind::Var(ty_var) => ty_subst.get(ty_var).unwrap().clone(),
+            Arrow(t1, t2) => TmpType::mk_arrow(t1.subst(k.clone(), t.clone()), t2.subst(k, t)),
+            Var(ty_var) if ty_var == &k => t,
+            _ => self.clone(),
         }
     }
     fn occur(&self, v: &TypeVariable) -> bool {
@@ -166,10 +185,23 @@ impl TmpType {
             _ => false,
         }
     }
+    fn force(&self) -> SimpleType {
+        use TmpTypeKind::*;
+        match self.kind() {
+            Proposition => SimpleType::mk_type_prop(),
+            Integer => SimpleType::mk_type_int(),
+            Arrow(t1, t2) => SimpleType::mk_type_arrow(t1.force(), t2.force()),
+            Var(ty_var) => {
+                warn!("{} is not constrained in the process of type checking", ty_var);
+                warn!("{} is regarded as integer", ty_var);
+                SimpleType::mk_type_int()
+            },
+        }
+    }
 }
 
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct TmpTypeCache {
     int: TmpType,
     prop: TmpType,
@@ -252,6 +284,8 @@ impl Clause<TmpType> {
         c
     }
     fn append_constraints<'a>(&'a self, mut env: Environment<'a>, constraints: &mut Constraints) {
+        debug!("{}", &env);
+        debug!("{}", self);
         let ret_ty= TmpType::fresh_type_variable();
         let mut current_ty = ret_ty.clone();
         for arg in self.args.iter() {
@@ -266,10 +300,20 @@ impl Clause<TmpType> {
 }
 
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct Environment<'a> {
     map: HashTrieMap<&'a str, TmpType>,
     type_cache: TmpTypeCache,
+}
+
+impl fmt::Display for Environment<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "[")?;
+        for (i, t) in self.map.iter() {
+            write!(f, "{}: {}, ", i, t)?;
+        }
+        write!(f, "]")
+    }
 }
 
 impl<'a> Environment<'a> {
@@ -277,7 +321,7 @@ impl<'a> Environment<'a> {
         Environment{map: HashTrieMap::new(), type_cache: TmpTypeCache::new() }
     }
     fn add(&mut self, id: &'a str, ty: TmpType) {
-        self.map.insert(id, ty);
+        self.map = self.map.insert(id, ty);
     }
     fn get(&self, id: &'a str) -> Option<TmpType> {
         self.map.get(id).cloned()
@@ -330,10 +374,10 @@ impl Constraints {
         self.0.push(Constraint::new(left, right))
     }
     fn subst(&mut self, x: TypeVariable, t: TmpType) {
-
+        unimplemented!()
     }
-    fn solve(&mut self) -> Result<HashMap<TypeVariable, SimpleType>, TypeError> {
-        let ty_subst= HashMap::new();
+    fn solve(&mut self) -> Result<TySubst, TypeError> {
+        let mut ty_subst= TySubst::new();
         loop {
             use TmpTypeKind::*;
             match self.0.pop() {
@@ -344,13 +388,14 @@ impl Constraints {
                         (Proposition, Proposition) |
                         (Integer, Integer) => {},
                         (Var(x), Var(y)) if x == y => {},
-                        (Var(x), t) => {
+                        (Var(x), _) => {
                             if rhs.occur(x) {
                                 break Err(TypeError::OccurenceCheck);
                             }
-                            self.subst(x.clone(), rhs);
+                            self.subst(x.clone(), rhs.clone());
+                            ty_subst.add(x.clone(), rhs);
                         },
-                        (t, Var(x)) => {
+                        (_, Var(_)) => {
                             let lhs = c.left;
                             let rhs = c.right;
                             self.add(rhs, lhs);
@@ -367,9 +412,39 @@ impl Constraints {
     }
 }
 
+struct TySubst(HashMap<TypeVariable, TmpType>);
+
+impl TySubst {
+    fn new() -> TySubst {
+        TySubst(HashMap::new())
+    }
+    fn add(&mut self, k: TypeVariable, t: TmpType) {
+        {
+            let k = &k;
+            let t = &t;
+            for (_, y) in self.0.iter_mut() {
+                *y = y.subst(k.clone(), t.clone());
+            }
+        }
+        self.0.insert(k, t);
+    }
+    fn subst(&self, t: TmpType) -> SimpleType {
+        match t.kind() {
+            TmpTypeKind::Proposition => SimpleType::mk_type_prop(),
+            TmpTypeKind::Integer => SimpleType::mk_type_int(),
+            TmpTypeKind::Arrow(t1, t2) => SimpleType::mk_type_arrow(self.subst(t1.clone()), self.subst(t2.clone())),
+            TmpTypeKind::Var(ty_var) => {
+                match self.0.get(ty_var) {
+                    Some(t) => t.force(),
+                    None => panic!("substitution of type variable failed")
+                }
+            }
+        }
+    }
+}
+
 fn typing(formulas: Vec<parse::Clause>) -> Vec<Clause<SimpleType>> {
     let formulas = formulas.into_iter().map(|x| Clause::<TmpType>::from(x)).collect();
-            println!("waiwai");
     let ty_subst = 
         {
             let env = generate_global_environment(&formulas);
@@ -381,7 +456,7 @@ fn typing(formulas: Vec<parse::Clause>) -> Vec<Clause<SimpleType>> {
         };
     formulas.into_iter().map(
         |clause| {
-            let ty = clause.id.ty.subst(&ty_subst);
+            let ty = ty_subst.subst(clause.id.ty);
             let id = VariableS{id: clause.id.id, ty: ty};
             Clause{ id, expr: clause.expr, args: clause.args }
         }

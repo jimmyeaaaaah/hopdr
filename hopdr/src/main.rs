@@ -1,5 +1,8 @@
 #[macro_use]
 extern crate lazy_static;
+#[macro_use]
+extern crate log;
+
 
 pub mod formula;
 pub mod engine;
@@ -13,11 +16,14 @@ use nom::error::VerboseError;
 
 
 fn main() {
+    env_logger::init();
+    // RUST_LOG=info (trace, debug, etc..)
+    debug!("starting up");
     let (_, f) = parse::parse::<VerboseError<&str>>(
         "
         S n m k = (n != 0 | k m) & (n = 0 | S (n - 1) (m + n) k);
         K m n = m <= n;
-        M n = S n 0 (K n);
+        M = S 1 0 (K 1);
          ",
     )
     .unwrap();
