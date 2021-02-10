@@ -368,6 +368,9 @@ impl Constraint {
         let right = self.right.kind();
         (left, right)
     }
+    fn subst(&self, x: TypeVariable, t: TmpType) -> Constraint {
+        Constraint::new(self.left.subst(x.clone(), t.clone()), self.right.subst(x, t))
+    }
 }
 
 #[derive(Debug)]
@@ -385,7 +388,11 @@ impl Constraints {
         self.0.push(Constraint::new(left, right))
     }
     fn subst(&mut self, x: TypeVariable, t: TmpType) {
-        unimplemented!()
+        let x = &x;
+        let t = &t;
+        for c in self.0.iter_mut() {
+            *c = c.subst(x.clone(), t.clone())
+        }
     }
     fn solve(&mut self) -> Result<TySubst, TypeError> {
         let mut ty_subst = TySubst::new();
@@ -395,6 +402,7 @@ impl Constraints {
                 None => break Ok(ty_subst),
                 Some(c) => {
                     let rhs = c.right.clone();
+                    debug!("unify {} = {}", c.left, c.right);
                     match c.kind() {
                         (Proposition, Proposition) | (Integer, Integer) => {}
                         (Var(x), Var(y)) if x == y => {}
@@ -413,8 +421,11 @@ impl Constraints {
                         (Arrow(t1, s1), Arrow(t2, s2)) => {
                             self.add(t1.clone(), t2.clone());
                             self.add(s1.clone(), s2.clone());
+                        },
+                        _ => {
+                            debug!("tried to unify {} = {}", c.left, c.right);
+                            break Err(TypeError::Error)
                         }
-                        _ => break Err(TypeError::Error),
                     }
                 }
             }
