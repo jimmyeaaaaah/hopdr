@@ -8,6 +8,7 @@ use super::typing::typing;
 use crate::formula::{OpKind, PredKind, Type as SimpleType};
 use crate::parse;
 use crate::util::{global_counter, Unique, P};
+use crate::formula::hes;
 
 type Ident = String;
 
@@ -90,13 +91,13 @@ impl<Ty: fmt::Display> fmt::Display for VariableS<Ty> {
 type Variable = VariableS<SimpleType>;
 
 #[derive(Debug)]
-pub struct Clause<Ty> {
-    pub id: VariableS<Ty>,
+pub struct Clause<Var> {
+    pub id: Var,
     pub args: Vec<Ident>,
     pub expr: Expr,
 }
 
-impl<Ty: fmt::Display> fmt::Display for Clause<Ty> {
+impl<Var: fmt::Display> fmt::Display for Clause<Var> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.id)?;
         for arg in self.args.iter() {
@@ -107,8 +108,8 @@ impl<Ty: fmt::Display> fmt::Display for Clause<Ty> {
 }
 
 #[derive(Debug)]
-pub struct ValidityChecking {
-    pub formulas: Vec<Clause<SimpleType>>,
+pub struct ValidityChecking<Var> {
+    pub formulas: Vec<Clause<Var>>,
     pub toplevel: Expr,
 }
 
@@ -130,13 +131,12 @@ impl Expr {
     }
 }
 
-impl From<parse::Problem> for ValidityChecking {
-    fn from(vc: parse::Problem) -> ValidityChecking {
-        match vc {
-            parse::Problem::NuHFLZValidityChecking(mut vc) => {
-                let (formulas, toplevel) = typing(vc.formulas, vc.toplevel);
-                ValidityChecking { formulas, toplevel }
-            }
+
+pub fn transform(vc: parse::Problem) -> hes::Problem {
+    match vc {
+        parse::Problem::NuHFLZValidityChecking(mut vc) => {
+            let (formulas, toplevel) = typing(vc.formulas, vc.toplevel);
+            unimplemented!()
         }
     }
 }

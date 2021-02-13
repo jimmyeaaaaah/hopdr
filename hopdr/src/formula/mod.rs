@@ -1,4 +1,5 @@
 pub mod pcsp;
+pub mod hes;
 pub mod ty;
 
 use std::{collections::HashSet, fmt};
@@ -64,6 +65,17 @@ pub enum OpExpr {
 }
 
 pub type Op = P<OpExpr>;
+impl fmt::Display for Op {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use OpExpr::*;
+        match self.kind() {
+            Op(k, o1, o2) => write!(f, "{} {} {}", o1, k, o2),
+            Var(i) => write!(f, "{}", i),
+            Const(c) => write!(f, "{}", c)
+        }
+    }
+}
+
 
 #[derive(Clone)]
 pub struct IntegerEnvironment {
@@ -139,6 +151,29 @@ pub enum ConstraintExpr {
 
 pub type Constraint = P<ConstraintExpr>;
 
+impl fmt::Display for Constraint {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use ConstraintExpr::*;
+        match self.kind() {
+            True => write!(f, "true"),
+            False => write!(f, "false"),
+            Pred(p, ops) => {
+                write!(f, "{}(", p)?;
+                if ops.len() > 0 {
+                    write!(f, "{}", ops[0])?;
+                    for op in &ops[1..] {
+                        write!(f, ", {}", op)?;
+                    }
+                }
+                write!(f, ")")
+            },
+            Conj(c1, c2) => write!(f, "{} & {}", c1, c2),
+            Disj(c1, c2) => write!(f, "{} | {}", c1, c2),
+            Univ(x, c) => write!(f, "∀{}.{}", x, c),
+        }
+    }
+}
+
 impl Top for Constraint {
     fn mk_true() -> Constraint {
         Constraint::new(ConstraintExpr::True)
@@ -194,6 +229,12 @@ pub struct Ident {
     id: u64,
 }
 
+impl fmt::Display for Ident {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.id)
+    }
+}
+
 impl Ident {
     pub fn fresh() -> Ident {
         let id = global_counter();
@@ -207,6 +248,12 @@ pub struct VariableS {
     pub ty: Type,
 }
 pub type Variable = P<VariableS>;
+
+impl fmt::Display for Variable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}: {}", self.id, self.ty)
+    }
+}
 
 impl Variable {
     pub fn mk(id: Ident, ty: Type) -> Variable {

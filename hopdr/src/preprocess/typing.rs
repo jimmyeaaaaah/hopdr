@@ -3,10 +3,12 @@ use lazy_static::lazy;
 use rpds::HashTrieMap;
 use std::{collections::HashMap, error::Error, fmt, mem::uninitialized, unimplemented};
 
-use super::hes::{Clause, Expr, ExprKind, VariableS};
+use super::hes::{Clause as ClauseS, Expr, ExprKind, VariableS};
 use crate::formula::{OpKind, PredKind, Type as SimpleType};
 use crate::parse;
 use crate::util::{global_counter, Unique, P};
+
+type Clause<Ty> = ClauseS<VariableS<Ty>>;
 
 type Ident = String;
 impl VariableS<TmpType> {

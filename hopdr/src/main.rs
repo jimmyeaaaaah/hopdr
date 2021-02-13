@@ -26,8 +26,8 @@ fn main() {
     )
     .unwrap();
 
-    let vc = preprocess::hes::ValidityChecking::from(f);
-    for fml in vc.formulas.iter() {
+    let vc = preprocess::hes::transform(f);
+    for fml in vc.clauses.iter() {
         println!("{}", fml);
     }
 

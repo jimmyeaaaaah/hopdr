@@ -1,5 +1,6 @@
 use super::rtype::Environment;
-use super::{Problem, VerificationResult};
+use crate::formula::hes::Problem;
+use super::VerificationResult;
 use std::unimplemented;
 
 enum PDRResult {

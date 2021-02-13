@@ -5,7 +5,7 @@ use std::{
     unimplemented,
 };
 
-use super::{Atom, AtomKind, Clause, ConstKind, Goal, GoalKind};
+use crate::formula::hes::{Atom, AtomKind, Clause, ConstKind, Goal, GoalKind};
 use crate::formula::pcsp;
 use crate::formula::{
     Conjunctive, Constraint, Ident, IntegerEnvironment, Op, Subst, Top, Type as SType,
