@@ -97,6 +97,12 @@ pub struct Clause<Var> {
     pub expr: Expr,
 }
 
+#[derive(Debug)]
+pub struct ValidityChecking<Var> {
+    pub clauses: Vec<Clause<Var>>,
+    pub toplevel: Expr,
+}
+
 impl<Var: fmt::Display> fmt::Display for Clause<Var> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.id)?;
@@ -105,12 +111,6 @@ impl<Var: fmt::Display> fmt::Display for Clause<Var> {
         }
         write!(f, " = {}", self.expr)
     }
-}
-
-#[derive(Debug)]
-pub struct ValidityChecking<Var> {
-    pub formulas: Vec<Clause<Var>>,
-    pub toplevel: Expr,
 }
 
 impl Expr {
@@ -134,8 +134,8 @@ impl Expr {
 
 pub fn transform(vc: parse::Problem) -> hes::Problem {
     match vc {
-        parse::Problem::NuHFLZValidityChecking(mut vc) => {
-            let (formulas, toplevel) = typing(vc.formulas, vc.toplevel);
+        parse::Problem::NuHFLZValidityChecking(vc) => {
+            let problem = typing(vc.formulas, vc.toplevel);
             unimplemented!()
         }
     }
