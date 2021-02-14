@@ -8,7 +8,7 @@ use crate::formula::{Type as SimpleType};
 use crate::parse;
 use crate::util::{global_counter, P};
 
-type Clause<Ty> = ClauseS<VariableS<parse::Ident, Ty>>;
+type Clause<Ty> = ClauseS<parse::Ident, Ty>;
 
 impl VariableS<parse::Ident, TmpType> {
     fn new(id: parse::Ident, ty: TmpType) -> VariableS<parse::Ident, TmpType> {
@@ -113,7 +113,7 @@ impl TmpTypeCache {
         }
     }
 }
-impl Expr {
+impl Expr<parse::Ident> {
     fn append_constraints<'a>(
         &'a self,
         env: &mut Environment<'a>,
@@ -163,7 +163,7 @@ impl Clause<TmpType> {
     pub fn from(vc: parse::Clause) -> Clause<TmpType> {
         let t = TmpType::fresh_type_variable();
         let id = VariableS::new(vc.id, t);
-        let expr = Expr::from(vc.expr);
+        let expr = Expr::<parse::Ident>::from(vc.expr);
         let c = Clause {
             id,
             args: vc.args,
@@ -366,7 +366,7 @@ impl TySubst {
 pub fn typing(
     mut formulas: Vec<parse::Clause>,
     toplevel: parse::Expr,
-) -> ValidityChecking<VariableS<parse::Ident, SimpleType>> {
+) -> ValidityChecking<parse::Ident, SimpleType> {
     // adhoc
     formulas.push(parse::Clause {
         id: "!!TOPLEVEL!!".to_string(),
