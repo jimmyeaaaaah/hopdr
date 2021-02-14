@@ -2,7 +2,7 @@ pub mod hes;
 pub mod pcsp;
 pub mod ty;
 
-use std::{collections::HashSet, fmt};
+use std::{fmt};
 
 use rpds::Stack;
 

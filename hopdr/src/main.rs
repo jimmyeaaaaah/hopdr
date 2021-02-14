@@ -11,7 +11,7 @@ pub mod smt;
 pub mod util;
 
 use engine::infer;
-use formula::Type;
+
 use nom::error::VerboseError;
 
 fn main() {

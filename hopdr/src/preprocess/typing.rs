@@ -1,12 +1,12 @@
-use fmt::Formatter;
-use lazy_static::lazy;
+
+
 use rpds::HashTrieMap;
 use std::{collections::HashMap, error::Error, fmt, mem::uninitialized, unimplemented};
 
 use super::hes::{Clause as ClauseS, Expr, ExprKind, ValidityChecking, VariableS};
-use crate::formula::{OpKind, PredKind, Type as SimpleType};
+use crate::formula::{Type as SimpleType};
 use crate::parse;
-use crate::util::{global_counter, Unique, P};
+use crate::util::{global_counter, P};
 
 type Clause<Ty> = ClauseS<VariableS<parse::Ident, Ty>>;
 

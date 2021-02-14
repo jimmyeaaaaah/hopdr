@@ -1,6 +1,6 @@
-use std::unimplemented;
 
-use super::{Conjunctive, Constraint, Ident, Op, Subst, Top, Variable};
+
+use super::{Conjunctive, Constraint, Ident, Op, Subst, Top};
 use crate::util::P;
 
 #[derive(Debug)]
@@ -59,7 +59,7 @@ impl Subst for Atom {
             AtomKind::True => self.clone(),
             AtomKind::Conj(lhs, rhs) => Atom::mk_conj(lhs.subst(x, v), rhs.subst(x, v)),
             AtomKind::Constraint(c) => Atom::mk_constraint(c.subst(x, v)),
-            AtomKind::Predicate(a, ops) => {
+            AtomKind::Predicate(_a, ops) => {
                 let ops = ops.iter().map(|op| op.subst(x, v)).collect();
                 Atom::mk_pred(*x, ops)
             }
