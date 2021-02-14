@@ -25,7 +25,7 @@ pub enum ExprKind<Id> {
     App(Expr<Id>, Expr<Id>),
     And(Expr<Id>, Expr<Id>),
     Or(Expr<Id>, Expr<Id>),
-    Univ(Ident, Expr<Id>),
+    Univ(Id, Expr<Id>),
 }
 pub type Expr<Id> = Unique<ExprKind<Id>>;
 
@@ -74,7 +74,7 @@ impl <Id>Expr<Id> {
     pub fn mk_or(e1: Expr<Id>, e2: Expr<Id>) -> Expr<Id> {
         Expr::new(ExprKind::Or(e1, e2))
     }
-    pub fn mk_univ(id: Ident, e: Expr<Id>) -> Expr<Id> {
+    pub fn mk_univ(id: Id, e: Expr<Id>) -> Expr<Id> {
         Expr::new(ExprKind::Univ(id, e))
     }
 }
