@@ -8,11 +8,10 @@ use crate::formula::{OpKind, PredKind, Type as SimpleType};
 use crate::parse;
 use crate::util::{global_counter, Unique, P};
 
-type Clause<Ty> = ClauseS<VariableS<Ty>>;
+type Clause<Ty> = ClauseS<VariableS<parse::Ident, Ty>>;
 
-type Ident = String;
-impl VariableS<TmpType> {
-    fn new(id: Ident, ty: TmpType) -> VariableS<TmpType> {
+impl VariableS<parse::Ident, TmpType> {
+    fn new(id: parse::Ident, ty: TmpType) -> VariableS<parse::Ident, TmpType> {
         VariableS { id, ty }
     }
 }
@@ -367,7 +366,7 @@ impl TySubst {
 pub fn typing(
     mut formulas: Vec<parse::Clause>,
     toplevel: parse::Expr,
-) -> ValidityChecking<VariableS<SimpleType>> {
+) -> ValidityChecking<VariableS<parse::Ident, SimpleType>> {
     // adhoc
     formulas.push(parse::Clause {
         id: "!!TOPLEVEL!!".to_string(),
@@ -406,5 +405,8 @@ pub fn typing(
         .collect();
 
     let toplevel = formulas.pop().unwrap().expr;
-    ValidityChecking{ clauses: formulas , toplevel }
+    ValidityChecking {
+        clauses: formulas,
+        toplevel,
+    }
 }

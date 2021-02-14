@@ -1,5 +1,5 @@
-pub mod pcsp;
 pub mod hes;
+pub mod pcsp;
 pub mod ty;
 
 use std::{collections::HashSet, fmt};
@@ -71,11 +71,10 @@ impl fmt::Display for Op {
         match self.kind() {
             Op(k, o1, o2) => write!(f, "{} {} {}", o1, k, o2),
             Var(i) => write!(f, "{}", i),
-            Const(c) => write!(f, "{}", c)
+            Const(c) => write!(f, "{}", c),
         }
     }
 }
-
 
 #[derive(Clone)]
 pub struct IntegerEnvironment {
@@ -166,7 +165,7 @@ impl fmt::Display for Constraint {
                     }
                 }
                 write!(f, ")")
-            },
+            }
             Conj(c1, c2) => write!(f, "{} & {}", c1, c2),
             Disj(c1, c2) => write!(f, "{} | {}", c1, c2),
             Univ(x, c) => write!(f, "∀{}.{}", x, c),

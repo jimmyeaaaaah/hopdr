@@ -1,6 +1,6 @@
 use super::rtype::Environment;
-use crate::formula::hes::Problem;
 use super::VerificationResult;
+use crate::formula::hes::Problem;
 use std::unimplemented;
 
 enum PDRResult {
@@ -103,6 +103,8 @@ impl<'a> HoPDR<'a> {
     }
 }
 
-fn infer(_problem: Problem) -> VerificationResult {
+pub fn infer(problem: Problem) -> VerificationResult {
+    let mut pdr = HoPDR::new(&problem);
+    pdr.run();
     unimplemented!()
 }

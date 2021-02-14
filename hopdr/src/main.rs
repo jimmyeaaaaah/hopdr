@@ -10,6 +10,7 @@ pub mod preprocess;
 pub mod smt;
 pub mod util;
 
+use engine::infer;
 use formula::Type;
 use nom::error::VerboseError;
 
@@ -26,10 +27,12 @@ fn main() {
     )
     .unwrap();
 
-    let vc = preprocess::hes::transform(f);
+    let vc = preprocess::hes::preprocess(f);
     for fml in vc.clauses.iter() {
         println!("{}", fml);
     }
+
+    println!("{}", infer(vc));
 
     //use engine::*;
     //use formula::{Variable, Ident, Constraint, PredKind, Op};

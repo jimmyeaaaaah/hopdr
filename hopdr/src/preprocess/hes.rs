@@ -4,11 +4,13 @@ use fmt::Formatter;
 use lazy_static::lazy;
 use rpds::HashTrieMap;
 
+use super::alpha::alpha_renaming;
+use super::transform::transform;
 use super::typing::typing;
+use crate::formula::hes;
 use crate::formula::{OpKind, PredKind, Type as SimpleType};
 use crate::parse;
 use crate::util::{global_counter, Unique, P};
-use crate::formula::hes;
 
 type Ident = String;
 
@@ -78,17 +80,17 @@ impl Expr {
 }
 
 #[derive(Clone, Debug)]
-pub struct VariableS<Ty> {
-    pub id: Ident,
+pub struct VariableS<Id, Ty> {
+    pub id: Id,
     pub ty: Ty,
 }
-impl<Ty: fmt::Display> fmt::Display for VariableS<Ty> {
+impl<Ty: fmt::Display> fmt::Display for VariableS<Ident, Ty> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}: {}", self.id, self.ty)
     }
 }
 
-type Variable = VariableS<SimpleType>;
+type Variable = VariableS<Ident, SimpleType>;
 
 #[derive(Debug)]
 pub struct Clause<Var> {
@@ -131,12 +133,12 @@ impl Expr {
     }
 }
 
-
-pub fn transform(vc: parse::Problem) -> hes::Problem {
+pub fn preprocess(vc: parse::Problem) -> hes::Problem {
     match vc {
         parse::Problem::NuHFLZValidityChecking(vc) => {
             let problem = typing(vc.formulas, vc.toplevel);
-            unimplemented!()
+            let problem = alpha_renaming(problem);
+            transform(problem)
         }
     }
 }

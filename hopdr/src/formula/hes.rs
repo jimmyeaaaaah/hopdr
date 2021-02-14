@@ -1,6 +1,6 @@
-use std::fmt;
 use crate::formula::{Constraint, Ident, Variable};
 use crate::util::P;
+use std::fmt;
 
 #[derive(Debug)]
 pub enum ConstKind {
@@ -17,7 +17,6 @@ impl fmt::Display for Const {
             Int(i) => write!(f, "{}", i),
             Bool(b) => write!(f, "{}", b),
         }
-
     }
 }
 
@@ -40,7 +39,7 @@ pub enum AtomKind {
 
 pub type Atom = P<AtomKind>;
 
-impl fmt::Display for Atom{
+impl fmt::Display for Atom {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use AtomKind::*;
         match self.kind() {
@@ -48,7 +47,6 @@ impl fmt::Display for Atom{
             Const(c) => write!(f, "{}", c),
             App(x, y) => write!(f, "{} {}", x, y),
         }
-
     }
 }
 
@@ -72,7 +70,6 @@ pub enum GoalKind {
     Disj(Goal, Goal),
     Univ(Variable, Goal),
 }
-
 
 pub type Goal = P<GoalKind>;
 

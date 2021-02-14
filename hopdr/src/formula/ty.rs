@@ -19,7 +19,6 @@ impl fmt::Display for Type {
     }
 }
 
-
 impl Type {
     // should be a singleton object..
     pub fn mk_type_prop() -> Type {
