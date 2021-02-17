@@ -221,6 +221,11 @@ impl Constraint {
     pub fn mk_pred(k: PredKind, v: Vec<Op>) -> Constraint {
         Constraint::new(ConstraintExpr::Pred(k, v))
     }
+
+    pub fn variable_guard(v: Ident, op: Op) -> Constraint {
+        let v = Op::mk_var(v);
+        Constraint::mk_pred(PredKind::Eq, vec![v, op])
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -263,6 +268,10 @@ impl Variable {
     }
     pub fn ty(&self) -> &Type {
         &self.ty
+    }
+    pub fn fresh(ty: Type) -> Variable {
+        let id = Ident::fresh();
+        Variable::new(VariableS{ id ,ty })
     }
 }
 

@@ -27,6 +27,34 @@ impl Const {
     pub fn mk_bool(v: bool) -> Const {
         Const::new(ConstKind::Bool(v))
     }
+    pub fn is_int(&self) -> bool {
+        use ConstKind::*;
+        match self.kind() {
+            Int(_) => true,
+            Bool(_) => false,
+        }
+    }
+    pub fn is_bool(&self) -> bool {
+        use ConstKind::*;
+        match self.kind() {
+            Int(_) => false,
+            Bool(_) => true,
+        }
+    }
+    pub fn int(&self) -> i64 {
+        use ConstKind::*;
+        match self.kind() {
+            Int(x) => *x,
+            Bool(_) => panic!("unwrap int failed"),
+        }
+    }
+    pub fn bool(&self) -> bool {
+        use ConstKind::*;
+        match self.kind() {
+            Bool(x) => *x,
+            Int(_) => panic!("unwrap bool failed"),
+        }
+    }
 }
 
 #[derive(Debug)]
