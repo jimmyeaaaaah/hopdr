@@ -8,7 +8,7 @@ use crate::formula::{Type as SimpleType};
 type In = ValidityChecking<formula::Ident, SimpleType>;
 type Out = hes::Problem;
 
-pub fn transform(_input: &In) -> Out {
+pub fn transform(_input: In) -> Out {
     unimplemented!()
 }
 
@@ -18,7 +18,7 @@ fn transform_clause(input: &InClause) -> OutClause {
     unimplemented!()
 } 
 
-type InExpr = super::hes::Expr<formula::Ident>;
+type InExpr = super::hes::Expr<formula::Ident, SimpleType>;
 type OutExpr = formula::hes::Goal;
 
 enum EitherExpr {

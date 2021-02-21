@@ -51,7 +51,7 @@ type Environment<'a> = HashTrieMap<&'a parse::Ident, formula::Ident>;
 //    }
 //}
 
-fn alpha_rename_expr(env: Environment, expr: &Expr<parse::Ident>) -> Expr<formula::Ident>  {
+fn alpha_rename_expr(env: Environment, expr: &Expr<parse::Ident, SimpleType>) -> Expr<formula::Ident, SimpleType>  {
     let f = alpha_rename_expr;
     use ExprKind::*;
     match expr.kind() {
@@ -65,9 +65,10 @@ fn alpha_rename_expr(env: Environment, expr: &Expr<parse::Ident>) -> Expr<formul
         And(e1, e2) => Expr::mk_and(f(env.clone(), e1), f(env, e2)),
         Or(e1, e2) => Expr::mk_or(f(env.clone(), e1), f(env, e2)),
         Univ(x, e) => {
-            let k = formula::Ident::fresh();
-            let env = env.insert(x, k.clone());
-            Expr::mk_univ(k, f(env, e))
+            let id = formula::Ident::fresh();
+            let env = env.insert(&x.id, id.clone());
+            let v = VariableS{ id, ty: x.ty.clone() };
+            Expr::mk_univ(v, f(env, e))
         }
     }
 }

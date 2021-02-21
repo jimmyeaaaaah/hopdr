@@ -15,21 +15,21 @@ use crate::util::{global_counter, Unique, P};
 type Ident = String;
 
 #[derive(Debug)]
-pub enum ExprKind<Id> {
+pub enum ExprKind<Id, Ty> {
     Var(Id),
     Num(i64),
     True,
     False,
-    Op(OpKind, Expr<Id>, Expr<Id>),
-    Pred(PredKind, Expr<Id>, Expr<Id>),
-    App(Expr<Id>, Expr<Id>),
-    And(Expr<Id>, Expr<Id>),
-    Or(Expr<Id>, Expr<Id>),
-    Univ(Id, Expr<Id>),
+    Op(OpKind, Expr<Id, Ty>, Expr<Id, Ty>),
+    Pred(PredKind, Expr<Id, Ty>, Expr<Id, Ty>),
+    App(Expr<Id, Ty>, Expr<Id, Ty>),
+    And(Expr<Id, Ty>, Expr<Id, Ty>),
+    Or(Expr<Id, Ty>, Expr<Id, Ty>),
+    Univ(VariableS<Id, Ty>, Expr<Id, Ty>),
 }
-pub type Expr<Id> = Unique<ExprKind<Id>>;
+pub type Expr<Id, Ty> = Unique<ExprKind<Id, Ty>>;
 
-impl <Id: fmt::Display> fmt::Display for Expr<Id> {
+impl <Ty: fmt::Display, Id: fmt::Display> fmt::Display for Expr<Id, Ty> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.kind() {
             ExprKind::Var(id) => write!(f, "{}", id),
@@ -46,36 +46,36 @@ impl <Id: fmt::Display> fmt::Display for Expr<Id> {
     }
 }
 
-impl <Id>Expr<Id> {
-    pub fn mk_var(x: Id) -> Expr<Id> {
+impl <Id, Ty>Expr<Id, Ty> {
+    pub fn mk_var(x: Id) -> Expr<Id, Ty> {
         Expr::new(ExprKind::Var(x))
     }
-    pub fn mk_num(x: i64) -> Expr<Id> {
+    pub fn mk_num(x: i64) -> Expr<Id, Ty> {
         Expr::new(ExprKind::Num(x))
     }
-    pub fn mk_true() -> Expr<Id> {
+    pub fn mk_true() -> Expr<Id, Ty> {
         Expr::new(ExprKind::True)
     }
-    pub fn mk_false() -> Expr<Id> {
+    pub fn mk_false() -> Expr<Id, Ty> {
         Expr::new(ExprKind::False)
     }
-    pub fn mk_op(op: OpKind, e1: Expr<Id>, e2: Expr<Id>) -> Expr<Id> {
+    pub fn mk_op(op: OpKind, e1: Expr<Id, Ty>, e2: Expr<Id, Ty>) -> Expr<Id, Ty> {
         Expr::new(ExprKind::Op(op, e1, e2))
     }
-    pub fn mk_pred(pred: PredKind, e1: Expr<Id>, e2: Expr<Id>) -> Expr<Id> {
+    pub fn mk_pred(pred: PredKind, e1: Expr<Id, Ty>, e2: Expr<Id, Ty>) -> Expr<Id, Ty> {
         Expr::new(ExprKind::Pred(pred, e1, e2))
     }
-    pub fn mk_app(e1: Expr<Id>, e2: Expr<Id>) -> Expr<Id> {
+    pub fn mk_app(e1: Expr<Id, Ty>, e2: Expr<Id, Ty>) -> Expr<Id, Ty> {
         Expr::new(ExprKind::App(e1, e2))
     }
-    pub fn mk_and(e1: Expr<Id>, e2: Expr<Id>) -> Expr<Id> {
+    pub fn mk_and(e1: Expr<Id, Ty>, e2: Expr<Id, Ty>) -> Expr<Id, Ty> {
         Expr::new(ExprKind::And(e1, e2))
     }
-    pub fn mk_or(e1: Expr<Id>, e2: Expr<Id>) -> Expr<Id> {
+    pub fn mk_or(e1: Expr<Id, Ty>, e2: Expr<Id, Ty>) -> Expr<Id, Ty> {
         Expr::new(ExprKind::Or(e1, e2))
     }
-    pub fn mk_univ(id: Id, e: Expr<Id>) -> Expr<Id> {
-        Expr::new(ExprKind::Univ(id, e))
+    pub fn mk_univ(v: VariableS<Id, Ty>, e: Expr<Id, Ty>) -> Expr<Id, Ty> {
+        Expr::new(ExprKind::Univ(v, e))
     }
 }
 
@@ -96,13 +96,13 @@ type Variable = VariableS<Ident, SimpleType>;
 pub struct Clause<Id, Ty> {
     pub id: VariableS<Id, Ty>,
     pub args: Vec<Ident>,
-    pub expr: Expr<Id>,
+    pub expr: Expr<Id, Ty>,
 }
 
 #[derive(Debug)]
 pub struct ValidityChecking<Id, Ty> {
     pub clauses: Vec<Clause<Id, Ty>>,
-    pub toplevel: Expr<Id>,
+    pub toplevel: Expr<Id, Ty>,
 }
 
 impl<Id: fmt::Display, Ty: fmt::Display> fmt::Display for Clause<Id, Ty> {
@@ -112,24 +112,6 @@ impl<Id: fmt::Display, Ty: fmt::Display> fmt::Display for Clause<Id, Ty> {
             write!(f, " {}", arg)?;
         }
         write!(f, " = {}", self.expr)
-    }
-}
-
-impl <Id>Expr<Id> {
-    pub fn from(e: parse::Expr) -> Expr<parse::Ident> {
-        match e.into() {
-            parse::ExprKind::Var(v) => Expr::mk_var(v),
-            parse::ExprKind::Num(x) => Expr::mk_num(x),
-            parse::ExprKind::True => Expr::mk_true(),
-            parse::ExprKind::False => Expr::mk_false(),
-            parse::ExprKind::Op(op, e1, e2) => Expr::mk_op(op, Expr::<parse::Ident>::from(e1), Expr::<parse::Ident>::from(e2)),
-            parse::ExprKind::Pred(p, e1, e2) => Expr::mk_pred(p, Expr::<parse::Ident>::from(e1), Expr::<parse::Ident>::from(e2)),
-            parse::ExprKind::App(e1, e2) => Expr::mk_app(Expr::<parse::Ident>::from(e1), Expr::<parse::Ident>::from(e2)),
-            parse::ExprKind::And(e1, e2) => Expr::mk_and(Expr::<parse::Ident>::from(e1), Expr::<parse::Ident>::from(e2)),
-            parse::ExprKind::Or(e1, e2) => Expr::mk_or(Expr::<parse::Ident>::from(e1), Expr::<parse::Ident>::from(e2)),
-            parse::ExprKind::Univ(x, e) => Expr::mk_univ(x, Expr::<parse::Ident>::from(e)),
-            _ => panic!("not implemented"),
-        }
     }
 }
 

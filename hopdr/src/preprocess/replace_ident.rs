@@ -3,10 +3,11 @@ use std::{collections::HashMap, unimplemented};
 
 use rpds::{HashTrieMap, Stack};
 
-use super::hes::{ExprKind, Expr, Clause, ValidityChecking, VariableS};
+use super::hes::{ExprKind, Expr as ExprBase, Clause, ValidityChecking, VariableS};
 use crate::formula::{Ident, Type as SimpleType};
 
 type V = VariableS<Ident, SimpleType>;
+type Expr<Id> = ExprBase<Id, SimpleType>;
 
 type InClause = Clause<Ident, SimpleType>;
 type OutClause = Clause<V, SimpleType>;

@@ -9,6 +9,8 @@ use crate::parse;
 use crate::util::{global_counter, P};
 
 type Clause<Ty> = ClauseS<parse::Ident, Ty>;
+type ExprTmp = Expr<parse::Ident, TmpType>;
+type ExprSimpleType = Expr<parse::Ident, SimpleType>;
 
 impl VariableS<parse::Ident, TmpType> {
     fn new(id: parse::Ident, ty: TmpType) -> VariableS<parse::Ident, TmpType> {
@@ -99,6 +101,13 @@ impl TmpType {
     }
 }
 
+impl VariableS<parse::Ident, TmpType> {
+    fn from_ident(id: String) -> VariableS<parse::Ident, TmpType> {
+        let t = TmpType::fresh_type_variable();
+        VariableS::new(id, t)
+    }
+}
+
 #[derive(Clone, Debug)]
 struct TmpTypeCache {
     int: TmpType,
@@ -113,7 +122,26 @@ impl TmpTypeCache {
         }
     }
 }
-impl Expr<parse::Ident> {
+
+impl ExprTmp {
+    pub fn from(e: parse::Expr) -> ExprTmp {
+        match e.into() {
+            parse::ExprKind::Var(v) => Expr::mk_var(v),
+            parse::ExprKind::Num(x) => Expr::mk_num(x),
+            parse::ExprKind::True => Expr::mk_true(),
+            parse::ExprKind::False => Expr::mk_false(),
+            parse::ExprKind::Op(op, e1, e2) => Expr::mk_op(op, ExprTmp::from(e1), ExprTmp::from(e2)),
+            parse::ExprKind::Pred(p, e1, e2) => Expr::mk_pred(p, ExprTmp::from(e1), ExprTmp::from(e2)),
+            parse::ExprKind::App(e1, e2) => Expr::mk_app(ExprTmp::from(e1), ExprTmp::from(e2)),
+            parse::ExprKind::And(e1, e2) => Expr::mk_and(ExprTmp::from(e1), ExprTmp::from(e2)),
+            parse::ExprKind::Or(e1, e2) => Expr::mk_or(ExprTmp::from(e1), ExprTmp::from(e2)),
+            parse::ExprKind::Univ(x, e) => {
+                let id = VariableS::from_ident(x);
+                Expr::mk_univ(id, ExprTmp::from(e))
+            },
+            _ => panic!("not implemented"),
+        }
+    }
     fn append_constraints<'a>(
         &'a self,
         env: &mut Environment<'a>,
@@ -158,12 +186,14 @@ impl Expr<parse::Ident> {
             }
         }
     }
+    fn ty_subst(&self, subst: TySubst) -> ExprSimpleType {
+        unimplemented!()
+    }
 }
 impl Clause<TmpType> {
     pub fn from(vc: parse::Clause) -> Clause<TmpType> {
-        let t = TmpType::fresh_type_variable();
-        let id = VariableS::new(vc.id, t);
-        let expr = Expr::<parse::Ident>::from(vc.expr);
+        let id = VariableS::from_ident(vc.id);
+        let expr = ExprTmp::from(vc.expr);
         let c = Clause {
             id,
             args: vc.args,
@@ -396,9 +426,10 @@ pub fn typing(
                 id: clause.id.id,
                 ty: ty,
             };
+            let expr = clause.expr.ty_subst(ty_subst);
             Clause {
                 id,
-                expr: clause.expr,
+                expr: expr,
                 args: clause.args,
             }
         })
