@@ -48,7 +48,7 @@ impl EitherExpr {
                 (a, Some((v, c)))
             },
             EitherExpr::Constraint(c) => {
-                let fvs = c.fv();
+                //let fvs = c.fv();
                 unimplemented!()
             }
             _ => panic!("program error")
@@ -91,9 +91,10 @@ fn transform_expr(input: &InExpr, clauses: &mut Vec<OutClause>) -> EitherExpr {
             EitherExpr::Atom(Atom::mk_var(x.clone()))
         },
         App(e1, e2) => {
-            let e1 = transform_expr(e1, clauses).atom_unwrap();
-            let e2 = transform_expr(e2, clauses).atom_unwrap();
-            EitherExpr::mk_atom(formula::hes::Atom::mk_app(e1, e2))
+            unimplemented!()
+            //let e1 = transform_expr(e1, clauses).atom_unwrap();
+            //let e2 = transform_expr(e2, clauses).atom_unwrap();
+            //EitherExpr::mk_atom(formula::hes::Atom::mk_app(e1, e2))
         },
         Num(x) => EitherExpr::mk_const(Const::mk_int(*x)),
         True => EitherExpr::mk_const(Const::mk_bool(true)),

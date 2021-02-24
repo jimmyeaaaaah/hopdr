@@ -29,7 +29,8 @@ fn translate(env: &mut Environment, e: &Expr<Ident>) -> Expr<V> {
         And(x, y) => Expr::mk_and(translate(env, x), translate(env, y)),
         Or(x, y) => Expr::mk_or(translate(env, x), translate(env, y)),
         Univ(x, y) => {
-            env.insert(x.clone(), )
+            env.insert(x.id.clone(), x.clone());
+            Expr::mk_univ(x.clone(), translate(env, y))
         }
     }
 }
