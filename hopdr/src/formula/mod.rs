@@ -76,6 +76,22 @@ impl fmt::Display for Op {
     }
 }
 
+impl Fv for Op {
+    type Id = Ident;
+    fn fv_with_vec(&self, fvs: &mut Vec<Self::Id>) {
+        match self.kind() {
+            OpExpr::Op(_, x, y) => {
+                x.fv_with_vec(fvs);
+                y.fv_with_vec(fvs);
+            },
+            OpExpr::Var(x) => {
+                fvs.push(x.clone())
+            },
+            OpExpr::Const(_) => {}
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct IntegerEnvironment {
     imap: Stack<Ident>,
@@ -136,6 +152,18 @@ pub trait Conjunctive {
 
 pub trait Subst {
     fn subst(&self, x: &Ident, v: &Op) -> Self;
+}
+
+pub trait Fv {
+    type Id;
+
+    fn fv_with_vec(&self, fvs: &mut Vec<Self::Id>);
+
+    fn fv(&self) -> Vec<Self::Id> {
+        let mut fvs = Vec::new();
+        self.fv_with_vec(&mut fvs);
+        fvs
+    }
 }
 
 #[derive(Debug)]
@@ -225,6 +253,28 @@ impl Constraint {
     pub fn variable_guard(v: Ident, op: Op) -> Constraint {
         let v = Op::mk_var(v);
         Constraint::mk_pred(PredKind::Eq, vec![v, op])
+    }
+}
+impl Fv for Constraint {
+    type Id = Ident;
+
+    fn fv_with_vec(&self, fvs: &mut Vec<Self::Id>) {
+        match self.kind() {
+            ConstraintExpr::True |  ConstraintExpr::False => {},
+            ConstraintExpr::Pred(_, ops) => {
+                for op in ops.iter() {
+                    op.fv_with_vec(fvs);
+                }
+            }
+            ConstraintExpr::Conj(x, y) | 
+            ConstraintExpr::Disj(x , y) => {
+                x.fv_with_vec(fvs);
+                y.fv_with_vec(fvs);
+            }
+            ConstraintExpr::Univ(_, x) => {
+                x.fv_with_vec(fvs);
+            }
+        }
     }
 }
 

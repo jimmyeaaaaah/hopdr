@@ -36,7 +36,8 @@ impl EitherExpr {
             _ => panic!("failed to unwrap const")
         }
     }
-    fn parse_atom(self, clauses: &mut Vec<OutClause>) -> (formula::hes::Atom, Option<(formula::Variable, formula::Constraint)>) {
+    fn parse_atom(self, clauses: &mut Vec<OutClause>) 
+        -> (formula::hes::Atom, Option<(formula::Variable, formula::Constraint)>) {
         match self {
             EitherExpr::Const(c) => (formula::hes::Atom::mk_const(c), None),
             EitherExpr::Atom(a) => (a, None),

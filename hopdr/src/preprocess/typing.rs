@@ -186,7 +186,7 @@ impl ExprTmp {
             }
         }
     }
-    fn ty_subst(&self, subst: TySubst) -> ExprSimpleType {
+    fn ty_subst(&self, subst: &TySubst) -> ExprSimpleType {
         unimplemented!()
     }
 }
@@ -426,7 +426,7 @@ pub fn typing(
                 id: clause.id.id,
                 ty: ty,
             };
-            let expr = clause.expr.ty_subst(ty_subst);
+            let expr = clause.expr.ty_subst(&ty_subst);
             Clause {
                 id,
                 expr: expr,
