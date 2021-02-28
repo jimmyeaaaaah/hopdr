@@ -136,7 +136,7 @@ impl Goal {
 pub struct Clause {
     pub body: Goal,
     pub head: Variable,
-    pub args: Vec<Variable>, // Vec<Ident> ??
+    pub args: Vec<Ident>, // Vec<Ident> ??
 }
 
 impl fmt::Display for Clause {
@@ -156,7 +156,7 @@ pub struct Problem {
 }
 
 impl Clause {
-    pub fn new(body: Goal, head: Variable, args: Vec<Variable>) -> Clause {
+    pub fn new(body: Goal, head: Variable, args: Vec<Ident>) -> Clause {
         Clause { body, head, args }
     }
 }

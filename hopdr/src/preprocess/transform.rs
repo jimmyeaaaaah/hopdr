@@ -1,9 +1,9 @@
 use std::{mem::uninitialized, unimplemented};
 
-use super::hes::{ValidityChecking, VariableS};
+use super::hes::{ValidityChecking};
 use crate::formula;
 use crate::formula::hes;
-use crate::formula::{Type as SimpleType};
+use crate::formula::{Fv, Type as SimpleType, Variable, Ident, Subst};
 
 type In = ValidityChecking<formula::Ident, SimpleType>;
 type Out = hes::Problem;
@@ -49,8 +49,33 @@ impl EitherExpr {
                 (a, Some((v, c)))
             },
             EitherExpr::Constraint(c) => {
-                //let fvs = c.fv();
-                unimplemented!()
+                let fvs = c.fv();
+                let mut args = Vec::new();
+                // generate fresh names for alpha-renaming
+                let mut body_c = c;
+                for fv in fvs.iter() {
+                    let id = Ident::fresh();
+                    body_c = body_c.rename_variable(fv, &id);
+                    args.push(id);
+                }
+                // these fvs must have type int.
+                let ti = SimpleType::mk_type_int();
+                let mut ret_t = SimpleType::mk_type_prop();
+                for _ in args.iter() {
+                    ret_t = SimpleType::mk_type_arrow(ti.clone(), ret_t);
+                }
+                let head_id = Ident::fresh();
+                let head = Variable::mk(head_id.clone(), ret_t);
+                let body = hes::Goal::mk_constr(body_c);
+                let clause = hes::Clause::new(body, head, args);
+                clauses.push(clause);
+
+                let mut atom = hes::Atom::mk_var(head_id);
+                for fv in fvs {
+                    let v = hes::Atom::mk_var(fv);
+                    atom = hes::Atom::mk_app(atom, v);
+                }
+                (atom, None)
             }
             _ => panic!("program error")
         }

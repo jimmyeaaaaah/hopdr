@@ -150,8 +150,12 @@ pub trait Conjunctive {
     fn mk_conj(x: Self, y: Self) -> Self;
 }
 
-pub trait Subst {
+pub trait Subst : Sized {
     fn subst(&self, x: &Ident, v: &Op) -> Self;
+    fn rename_variable(&self, x: &Ident, y: &Ident) -> Self {
+        let op = Op::mk_var(y.clone());
+        self.subst(x, &op)
+    }
 }
 
 pub trait Fv {
