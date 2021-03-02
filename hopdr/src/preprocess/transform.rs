@@ -36,17 +36,18 @@ impl EitherExpr {
             _ => panic!("failed to unwrap const")
         }
     }
-    fn parse_atom(self, clauses: &mut Vec<OutClause>) 
-        -> (formula::hes::Atom, Option<(formula::Variable, formula::Constraint)>) {
+    fn parse_atom(self, clauses: &mut Vec<OutClause>, constraints: &mut Vec<(formula::Variable, formula::Constraint)>) 
+        -> formula::hes::Atom {
         match self {
-            EitherExpr::Const(c) => (formula::hes::Atom::mk_const(c), None),
-            EitherExpr::Atom(a) => (a, None),
+            EitherExpr::Const(c) => formula::hes::Atom::mk_const(c),
+            EitherExpr::Atom(a) => a,
             EitherExpr::Op(o) => {
                 let ty = SimpleType::mk_type_int();
                 let v = formula::Variable::fresh( ty );
                 let a = formula::hes::Atom::mk_var(v.id);
                 let c = formula::Constraint::variable_guard(v.id, o);
-                (a, Some((v, c)))
+                constraints.push((v, c));
+                a
             },
             EitherExpr::Constraint(c) => {
                 let fvs = c.fv();
@@ -75,7 +76,7 @@ impl EitherExpr {
                     let v = hes::Atom::mk_var(fv);
                     atom = hes::Atom::mk_app(atom, v);
                 }
-                (atom, None)
+                atom 
             }
             _ => panic!("program error")
         }
@@ -83,6 +84,7 @@ impl EitherExpr {
     fn goal_unwrap(self) -> formula::hes::Goal {
         match self {
             EitherExpr::Goal(g) => g,
+            EitherExpr::Atom(a) => formula::hes::Goal::mk_atom(a),
             _ => panic!("failed to unwrap EitherExpr")
         }
     }
@@ -109,7 +111,7 @@ impl EitherExpr {
         EitherExpr::Constraint(x)
     }
 }
-fn transform_expr(input: &InExpr, clauses: &mut Vec<OutClause>) -> EitherExpr {
+fn transform_expr(input: &InExpr, clauses: &mut Vec<OutClause>, constraints: &mut Vec<(formula::Variable, formula::Constraint)>) -> EitherExpr {
     use super::hes::ExprKind::*;
     use formula::hes::{Goal, Atom, Const};
     match input.kind() {
@@ -117,26 +119,36 @@ fn transform_expr(input: &InExpr, clauses: &mut Vec<OutClause>) -> EitherExpr {
             EitherExpr::Atom(Atom::mk_var(x.clone()))
         },
         App(e1, e2) => {
-            unimplemented!()
-            //let e1 = transform_expr(e1, clauses).atom_unwrap();
-            //let e2 = transform_expr(e2, clauses).atom_unwrap();
-            //EitherExpr::mk_atom(formula::hes::Atom::mk_app(e1, e2))
+            let e1 = transform_expr(e1, clauses, constraints).parse_atom(clauses, constraints);
+            let e2 = transform_expr(e2, clauses, constraints).parse_atom(clauses, constraints);
+            EitherExpr::mk_atom(formula::hes::Atom::mk_app(e1, e2))
         },
         Num(x) => EitherExpr::mk_const(Const::mk_int(*x)),
         True => EitherExpr::mk_const(Const::mk_bool(true)),
         False => EitherExpr::mk_const(Const::mk_bool(false)),
         Op(x, y, z) => {
-            let e1 = transform_expr(y, clauses).op_unwrap();
-            let e2 = transform_expr(z, clauses).op_unwrap();
+            let e1 = transform_expr(y, clauses, constraints).op_unwrap();
+            let e2 = transform_expr(z, clauses, constraints).op_unwrap();
             EitherExpr::mk_op(formula::Op::mk_bin_op(x.clone(), e1, e2))
+        },
+        Pred(p, x, y) => {
+            let x = transform_expr(x, clauses, constraints).op_unwrap();
+            let y = transform_expr(y, clauses, constraints).op_unwrap();
+            EitherExpr::mk_constraint(formula::Constraint::mk_pred(p.clone(), vec![x, y]))
+        },
+        And(x, y) => {
+            let x = transform_expr(x, clauses, constraints).goal_unwrap();
+            let y = transform_expr(y, clauses, constraints).goal_unwrap();
+            EitherExpr::mk_goal(Goal::mk_conj(x, y))
+        },
+        Or(x, y) => {
+            let x = transform_expr(x, clauses, constraints).goal_unwrap();
+            let y = transform_expr(y, clauses, constraints).goal_unwrap();
+            EitherExpr::mk_goal(Goal::mk_disj(x, y))
+        },
+        Univ(x, y) => {
+            let y = transform_expr(y, clauses, constraints).goal_unwrap();
+            EitherExpr::mk_goal(Goal::mk_univ(x.clone().into(), y))
         }
-        _ => unimplemented!()
-        //True => {}
-        //False => {}
-        //Op(_, _, _) => {}
-        //Pred(_, _, _) => {}
-        //And(_, _) => {}
-        //Or(_, _) => {}
-        //Univ(_, _) => {}
     }
 } 

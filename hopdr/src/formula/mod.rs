@@ -307,6 +307,7 @@ pub struct VariableS {
 }
 pub type Variable = P<VariableS>;
 
+
 impl fmt::Display for Variable {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}: {}", self.id, self.ty)

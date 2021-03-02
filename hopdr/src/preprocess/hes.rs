@@ -7,6 +7,7 @@ use std::{collections::HashMap, error::Error, fmt, mem::uninitialized, unimpleme
 use super::alpha::alpha_renaming;
 use super::transform::transform;
 use super::typing::typing;
+use crate::formula;
 use crate::formula::hes;
 use crate::formula::{OpKind, PredKind, Type as SimpleType};
 use crate::parse;
@@ -89,8 +90,13 @@ impl<Id: fmt::Display, Ty: fmt::Display> fmt::Display for VariableS<Id, Ty> {
         write!(f, "{}: {}", self.id, self.ty)
     }
 }
-
 type Variable = VariableS<Ident, SimpleType>;
+
+impl From<VariableS<formula::Ident, SimpleType>> for formula::Variable {
+    fn from(v: VariableS<formula::Ident, SimpleType>) -> formula::Variable {
+        formula::Variable::mk(v.id, v.ty)
+    }
+}
 
 #[derive(Debug)]
 pub struct Clause<Id, Ty> {
