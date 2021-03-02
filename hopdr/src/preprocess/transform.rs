@@ -113,6 +113,8 @@ impl EitherExpr {
 }
 fn transform_expr(input: &InExpr, clauses: &mut Vec<OutClause>, constraints: &mut Vec<(formula::Variable, formula::Constraint)>) -> EitherExpr {
     use super::hes::ExprKind::*;
+    use formula;
+    use formula::Top;
     use formula::hes::{Goal, Atom, Const};
     match input.kind() {
         Var(x) => {
@@ -124,8 +126,8 @@ fn transform_expr(input: &InExpr, clauses: &mut Vec<OutClause>, constraints: &mu
             EitherExpr::mk_atom(formula::hes::Atom::mk_app(e1, e2))
         },
         Num(x) => EitherExpr::mk_const(Const::mk_int(*x)),
-        True => EitherExpr::mk_const(Const::mk_bool(true)),
-        False => EitherExpr::mk_const(Const::mk_bool(false)),
+        True => EitherExpr::mk_constraint(formula::Constraint::mk_true()),
+        False => EitherExpr::mk_constraint(formula::Constraint::mk_false()),
         Op(x, y, z) => {
             let e1 = transform_expr(y, clauses, constraints).op_unwrap();
             let e2 = transform_expr(z, clauses, constraints).op_unwrap();
