@@ -98,6 +98,12 @@ impl From<VariableS<formula::Ident, SimpleType>> for formula::Variable {
     }
 }
 
+impl <Id, Ty>VariableS<Id, Ty> {
+    pub fn new(id: Id, ty: Ty) -> VariableS<Id, Ty> {
+        VariableS { id, ty }
+    }
+}
+
 #[derive(Debug)]
 pub struct Clause<Id, Ty> {
     pub id: VariableS<Id, Ty>,

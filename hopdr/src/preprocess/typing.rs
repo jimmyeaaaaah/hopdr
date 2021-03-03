@@ -12,11 +12,6 @@ type Clause<Ty> = ClauseS<parse::Ident, Ty>;
 type ExprTmp = Expr<parse::Ident, TmpType>;
 type ExprSimpleType = Expr<parse::Ident, SimpleType>;
 
-impl VariableS<parse::Ident, TmpType> {
-    fn new(id: parse::Ident, ty: TmpType) -> VariableS<parse::Ident, TmpType> {
-        VariableS { id, ty }
-    }
-}
 #[derive(PartialEq, Eq, Hash, Clone, Debug)]
 struct TypeVariable {
     id: u64,
@@ -186,8 +181,44 @@ impl ExprTmp {
             }
         }
     }
-    fn ty_subst(&self, subst: &TySubst) -> ExprSimpleType {
-        unimplemented!()
+    fn ty_subst(self, subst: &TySubst) -> ExprSimpleType {
+        match self.into() {
+            ExprKind::Var(i) => ExprSimpleType::mk_var(i),
+            ExprKind::Num(v) => ExprSimpleType::mk_num(v),
+            ExprKind::True => ExprSimpleType::mk_true(),
+            ExprKind::False => ExprSimpleType::mk_false(),
+            ExprKind::Op(o, x, y) => {
+                let x = x.ty_subst(subst);
+                let y = y.ty_subst(subst);
+                ExprSimpleType::mk_op(o, x, y)
+            },
+            ExprKind::Pred(p, x, y) => {
+                let x = x.ty_subst(subst);
+                let y = y.ty_subst(subst);
+                ExprSimpleType::mk_pred(p, x, y)
+            }
+            ExprKind::App(x, y) => {
+                let x = x.ty_subst(subst);
+                let y = y.ty_subst(subst);
+                ExprSimpleType::mk_app(x, y)
+            }
+            ExprKind::And(x, y) => {
+                let x = x.ty_subst(subst);
+                let y = y.ty_subst(subst);
+                ExprSimpleType::mk_and(x, y)
+            }
+            ExprKind::Or(x, y) => {
+                let x = x.ty_subst(subst);
+                let y = y.ty_subst(subst);
+                ExprSimpleType::mk_or(x, y)
+            }
+            ExprKind::Univ(v, x) => {
+                let x = x.ty_subst(subst);
+                let ty = subst.subst(v.ty);
+                let v = VariableS::new(v.id, ty);
+                ExprSimpleType::mk_univ(v, x)
+            }
+        }
     }
 }
 impl Clause<TmpType> {
