@@ -101,7 +101,7 @@ impl From<VariableS<formula::Ident, SimpleType>> for formula::Variable {
 #[derive(Debug)]
 pub struct Clause<Id, Ty> {
     pub id: VariableS<Id, Ty>,
-    pub args: Vec<Ident>,
+    pub args: Vec<Id>,
     pub expr: Expr<Id, Ty>,
 }
 
