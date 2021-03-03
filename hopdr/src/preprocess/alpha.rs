@@ -51,10 +51,11 @@ fn alpha_rename_expr(env: Environment, expr: &Expr<parse::Ident, SimpleType>) ->
 }
 
 fn alpha_rename_clause<'a>(mut env: Environment, c: &'a InClause) -> OutClause {
-    let args = Vec::new();
+    let mut args = Vec::new();
     for arg in c.args.iter() {
         let k = formula::Ident::fresh();
         env = env.insert(arg.clone(), k);
+        args.push(k);
     }
 
     let id = env.get(&c.id.id).unwrap().clone();
