@@ -1,6 +1,6 @@
-use std::{collections::HashMap, unimplemented};
 
-use rpds::{HashTrieMap, Stack};
+
+use rpds::{HashTrieMap};
 
 use super::hes::{ExprKind, Expr, Clause, ValidityChecking, VariableS};
 use crate::formula;

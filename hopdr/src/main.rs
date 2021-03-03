@@ -27,6 +27,14 @@ fn main() {
     )
     .unwrap();
 
+    match &f {
+        parse::Problem::NuHFLZValidityChecking(vc) => {
+            for fml in vc.formulas.iter() {
+                println!("{}", fml);
+            }
+        }
+    }
+
     let vc = preprocess::hes::preprocess(f);
     for fml in vc.clauses.iter() {
         println!("{}", fml);

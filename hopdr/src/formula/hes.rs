@@ -86,14 +86,20 @@ impl fmt::Display for Goal {
         match self.kind() {
             Atom(a) => write!(f, "{}", a),
             Constr(c) => write!(f, "{}", c),
-            Conj(x, y) => write!(f, "{} & {}", x, y),
-            Disj(x, y) => write!(f, "{} | {}", x, y),
+            Conj(x, y) => write!(f, "({} & {})", x, y),
+            Disj(x, y) => write!(f, "({} | {})", x, y),
             Univ(x, y) => write!(f, "∀{}.{}", x, y),
         }
     }
 }
 
 impl Goal {
+    pub fn is_true(&self) -> bool {
+        match self.kind() {
+            GoalKind::Constr(c) if c.is_true() => true,
+            _ => false
+        }
+    }
     pub fn mk_atom(x: Atom) -> Goal {
         Goal::new(GoalKind::Atom(x))
     }
@@ -101,10 +107,22 @@ impl Goal {
         Goal::new(GoalKind::Constr(x))
     }
     pub fn mk_conj(lhs: Goal, rhs: Goal) -> Goal {
-        Goal::new(GoalKind::Conj(lhs, rhs))
+        if lhs.is_true() {
+            rhs
+        } else if rhs.is_true() {
+            lhs
+        } else {
+            Goal::new(GoalKind::Conj(lhs, rhs))
+        }
     }
     pub fn mk_disj(lhs: Goal, rhs: Goal) -> Goal {
-        Goal::new(GoalKind::Disj(lhs, rhs))
+        if lhs.is_true() {
+            lhs
+        } else if rhs.is_true() {
+            rhs
+        } else {
+            Goal::new(GoalKind::Disj(lhs, rhs))
+        }
     }
     pub fn mk_univ(x: Variable, g: Goal) -> Goal {
         Goal::new(GoalKind::Univ(x, g))

@@ -1,4 +1,4 @@
-use std::{mem::uninitialized, unimplemented};
+
 
 use super::hes::{ValidityChecking};
 use crate::formula;
@@ -25,7 +25,9 @@ type OutClause = formula::hes::Clause;
 type InExpr = super::hes::Expr<formula::Ident, SimpleType>;
 type OutExpr = formula::hes::Goal;
 
+#[derive(Debug)]
 enum EitherExpr {
+    Var(formula::Ident),
     Const(formula::hes::Const),
     Op(formula::Op),
     Atom(formula::hes::Atom),
@@ -44,6 +46,7 @@ impl EitherExpr {
         -> formula::hes::Atom {
         match self {
             EitherExpr::Const(c) => formula::hes::Atom::mk_const(c),
+            EitherExpr::Var(v) => formula::hes::Atom::mk_var(v),
             EitherExpr::Atom(a) => a,
             EitherExpr::Op(o) => {
                 let ty = SimpleType::mk_type_int();
@@ -98,7 +101,8 @@ impl EitherExpr {
         match self {
             EitherExpr::Op(o) => o,
             EitherExpr::Const(c) if c.is_int() => formula::Op::mk_const(c.int()),
-            _ => panic!("failed to unwrapEitherExpr")
+            EitherExpr::Var(v) => formula::Op::mk_var(v),
+            _ => panic!("failed to unwrapEitherExpr: {:?}", self)
         }
     }
     fn mk_const(c: formula::hes::Const) -> EitherExpr {
@@ -124,7 +128,7 @@ fn transform_expr_inner(input: &InExpr, clauses: &mut Vec<OutClause>, constraint
     use formula::hes::{Goal, Atom, Const};
     match input.kind() {
         Var(x) => {
-            EitherExpr::Atom(Atom::mk_var(x.clone()))
+            EitherExpr::Var(x.clone())
         },
         App(e1, e2) => {
             let e1 = transform_expr_inner(e1, clauses, constraints).parse_atom(clauses, constraints);

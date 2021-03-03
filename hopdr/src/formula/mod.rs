@@ -189,6 +189,9 @@ impl fmt::Display for Constraint {
             True => write!(f, "true"),
             False => write!(f, "false"),
             Pred(p, ops) => {
+                if ops.len() == 2 {
+                    return write!(f, "{} {} {}", ops[0], p, ops[1]);
+                }
                 write!(f, "{}(", p)?;
                 if ops.len() > 0 {
                     write!(f, "{}", ops[0])?;
@@ -198,8 +201,8 @@ impl fmt::Display for Constraint {
                 }
                 write!(f, ")")
             }
-            Conj(c1, c2) => write!(f, "{} & {}", c1, c2),
-            Disj(c1, c2) => write!(f, "{} | {}", c1, c2),
+            Conj(c1, c2) => write!(f, "({}) & ({})", c1, c2),
+            Disj(c1, c2) => write!(f, "({}) | ({})", c1, c2),
             Univ(x, c) => write!(f, "∀{}.{}", x, c),
         }
     }
@@ -213,7 +216,13 @@ impl Top for Constraint {
 
 impl Conjunctive for Constraint {
     fn mk_conj(x: Constraint, y: Constraint) -> Constraint {
-        Constraint::new(ConstraintExpr::Conj(x, y))
+        if x.is_true() {
+            y
+        } else if y.is_true() {
+            x
+        } else {
+            Constraint::new(ConstraintExpr::Conj(x, y))
+        }
     }
 }
 
@@ -238,6 +247,12 @@ impl Subst for Constraint {
 }
 
 impl Constraint {
+    pub fn is_true(&self) -> bool {
+        match self.kind() {
+            ConstraintExpr::True => true,
+            _ => false,
+        }
+    }
     pub fn mk_false() -> Constraint {
         Constraint::new(ConstraintExpr::False)
     }
@@ -247,7 +262,13 @@ impl Constraint {
     }
 
     pub fn mk_disj(x: Constraint, y: Constraint) -> Constraint {
-        Constraint::new(ConstraintExpr::Disj(x, y))
+        if x.is_true() {
+            x
+        } else if y.is_true() {
+            y
+        } else {
+            Constraint::new(ConstraintExpr::Disj(x, y))
+        }
     }
 
     pub fn mk_pred(k: PredKind, v: Vec<Op>) -> Constraint {
@@ -289,7 +310,7 @@ pub struct Ident {
 
 impl fmt::Display for Ident {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.id)
+        write!(f, "x_{}", self.id)
     }
 }
 
@@ -310,7 +331,7 @@ pub type Variable = P<VariableS>;
 
 impl fmt::Display for Variable {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: {}", self.id, self.ty)
+        write!(f, "x_{}: {}", self.id, self.ty)
     }
 }
 
