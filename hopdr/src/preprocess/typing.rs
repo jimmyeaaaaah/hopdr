@@ -4,7 +4,7 @@ use rpds::HashTrieMap;
 use std::{collections::HashMap, error::Error, fmt, mem::uninitialized, unimplemented};
 
 use super::hes::{Clause as ClauseS, Expr, ExprKind, ValidityChecking, VariableS};
-use crate::formula::{Type as SimpleType};
+use crate::{formula::{Type as SimpleType}, parse::Ident};
 use crate::parse;
 use crate::util::{global_counter, P};
 
@@ -99,7 +99,7 @@ impl TmpType {
 impl VariableS<parse::Ident, TmpType> {
     fn from_ident(id: String) -> VariableS<parse::Ident, TmpType> {
         let t = TmpType::fresh_type_variable();
-        VariableS::new(id, t)
+        VariableS::new(Ident::new(id), t)
     }
 }
 
@@ -121,7 +121,7 @@ impl TmpTypeCache {
 impl ExprTmp {
     pub fn from(e: parse::Expr) -> ExprTmp {
         match e.into() {
-            parse::ExprKind::Var(v) => Expr::mk_var(v),
+            parse::ExprKind::Var(v) => Expr::mk_var(Ident::new(v)),
             parse::ExprKind::Num(x) => Expr::mk_num(x),
             parse::ExprKind::True => Expr::mk_true(),
             parse::ExprKind::False => Expr::mk_false(),
@@ -227,7 +227,7 @@ impl Clause<TmpType> {
         let expr = ExprTmp::from(vc.expr);
         let c = Clause {
             id,
-            args: vc.args,
+            args: vc.args.into_iter().map(|x| Ident::new(x)).collect(),
             expr,
         };
         c

@@ -3,5 +3,6 @@ mod parse;
 
 pub use hes::*;
 pub use parse::parse;
+use crate::util::P;
 
-pub type Ident = String;
+pub type Ident = P<String>;

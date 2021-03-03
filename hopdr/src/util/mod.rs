@@ -2,7 +2,7 @@ use std::ops::Deref;
 use std::{fmt, rc::Rc};
 
 // readonly pointer
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Hash)]
 pub struct P<T: ?Sized> {
     ptr: Rc<T>,
 }

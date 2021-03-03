@@ -7,6 +7,7 @@ use std::{collections::HashMap, error::Error, fmt, mem::uninitialized, unimpleme
 use super::alpha::alpha_renaming;
 use super::transform::transform;
 use super::typing::typing;
+use super::Context;
 use crate::formula;
 use crate::formula::hes;
 use crate::formula::{OpKind, PredKind, Type as SimpleType};
@@ -127,12 +128,12 @@ impl<Id: fmt::Display, Ty: fmt::Display> fmt::Display for Clause<Id, Ty> {
     }
 }
 
-pub fn preprocess(vc: parse::Problem) -> hes::Problem {
+pub fn preprocess<'a>(vc: parse::Problem) -> (hes::Problem, Context) {
     match vc {
         parse::Problem::NuHFLZValidityChecking(vc) => {
             let problem = typing(vc.formulas, vc.toplevel);
-            let problem = alpha_renaming(problem);
-            transform(problem)
+            let (problem, ctx) = alpha_renaming(problem);
+            (transform(problem), ctx)
         }
     }
 }

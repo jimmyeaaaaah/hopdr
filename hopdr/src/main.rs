@@ -35,7 +35,7 @@ fn main() {
         }
     }
 
-    let vc = preprocess::hes::preprocess(f);
+    let (vc, ctx) = preprocess::hes::preprocess(f);
     for fml in vc.clauses.iter() {
         println!("{}", fml);
     }
