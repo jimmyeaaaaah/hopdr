@@ -32,6 +32,17 @@ impl fmt::Display for PredKind {
         )
     }
 }
+
+impl PredKind {
+    pub fn negate(&self) -> PredKind {
+        match self {
+            PredKind::Eq => PredKind::Neq,
+            PredKind::Neq => PredKind::Eq,
+            PredKind::Leq => PredKind::Gt,
+            PredKind::Gt => PredKind::Leq,
+        }
+    }
+}
 #[derive(Clone, Copy, Debug)]
 pub enum OpKind {
     Add,
@@ -271,6 +282,32 @@ impl Constraint {
         }
     }
 
+    // negation sometimes cannot be performed (e.g. \not x)
+    pub fn negate(self) -> Option<Constraint> {
+        match self.kind() {
+            ConstraintExpr::False => Some(Constraint::mk_true()),
+            ConstraintExpr::True => Some(Constraint::mk_false()),
+            ConstraintExpr::Pred(p, v) => Some(Constraint::mk_pred(p.negate(), v.clone())),
+            ConstraintExpr::Conj(c1, c2) => {
+                match (c1.clone().negate(), c2.clone().negate()) {
+                    (Some(c1), Some(c2)) => Some(Constraint::mk_disj(c1, c2)),
+                    _ => None,
+                }
+            },
+            ConstraintExpr::Disj(c1, c2) => {
+                match (c1.clone().negate(), c2.clone().negate()) {
+                    (Some(c1), Some(c2)) => Some(Constraint::mk_conj(c1, c2)),
+                    _ => None,
+                }
+            },
+            ConstraintExpr::Univ(_, _) => None
+        }
+    }
+
+    pub fn mk_arrow(x: Constraint, y: Constraint) -> Option<Constraint> {
+        x.negate().map(|x| Constraint::mk_disj(x, y))
+    }
+
     pub fn mk_pred(k: PredKind, v: Vec<Op>) -> Constraint {
         Constraint::new(ConstraintExpr::Pred(k, v))
     }
@@ -279,6 +316,7 @@ impl Constraint {
         let v = Op::mk_var(v);
         Constraint::mk_pred(PredKind::Eq, vec![v, op])
     }
+
 }
 impl Fv for Constraint {
     type Id = Ident;

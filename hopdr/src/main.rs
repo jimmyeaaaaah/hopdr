@@ -7,7 +7,7 @@ pub mod engine;
 pub mod formula;
 pub mod parse;
 pub mod preprocess;
-pub mod smt;
+pub mod solver;
 pub mod util;
 
 use engine::infer;

@@ -11,6 +11,7 @@ use crate::formula::{
     Conjunctive, Constraint, Ident, IntegerEnvironment, Op, Subst, Top, Type as SType,
     TypeKind as STypeKind, P,
 };
+use crate::solver::smt;
 
 #[derive(Debug)]
 pub enum TauKind<C> {
@@ -218,7 +219,7 @@ impl Environment {
     }
 
     pub fn iadd(&mut self, v: Ident) {
-        self.imap = self.imap.add(v)
+        self.imap = self.imap.clone().add(v);
     }
 
     pub fn tadd(&mut self, v: Ident, t: Ty) {
@@ -309,7 +310,7 @@ fn type_check_goal(goal: &Goal, tenv: &Environment) -> Constraint {
     }
 }
 
-pub fn type_check_clause(clause: &Clause, rty: Ty, env: &mut Environment) {
+pub fn type_check_clause(clause: &Clause, rty: Ty, env: &mut Environment) -> bool {
     let mut t = rty;
     for arg in clause.args.iter() {
         match t.kind() {
@@ -329,5 +330,10 @@ pub fn type_check_clause(clause: &Clause, rty: Ty, env: &mut Environment) {
         _ => panic!("program error"),
     };
     let c2 = type_check_goal(&clause.body, env);
-    unimplemented!()
+
+    let c = Constraint::mk_arrow(c2, c.clone()).unwrap();
+    match smt::smt_solve(&c) {
+        smt::SMTResult::Sat => true,
+        _ => false,
+    }
 }
