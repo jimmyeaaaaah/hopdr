@@ -1,6 +1,6 @@
 mod infer;
 mod pdr;
-mod rtype;
+pub mod rtype;
 
 pub use pdr::infer;
 

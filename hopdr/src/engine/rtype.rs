@@ -72,15 +72,15 @@ impl<C: Subst> Subst for Tau<C> {
 }
 
 impl<C: Subst> Tau<C> {
-    fn mk_prop_ty(c: C) -> Tau<C> {
+    pub fn mk_prop_ty(c: C) -> Tau<C> {
         Tau::new(TauKind::Proposition(c))
     }
 
-    fn mk_iarrow(id: Ident, t: Tau<C>) -> Tau<C> {
+    pub fn mk_iarrow(id: Ident, t: Tau<C>) -> Tau<C> {
         Tau::new(TauKind::IArrow(id, t))
     }
 
-    fn mk_arrow(t: Tau<C>, s: Tau<C>) -> Tau<C> {
+    pub fn mk_arrow(t: Tau<C>, s: Tau<C>) -> Tau<C> {
         Tau::new(TauKind::Arrow(t, s))
     }
 
@@ -217,12 +217,16 @@ impl Environment {
         }
     }
 
-    pub fn tadd(&mut self, v: Ident, t: TauKind<Constraint>) {
-        self.add_(v, Tau::new(t))
+    pub fn iadd(&mut self, v: Ident) {
+        self.imap = self.imap.add(v)
+    }
+
+    pub fn tadd(&mut self, v: Ident, t: Ty) {
+        self.add_(v, t);
     }
 
     pub fn add_top(&mut self, v: Ident, st: &SType) {
-        self.tadd(v, TauKind::new_top(st));
+        self.tadd(v, Ty::new(TauKind::new_top(st)));
     }
 
     pub fn texists(&self, v: &Ident) -> bool {
@@ -305,6 +309,25 @@ fn type_check_goal(goal: &Goal, tenv: &Environment) -> Constraint {
     }
 }
 
-fn type_check_clause(_clause: &Clause, _rty: Ty, _env: &Environment) {
+pub fn type_check_clause(clause: &Clause, rty: Ty, env: &mut Environment) {
+    let mut t = rty;
+    for arg in clause.args.iter() {
+        match t.kind() {
+            TauKind::Proposition(_) => {panic!("program error")}
+            TauKind::IArrow(x, s) => {
+                t = s.rename_variable(x, arg);
+                env.iadd(arg.clone());
+            }
+            TauKind::Arrow(x, y) => {
+                env.tadd(arg.clone(), x.clone());
+                t = y.clone();
+            }
+        }
+    }
+    let c = match t.kind() {
+        TauKind::Proposition(c) => c,
+        _ => panic!("program error"),
+    };
+    let c2 = type_check_goal(&clause.body, env);
     unimplemented!()
 }
