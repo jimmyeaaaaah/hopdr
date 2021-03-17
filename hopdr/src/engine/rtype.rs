@@ -3,6 +3,7 @@ use std::{
     ffi::FromBytesWithNulError,
     rc::Rc,
     unimplemented,
+    fmt,
 };
 
 use crate::formula::hes::{Atom, AtomKind, Clause, ConstKind, Goal, GoalKind};
@@ -23,6 +24,16 @@ pub enum TauKind<C> {
 pub type TyKind = TauKind<Constraint>;
 pub type Tau<C> = P<TauKind<C>>;
 pub type Ty = Tau<Constraint>;
+
+impl <C: fmt::Display> fmt::Display for Tau<C> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.kind() {
+            TauKind::Proposition(c) => write!(f, "bool[{}]", c),
+            TauKind::IArrow(i, t) => write!(f, "({}: int -> {})", i, t),
+            TauKind::Arrow(t1, t2) => write!(f, "({} -> {})", t1, t2)
+        }
+    }
+}
 
 impl Ty {
     fn clone_with_template(&self, env: IntegerEnvironment) -> Tau<pcsp::Atom> {
@@ -239,6 +250,7 @@ impl Environment {
     }
 
     pub fn tget<'a>(&'a self, v: &Ident) -> Option<&'a Vec<Ty>> {
+        println!("tget: {}", v);
         self.map.get(v)
     }
 }

@@ -54,6 +54,7 @@ fn main() {
         let t = Tau::mk_iarrow(m, Tau::mk_prop_ty(Constraint::mk_pred(PredKind::Leq, vec![Op::mk_var(n), Op::mk_var(m)])));
         let t = Tau::mk_arrow(t, Tau::mk_prop_ty(Constraint::mk_true()));
         let t = Tau::mk_iarrow(n, t);
+        println!("{}", &t);
         types.push(t);
 
         // K
@@ -61,6 +62,7 @@ fn main() {
         let m = Ident::fresh();
         let t = Tau::mk_iarrow(m, Tau::mk_prop_ty(Constraint::mk_pred(PredKind::Leq, vec![Op::mk_var(n), Op::mk_var(m)])));
         let t = Tau::mk_iarrow(n, t);
+        println!("{}", &t);
         types.push(t);
 
         // L
@@ -71,6 +73,7 @@ fn main() {
         let s = Tau::mk_iarrow(m, Tau::mk_prop_ty(Constraint::mk_pred(PredKind::Leq, vec![Op::mk_var(n), Op::mk_var(m)])));
         let t = Tau::mk_arrow(s, t);
         let t = Tau::mk_iarrow(n, t);
+        println!("{}", &t);
         types.push(t);
     }
 
