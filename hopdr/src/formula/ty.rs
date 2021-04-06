@@ -30,4 +30,16 @@ impl Type {
     pub fn mk_type_arrow(lhs: Type, rhs: Type) -> Type {
         Type::new(TypeKind::Arrow(lhs, rhs))
     }
+    pub fn is_int(&self) -> bool {
+        match self.kind() {
+            TypeKind::Integer => true,
+            _ => false,
+        }
+    }
+    pub fn is_prop(&self) -> bool {
+        match self.kind() {
+            TypeKind::Proposition => true,
+            _ => false,
+        }
+    }
 }

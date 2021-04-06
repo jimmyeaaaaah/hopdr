@@ -123,8 +123,8 @@ impl<C: Subst> Tau<C> {
     }
 }
 
-fn infer_greatest_type(environment: &Environment, arrow_type: Ty, arg_t: Ty) {
-    let mut v = Vec::new();
+fn infer_greatest_type(environment: &Environment, arrow_type: Ty, arg_t: Ty) -> Ty {
+    let mut constraints = Vec::new();
     let ret_t = match &*arrow_type {
         TauKind::Arrow(_, y) => y.clone_with_template(environment.imap.clone()),
         _ => panic!("program error"),
@@ -132,7 +132,18 @@ fn infer_greatest_type(environment: &Environment, arrow_type: Ty, arg_t: Ty) {
     //let ret_t= generate_template(environment, ret_st);
     let lhs: Tau<pcsp::Atom> = arrow_type.into();
     let rhs: Tau<pcsp::Atom> = Tau::mk_arrow(arg_t.into(), ret_t);
-    generate_constraint(&lhs, &rhs, &mut v);
+    generate_constraint(&lhs, &rhs, &mut constraints);
+
+    let mut result_t = rhs;
+    while constraints.len() > 0 {
+        for clause in constraints.iter() {
+            if !clause.head.contains_predicate() {
+                
+            } else if !clause.body.contains_predicate() {
+            }
+        }
+    }
+    unimplemented!()
 }
 
 fn generate_constraint_inner(
@@ -250,7 +261,7 @@ impl Environment {
     }
 
     pub fn tget<'a>(&'a self, v: &Ident) -> Option<&'a Vec<Ty>> {
-        println!("tget: {}", v);
+        debug!("tget: {}", v);
         self.map.get(v)
     }
 }
@@ -273,6 +284,7 @@ fn int_expr(atom: &Atom, env: &Environment) -> Option<Op> {
 }
 
 fn type_check_atom(atom: &Atom, env: &Environment) -> Vec<Tau<Constraint>> {
+    debug!("type_check_atom: {}", atom);
     use AtomKind::*;
     match atom.kind() {
         App(x, arg) => {
@@ -282,11 +294,11 @@ fn type_check_atom(atom: &Atom, env: &Environment) -> Vec<Tau<Constraint>> {
                 Some(op) => ts.into_iter().map(|t| t.app(&op)).collect(),
                 None => {
                     let ss = type_check_atom(arg, env);
-                    let result_ts = Vec::new();
+                    let mut result_ts = Vec::new();
                     for t in ts.iter() {
                         for s in ss.iter() {
-                            let _result_t = infer_greatest_type(env, t.clone(), s.clone());
-                            unimplemented!()
+                            let result_t = infer_greatest_type(env, t.clone(), s.clone());
+                            result_ts.push(result_t);
                         }
                     }
                     result_ts
@@ -298,7 +310,7 @@ fn type_check_atom(atom: &Atom, env: &Environment) -> Vec<Tau<Constraint>> {
     }
 }
 
-fn type_check_goal(goal: &Goal, tenv: &Environment) -> Constraint {
+fn type_check_goal(goal: &Goal, tenv: &mut Environment) -> Constraint {
     use GoalKind::*;
     let f = type_check_goal;
     match goal.kind() {
@@ -318,7 +330,14 @@ fn type_check_goal(goal: &Goal, tenv: &Environment) -> Constraint {
         Constr(c) => c.clone(),
         Conj(x, y) => Constraint::mk_conj(f(x, tenv), f(y, tenv)),
         Disj(x, y) => Constraint::mk_disj(f(x, tenv), f(y, tenv)),
-        Univ(v, x) => Constraint::mk_univ(v.clone(), f(x, tenv)),
+        Univ(v, x) => {
+            if v.ty.is_int() {
+                tenv.iadd(v.id);
+                Constraint::mk_univ(v.clone(), f(x, tenv))
+            } else {
+                unimplemented!()
+            }
+        },
     }
 }
 

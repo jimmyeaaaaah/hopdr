@@ -21,6 +21,28 @@ impl Atom {
         let args = args.iter().map(|a| Op::mk_var(a.clone())).collect();
         Atom::mk_pred(ident, args)
     }
+    pub fn contains_predicate(&self) -> bool {
+        match self.kind() {
+            AtomKind::True | AtomKind::Constraint(_) => false,
+            AtomKind::Predicate(_, _) => true,
+            AtomKind::Conj(c1, c2) => c1.contains_predicate() && c2.contains_predicate(),
+        }
+    }
+    pub fn negate(&self) -> Option<Constraint> {
+        match self.kind() {
+            AtomKind::True => Some(Constraint::mk_false()),
+            AtomKind::Constraint(c) => c.clone().negate(),
+            AtomKind::Conj(l, r) => {
+                let l = l.negate();
+                let r = r.negate();
+                match (l, r) {
+                    (_, None) | (None, _) => None,
+                    (Some(x), Some(y)) => Some(Constraint::mk_disj(x.clone(), y.clone())),
+                }
+            },
+            AtomKind::Predicate(_, _) => None,
+        }
+    }
 }
 
 impl Atom {
@@ -69,8 +91,8 @@ impl Subst for Atom {
 
 #[derive(Debug)]
 pub struct PCSP {
-    body: Atom,
-    head: Atom,
+    pub body: Atom,
+    pub head: Atom,
 }
 
 impl PCSP {
