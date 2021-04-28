@@ -138,7 +138,15 @@ fn infer_greatest_type(environment: &Environment, arrow_type: Ty, arg_t: Ty) -> 
     while constraints.len() > 0 {
         for clause in constraints.iter() {
             if !clause.head.contains_predicate() {
-                
+                let mut body = clause.body;
+                loop {
+                    match body.kind() {
+                        pcsp::AtomKind::True => {}
+                        pcsp::AtomKind::Constraint(_) => {}
+                        pcsp::AtomKind::Predicate(_, _) => {}
+                        pcsp::AtomKind::Conj(_, _) => {}
+                    }
+                }
             } else if !clause.body.contains_predicate() {
             }
         }

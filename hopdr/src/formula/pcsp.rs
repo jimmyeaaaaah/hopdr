@@ -28,6 +28,20 @@ impl Atom {
             AtomKind::Conj(c1, c2) => c1.contains_predicate() && c2.contains_predicate(),
         }
     }
+    pub fn extract_pred_and_constr(&self) -> Option<(Constraint, Ident)> {
+        match self.kind() {
+            AtomKind::True | AtomKind::Constraint(_) => None,
+            AtomKind::Predicate(i, _) => Some((Constraint::mk_false(), i.clone())),
+            AtomKind::Conj(x, y) 
+            | AtomKind::Conj(y, x) if x.contains_predicate() => 
+                y.negate().map(|c2| 
+                    x.extract_pred_and_constr().map(
+                        |(c, i)| (Constraint::mk_disj(c, c2), i)
+                    )
+                ).flatten(),
+            _ => None,
+        }
+    }
     pub fn negate(&self) -> Option<Constraint> {
         match self.kind() {
             AtomKind::True => Some(Constraint::mk_false()),
