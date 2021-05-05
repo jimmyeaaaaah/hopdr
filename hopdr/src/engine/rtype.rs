@@ -11,6 +11,7 @@ use crate::formula::pcsp;
 use crate::formula::{
     Conjunctive, Constraint, Ident, IntegerEnvironment, Op, Subst, Top, Type as SType,
     TypeKind as STypeKind, P,
+    QuantifierKind
 };
 use crate::solver::smt;
 
@@ -24,6 +25,8 @@ pub enum TauKind<C> {
 pub type TyKind = TauKind<Constraint>;
 pub type Tau<C> = P<TauKind<C>>;
 pub type Ty = Tau<Constraint>;
+
+#[derive(Debug)]
 pub enum Error {
     TypeError,
     SMTTimeout,
@@ -376,7 +379,7 @@ fn type_check_goal(goal: &Goal, tenv: &mut Environment) -> Result<Constraint, Er
         Univ(v, x) => {
             if v.ty.is_int() {
                 tenv.iadd(v.id);
-                Constraint::mk_univ(v.clone(), f(x, tenv)?)
+                Constraint::mk_quantifier(QuantifierKind::Universal, v.clone(), f(x, tenv)?)
             } else {
                 unimplemented!()
             }

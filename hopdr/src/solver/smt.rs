@@ -2,7 +2,7 @@ use tempfile::{tempfile, NamedTempFile};
 
 use std::{fs::File, time::Duration};
 
-use crate::formula::{Constraint, ConstraintExpr, Op, OpExpr, OpKind, PredKind, Ident, Fv};
+use crate::formula::{Constraint, ConstraintExpr, Fv, Ident, Op, OpExpr, OpKind, PredKind, QuantifierKind};
 use super::util;
 
 pub enum SMTResult {
@@ -54,6 +54,13 @@ fn op_to_smt2(op: &Op) -> String {
     }
 }
 
+fn quantifier_to_smt2(q: &QuantifierKind) -> &'static str {
+    match q {
+        QuantifierKind::Existential => "exists",
+        QuantifierKind::Universal => "forall",
+    }
+}
+
 fn constraint_to_smt2_inner(c: &Constraint, style: SMT2Style) -> String {
     let f = constraint_to_smt2_inner;
     match c.kind() {
@@ -67,8 +74,8 @@ fn constraint_to_smt2_inner(c: &Constraint, style: SMT2Style) -> String {
             format!("(and {} {})", f(c1, style), f(c2, style)),
         ConstraintExpr::Disj(c1, c2) => 
             format!("(or {} {})", f(c1, style), f(c2, style)),
-        ConstraintExpr::Univ(x, c) => 
-            format!("(forall (({} Int)) {})", ident_2_smt2(&x.id), f(c, style))
+        ConstraintExpr::Quantifier(q, x, c) => 
+            format!("({} (({} Int)) {})", quantifier_to_smt2(q), ident_2_smt2(&x.id), f(c, style))
     }
 }
 

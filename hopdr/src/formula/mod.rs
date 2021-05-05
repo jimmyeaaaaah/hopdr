@@ -69,6 +69,34 @@ impl fmt::Display for OpKind {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+pub enum QuantifierKind {
+    Universal,
+    Existential,
+}
+
+impl fmt::Display for QuantifierKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                QuantifierKind::Universal => "∀",
+                QuantifierKind::Existential => "∃",
+            }
+        )
+    }
+}
+
+impl QuantifierKind {
+    fn negate(&self) -> QuantifierKind {
+        match self {
+            QuantifierKind::Existential => QuantifierKind::Universal,
+            QuantifierKind::Universal => QuantifierKind::Existential,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum OpExpr {
     Op(OpKind, Op, Op),
@@ -189,7 +217,7 @@ pub enum ConstraintExpr {
     Pred(PredKind, Vec<Op>),
     Conj(Constraint, Constraint),
     Disj(Constraint, Constraint),
-    Univ(Variable, Constraint),
+    Quantifier(QuantifierKind, Variable, Constraint),
 }
 
 pub type Constraint = P<ConstraintExpr>;
@@ -215,7 +243,7 @@ impl fmt::Display for Constraint {
             }
             Conj(c1, c2) => write!(f, "({}) & ({})", c1, c2),
             Disj(c1, c2) => write!(f, "({}) | ({})", c1, c2),
-            Univ(x, c) => write!(f, "∀{}.{}", x, c),
+            Quantifier(q, x, c) => write!(f, "{}{}.{}", q, x, c),
         }
     }
 }
@@ -253,7 +281,8 @@ impl Subst for Constraint {
             }
             Conj(r, l) => Constraint::mk_conj(r.subst(x, v), l.subst(x, v)),
             Disj(r, l) => Constraint::mk_disj(r.subst(x, v), l.subst(x, v)),
-            Univ(var, cstr) => Constraint::mk_univ(var.clone(), cstr.subst(x, v)),
+            // assumption: vars are different each other ?
+            Quantifier(q, var, cstr) => Constraint::mk_quantifier(*q, var.clone(), cstr.subst(x, v)),
         }
     }
 }
@@ -269,8 +298,8 @@ impl Constraint {
         Constraint::new(ConstraintExpr::False)
     }
 
-    pub fn mk_univ(v: Variable, c: Constraint) -> Constraint {
-        Constraint::new(ConstraintExpr::Univ(v, c))
+    pub fn mk_quantifier(q: QuantifierKind, v: Variable, c: Constraint) -> Constraint {
+        Constraint::new(ConstraintExpr::Quantifier(q, v, c))
     }
 
     pub fn mk_disj(x: Constraint, y: Constraint) -> Constraint {
@@ -301,7 +330,10 @@ impl Constraint {
                     _ => None,
                 }
             },
-            ConstraintExpr::Univ(_, _) => None
+            ConstraintExpr::Quantifier(q, v, c) => {
+                let q = q.negate();
+                c.clone().negate().map(|c| Constraint::mk_quantifier(q, v.clone(), c))
+            }
         }
     }
 
@@ -335,8 +367,9 @@ impl Fv for Constraint {
                 x.fv_with_vec(fvs);
                 y.fv_with_vec(fvs);
             }
-            ConstraintExpr::Univ(_, x) => {
+            ConstraintExpr::Quantifier(_, v, x) => {
                 x.fv_with_vec(fvs);
+                fvs.remove(&v.id);
             }
         }
     }

@@ -84,7 +84,7 @@ fn main() {
     }
 
     for (fml, ty) in vc.clauses.iter().zip(types.iter()) {
-        engine::rtype::type_check_clause(fml, ty.clone(), &mut env);
+        println!("{:?}", engine::rtype::type_check_clause(fml, ty.clone(), &mut env));
     }
 
     //println!("{}", infer(vc));
