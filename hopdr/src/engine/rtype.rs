@@ -24,6 +24,11 @@ pub enum TauKind<C> {
 pub type TyKind = TauKind<Constraint>;
 pub type Tau<C> = P<TauKind<C>>;
 pub type Ty = Tau<Constraint>;
+pub enum Error {
+    TypeError,
+    SMTTimeout,
+    SMTUnknown
+}
 
 impl <C: fmt::Display> fmt::Display for Tau<C> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -123,35 +128,65 @@ impl<C: Subst> Tau<C> {
     }
 }
 
-fn infer_greatest_type(environment: &Environment, arrow_type: Ty, arg_t: Ty) -> Ty {
-    let mut constraints = Vec::new();
-    let ret_t = match &*arrow_type {
-        TauKind::Arrow(_, y) => y.clone_with_template(environment.imap.clone()),
-        _ => panic!("program error"),
-    };
-    //let ret_t= generate_template(environment, ret_st);
-    let lhs: Tau<pcsp::Atom> = arrow_type.into();
-    let rhs: Tau<pcsp::Atom> = Tau::mk_arrow(arg_t.into(), ret_t);
-    generate_constraint(&lhs, &rhs, &mut constraints);
-
-    let mut result_t = rhs;
-    while constraints.len() > 0 {
-        for clause in constraints.iter() {
-            if !clause.head.contains_predicate() {
-                let mut body = clause.body;
-                loop {
-                    match body.kind() {
-                        pcsp::AtomKind::True => {}
-                        pcsp::AtomKind::Constraint(_) => {}
-                        pcsp::AtomKind::Predicate(_, _) => {}
-                        pcsp::AtomKind::Conj(_, _) => {}
-                    }
-                }
-            } else if !clause.body.contains_predicate() {
-            }
+// try to infer greatest type t' where t <= t' (right=true) or t' <= t (right=false)
+fn infer_greatest_type_inner(t: Ty, cnstr: Constraint, right: bool) -> (Ty, Constraint) {
+    match t.kind() {
+        TauKind::Proposition(c) if right => {
+            let c = Constraint::mk_disj(c.clone().negate().unwrap(), cnstr.clone());
+            let t = Tau::mk_prop_ty(c.clone());
+            (t, c)
+        },
+        TauKind::Proposition(c) => {
+            let c = Constraint::mk_conj(c.clone(), cnstr.clone());
+            let t = Tau::mk_prop_ty(c.clone());
+            (t, c)
+        },
+        TauKind::IArrow(arg, ret) => {
+            let (t, c) = infer_greatest_type_inner(ret.clone(), cnstr, right);
+            (Tau::mk_iarrow(arg.clone(), t), c)
+        },
+        TauKind::Arrow(arg, ret) => {
+            let (t, c) = infer_greatest_type_inner(ret.clone(), cnstr.clone(), right);
+            let (arg_t, _) = infer_greatest_type_inner(arg.clone(), Constraint::mk_conj(cnstr, c.clone()), !right);
+            (Tau::mk_arrow(arg_t, t), c)
         }
     }
-    unimplemented!()
+}
+
+// check Env; Constr |- lhs <= rhs
+fn check_subtype(cnstr: Constraint, lhs: Ty, rhs: Ty) -> Result<(), Error> {
+    match (lhs.kind(), rhs.kind()) {
+        (TauKind::Proposition(c1), TauKind::Proposition(c2)) => {
+            let c = Constraint::mk_arrow(Constraint::mk_conj(c2.clone(), cnstr), c1.clone()).unwrap();
+            // check env, cnstr |= c
+            match smt::smt_solve(&c) {
+                smt::SMTResult::Sat => Ok(()),
+                smt::SMTResult::Unsat => Err(Error::TypeError),
+                smt::SMTResult::Unknown => Err(Error::SMTUnknown),
+                smt::SMTResult::Timeout => Err(Error::SMTTimeout)
+            }
+        }
+        (TauKind::IArrow(_, t1), TauKind::IArrow(_, t2)) => {
+            check_subtype(cnstr, t1.clone(), t2.clone())
+        }
+        (TauKind::Arrow(t1, s1), TauKind::Arrow(t2, s2)) => {
+            check_subtype(cnstr.clone(), s1.clone(), s2.clone())?;
+            let cnstr2 = s2.rty().clone();
+            check_subtype( Constraint::mk_conj(cnstr, cnstr2), t2.clone(), t1.clone())
+        }
+        (_, _) => panic!("program error: tried to compare {:?} <= {:?}", lhs, rhs),
+    }
+}
+
+fn infer_greatest_type(environment: &Environment, arrow_type: Ty, arg_t: Ty) -> Result<Ty, Error> {
+    let (arg_t2, ret_t) = match arrow_type.kind() {
+        TauKind::Arrow(x, y) => (x.clone(), y.clone()),
+        _ => panic!("program error"),
+    };
+    let (t, c) = infer_greatest_type_inner(ret_t, Constraint::mk_true(), true);
+    // check environment; c |- arg_t < arg_t2 
+    check_subtype(c, arg_t, arg_t2)?;
+    Ok(t)
 }
 
 fn generate_constraint_inner(
@@ -274,9 +309,6 @@ impl Environment {
     }
 }
 
-pub enum Error {
-    TypeError,
-}
 
 fn int_expr(atom: &Atom, env: &Environment) -> Option<Op> {
     use AtomKind::*;
@@ -291,21 +323,22 @@ fn int_expr(atom: &Atom, env: &Environment) -> Option<Op> {
     }
 }
 
-fn type_check_atom(atom: &Atom, env: &Environment) -> Vec<Tau<Constraint>> {
+fn type_check_atom(atom: &Atom, env: &Environment) -> Result<Vec<Tau<Constraint>>, Error> {
     debug!("type_check_atom: {}", atom);
     use AtomKind::*;
+    let r = 
     match atom.kind() {
         App(x, arg) => {
             let ie = int_expr(arg, env);
-            let ts = type_check_atom(x, env);
+            let ts = type_check_atom(x, env)?;
             match ie {
                 Some(op) => ts.into_iter().map(|t| t.app(&op)).collect(),
                 None => {
-                    let ss = type_check_atom(arg, env);
+                    let ss = type_check_atom(arg, env)?;
                     let mut result_ts = Vec::new();
                     for t in ts.iter() {
                         for s in ss.iter() {
-                            let result_t = infer_greatest_type(env, t.clone(), s.clone());
+                            let result_t = infer_greatest_type(env, t.clone(), s.clone())?;
                             result_ts.push(result_t);
                         }
                     }
@@ -315,15 +348,17 @@ fn type_check_atom(atom: &Atom, env: &Environment) -> Vec<Tau<Constraint>> {
         }
         Var(v) => env.tget(v).unwrap().clone(),
         Const(_c) => panic!("program error"),
-    }
+    };
+    Ok(r)
 }
 
-fn type_check_goal(goal: &Goal, tenv: &mut Environment) -> Constraint {
+fn type_check_goal(goal: &Goal, tenv: &mut Environment) -> Result<Constraint, Error> {
     use GoalKind::*;
     let f = type_check_goal;
+    let r = 
     match goal.kind() {
         Atom(atom) => {
-            let ts = type_check_atom(atom, tenv);
+            let ts = type_check_atom(atom, tenv)?;
             let mut ret_constr = Constraint::mk_false();
             for t in ts.iter() {
                 match t.kind() {
@@ -336,20 +371,21 @@ fn type_check_goal(goal: &Goal, tenv: &mut Environment) -> Constraint {
             ret_constr
         }
         Constr(c) => c.clone(),
-        Conj(x, y) => Constraint::mk_conj(f(x, tenv), f(y, tenv)),
-        Disj(x, y) => Constraint::mk_disj(f(x, tenv), f(y, tenv)),
+        Conj(x, y) => Constraint::mk_conj(f(x, tenv)?, f(y, tenv)?),
+        Disj(x, y) => Constraint::mk_disj(f(x, tenv)?, f(y, tenv)?),
         Univ(v, x) => {
             if v.ty.is_int() {
                 tenv.iadd(v.id);
-                Constraint::mk_univ(v.clone(), f(x, tenv))
+                Constraint::mk_univ(v.clone(), f(x, tenv)?)
             } else {
                 unimplemented!()
             }
         },
-    }
+    };
+    Ok(r)
 }
 
-pub fn type_check_clause(clause: &Clause, rty: Ty, env: &mut Environment) -> bool {
+pub fn type_check_clause(clause: &Clause, rty: Ty, env: &mut Environment) -> Result<(), Error> {
     let mut t = rty;
     for arg in clause.args.iter() {
         match t.kind() {
@@ -368,11 +404,13 @@ pub fn type_check_clause(clause: &Clause, rty: Ty, env: &mut Environment) -> boo
         TauKind::Proposition(c) => c,
         _ => panic!("program error"),
     };
-    let c2 = type_check_goal(&clause.body, env);
+    let c2 = type_check_goal(&clause.body, env)?;
 
-    let c = Constraint::mk_arrow(c2, c.clone()).unwrap();
+    let c = Constraint::mk_arrow(c2.clone(), c.clone()).expect(&format!("failed to negate: {}", c2));
     match smt::smt_solve(&c) {
-        smt::SMTResult::Sat => true,
-        _ => false,
+        smt::SMTResult::Sat => Ok(()),
+        smt::SMTResult::Unsat => Err(Error::TypeError),
+        smt::SMTResult::Unknown => Err(Error::SMTUnknown),
+        smt::SMTResult::Timeout => Err(Error::SMTTimeout)
     }
 }

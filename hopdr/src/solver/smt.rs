@@ -2,7 +2,7 @@ use tempfile::{tempfile, NamedTempFile};
 
 use std::{fs::File, time::Duration};
 
-use crate::formula::{Constraint, ConstraintExpr, Op, OpExpr, OpKind, PredKind, Ident};
+use crate::formula::{Constraint, ConstraintExpr, Op, OpExpr, OpKind, PredKind, Ident, Fv};
 use super::util;
 
 pub enum SMTResult {
@@ -54,8 +54,8 @@ fn op_to_smt2(op: &Op) -> String {
     }
 }
 
-fn constraint_to_smt2(c: &Constraint, style: SMT2Style) -> String {
-    let f = constraint_to_smt2;
+fn constraint_to_smt2_inner(c: &Constraint, style: SMT2Style) -> String {
+    let f = constraint_to_smt2_inner;
     match c.kind() {
         ConstraintExpr::True => {"true".to_string()},
         ConstraintExpr::False => {"false".to_string()}
@@ -72,6 +72,22 @@ fn constraint_to_smt2(c: &Constraint, style: SMT2Style) -> String {
     }
 }
 
+fn constraint_to_smt2(c: &Constraint, style: SMT2Style) -> String {
+    let fvs = c.fv();
+    let c_s = constraint_to_smt2_inner(c, style);
+    let c_s = 
+    if fvs.len() > 0 {
+        // (forall ((%s Int)) %s)
+        let decls = fvs.into_iter().map(|ident| {
+            format!("({} Int)", ident_2_smt2(&ident))
+        }).collect::<Vec<_>>().join("");
+        format!("(forall ({}) {})", decls, c_s)
+    } else {
+        c_s
+    };
+    format!("(assert {})\n(check-sat)\n", c_s)
+}
+
 fn save_smt2(smt_string: String) -> NamedTempFile {
     util::save_to_file(smt_string)
 }
@@ -81,8 +97,13 @@ fn z3_solver(smt_string: String) -> SMTResult {
     let args = vec![f.path().to_str().unwrap()];
     let out = util::exec_with_timeout("z3", &args, Duration::from_secs(1));
     let s = std::str::from_utf8(&out).unwrap();
-    println!("{}", s);
-    SMTResult::Sat
+    if s.starts_with("sat") {
+        SMTResult::Sat
+    } else if s.starts_with("unsat") {
+        SMTResult::Unsat
+    } else {
+        SMTResult::Unknown
+    }
 }
 
 pub fn smt_solve(c: &Constraint) -> SMTResult {

@@ -3,6 +3,7 @@ pub mod pcsp;
 pub mod ty;
 
 use std::{fmt};
+use std::collections::HashSet;
 
 use rpds::Stack;
 
@@ -89,14 +90,14 @@ impl fmt::Display for Op {
 
 impl Fv for Op {
     type Id = Ident;
-    fn fv_with_vec(&self, fvs: &mut Vec<Self::Id>) {
+    fn fv_with_vec(&self, fvs: &mut HashSet<Self::Id>) {
         match self.kind() {
             OpExpr::Op(_, x, y) => {
                 x.fv_with_vec(fvs);
                 y.fv_with_vec(fvs);
             },
             OpExpr::Var(x) => {
-                fvs.push(x.clone())
+                fvs.insert(x.clone());
             },
             OpExpr::Const(_) => {}
         }
@@ -172,10 +173,10 @@ pub trait Subst : Sized {
 pub trait Fv {
     type Id;
 
-    fn fv_with_vec(&self, fvs: &mut Vec<Self::Id>);
+    fn fv_with_vec(&self, fvs: &mut HashSet<Self::Id>);
 
-    fn fv(&self) -> Vec<Self::Id> {
-        let mut fvs = Vec::new();
+    fn fv(&self) -> HashSet<Self::Id> {
+        let mut fvs = HashSet::new();
         self.fv_with_vec(&mut fvs);
         fvs
     }
@@ -321,7 +322,7 @@ impl Constraint {
 impl Fv for Constraint {
     type Id = Ident;
 
-    fn fv_with_vec(&self, fvs: &mut Vec<Self::Id>) {
+    fn fv_with_vec(&self, fvs: &mut HashSet<Self::Id>) {
         match self.kind() {
             ConstraintExpr::True |  ConstraintExpr::False => {},
             ConstraintExpr::Pred(_, ops) => {
