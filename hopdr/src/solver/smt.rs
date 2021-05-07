@@ -5,6 +5,7 @@ use std::{fs::File, time::Duration};
 use crate::formula::{Constraint, ConstraintExpr, Fv, Ident, Op, OpExpr, OpKind, PredKind, QuantifierKind};
 use super::util;
 
+#[derive(Debug)]
 pub enum SMTResult {
     Sat,
     Unsat,
@@ -114,6 +115,9 @@ fn z3_solver(smt_string: String) -> SMTResult {
 }
 
 pub fn smt_solve(c: &Constraint) -> SMTResult {
+    debug!("smt_solve: {}", c);
     let smt2 = constraint_to_smt2(c, SMT2Style::Z3);
-    z3_solver(smt2)
+    let r = z3_solver(smt2);
+    debug!("smt_solve result: {:?}", &r);
+    r
 }

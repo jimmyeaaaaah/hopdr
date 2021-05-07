@@ -176,7 +176,7 @@ fn transform_expr(expr: &InExpr, clauses: &mut Vec<OutClause>) -> formula::hes::
     for expr in cs {
         c = Constraint::mk_conj(expr, c);
     }
-    let mut g = Goal::mk_conj(Goal::mk_constr(c), g);
+    let mut g = Goal::mk_disj(Goal::mk_constr(c.negate().unwrap()), g);
     for v in vs {
         g = Goal::mk_univ(v, g);
     }

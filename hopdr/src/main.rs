@@ -21,7 +21,7 @@ fn main() {
     debug!("starting up");
     let (_, f) = parse::parse::<VerboseError<&str>>(
         "
-        S n k = (n != 0 | k n) & (n = 0 | S (n - 1) (L n k));
+        S n k = (n > 0 | k n) & (n <= 0 | S (n - 1) (L n k));
         K m n = m <= n;
         L n k m = k (n + m);
         M = S 1 (K 1);
@@ -84,7 +84,7 @@ fn main() {
     }
 
     for (fml, ty) in vc.clauses.iter().zip(types.iter()) {
-        println!("{:?}", engine::rtype::type_check_clause(fml, ty.clone(), &mut env));
+        println!("{}:{}\n -> {:?}", fml, ty.clone(), engine::rtype::type_check_clause(fml, ty.clone(), &mut env));
     }
 
     //println!("{}", infer(vc));

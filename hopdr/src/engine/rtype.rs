@@ -33,6 +33,17 @@ pub enum Error {
     SMTUnknown
 }
 
+impl fmt::Display for Error  {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            Error::TypeError => "type error",
+            Error::SMTTimeout => "SMT Timeout",
+            Error::SMTUnknown => "SMT Unknown"
+        };
+        write!(f, "{}", s)
+    }
+}
+
 impl <C: fmt::Display> fmt::Display for Tau<C> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.kind() {
@@ -356,6 +367,7 @@ fn type_check_atom(atom: &Atom, env: &Environment) -> Result<Vec<Tau<Constraint>
 }
 
 fn type_check_goal(goal: &Goal, tenv: &mut Environment) -> Result<Constraint, Error> {
+    debug!("type_check_goal start: {}", goal);
     use GoalKind::*;
     let f = type_check_goal;
     let r = 
@@ -385,6 +397,7 @@ fn type_check_goal(goal: &Goal, tenv: &mut Environment) -> Result<Constraint, Er
             }
         },
     };
+    debug!("type_check_goal: {} has type {} ", goal, r);
     Ok(r)
 }
 
