@@ -145,55 +145,55 @@ we check the validity of \( \psi \).
 
 The same one as APLAS20
 
-\subsection{transformer}
-
-TODO: kaku
-
-\begin{align*}
-    F(\Gamma)
-    &= \Gamma \cup \{ F: \typeint{x_1} \rightarrow \cdots
-    \rightarrow \typeint{x_n} \rightarrow \typebool{\theta} \\
-    &\mid
-    F x_1 \cdots x_n = \psi, \Gamma, x_1: \stypeint, \cdots, x_n: \stypeint
-    \vdash^{-} \psi: \typebool{\theta}\ \}
-\end{align*}
-
-\subsection{interpolation}
-
-We consider the interpolation of types by subtyping. That is, given two
-refinement types \( \tau_1, \tau_2\) such that \( \tau_1 \prec \tau_2 \),
-we try to find a refinement type \( \tau \) such that \( \tau_1 \prec \tau \prec
-\tau_2 \) where the free variables of \( \tau \) is a subset of the free
-variables of \( \tau_1 \) and \( \tau_2 \).
-
-We assume that we have an algorithm for craig interpolation.
-Then, it is easy to interpolate just by comparing the refinement type at the
-same position.
-
-For example, assume \(
-(\typeint{x} \to \typebool{\theta_1}) \to \typebool{\theta_2}
-\prec
-(\typeint{x} \to \typebool{\theta_1'}) \to \typebool{\theta_2'}
-\), we consider two craig interpolations as follows
-\begin{align*}
-    &\theta_2' \rightarrow \theta_2'' \rightarrow \theta_2\\
-    &\theta_1' \rightarrow \theta_1'' \rightarrow \theta_1.
-\end{align*}
-Then we consider the refinement type
-\( \tau = \typeint{x} \to \typebool{\theta_1''}) \to \typebool{\theta_2''} \).
-From the construction, \( \tau_1 \prec \tau \prec \tau_2 \) holds.
-
-\begin{align*}
-\end{align*}
-
-
-\subsection{algorithm}
-
+%\subsection{transformer}
+%
+%TODO: kaku
+%
+%\begin{align*}
+%    F(\Gamma)
+%    &= \Gamma \cup \{ F: \typeint{x_1} \rightarrow \cdots
+%    \rightarrow \typeint{x_n} \rightarrow \typebool{\theta} \\
+%    &\mid
+%    F x_1 \cdots x_n = \psi, \Gamma, x_1: \stypeint, \cdots, x_n: \stypeint
+%    \vdash^{-} \psi: \typebool{\theta}\ \}
+%\end{align*}
+%
+%\subsection{interpolation}
+%
+%We consider the interpolation of types by subtyping. That is, given two
+%refinement types \( \tau_1, \tau_2\) such that \( \tau_1 \prec \tau_2 \),
+%we try to find a refinement type \( \tau \) such that \( \tau_1 \prec \tau \prec
+%\tau_2 \) where the free variables of \( \tau \) is a subset of the free
+%variables of \( \tau_1 \) and \( \tau_2 \).
+%
+%We assume that we have an algorithm for craig interpolation.
+%Then, it is easy to interpolate just by comparing the refinement type at the
+%same position.
+%
+%For example, assume \(
+%(\typeint{x} \to \typebool{\theta_1}) \to \typebool{\theta_2}
+%\prec
+%(\typeint{x} \to \typebool{\theta_1'}) \to \typebool{\theta_2'}
+%\), we consider two craig interpolations as follows
+%\begin{align*}
+%    &\theta_2' \rightarrow \theta_2'' \rightarrow \theta_2\\
+%    &\theta_1' \rightarrow \theta_1'' \rightarrow \theta_1.
+%\end{align*}
+%Then we consider the refinement type
+%\( \tau = \typeint{x} \to \typebool{\theta_1''}) \to \typebool{\theta_2''} \).
+%From the construction, \( \tau_1 \prec \tau \prec \tau_2 \) holds.
+%
+%\begin{align*}
+%\end{align*}
+%
+%
+%\subsection{algorithm}
+%
 During the execution of the following algorithm,
 we hold two states: candidates and current environments.
 To specify them, we use notation \( M \mid \mid S \), where
 \( M \) specify candidates and \( S \) is a current environment.
-
+%
 In an environment, there is two variables:
 a current expansion number \( N \)
 and a sequence of type environment \( \{\Gamma_i\}_{i \in \{1, \cdots, N\}} \).
@@ -209,133 +209,171 @@ and \( \Gamma_\false \) be \( \{F_i: \bot \}_i \).
 \begin{align*}
     \textbf{Initialize} &\quad
         \Longrightarrow
-        \epsilon \mid \mid [N \leftarrow 0, \Gamma_0 \leftarrow \Gamma_\true]
+        \epsilon \mid \mid [N \leftarrow 0, \Gamma_0 \leftarrow F(\Gamma_\true)]
         &&\\
     \textbf{Valid} &\quad
         \epsilon \mid \mid A \Longrightarrow \textit{Valid}
-        &&\quad \textbf{if} \ \Gamma_{i} \vdash \Gamma_{i-1}, i < N
+        &&\quad \textbf{if} \ \Gamma_{i} \vdash \Gamma_{i-1}
         \\
     \textbf{Unfold} &\quad
         \epsilon \mid \mid A \Longrightarrow
         \epsilon \mid \mid [\Gamma_{N+1} \leftarrow \Gamma_\false, N \leftarrow N + 1]
-        &&\\
+        &&\quad \textbf{if} \ \Gamma_{N} \vdash \psi: \typebool{\true}
+        \\
     %\textbf{Induction} &\quad
     %    \epsilon \mid \mid
     %    &&\\
     \textbf{Candidate} &\quad
         \epsilon \mid \mid A
         \Longrightarrow
-        \langle X, N, \tau \rangle \mid \mid A
+        \langle \Gamma^M, N \rangle \mid \mid A
         && \quad \textbf{if} \ \Gamma_N \not \vdash \psi \COL
         \typebool{\true},\\
-        &&&\quad (X, \tau) = \textbf{CEX}(\Gamma, \psi, \typebool{true})
+        &&&\quad \Gamma^M = \textbf{CEX}(\Gamma, \psi, \typebool{true})
         \\
     \textbf{Conflict} &\quad
-        \langle X, i + 1, \tau \rangle M\mid \mid A
-        \Longrightarrow
-        M \mid \mid A[\Gamma_j \leftarrow \Gamma_j \cup \{X: \tau''\}]_{j=1}^{i+1}
+        \langle \Gamma \cup \{X: \tau\}, i + 1 \rangle M\mid \mid A
+        \Longrightarrow&&\\
+        & \langle \Gamma, i+1 \rangle M
+        \mid \mid A[\Gamma_j \leftarrow \Gamma_j \cup \{X: \tau''\}]_{j=1}^{i+1}
         \tau
         &&\quad \textbf{if} X: \tau' \in F(\Gamma), \tau' \prec \tau''
         \prec \tau
         \\
     \textbf{Decide} &\quad
-        \langle X, i + 1, \tau \rangle M\mid \mid A
-        \Longrightarrow
-        \langle X', i, \tau' \rangle \langle X, i + 1, \tau \rangle M\mid \mid A \mid \mid A
+        \langle \Gamma \cup \{X: \tau\}, i + 1 \rangle M\mid \mid A
+        \Longrightarrow&&\\
+        & \langle \Gamma', i \rangle \langle \Gamma \cup \{X: \tau\}, i+1 \rangle M
+        \mid \mid A
         &&\quad \textbf{if} \ \Gamma_i \not\vdash X \COL \tau,\\
-        &&&\quad (X', \tau') = \textbf{CEX}(\Gamma_i, X, \tau)
+        &&&\quad \Gamma' = \textbf{CEX}(\Gamma_i, R(X), \tau)
         \\
     \textbf{Model} &\quad
         \langle X, 0, \tau \rangle \mid \mid A \Rightarrow Model?
         &&\\
 \end{align*}
+%
+%
+%\subsubsection{Algorithm of \( \mathbf{CEX} \)}
+%
+%We consider the following two operators:
+%\begin{align*}
+%    \psi \Downarrow \typebool{\constraint} \quad
+%        &= \quad \psi \land \constraint
+%        \\
+%    \psi \Downarrow \typeint{x} \to \tau   \quad
+%        &= \quad \lambda x. \psi \Downarrow \tau
+%        \\
+%    \psi \Downarrow \tau_1 \to \tau_2 \quad
+%        &= \quad \lambda f. \psi \land f \in \tau_1 \Downarrow \tau_2
+%        \\
+%    \psi \in \typebool{\constraint} \quad
+%        &= \quad \lnot \theta \lor \psi
+%        \\
+%    \psi \in \typeint{x} \to \tau   \quad
+%        &= \quad \forall x. \psi\ x \in \tau
+%        \\
+%    \psi \in \tau_1 \to \tau_2 \quad
+%        &= \quad \psi\ (\true \Downarrow \tau_1) \in \tau_2
+%        \\
+%\end{align*}
+%
+%For a refinement type \( \tau \),
+%we write \( \sigma_\tau \) for \( \true \Downarrow \tau \),
+%which is proved to be a semantically least element which has
+%type \( \tau \).
+%
+%Then we consider the algorithm of CEX.
+%Input is a type environment \( \Gamma \), a goal formula \( \psi \)
+%or a relational variable \( X \) and a refinement type \( \tau \).
+%
+%First, let the clause named \( X \) \( X x_1 \cdots x_n =_\nu \psi_X \).
+%Therefore, the refinement type \( \tau \) must be a kind of
+%\( \sigma_1 \rightarrow \cdots \rightarrow \sigma_n \rightarrow
+%\typebool{\theta} \).
+%Then, we consider all the occurences of relational variables and higher-order
+%argument variables by the corresponding refinement types.
+%For example, assume that \(X k = X (\lambda x. \forall y. x < y \lor k\ x) \),
+%\( \Gamma = \{ X: (\typeint{x} \rightarrow \typebool{x \geq 0}) \rightarrow
+%\typebool{\true} \)
+%and \( \tau = (x \to \typebool{x > 0}) \to \typebool{\true}\),
+%we can reduce the body of \( X \) to
+%\( (\lambda k. \forall x. x < 0 \lor k\ x)
+%(\lambda x. \forall y. x < y \lor (\lambda x. x > 0)\ x)
+%\). And considering the \( \beta \) transform, this can be reduced to
+%\( \forall x. x < 0 \lor \forall y. x < y \lor x > 0\). We let this formula \(
+%\varphi \).
+%
+%Now, from the assumption that the we cannot derive the judgement,
+%\( \true \Rightarrow \varphi \) i.e. \( \varphi \) does not hold.
+%Then we get the counterexample of this formula by using SMT solver.
+%For the above formula, we have \( x = 0, y = -1 \).
+%
+%By replacing the variable, we can generate a candidate
+%\( (X, (\typeint{x} \to \typebool{x < -1 \lor x \geq 0}) \rightarrow
+%\typebool{\true}) \).
+%
+%\subsection{Example}
+%
+%\begin{align*}
+%    X x &=_\nu x \neq 0 \land X\ (x + 1) \\
+%    \psi  &=_\nu \forall x. x < 0 \lor X\ x
+%\end{align*}
+%
+%We abbreviate \(\typeint{x}\) for \(x\), and \(\typebool{\theta}\) for
+%\(\theta\) in the following example.
+%
+%\begin{itemize}
+%    \item Initialize: \(\Gamma_0 = \{X: x \rightarrow \top\}\)
+%    \item Unfold: \(\Gamma_0, \Gamma_1^0 = \{X: x \rightarrow \bot\}\)
+%    \item Candidate: \(\langle X, 1, 1 \rangle \mid \Gamma_0, \Gamma_1^0\)
+%    \item Conflict: \(\Gamma_0, \Gamma_1^1 = \{x \rightarrow x \geq 1\}\)
+%        since \(X: x \rightarrow x \geq 1 \in F(\Gamma_0)\) and \(\models 1 \geq 1\)
+%    \item Unfold: \(\Gamma_0, \Gamma_1^1, \Gamma_2^0 = \{X: x \rightarrow \bot\}\)
+%    \item Candidate and Conflicts: \(\Gamma_0, \Gamma_1^1, \Gamma_2^1 = \{x \rightarrow x \geq 1\}\)
+%    \item Valid since \(\Gamma_2^1 \vdash \psi: \typebool{\top} \)
+%        and \(\Gamma_2^1 \rightarrow \Gamma_1^1\)
+%\end{itemize}
+%
+%\subsection{Example 2}
+%
+%\begin{align*}
+%    Sum
+%\end{align*}
 
+\subsubsection{The problem of type checking}
 
-\subsubsection{Algorithm of \( \mathbf{CEX} \)}
+In the middle of
 
-We consider the following two operators:
+Consider
 \begin{align*}
-    \psi \Downarrow \typebool{\constraint} \quad
-        &= \quad \psi \land \constraint
-        \\
-    \psi \Downarrow \typeint{x} \to \tau   \quad
-        &= \quad \lambda x. \psi \Downarrow \tau
-        \\
-    \psi \Downarrow \tau_1 \to \tau_2 \quad
-        &= \quad \lambda f. \psi \land f \in \tau_1 \Downarrow \tau_2
-        \\
-    \psi \in \typebool{\constraint} \quad
-        &= \quad \lnot \theta \lor \psi
-        \\
-    \psi \in \typeint{x} \to \tau   \quad
-        &= \quad \forall x. \psi\ x \in \tau
-        \\
-    \psi \in \tau_1 \to \tau_2 \quad
-        &= \quad \psi\ (\true \Downarrow \tau_1) \in \tau_2
-        \\
+    F\ x\ k =_\nu \forall y. y \neq x - 1 \lor
+        & \{ (x > 0 \lor k\ x)\\
+        & \land ( x \leq 0 \lor F\ y\ (L\ x\ k)) \}
+\end{align*}
+where \( L\ x\ k\ y =_\nu k\ (x + y) \).
+We can prove the safety by the following type environment:
+
+\begin{align*}
+    F&: \typeint{x} \to (\typeint{y} \to \typebool{x \leq y}) \to
+    \typebool{\true}\\
+    L&: \typeint{x} \to (\typeint{z} \to \typebool{x \leq z}) \to
+    \typeint{y}) \to \typebool{0 \leq y}
 \end{align*}
 
-For a refinement type \( \tau \),
-we write \( \sigma_\tau \) for \( \true \Downarrow \tau \),
-which is proved to be a semantically least element which has
-type \( \tau \).
-
-Then we consider the algorithm of CEX.
-Input is a type environment \( \Gamma \), a goal formula \( \psi \)
-or a relational variable \( X \) and a refinement type \( \tau \).
-
-First, let the clause named \( X \) \( X x_1 \cdots x_n =_\nu \psi_X \).
-Therefore, the refinement type \( \tau \) must be a kind of
-\( \sigma_1 \rightarrow \cdots \rightarrow \sigma_n \rightarrow
-\typebool{\theta} \).
-Then, we consider all the occurences of relational variables and higher-order
-argument variables by the corresponding refinement types.
-For example, assume that \(X k = X (\lambda x. \forall y. x < y \lor k\ x) \),
-\( \Gamma = \{ X: (\typeint{x} \rightarrow \typebool{x \geq 0}) \rightarrow
-\typebool{\true} \)
-and \( \tau = (x \to \typebool{x > 0}) \to \typebool{\true}\),
-we can reduce the body of \( X \) to
-\( (\lambda k. \forall x. x < 0 \lor k\ x)
-(\lambda x. \forall y. x < y \lor (\lambda x. x > 0)\ x)
-\). And considering the \( \beta \) transform, this can be reduced to
-\( \forall x. x < 0 \lor \forall y. x < y \lor x > 0\). We let this formula \(
-\varphi \).
-
-Now, from the assumption that the we cannot derive the judgement,
-\( \true \Rightarrow \varphi \) i.e. \( \varphi \) does not hold.
-Then we get the counterexample of this formula by using SMT solver.
-For the above formula, we have \( x = 0, y = -1 \).
-
-By replacing the variable, we can generate a candidate
-\( (X, (\typeint{x} \to \typebool{x < -1 \lor x \geq 0}) \rightarrow
-\typebool{\true}) \).
-
-\subsection{Example}
-
+Consider the following type environment \(\Gamma\)
 \begin{align*}
-    X x &=_\nu x \neq 0 \land X\ (x + 1) \\
-    \psi  &=_\nu \forall x. x < 0 \lor X\ x
+    f&: (\typeint{x} \to \typebool{C_1}) \to ((\typeint{y} \to \typebool{C_2})
+    \to \typebool{C_3})\\
+    k&: \typeint{x} \to \typebool{C_4}\\
+    g&: \typeint{x} \to \typebool{C_5}\\
+    f'&: (\typeint{x} \to \typebool{C_1'}) \to ((\typeint{y} \to \typebool{C_2'})
+    \to \typebool{C_3'})\\
+    k'&: \typeint{x} \to \typebool{C_4'}\\
+    g'&: \typeint{x} \to \typebool{C_5'}\\
+    z&: \stypeint.
 \end{align*}
-
-We abbreviate \(\typeint{x}\) for \(x\), and \(\typebool{\theta}\) for
-\(\theta\) in the following example.
-
-\begin{itemize}
-    \item Initialize: \(\Gamma_0 = \{X: x \rightarrow \top\}\)
-    \item Unfold: \(\Gamma_0, \Gamma_1^0 = \{X: x \rightarrow \bot\}\)
-    \item Candidate: \(\langle X, 1, 1 \rangle \mid \Gamma_0, \Gamma_1^0\)
-    \item Conflict: \(\Gamma_0, \Gamma_1^1 = \{x \rightarrow x \geq 1\}\)
-        since \(X: x \rightarrow x \geq 1 \in F(\Gamma_0)\) and \(\models 1 \geq 1\)
-    \item Unfold: \(\Gamma_0, \Gamma_1^1, \Gamma_2^0 = \{X: x \rightarrow \bot\}\)
-    \item Candidate and Conflicts: \(\Gamma_0, \Gamma_1^1, \Gamma_2^1 = \{x \rightarrow x \geq 1\}\)
-    \item Valid since \(\Gamma_2^1 \vdash \psi: \typebool{\top} \)
-        and \(\Gamma_2^1 \rightarrow \Gamma_1^1\)
-\end{itemize}
-
-\subsection{Example 2}
-
-\begin{align*}
-    Sum
-\end{align*}
+We would like to prove \( \Gamma \vdash (f\ k\ g) \lor (f'\ k'\ g'):
+\typebool{C}\)
 
 \end{document}
