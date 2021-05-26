@@ -294,6 +294,12 @@ impl Constraint {
             _ => false,
         }
     }
+    pub fn is_false(&self) -> bool {
+        match self.kind() {
+            ConstraintExpr::False => true,
+            _ => false,
+        }
+    }
     pub fn mk_false() -> Constraint {
         Constraint::new(ConstraintExpr::False)
     }
@@ -307,7 +313,11 @@ impl Constraint {
             x
         } else if y.is_true() {
             y
-        } else {
+        } else if x.is_false() {
+            y
+        } else if x.is_false() {
+            x
+        }else {
             Constraint::new(ConstraintExpr::Disj(x, y))
         }
     }
@@ -348,6 +358,15 @@ impl Constraint {
     pub fn variable_guard(v: Ident, op: Op) -> Constraint {
         let v = Op::mk_var(v);
         Constraint::mk_pred(PredKind::Eq, vec![v, op])
+    }
+
+    pub fn remove_quantifier(self) -> Constraint {
+        match self.kind() {
+            ConstraintExpr::True | ConstraintExpr::False | ConstraintExpr::Pred(_, _) => self.clone(),
+            ConstraintExpr::Conj(c1, c2) => Constraint::mk_conj(c1.clone().remove_quantifier(), c2.clone().remove_quantifier()),
+            ConstraintExpr::Disj(c1, c2) => Constraint::mk_disj(c1.clone().remove_quantifier(), c2.clone().remove_quantifier()),
+            ConstraintExpr::Quantifier(_, _, c) => c.clone().remove_quantifier(),
+        }
     }
 
 }

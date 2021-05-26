@@ -21,7 +21,7 @@ fn main() {
     debug!("starting up");
     let (_, f) = parse::parse::<VerboseError<&str>>(
         "
-        S n k = (n > 0 | k n) & (n <= 0 | S (n - 1) (L n k));
+        S n k = (n > 0 | k 0) & (n <= 0 | S (n - 1) (L n k));
         K m n = m <= n;
         L n k m = k (n + m);
         M = S 1 (K 1);
@@ -69,7 +69,8 @@ fn main() {
         let n = Ident::fresh();
         let m = Ident::fresh();
         let p = Ident::fresh();
-        let t = Tau::mk_iarrow(p, Tau::mk_prop_ty(Constraint::mk_pred(PredKind::Leq, vec![Op::mk_var(n), Op::mk_var(p)])));
+        let t = Tau::mk_iarrow(p, Tau::mk_prop_ty(Constraint::mk_pred(PredKind::Leq, vec![Op::mk_const(0), Op::mk_var(p)])));
+        //let t = Tau::mk_iarrow(p, Tau::mk_prop_ty(Constraint::mk_true()));
         let s = Tau::mk_iarrow(m, Tau::mk_prop_ty(Constraint::mk_pred(PredKind::Leq, vec![Op::mk_var(n), Op::mk_var(m)])));
         let t = Tau::mk_arrow(s, t);
         let t = Tau::mk_iarrow(n, t);

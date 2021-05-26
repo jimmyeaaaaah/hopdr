@@ -104,13 +104,19 @@ impl Subst for Atom {
 }
 
 #[derive(Debug)]
-pub struct PCSP {
-    pub body: Atom,
-    pub head: Atom,
+pub struct PCSP<A> {
+    pub body: A,
+    pub head: A,
 }
 
-impl PCSP {
-    pub fn new(body: Atom, head: Atom) -> PCSP {
+impl <A> PCSP<A> {
+    pub fn new(body: A, head: A) -> PCSP<A> {
         PCSP { body, head }
+    }
+}
+
+impl PCSP<Constraint> {
+    pub fn to_constraint(&self) -> Option<Constraint> {
+        Constraint::mk_arrow(self.body.clone(), self.head.clone())
     }
 }

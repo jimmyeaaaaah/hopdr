@@ -52,7 +52,7 @@ impl fmt::Display for Atom {
         match self.kind() {
             Var(i) => write!(f, "{}", i),
             Const(c) => write!(f, "{}", c),
-            App(x, y) => write!(f, "{} {}", x, y),
+            App(x, y) => write!(f, "({} {})", x, y),
         }
     }
 }

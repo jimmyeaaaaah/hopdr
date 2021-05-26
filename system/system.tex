@@ -237,7 +237,7 @@ and \( \Gamma_\false \) be \( \{F_i: \bot \}_i \).
         & \langle \Gamma, i+1 \rangle M
         \mid \mid A[\Gamma_j \leftarrow \Gamma_j \cup \{X: \tau''\}]_{j=1}^{i+1}
         \tau
-        &&\quad \textbf{if} X: \tau' \in F(\Gamma), \tau' \prec \tau''
+        &&\quad \textbf{if} \  X: \tau' \in F(\Gamma), \tau' \prec \tau''
         \prec \tau
         \\
     \textbf{Decide} &\quad
@@ -252,9 +252,21 @@ and \( \Gamma_\false \) be \( \{F_i: \bot \}_i \).
         \langle X, 0, \tau \rangle \mid \mid A \Rightarrow Model?
         &&\\
 \end{align*}
-%
-%
-%\subsubsection{Algorithm of \( \mathbf{CEX} \)}
+
+
+\subsubsection{Algorithm of \( \mathbf{CEX} \)}
+
+Key idea of \(\textbf{CEX}(\Gamma, \psi, \tau) \) is to find a "good" type
+environment \(\Gamma' \) such that \(\Gamma \cup \Gamma' \vdash \psi: \tau \).
+In other words, CEX tries to find types which is not included in the current
+type environment and useful to prove the judgement.
+
+However, if you add some weak types to the type environment like \(\tau_\bot\),
+the algorithm above can easily fail because proving such types is impossible.
+So, we want to consider the condition "good".
+
+
+
 %
 %We consider the following two operators:
 %\begin{align*}
