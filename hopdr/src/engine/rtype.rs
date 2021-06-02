@@ -1,7 +1,7 @@
 use std::{collections::{HashMap, HashSet}, ffi::FromBytesWithNulError, fmt::{self, Display}, rc::Rc, unimplemented};
 
-use crate::formula::hes::{Atom, AtomKind, Clause, ConstKind, Goal, GoalKind};
-use crate::formula::pcsp;
+use crate::formula::{chc::pcsp2chc, hes::{Atom, AtomKind, Clause, ConstKind, Goal, GoalKind}};
+use crate::formula::{pcsp, chc};
 use crate::formula::{
     Conjunctive, Constraint, Ident, IntegerEnvironment, Op, Subst, Top, Type as SType,
     TypeKind as STypeKind, P,
@@ -28,8 +28,8 @@ pub enum Error {
     SMTUnknown
 }
 
-impl From<pcsp::ResolutionError> for Error {
-    fn from(_: pcsp::ResolutionError) -> Error {
+impl From<chc::ResolutionError> for Error {
+    fn from(_: chc::ResolutionError) -> Error {
         Error::TypeError
     }
 }
@@ -410,11 +410,23 @@ fn type_check_goal(goal: &Goal, tenv: &mut Environment) -> Result<Constraint, Er
                 return Err(Error::TypeError)
             }
             if fvs.len() == 0 {
+                debug!("fixme");
                 // tmp
                 return Ok(Constraint::mk_true())
             }
             let target = *fvs.iter().next().unwrap();
-            let c = pcsp::solve_by_resolution(target, constraints)?;
+            debug!("ha?");
+
+            let mut chc_constraints = Vec::new();
+            for constraint in constraints {
+                match pcsp2chc(constraint) {
+                    Some(clause) => chc_constraints.push(clause),
+                    None => return Err(Error::TypeError)
+                }
+            }
+            debug!("resolution");
+
+            let c = chc::solve_by_resolution(target, chc_constraints)?;
             let ts: Vec<Ty> = unimplemented!();
             // TODO: here calculate greatest type
             let mut ret_constr = Constraint::mk_false();

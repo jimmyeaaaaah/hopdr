@@ -192,6 +192,14 @@ pub trait Conjunctive {
 }
 
 pub trait Subst : Sized {
+    fn subst_multi(&self, substs: &[(Ident, Op)]) -> Self {
+        assert!(substs.len() > 0);
+        let mut ret = self.subst(&substs[0].0, &substs[0].1);
+        for (ident, val) in &substs[1..] {
+            ret = ret.subst(ident, val);
+        }
+        ret
+    }
     fn subst(&self, x: &Ident, v: &Op) -> Self;
     fn rename_variable(&self, x: &Ident, y: &Ident) -> Self {
         let op = Op::mk_var(y.clone());

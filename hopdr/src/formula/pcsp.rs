@@ -10,6 +10,7 @@ pub enum AtomKind {
     Constraint(Constraint),
     Predicate(Ident, Vec<Ident>),
     Conj(Atom, Atom),
+    Disj(Atom, Atom),
 }
 pub type Atom = P<AtomKind>;
 
@@ -25,7 +26,8 @@ impl fmt::Display for Atom {
                 }
                 write!(f, ")")
             },
-            AtomKind::Conj(x, y) => write!(f, "({} & {})", x, y)
+            AtomKind::Conj(x, y) => write!(f, "({} & {})", x, y),
+            AtomKind::Disj(x, y) => write!(f, "({} & {})", x, y),
         }
     }
 }
