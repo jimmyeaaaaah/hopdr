@@ -1,24 +1,41 @@
+use std::fmt;
+use std::collections::HashSet;
 
-
-use super::{Conjunctive, Constraint, Ident, Op, Subst, Top};
+use super::{Conjunctive, Constraint, Ident, Op, Subst, Top, Fv, PredKind};
 use crate::util::P;
 
 #[derive(Debug)]
 pub enum AtomKind {
     True, // equivalent to Constraint(True). just for optimization purpose
     Constraint(Constraint),
-    Predicate(Ident, Vec<Op>),
+    Predicate(Ident, Vec<Ident>),
     Conj(Atom, Atom),
 }
 pub type Atom = P<AtomKind>;
 
+impl fmt::Display for Atom {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.kind() {
+            AtomKind::True => write!(f, "true"),
+            AtomKind::Constraint(c) => write!(f, "{}", c),
+            AtomKind::Predicate(id, ops) => {
+                write!(f, "{}(", id)?;
+                for op in ops.iter() {
+                    write!(f, "{},", op)?;
+                }
+                write!(f, ")")
+            },
+            AtomKind::Conj(x, y) => write!(f, "({} & {})", x, y)
+        }
+    }
+}
+
 impl Atom {
-    pub fn mk_pred(ident: Ident, args: Vec<Op>) -> Atom {
+    pub fn mk_pred(ident: Ident, args: Vec<Ident>) -> Atom {
         Atom::new(AtomKind::Predicate(ident, args))
     }
     pub fn fresh_pred(args: Vec<Ident>) -> Atom {
         let ident = Ident::fresh();
-        let args = args.iter().map(|a| Op::mk_var(a.clone())).collect();
         Atom::mk_pred(ident, args)
     }
     pub fn contains_predicate(&self) -> bool {
@@ -59,6 +76,22 @@ impl Atom {
     }
 }
 
+impl Fv for Atom {
+    type Id = Ident;
+    fn fv_with_vec(&self, fvs: &mut HashSet<Self::Id>) {
+        match self.kind() {
+            AtomKind::True | AtomKind::Constraint(_) => (),
+            AtomKind::Predicate(ident, _) => {
+                fvs.insert(*ident);
+            },
+            AtomKind::Conj(x, y) => {
+                x.fv_with_vec(fvs);
+                y.fv_with_vec(fvs);
+            }
+        }
+    }
+}
+
 impl Atom {
     // auxiliary function for generating constraint
     pub fn mk_constraint(c: Constraint) -> Atom {
@@ -91,15 +124,9 @@ impl Conjunctive for Atom {
 
 impl Subst for Atom {
     fn subst(&self, x: &Ident, v: &super::Op) -> Self {
-        match self.kind() {
-            AtomKind::True => self.clone(),
-            AtomKind::Conj(lhs, rhs) => Atom::mk_conj(lhs.subst(x, v), rhs.subst(x, v)),
-            AtomKind::Constraint(c) => Atom::mk_constraint(c.subst(x, v)),
-            AtomKind::Predicate(_a, ops) => {
-                let ops = ops.iter().map(|op| op.subst(x, v)).collect();
-                Atom::mk_pred(*x, ops)
-            }
-        }
+        let eq = vec![Op::mk_var(*x), v.clone()];
+        let c = Atom::mk_constraint(Constraint::mk_pred(PredKind::Eq, eq));
+        Atom::mk_conj(c, self.clone())
     }
 }
 
@@ -118,5 +145,11 @@ impl <A> PCSP<A> {
 impl PCSP<Constraint> {
     pub fn to_constraint(&self) -> Option<Constraint> {
         Constraint::mk_arrow(self.body.clone(), self.head.clone())
+    }
+}
+
+impl <A: fmt::Display> fmt::Display for PCSP<A> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} -> {}", self.body, self.head)
     }
 }

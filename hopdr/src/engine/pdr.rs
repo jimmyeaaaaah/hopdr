@@ -1,3 +1,4 @@
+use super::rtype::Environment;
 use super::VerificationResult;
 use crate::formula::hes::Problem;
 use std::unimplemented;

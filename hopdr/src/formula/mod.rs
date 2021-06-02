@@ -1,5 +1,6 @@
 pub mod hes;
 pub mod pcsp;
+pub mod chc;
 pub mod ty;
 
 use std::{fmt};
