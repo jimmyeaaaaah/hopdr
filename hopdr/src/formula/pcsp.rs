@@ -44,7 +44,8 @@ impl Atom {
         match self.kind() {
             AtomKind::True | AtomKind::Constraint(_) => false,
             AtomKind::Predicate(_, _) => true,
-            AtomKind::Conj(c1, c2) => c1.contains_predicate() && c2.contains_predicate(),
+            AtomKind::Conj(c1, c2) | AtomKind::Disj(c1, c2)
+                => c1.contains_predicate() && c2.contains_predicate(),
         }
     }
     pub fn extract_pred_and_constr(&self) -> Option<(Constraint, Ident)> {
@@ -73,7 +74,23 @@ impl Atom {
                     (Some(x), Some(y)) => Some(Constraint::mk_disj(x.clone(), y.clone())),
                 }
             },
+            AtomKind::Disj(l, r) => {
+                let l = l.negate();
+                let r = r.negate();
+                match (l, r) {
+                    (_, None) | (None, _) => None,
+                    (Some(x), Some(y)) => Some(Constraint::mk_conj(x.clone(), y.clone())),
+                }
+            },
             AtomKind::Predicate(_, _) => None,
+        }
+    }
+    pub fn mk_disj(x: Self, y: Self) -> Atom {
+        use AtomKind::*;
+        match (&*x, &*y) {
+            (True, _) => y.clone(),
+            (_, True) => x.clone(),
+            _ => Atom::new(Conj(x.clone(), y.clone())),
         }
     }
 }
@@ -86,7 +103,8 @@ impl Fv for Atom {
             AtomKind::Predicate(ident, _) => {
                 fvs.insert(*ident);
             },
-            AtomKind::Conj(x, y) => {
+            AtomKind::Conj(x, y) | AtomKind::Disj(x, y )
+                => {
                 x.fv_with_vec(fvs);
                 y.fv_with_vec(fvs);
             }

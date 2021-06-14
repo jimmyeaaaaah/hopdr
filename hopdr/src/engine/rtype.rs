@@ -1,6 +1,6 @@
 use std::{collections::{HashMap, HashSet}, ffi::FromBytesWithNulError, fmt::{self, Display}, rc::Rc, unimplemented};
 
-use crate::formula::{chc::pcsp2chc, hes::{Atom, AtomKind, Clause, ConstKind, Goal, GoalKind}};
+use crate::formula::{chc::pcsps2chcs, hes::{Atom, AtomKind, Clause, ConstKind, Goal, GoalKind}};
 use crate::formula::{pcsp, chc};
 use crate::formula::{
     Conjunctive, Constraint, Ident, IntegerEnvironment, Op, Subst, Top, Type as SType,
@@ -417,13 +417,10 @@ fn type_check_goal(goal: &Goal, tenv: &mut Environment) -> Result<Constraint, Er
             let target = *fvs.iter().next().unwrap();
             debug!("ha?");
 
-            let mut chc_constraints = Vec::new();
-            for constraint in constraints {
-                match pcsp2chc(constraint) {
-                    Some(clause) => chc_constraints.push(clause),
-                    None => return Err(Error::TypeError)
-                }
-            }
+            let mut chc_constraints = match pcsps2chcs(&constraints) {
+                Some(x) => x,
+                None => return Err(Error::TypeError),
+            };
             debug!("resolution");
 
             let c = chc::solve_by_resolution(target, chc_constraints)?;
