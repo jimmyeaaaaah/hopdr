@@ -73,10 +73,18 @@ impl CHC<pcsp::Atom> {
             pcsp::AtomKind::Predicate(p, _) if p != target_p => expr.clone(),
             pcsp::AtomKind::Predicate(p, args) => {
                 assert!(args.len() == target_args.len());
-                let mut substs = Vec::new();
+                let mut substs = HashMap::new();
                 for (x, y) in args.iter().zip(target_args.iter()) {
-                    substs.push((*y, Op::mk_var(*x)))
+                    if let Some(x2) = substs.insert(y, x) {
+                        if x2 == x {
+                            panic!("program error: replacement failed")
+                        }
+                    }
+                    //substs.push((*y, Op::mk_var(*x)))
                 }
+                let substs = substs.into_iter().map(|(k, v)| {
+
+                }).collect();
                 target.body.subst_multi(&substs)
             },
             pcsp::AtomKind::Conj(x, y) => {
