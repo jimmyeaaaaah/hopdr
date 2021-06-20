@@ -103,6 +103,18 @@ impl<C: Subst> Subst for Tau<C> {
     }
 }
 
+impl<C: Subst + Rename> Rename for Tau<C> {
+    fn rename(&self, x: &Ident, y: &Ident) -> Tau<C> {
+        match self.kind() {
+            TauKind::Proposition(c) => Tau::mk_prop_ty(c.rename(x, y)),
+            TauKind::IArrow(id, _body) if id == x => self.clone(),
+            TauKind::IArrow(id, body) => Tau::mk_iarrow(*id, body.rename(x, y)),
+            TauKind::Arrow(l, r) => Tau::mk_arrow(l.rename(x, y), r.rename(x, y)),
+        }
+    }
+
+}
+
 impl<C: Subst> Tau<C> {
     pub fn mk_prop_ty(c: C) -> Tau<C> {
         Tau::new(TauKind::Proposition(c))
@@ -338,10 +350,9 @@ fn type_check_atom(atom: &Atom, env: &Environment) -> Result<Vec<(Tau<pcsp::Atom
             let ie = int_expr(arg, env);
             let ts = type_check_atom(x, env)?;
             match ie {
-                Some(y) => ts.into_iter().map(|(t, c)| match t.kind() {
+                Some(y) => ts.into_iter().map(|(t, cs)| match t.kind() {
                     TauKind::IArrow(x, t) => {
-                        unimplemented!()
-                        //(t.rename(x, y), c.rename(x, y))
+                        (t.rename(x, &y), cs.into_iter().map(|c| c.rename(x, &y)).collect())
                     },
                     TauKind::Proposition(_) | TauKind::Arrow(_, _) => panic!("program error"),
                 }).collect(),

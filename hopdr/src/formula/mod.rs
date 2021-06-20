@@ -459,6 +459,15 @@ impl Ident {
         let id = global_counter();
         Ident { id }
     }
+    pub fn rename_idents(args: &Vec<Ident>, x: &Ident, y: &Ident) -> Vec<Ident> {
+        args.iter().map(|arg| {
+            if arg == x {
+                *y
+            } else {
+                *arg
+            }
+        }).collect()
+    }
 }
 
 #[derive(Debug)]

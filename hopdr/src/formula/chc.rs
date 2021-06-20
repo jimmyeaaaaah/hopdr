@@ -4,7 +4,7 @@ use std::collections::HashSet;
 use std::iter::FromIterator;
 use std::vec;
 
-use super::{Conjunctive, Constraint, Ident, Op, Subst, Top, Fv, PredKind};
+use super::{Conjunctive, Constraint, Ident, Op, Rename, Subst, Top, Fv, PredKind};
 use super::pcsp;
 use crate::util::P;
 
@@ -44,11 +44,28 @@ impl CHCHead {
         }
     }
 }
+impl Rename for CHCHead {
+    fn rename(&self, x: &Ident, y: &Ident) -> Self {
+        match self {
+            CHCHead::Constraint(c) => CHCHead::Constraint(c.rename(x, y)),
+            CHCHead::Predicate(p, args) => {
+                let new_args = Ident::rename_idents(args, x, y);
+                CHCHead::Predicate(*p, new_args)
+            }
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct CHC<A> {
     pub body: A,
     pub head: CHCHead,
+}
+
+impl <A: Rename> Rename for CHC<A> {
+    fn rename(&self, x: &Ident, y: &Ident) -> Self {
+        CHC::new(self.head.rename(x, y), self.body.rename(x, y))
+    }
 }
 
 

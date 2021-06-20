@@ -1,7 +1,7 @@
 use std::fmt;
 use std::collections::HashSet;
 
-use super::{Conjunctive, Constraint, Ident, Op, Subst, Top, Fv, PredKind};
+use super::{Conjunctive, Constraint, Ident, Op, Subst, Rename, Top, Fv, PredKind};
 use crate::util::P;
 
 #[derive(Debug)]
@@ -149,6 +149,21 @@ impl Subst for Atom {
         let eq = vec![Op::mk_var(*x), v.clone()];
         let c = Atom::mk_constraint(Constraint::mk_pred(PredKind::Eq, eq));
         Atom::mk_conj(c, self.clone())
+    }
+}
+
+impl Rename for Atom {
+    fn rename(&self, x: &Ident, y: &Ident) -> Self {
+        match self.kind() {
+            AtomKind::True => self.clone(),
+            AtomKind::Constraint(c) => Atom::mk_constraint(c.rename(x, y)),
+            AtomKind::Predicate(p, args) => {
+                let new_args = Ident::rename_idents(args, x, y);
+                Atom::mk_pred(*p, new_args)
+            }
+            AtomKind::Conj(a, b) => Atom::mk_conj(a.rename(x, y), b.rename(x, y)),
+            AtomKind::Disj(a, b) => Atom::mk_disj(a.rename(x, y), b.rename(x, y)),
+        }
     }
 }
 
