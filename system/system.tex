@@ -7,6 +7,7 @@
 \usepackage{mathpartir}
 \usepackage{pifont}
 \usepackage{multirow}
+\usepackage{algorithmic}
 \usepackage{graphicx}
 
 \newcommand \nhz{\(\nu\text{HFL}_\mathbb{Z}\)}
@@ -67,6 +68,16 @@
 \newcommand {\srtg}[3][]{\semt{\wf{#2}{#3}}(\alpha[#1])}
 \newcommand {\vc}[1]{[\!|#1|\!]}
 \newcommand {\vtenv}[2][]{\val{#2}({\ifthenelse{\isempty{#1}}{\valfun}{#1}})}
+
+
+\newlength\myindent
+\setlength\myindent{2em}
+\newcommand\bindent{%
+  \begingroup
+  \setlength{\itemindent}{\myindent}
+  \addtolength{\algorithmicindent}{\myindent}
+}
+\newcommand\eindent{\endgroup}
 
 
 \begin{document}
@@ -387,5 +398,78 @@ Consider the following type environment \(\Gamma\)
 \end{align*}
 We would like to prove \( \Gamma \vdash (f\ k\ g) \lor (f'\ k'\ g'):
 \typebool{C}\)
+
+
+\subsubsection{Algorithm of type checking}
+
+\begin{algorithmic}
+\STATE infer($\Gamma$, $f$) = ($\{\}$, $\Gamma(f)$)
+\STATE infer($\Gamma$, $a\ x$) where $\Gamma(x) = \stypeint$ =
+    \bindent
+    \STATE let ($c, \typeint{y} \mapsto \tau$) = infer($\Gamma$, $a$) in
+    \STATE ($[y/x]C, [y/x]\tau$)
+    \eindent
+\STATE infer($\Gamma$, $a_1\ a_2$) otherwise =
+    \bindent
+    \STATE let ($c_1, \sigma \mapsto \tau$) = infer($\Gamma$, $a_1$) in
+    \STATE let ($c_2, \sigma'$) = infer($\Gamma$, $a_2$) in
+    \STATE let ($\tau', L$) = generate\_template($\tau$) in
+    \STATE let C = subtype($\sigma \mapsto \tau, \sigma'\mapsto \tau'$) in
+    \STATE let C' = simplify($ C \cup C' \cup C'', L)$ in
+    \STATE ($ C', \tau'$)
+    \eindent
+\STATE simplify(C, L) =
+    \bindent
+    \WHILE{let $P(\tilde{x}) \Leftarrow \psi$ where $P \not \in L$}
+        \FORALL{$Q(\tilde{y}) \Leftarrow \psi' \land P(\tilde{x})$ in $C$}
+            \STATE remove $P(\tilde{x}) \Leftarrow \psi$ from $C$
+            \STATE add $Q(\tilde{y}) \Leftarrow \psi' \land \psi$ to $C$
+        \ENDFOR
+    \ENDWHILE
+    \eindent
+
+\end{algorithmic}
+
+Consider the following type environment \(\Gamma\)
+\begin{align*}
+    f&: (\typeint{x} \to \typebool{C_1}) \to ((\typeint{x} \to \typebool{C_2})
+    \to \typebool{C_3})\\
+    g&: \typeint{x} \to \typebool{C_4}\\
+    h&: (\typeint{x} \to \typebool{C_1'}) \to x \to \typebool{C_3'}\\
+    i&: \typeint{x} \to \typebool{C_4'}\\
+    y&: \stypeint
+\end{align*}
+Then, we try to check \(\Gamma \vdash (f\ g)\ (h\ i): \typebool{\true}\).
+To do that, we first infer the type of this formula: infer\((\Gamma, (f\ g)\
+(h\ i)\).
+Observing that infer\((\Gamma, f\ g) = (C_1, (\typeint{x} \rightarrow
+\typebool{P(x, y)}) \rightarrow \typebool{Q(y)} )\), infer\((\Gamma, f\ g)
+= (C_2, \typeint{x} \rightarrow \typebool{R(x, y)})\),
+generate\_template\((\typebool{Q(y)}) = (\typebool{Q'(y)}, \{Q'\})\)
+where \(C_1\) is
+\begin{align*}
+    Q(y) \Rightarrow &C_3\\
+    Q(y) \land \Rightarrow &P(x, y)\\
+    Q(y) \land C_1  \Rightarrow &C_4
+\end{align*}
+and \(C_2\) is
+\begin{align*}
+    R(x, y) \Rightarrow &C_3'\\
+    R(x, y) \land C_1'\Rightarrow &C_4',
+\end{align*}
+subtype\(( (\typeint{x} \to \typebool{P(x, y)}) \to \typebool{Q(y)} \prec
+(\typeint{x} \to \typebool{R(x, y)}) \to \typebool{Q'(y)}) \) returns \(C_3\):
+\begin{align*}
+    Q'(y) \Rightarrow &Q(y)\\
+    Q'(y) \land P(x, y) \Rightarrow &C_4'.
+\end{align*}
+Then, simplify\((C_1 \cup C_2 \cup C_3, \{Q'\})\) will be
+\begin{align*}
+    Q'(y) \Rightarrow &C_3\\
+    Q'(y) \land C_2 \Rightarrow &C_3'\\
+    Q'(y) \land C_2 \land C_1' \Rightarrow &C_4'\\
+    Q'(y) \land C_1 \Rightarrow &C_4.
+\end{align*}
+
 
 \end{document}

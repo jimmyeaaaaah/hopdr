@@ -36,8 +36,10 @@ impl Atom {
     pub fn mk_pred(ident: Ident, args: Vec<Ident>) -> Atom {
         Atom::new(AtomKind::Predicate(ident, args))
     }
-    pub fn fresh_pred(args: Vec<Ident>) -> Atom {
+    pub fn fresh_pred(args: Vec<Ident>, new_idents: &mut HashSet<Ident>) -> Atom {
         let ident = Ident::fresh();
+        let r = new_idents.insert(ident);
+        assert!(r);
         Atom::mk_pred(ident, args)
     }
     pub fn contains_predicate(&self) -> bool {

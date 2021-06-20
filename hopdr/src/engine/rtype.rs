@@ -56,21 +56,21 @@ impl <C: fmt::Display> fmt::Display for Tau<C> {
 }
 
 impl <C>Tau<C> {
-    fn clone_with_template(&self, env: IntegerEnvironment) -> Tau<pcsp::Atom> {
+    fn clone_with_template(&self, env: IntegerEnvironment, new_idents: &mut HashSet<Ident>) -> Tau<pcsp::Atom> {
         match self.kind() {
             TauKind::Proposition(_) => {
                 let args = env.variables();
-                let a = pcsp::Atom::fresh_pred(args);
+                let a = pcsp::Atom::fresh_pred(args, new_idents);
                 Tau::mk_prop_ty(a)
             }
             TauKind::IArrow(x, t) => {
                 let env = env.add(*x);
-                let t = t.clone_with_template(env);
+                let t = t.clone_with_template(env, new_idents);
                 Tau::mk_iarrow(*x, t)
             }
             TauKind::Arrow(t1, t2) => {
-                let t1 = t1.clone_with_template(env.clone());
-                let t2 = t2.clone_with_template(env);
+                let t1 = t1.clone_with_template(env.clone(), new_idents);
+                let t2 = t2.clone_with_template(env, new_idents);
                 Tau::mk_arrow(t1, t2)
             }
         }
@@ -143,54 +143,32 @@ impl<C: Subst> Tau<C> {
     }
 }
 
-// try to infer greatest type t' where t <= t' (right=true) or t' <= t (right=false)
-fn infer_greatest_type_inner(t: Ty, cnstr: Constraint, right: bool) -> (Ty, Constraint) {
-    match t.kind() {
-        TauKind::Proposition(c) if right => {
-            debug!("constraint 1 : {}", cnstr.clone().negate().unwrap()); 
-            let c = Constraint::mk_disj(c.clone(), cnstr.clone().negate().unwrap());
-            let t = Tau::mk_prop_ty(c.clone());
-            debug!("constraint 1 : {}", &c);
-            (t, c)
-        },
-        TauKind::Proposition(c) => {
-            let c = Constraint::mk_conj(c.clone(), cnstr.clone());
-            let t = Tau::mk_prop_ty(c.clone());
-            debug!("constraint 2 : {}", &c);
-            (t, c)
-        },
-        TauKind::IArrow(arg, ret) => {
-            let (t, c) = infer_greatest_type_inner(ret.clone(), cnstr, right);
-            (Tau::mk_iarrow(arg.clone(), t), c)
-        },
-        TauKind::Arrow(arg, ret) => {
-            let (t, c) = infer_greatest_type_inner(ret.clone(), cnstr.clone(), right);
-            let (arg_t, _) = infer_greatest_type_inner(arg.clone(), Constraint::mk_conj(cnstr, c.clone()), !right);
-            (Tau::mk_arrow(arg_t, t), c)
-        }
-    }
-}
-
-fn infer_greatest_type(environment: &Environment, arrow_type: Tau<pcsp::Atom>, arg_t: Tau<pcsp::Atom>, constraints: &mut Vec<pcsp::PCSP<pcsp::Atom>>) -> Result<Tau<pcsp::Atom>, Error> {
+fn infer_subtype(environment: &Environment, arrow_type: Tau<pcsp::Atom>, arg_t: Tau<pcsp::Atom>, lhs_c: &[chc::CHC<pcsp::Atom>], rhs_c: &[chc::CHC<pcsp::Atom>]) -> Result<(Tau<pcsp::Atom>, Vec<chc::CHC<pcsp::Atom>>), Error> {
     debug!("infer_greatest_type: {} <: {} -> ?", arrow_type.clone(), arg_t.clone());
+    let mut new_idents = HashSet::new();
     let ret_t = match &*arrow_type {
-        TauKind::Arrow(_, y) => y.clone_with_template(environment.imap.clone()),
+        TauKind::Arrow(_, y) => y.clone_with_template(environment.imap.clone(), &mut new_idents),
         _ => panic!("program error"),
     };
     //let ret_t= generate_template(environment, ret_st);
     let lhs: Tau<pcsp::Atom> = arrow_type.into();
     let rhs: Tau<pcsp::Atom> = Tau::mk_arrow(arg_t.into(), ret_t.clone());
-    debug!("len: {}", constraints.len());
-    generate_constraint(&lhs, &rhs, constraints);
+    debug!("len lhs: {}", lhs_c.len());
+    debug!("len rhs: {}", rhs_c.len());
+    let mut constraints = Vec::new();
+    generate_constraint(&lhs, &rhs, &mut constraints);
     debug!("len2: {}", constraints.len());
 
     //let (t, c) = infer_greatest_type_inner(ret_t, Constraint::mk_true(), true);
     // check environment; c |- arg_t < arg_t2 
 
-    //unimplemented!()
-    Ok(ret_t)
-    //debug!("infer_greatest_type: ? = {}", t.clone());
-    //Ok(t)
+    let chc_constraints = match pcsps2chcs(&constraints) {
+        Some(x) => x,
+        None => return Err(Error::TypeError),
+    };
+    let c = chc::simplify(&chc_constraints, lhs_c, rhs_c, &new_idents)?;
+
+    Ok((ret_t, c))
 }
 
 fn generate_constraint_inner<A: Conjunctive + Clone + Subst + fmt::Debug>(
@@ -352,22 +330,22 @@ fn int_expr(atom: &Atom, env: &Environment) -> Option<Op> {
     }
 }
 
-fn type_check_atom(atom: &Atom, env: &Environment, constraints: &mut Vec<pcsp::PCSP<pcsp::Atom>>) -> Result<Vec<Tau<pcsp::Atom>>, Error> {
+fn type_check_atom(atom: &Atom, env: &Environment) -> Result<Vec<(Tau<pcsp::Atom>, Vec<chc::CHC<pcsp::Atom>>)>, Error> {
     //debug!("type_check_atom: {}", atom);
     use AtomKind::*;
     let r = 
     match atom.kind() {
         App(x, arg) => {
             let ie = int_expr(arg, env);
-            let ts = type_check_atom(x, env, constraints)?;
+            let ts = type_check_atom(x, env)?;
             match ie {
-                Some(op) => ts.into_iter().map(|t| t.app(&op)).collect(),
+                Some(op) => ts.into_iter().map(|(t, c)| (t.app(&op), c)).collect(),
                 None => {
-                    let ss = type_check_atom(arg, env, constraints)?;
+                    let ss = type_check_atom(arg, env)?;
                     let mut result_ts = Vec::new();
-                    for t in ts.iter() {
-                        for s in ss.iter() {
-                            let result_t = infer_greatest_type(env, t.clone(), s.clone(), constraints)?;
+                    for (t, cs1) in ts.iter() {
+                        for (s, cs2) in ss.iter() {
+                            let result_t = infer_subtype(env, t.clone(), s.clone(), cs1, cs2)?;
                             result_ts.push(result_t);
                         }
                     }
@@ -375,11 +353,11 @@ fn type_check_atom(atom: &Atom, env: &Environment, constraints: &mut Vec<pcsp::P
                 }
             }
         }
-        Var(v) => env.tget(v).unwrap().clone().into_iter().map(|x|x.into()).collect(),
+        Var(v) => env.tget(v).unwrap().clone().into_iter().map(|x|(x.into(),Vec::new())).collect(),
         Const(_c) => panic!("program error"),
     };
     //debug!("type_check_atom cont: {}", atom);
-    for v in r.iter() {
+    for (v,_) in r.iter() {
         debug!("type_check_atom cont ty: {}", v);
     }
     Ok(r)
@@ -393,17 +371,16 @@ fn type_check_goal(goal: &Goal, tenv: &mut Environment) -> Result<Constraint, Er
     let r = 
     match goal.kind() {
         Atom(atom) => {
-            let mut constraints = Vec::new();
-            let ts = type_check_atom(atom, tenv, &mut constraints)?;
-            for t in ts.iter() {
+            let (ts) = type_check_atom(atom, tenv)?;
+            for (t, constraints) in ts.iter() {
                 debug!("- type: {}", t);
-            }
-            for c in constraints.iter() {
-                debug!("- constraint: {}", c)
+                for c in constraints.iter() {
+                    debug!("-- constraint: {}", c)
+                }
             }
 
             let mut fvs = HashSet::new();
-            for t in ts.iter() {
+            for (t, _) in ts.iter() {
                 t.fv_with_vec(&mut fvs);
             }
             if fvs.len() > 1 {
@@ -417,13 +394,14 @@ fn type_check_goal(goal: &Goal, tenv: &mut Environment) -> Result<Constraint, Er
             let target = *fvs.iter().next().unwrap();
             debug!("ha?");
 
-            let mut chc_constraints = match pcsps2chcs(&constraints) {
-                Some(x) => x,
-                None => return Err(Error::TypeError),
-            };
-            debug!("resolution");
+            unimplemented!();
+            //let mut chc_constraints = match pcsps2chcs(&constraints) {
+            //    Some(x) => x,
+            //    None => return Err(Error::TypeError),
+            //};
+            //debug!("resolution");
 
-            let c = chc::solve_by_resolution(target, chc_constraints)?;
+            //let c = chc::solve_by_resolution(target, chc_constraints)?;
             let ts: Vec<Ty> = unimplemented!();
             // TODO: here calculate greatest type
             let mut ret_constr = Constraint::mk_false();
