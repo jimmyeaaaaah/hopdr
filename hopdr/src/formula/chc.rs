@@ -43,6 +43,15 @@ impl CHCHead {
             _ => None
         }
     }
+    pub fn mk_true() -> CHCHead {
+        CHCHead::Constraint(Constraint::mk_true())
+    }
+    pub fn mk_constraint(c: Constraint) -> CHCHead {
+        CHCHead::Constraint(c)
+    }
+    pub fn mk_predicate(id: Ident, args: Vec<Ident>) -> CHCHead {
+        CHCHead::Predicate(id, args)
+    }
 }
 impl Rename for CHCHead {
     fn rename(&self, x: &Ident, y: &Ident) -> Self {
@@ -55,6 +64,8 @@ impl Rename for CHCHead {
         }
     }
 }
+
+
 
 #[derive(Debug, Clone)]
 pub struct CHC<A> {
@@ -112,14 +123,110 @@ impl CHC<pcsp::Atom> {
         CHC{body, ..self}
     }
 
+    fn resolve_target(&self, target: &Ident) -> Result<Constraint, ResolutionError> {
+        // 1. transform body of chc to disjunction normal form: bodies
+        // 2. check when P(x, y, z) /\ P'(x', y', z') then x = x' and y = y' and z = z' and P = P' = target
+        // 3. transform each body in bodies to P(x, y, z) /\ constraint => constraint'
+        // 4. negate constraint, then P(x, y, z) => not(constraint) \/ constraint'
+        // 5. returns /\_[for each body in bodies] not(constraint) \/ constraint'
+
+        // 1. to dnf
+        let bodies = to_dnf(&self.body);
+        let head = match &self.head {
+            CHCHead::Constraint(c) => c.clone(),
+            CHCHead::Predicate(_, _) => return Err(ResolutionError::IllegalConstraint),
+        };
+        
+        let mut result = Constraint::mk_true();
+        for body in bodies.iter() {
+            // 2. check
+            let mut preds = body.iter().filter_map(|x| match x {
+                CHCHead::Constraint(_) => None,
+                CHCHead::Predicate(p, l) => Some((p, l)),
+            }).collect::<Vec<_>>();
+            let (p, l) = 
+                if preds.len() == 0 {
+                    return Err(ResolutionError::IllegalConstraint)
+                } else if preds.len() > 1 {
+                    let (p, l) = preds.pop().unwrap();
+                    if p != target {
+                        return Err(ResolutionError::IllegalConstraint);
+                    }
+                    for (p2, l2) in preds {
+                        if p2 != target || l2.len() != l.len() {
+                            return Err(ResolutionError::IllegalConstraint);
+                        }
+                        for (x, y) in l.iter().zip(l2.iter()) {
+                            if x != y {
+                                return Err(ResolutionError::IllegalConstraint);
+                            }
+                        }
+                    }
+                    (p, l)
+                } else {
+                    let (p, l) = preds.pop().unwrap();
+                    if p != target {
+                        return Err(ResolutionError::IllegalConstraint);
+                    }
+                    (p, l)
+                };
+            // 3. simplify & negation
+            let constrs = body.iter().filter_map(|x| match x {
+                CHCHead::Constraint(c) => Some(c),
+                CHCHead::Predicate(_, _) => None,
+            }).collect::<Vec<_>>();
+            for c in constrs{
+                match c.clone().negate() {
+                    Some(c) => {
+                        result = Constraint::mk_conj(result, Constraint::mk_disj(c, head.clone()));
+                    }
+                    None => return Err(ResolutionError::IllegalConstraint),
+                };
+            }
+        }
+        Ok(result)
+    }
+
 }
 
+fn cross_and(left: Vec<Vec<CHCHead>>, mut right: Vec<Vec<CHCHead>>) -> Vec<Vec<CHCHead>> {
+    let mut ret = Vec::new();
+    for x in left.iter() {
+        for y in right.iter_mut() {
+            let mut v = x.clone();
+            v.append(y);
+            ret.push(v);
+        }
+    }
+    ret
+}
+
+pub fn to_dnf(atom: &pcsp::Atom) -> Vec<Vec<CHCHead>> {
+    use pcsp::AtomKind;
+    match atom.kind() {
+        AtomKind::True => vec![vec![CHCHead::mk_true()]],
+        AtomKind::Constraint(c)  => vec![vec![CHCHead::mk_constraint(c.clone())]],
+        AtomKind::Predicate(p, l) => vec![vec![CHCHead::mk_predicate(*p, l.clone())]],
+        AtomKind::Conj(x, y) => {
+            let left = to_dnf(x);
+            let right = to_dnf(y);
+            cross_and(left, right)
+        },
+        AtomKind::Disj(x, y) => {
+            let mut left = to_dnf(x);
+            let mut right = to_dnf(y);
+            left.append(&mut right);
+            left
+        }
+    }
+}
 
 #[derive(Debug, Copy, Clone)]
 pub enum ResolutionError {
     TargetVariableNotFound,
     CHCNotDeterministic,
-    ContainsDisjunctions
+    ContainsDisjunctions,
+    IllegalConstraint
 }
 
 fn simplify_atom(atom: pcsp::Atom) -> pcsp::Atom {
@@ -299,4 +406,13 @@ pub fn simplify(c: &[CHC<pcsp::Atom>], c1: &[CHC<pcsp::Atom>], c2: &[CHC<pcsp::A
         debug!("- constraint: {}", c)
     }
     Ok(goals)
+}
+
+pub fn resolve_target(chcs: Vec<CHC<pcsp::Atom>>, target: &Ident) -> Result<Constraint, ResolutionError> {
+    let mut ret = Constraint::mk_true();
+    for chc in chcs {
+        let c = chc.resolve_target(target)?;
+        ret = Constraint::mk_conj(c, ret);
+    }
+    Ok(ret)
 }

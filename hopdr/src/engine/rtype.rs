@@ -409,20 +409,13 @@ fn type_check_goal(goal: &Goal, tenv: &mut Environment) -> Result<Constraint, Er
             let target = *fvs.iter().next().unwrap();
             debug!("ha?");
 
-            unimplemented!();
-            //let mut chc_constraints = match pcsps2chcs(&constraints) {
-            //    Some(x) => x,
-            //    None => return Err(Error::TypeError),
-            //};
-            //debug!("resolution");
-
-            //let c = chc::solve_by_resolution(target, chc_constraints)?;
-            let ts: Vec<Ty> = unimplemented!();
             // TODO: here calculate greatest type
             let mut ret_constr = Constraint::mk_false();
-            for t in ts.iter() {
+            for (t, constraints) in ts {
                 match t.kind() {
-                    TauKind::Proposition(c) => {
+                    TauKind::Proposition(_) => {
+                        let c = chc::resolve_target(constraints, &target).unwrap();
+                        debug!("final constraint: {}", c);
                         ret_constr = Constraint::mk_disj(ret_constr, c.clone())
                     }
                     _ => panic!("program error. The result type of atom must be prop."),

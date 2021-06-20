@@ -95,6 +95,9 @@ impl Atom {
             _ => Atom::new(Conj(x.clone(), y.clone())),
         }
     }
+    pub fn mk_false() -> Atom {
+        Atom::mk_constraint(Constraint::mk_false())
+    }
 }
 
 impl Fv for Atom {
