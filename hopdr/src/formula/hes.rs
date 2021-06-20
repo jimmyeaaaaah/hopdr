@@ -39,7 +39,7 @@ impl Const {
 #[derive(Debug)]
 pub enum AtomKind {
     Var(Ident),
-    Const(Const),
+    //Const(Const),
     App(Atom, Atom),
     //Abs(Variable, Atom)
 }
@@ -51,7 +51,7 @@ impl fmt::Display for Atom {
         use AtomKind::*;
         match self.kind() {
             Var(i) => write!(f, "{}", i),
-            Const(c) => write!(f, "{}", c),
+            //Const(c) => write!(f, "{}", c),
             App(x, y) => write!(f, "({} {})", x, y),
         }
     }
@@ -61,9 +61,9 @@ impl Atom {
     pub fn mk_var(ident: Ident) -> Atom {
         Atom::new(AtomKind::Var(ident))
     }
-    pub fn mk_const(ct: Const) -> Atom {
-        Atom::new(AtomKind::Const(ct))
-    }
+    //pub fn mk_const(ct: Const) -> Atom {
+    //    Atom::new(AtomKind::Const(ct))
+    //}
     pub fn mk_app(lhs: Atom, rhs: Atom) -> Atom {
         Atom::new(AtomKind::App(lhs, rhs))
     }

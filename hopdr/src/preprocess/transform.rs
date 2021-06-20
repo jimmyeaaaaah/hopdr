@@ -45,7 +45,13 @@ impl EitherExpr {
     fn parse_atom(self, clauses: &mut Vec<OutClause>, constraints: &mut (Vec<formula::Variable>, Vec<formula::Constraint>)) 
         -> formula::hes::Atom {
         match self {
-            EitherExpr::Const(c) => formula::hes::Atom::mk_const(c),
+            EitherExpr::Const(c) => {
+                match c.kind() {
+                    formula::hes::ConstKind::Int(v) => {
+                        EitherExpr::mk_op(formula::Op::mk_const(*v)).parse_atom(clauses, constraints)
+                    }
+                }
+            },
             EitherExpr::Var(v) => formula::hes::Atom::mk_var(v),
             EitherExpr::Atom(a) => a,
             EitherExpr::Op(o) => {

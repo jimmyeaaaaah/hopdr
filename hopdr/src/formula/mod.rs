@@ -173,11 +173,25 @@ impl Op {
         Op::new(OpExpr::Var(x))
     }
 
+}
+
+impl Subst for Op {
     fn subst(&self, id: &Ident, v: &Op) -> Op {
         match self.kind() {
             OpExpr::Op(k, x, y) => Op::mk_bin_op(*k, x.subst(id, v), y.subst(id, v)),
 
             OpExpr::Var(id2) if id == id2 => v.clone(),
+            _ => self.clone(),
+        }
+    }
+}
+
+impl Rename for Op {
+    fn rename(&self, id: &Ident, id2: &Ident) -> Op {
+        match self.kind() {
+            OpExpr::Op(k, x, y) => Op::mk_bin_op(*k, x.rename(id, id2), y.rename(id, id2)),
+
+            OpExpr::Var(id3) if id == id3 => Op::mk_var(id2.clone()),
             _ => self.clone(),
         }
     }
@@ -205,6 +219,10 @@ pub trait Subst : Sized {
         let op = Op::mk_var(y.clone());
         self.subst(x, &op)
     }
+}
+
+pub trait Rename : Sized {
+    fn rename(&self, x: &Ident, y: &Ident) -> Self;
 }
 
 pub trait Fv {
@@ -292,6 +310,28 @@ impl Subst for Constraint {
             Disj(r, l) => Constraint::mk_disj(r.subst(x, v), l.subst(x, v)),
             // assumption: vars are different each other ?
             Quantifier(q, var, cstr) => Constraint::mk_quantifier(*q, var.clone(), cstr.subst(x, v)),
+        }
+    }
+}
+
+impl Rename for Constraint {
+    // \theta[v/x]
+    fn rename(&self, x: &Ident, y: &Ident) -> Constraint {
+        use ConstraintExpr::*;
+        match self.kind() {
+            True | False => self.clone(),
+            Pred(k, ops) => {
+                let mut new_ops = Vec::new();
+                for op in ops.iter() {
+                    new_ops.push(op.rename(x, y));
+                }
+                Constraint::mk_pred(*k, new_ops)
+            }
+            Conj(r, l) => Constraint::mk_conj(r.rename(x, y), l.rename(x, y)),
+            Disj(r, l) => Constraint::mk_disj(r.rename(x, y), l.rename(x, y)),
+            // assumption: vars are different each other ?
+            Quantifier(q, var, cstr) if &var.id != x && &var.id != y => Constraint::mk_quantifier(*q, var.clone(), cstr.rename(x, y)),
+            Quantifier(q, var, cstr) => panic!("assumption broken"),
         }
     }
 }

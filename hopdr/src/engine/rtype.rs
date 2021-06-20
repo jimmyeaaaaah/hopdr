@@ -3,7 +3,7 @@ use std::{collections::{HashMap, HashSet}, ffi::FromBytesWithNulError, fmt::{sel
 use crate::formula::{chc::pcsps2chcs, hes::{Atom, AtomKind, Clause, ConstKind, Goal, GoalKind}};
 use crate::formula::{pcsp, chc};
 use crate::formula::{
-    Conjunctive, Constraint, Ident, IntegerEnvironment, Op, Subst, Top, Type as SType,
+    Conjunctive, Constraint, Ident, IntegerEnvironment, Op, Subst, Rename, Top, Type as SType,
     TypeKind as STypeKind, P,
     QuantifierKind,
     Fv
@@ -317,15 +317,14 @@ impl Environment {
 }
 
 
-fn int_expr(atom: &Atom, env: &Environment) -> Option<Op> {
+fn int_expr(atom: &Atom, env: &Environment) -> Option<Ident> {
     use AtomKind::*;
-    use ConstKind::*;
     match atom.kind() {
-        Const(c) => match c.kind() {
-            Int(x) => Some(Op::mk_const(*x)),
-            _ => None,
-        },
-        Var(v) if env.iexists(v) => Some(Op::mk_var(v.clone())),
+        //Const(c) => match c.kind() {
+        //    Int(x) => Some(Op::mk_const(*x)),
+        //    _ => None,
+        //},
+        Var(v) if env.iexists(v) => Some(v.clone()),
         _ => None,
     }
 }
@@ -339,7 +338,13 @@ fn type_check_atom(atom: &Atom, env: &Environment) -> Result<Vec<(Tau<pcsp::Atom
             let ie = int_expr(arg, env);
             let ts = type_check_atom(x, env)?;
             match ie {
-                Some(op) => ts.into_iter().map(|(t, c)| (t.app(&op), c)).collect(),
+                Some(y) => ts.into_iter().map(|(t, c)| match t.kind() {
+                    TauKind::IArrow(x, t) => {
+                        unimplemented!()
+                        //(t.rename(x, y), c.rename(x, y))
+                    },
+                    TauKind::Proposition(_) | TauKind::Arrow(_, _) => panic!("program error"),
+                }).collect(),
                 None => {
                     let ss = type_check_atom(arg, env)?;
                     let mut result_ts = Vec::new();
@@ -354,7 +359,6 @@ fn type_check_atom(atom: &Atom, env: &Environment) -> Result<Vec<(Tau<pcsp::Atom
             }
         }
         Var(v) => env.tget(v).unwrap().clone().into_iter().map(|x|(x.into(),Vec::new())).collect(),
-        Const(_c) => panic!("program error"),
     };
     //debug!("type_check_atom cont: {}", atom);
     for (v,_) in r.iter() {
