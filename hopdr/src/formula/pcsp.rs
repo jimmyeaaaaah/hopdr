@@ -98,6 +98,18 @@ impl Atom {
     pub fn mk_false() -> Atom {
         Atom::mk_constraint(Constraint::mk_false())
     }
+
+    pub fn to_constraint(&self) -> Option<Constraint> {
+        match self.kind() {
+            AtomKind::True => Some(Constraint::mk_true()),
+            AtomKind::Constraint(c) => Some(c.clone()),
+            AtomKind::Predicate(_, _) => None,
+            AtomKind::Conj(x, y) => 
+                x.to_constraint().map(|x|y.to_constraint().map(|y|Constraint::mk_conj(x, y))).flatten(),
+            AtomKind::Disj(x, y) => 
+                x.to_constraint().map(|x|y.to_constraint().map(|y|Constraint::mk_disj(x, y))).flatten(),
+        }
+    }
 }
 
 impl Fv for Atom {

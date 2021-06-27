@@ -140,6 +140,10 @@ impl CHC<pcsp::Atom> {
         let mut result = Constraint::mk_true();
         for body in bodies.iter() {
             // 2. check
+            debug!("bodies:");
+            for body in body.iter() {
+                debug!("body: {}", body);
+            }
             let mut preds = body.iter().filter_map(|x| match x {
                 CHCHead::Constraint(_) => None,
                 CHCHead::Predicate(p, l) => Some((p, l)),
@@ -175,14 +179,16 @@ impl CHC<pcsp::Atom> {
                 CHCHead::Constraint(c) => Some(c),
                 CHCHead::Predicate(_, _) => None,
             }).collect::<Vec<_>>();
+            let mut h =  head.clone();
             for c in constrs{
                 match c.clone().negate() {
                     Some(c) => {
-                        result = Constraint::mk_conj(result, Constraint::mk_disj(c, head.clone()));
+                        h = Constraint::mk_disj(c, h);
                     }
                     None => return Err(ResolutionError::IllegalConstraint),
                 };
             }
+            result = Constraint::mk_conj(h, result);
         }
         Ok(result)
     }
