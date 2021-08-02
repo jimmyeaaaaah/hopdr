@@ -26,6 +26,10 @@ enum RefuteOrCex<A, B> {
     Cex(B),
 }
 
+fn transformer(env: Environment) -> Environment {
+    unimplemented!()
+}
+
 impl<'a> HoPDR<'a> {
     fn new(problem: &'a Problem) -> HoPDR<'a> {
         let mut hopdr = HoPDR {
@@ -46,7 +50,8 @@ impl<'a> HoPDR<'a> {
         unimplemented!()
     }
 
-    fn initialize(&mut self) {}
+    fn initialize(&mut self) {
+    }
 
     fn unfold(&mut self) {
         self.expand_cnt += 1;
