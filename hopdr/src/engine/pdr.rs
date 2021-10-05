@@ -1,7 +1,9 @@
 use super::rtype::Environment;
+use super::rtype;
 use super::VerificationResult;
 use crate::formula::hes::Problem;
 use std::unimplemented;
+
 
 enum PDRResult {
     Valid,
@@ -16,7 +18,6 @@ struct Candidate {
 
 struct HoPDR<'a> {
     models: Vec<Candidate>,
-    expand_cnt: u64,
     envs: Vec<Environment>,
     problem: &'a Problem,
 }
@@ -30,11 +31,27 @@ fn transformer(env: Environment) -> Environment {
     unimplemented!()
 }
 
+impl Environment { 
+    fn new_top_env(problem: &Problem) -> Environment {
+        let mut new_env = Environment::new();
+        for c in problem.clauses.iter() {
+            new_env.add_top(c.head.id, &c.head.ty)
+        }
+        new_env
+    }
+    fn new_bot_env(problem: &Problem) -> Environment {
+        let mut new_env = Environment::new();
+        for c in problem.clauses.iter() {
+            new_env.add_bot(c.head.id, &c.head.ty)
+        }
+        new_env
+    }
+}
+
 impl<'a> HoPDR<'a> {
     fn new(problem: &'a Problem) -> HoPDR<'a> {
         let mut hopdr = HoPDR {
             models: Vec::new(),
-            expand_cnt: 0,
             envs: Vec::new(),
             problem,
         };
@@ -43,6 +60,9 @@ impl<'a> HoPDR<'a> {
     }
 
     fn check_valid(&self) -> Option<Candidate> {
+    rtype::type_check_
+        rtype::type_check_clause(fml, ty.clone(), &mut env)
+        println!("{}:{}\n -> {:?}", fml, ty.clone(), );
         unimplemented!()
     }
 
@@ -51,14 +71,11 @@ impl<'a> HoPDR<'a> {
     }
 
     fn initialize(&mut self) {
+        self.envs.push(Environment::new_top_env(self.problem));
     }
 
     fn unfold(&mut self) {
-        self.expand_cnt += 1;
-        let mut new_env = Environment::new();
-        for c in self.problem.clauses.iter() {
-            new_env.add_top(c.head.id, &c.head.ty)
-        }
+        self.envs.push(Environment::new_bot_env(self.problem));
     }
 
     fn valid(&mut self) -> PDRResult {
