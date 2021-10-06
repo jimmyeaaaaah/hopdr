@@ -39,6 +39,7 @@ impl Environment {
         }
         new_env
     }
+
     fn new_bot_env(problem: &Problem) -> Environment {
         let mut new_env = Environment::new();
         for c in problem.clauses.iter() {
@@ -49,6 +50,10 @@ impl Environment {
 }
 
 impl<'a> HoPDR<'a> {
+    fn top_env(&self) -> &Environment {
+        &self.envs.last().unwrap()
+    }
+
     fn new(problem: &'a Problem) -> HoPDR<'a> {
         let mut hopdr = HoPDR {
             models: Vec::new(),
@@ -59,11 +64,17 @@ impl<'a> HoPDR<'a> {
         hopdr
     }
 
-    fn check_valid(&self) -> Option<Candidate> {
-    rtype::type_check_
-        rtype::type_check_clause(fml, ty.clone(), &mut env)
-        println!("{}:{}\n -> {:?}", fml, ty.clone(), );
-        unimplemented!()
+    fn check_valid(&self) -> bool {
+        // rtype::type_check_clause(fml, ty.clone(), &mut env);
+        // println!("{}:{}\n -> {:?}", fml, ty.clone(), );
+        match rtype::type_check_top(&self.problem.top, self.top_env()) {
+            Ok(()) => true,
+            Err(e) => match e {
+                rtype::Error::TypeError => false,
+                rtype::Error::SMTTimeout | rtype::Error::SMTUnknown => panic!("smt check fail.."),
+            }
+        }
+
     }
 
     fn check_inductive(&self) -> bool {
@@ -82,7 +93,11 @@ impl<'a> HoPDR<'a> {
         unimplemented!()
     }
 
-    fn candidate(&mut self, _c: Candidate) {}
+    // generates a candidate 
+    // Assumption: self.check_valid() == false
+    fn candidate(&mut self) {
+
+    }
 
     fn is_refutable(&self, _c: &Candidate) -> RefuteOrCex<Environment, Candidate> {
         unimplemented!()
@@ -113,13 +128,13 @@ impl<'a> HoPDR<'a> {
 
     fn run(&mut self) -> PDRResult {
         loop {
-            match self.check_valid() {
-                Some(candidate) => {
-                    self.candidate(candidate);
-                    self.check_feasible();
-                }
-                None if self.check_inductive() => return self.valid(),
-                None => self.unfold(),
+            if self.check_valid() {
+                self.candidate();
+                self.check_feasible();
+            } else if self.check_inductive() {
+                return self.valid()
+            } else {
+                self.unfold()
             }
         }
     }

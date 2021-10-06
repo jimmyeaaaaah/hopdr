@@ -345,6 +345,10 @@ impl Environment {
         self.tadd(v, Ty::new(TauKind::new_top(st)));
     }
 
+    pub fn add_bot(&mut self, v: Ident, st: &SType) {
+        self.tadd(v, Ty::new(TauKind::new_bot(st)));
+    }
+
     pub fn texists(&self, v: &Ident) -> bool {
         self.map.get(v).is_some()
     }
@@ -421,7 +425,7 @@ fn type_check_atom(atom: &Atom, env: &Environment) -> Result<Vec<(Tau<pcsp::Atom
 }
 
 
-fn type_check_goal(goal: &Goal, tenv: &mut Environment) -> Result<Constraint, Error> {
+fn type_check_goal(goal: &Goal, tenv: &Environment) -> Result<Constraint, Error> {
     debug!("type_check_goal start: {}", goal);
     use GoalKind::*;
     let f = type_check_goal;
@@ -478,8 +482,23 @@ fn type_check_goal(goal: &Goal, tenv: &mut Environment) -> Result<Constraint, Er
     Ok(r)
 }
 
-pub fn type_check_clause(clause: &Clause, rty: Ty, env: &mut Environment) -> Result<(), Error> {
+fn check_smt(c: &Constraint) -> Result<(), Error> {
+    match smt::smt_solve(&c) {
+        smt::SMTResult::Sat => Ok(()),
+        smt::SMTResult::Unsat => Err(Error::TypeError),
+        smt::SMTResult::Unknown => Err(Error::SMTUnknown),
+        smt::SMTResult::Timeout => Err(Error::SMTTimeout)
+    }
+}
+
+pub fn type_check_top(toplevel: &Goal, env: &Environment) -> Result<(), Error> {
+    let cnstr = type_check_goal(toplevel, env)?;
+    check_smt(&cnstr)
+}
+
+pub fn type_check_clause(clause: &Clause, rty: Ty, env: &Environment) -> Result<(), Error> {
     let mut t = rty;
+    let mut env = env.clone();
     for arg in clause.args.iter() {
         match t.kind() {
             TauKind::Proposition(_) => {panic!("program error")}
@@ -509,10 +528,5 @@ pub fn type_check_clause(clause: &Clause, rty: Ty, env: &mut Environment) -> Res
         c = Constraint::mk_disj(c, c2);
     }
 
-    match smt::smt_solve(&c) {
-        smt::SMTResult::Sat => Ok(()),
-        smt::SMTResult::Unsat => Err(Error::TypeError),
-        smt::SMTResult::Unknown => Err(Error::SMTUnknown),
-        smt::SMTResult::Timeout => Err(Error::SMTTimeout)
-    }
+    check_smt(&c)
 }
