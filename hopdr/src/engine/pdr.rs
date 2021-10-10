@@ -48,7 +48,11 @@ impl CandidateTree {
             if !self.children.contains_key(key) {
                 let c = self.labels[key].clone();
                 let lv = self.levels[key].clone();
-                return Some(CandidateNode { id: *key, level: lv, label: c });
+                return Some(CandidateNode {
+                    id: *key,
+                    level: lv,
+                    label: c,
+                });
             }
         }
         None
@@ -111,9 +115,24 @@ impl TypeEnvironment {
     }
 }
 
+fn handle_type_check(result: Result<(), rtype::Error>) -> bool {
+        match result {
+            Ok(()) => true,
+            Err(e) => match e {
+                rtype::Error::TypeError => false,
+                rtype::Error::SMTTimeout | rtype::Error::SMTUnknown => panic!("smt check fail.."),
+            },
+        }
+
+}
+
 impl<'a> HoPDR<'a> {
-    fn top_env(&mut self) -> &mut TypeEnvironment {
+    fn top_env_mut(&mut self) -> &mut TypeEnvironment {
         self.envs.last_mut().unwrap()
+    }
+
+    fn top_env(&self) -> &TypeEnvironment {
+        self.envs.last().unwrap()
     }
 
     fn new(problem: &'a Problem) -> HoPDR<'a> {
@@ -129,20 +148,25 @@ impl<'a> HoPDR<'a> {
     fn check_valid(&mut self) -> bool {
         // rtype::type_check_clause(fml, ty.clone(), &mut env);
         // println!("{}:{}\n -> {:?}", fml, ty.clone(), );
-        match rtype::type_check_top(&self.problem.top, self.top_env()) {
-            Ok(()) => true,
-            Err(e) => match e {
-                rtype::Error::TypeError => false,
-                rtype::Error::SMTTimeout | rtype::Error::SMTUnknown => panic!("smt check fail.."),
-            },
-        }
+        let result = rtype::type_check_top(&self.problem.top, self.top_env()) ;
+        handle_type_check(result)
     }
 
     // 1. Γ_i |- Γ_{i-1}
     // 2. Γ_i |- \psi : *<T>
     // Assumption: 2 has been already satisfied
     fn check_inductive(&self) -> bool {
-        unimplemented!()
+        let env = self.top_env();
+        for clause in self.problem.clauses.iter() {
+            let tys = env.get(&clause.head.id).unwrap();
+            for ty in tys {
+                let result = rtype::type_check_clause(clause, ty.clone(), env);
+                if !handle_type_check(result) {
+                    return false;
+                }
+            }
+        }
+        true
     }
 
     fn initialize(&mut self) {
@@ -165,7 +189,9 @@ impl<'a> HoPDR<'a> {
 
     // generates a candidate
     // Assumption: self.check_valid() == false
-    fn candidate(&mut self) {}
+    fn candidate(&mut self) {
+        unimplemented!()
+    }
 
     fn is_refutable(&self, _c: &Candidate) -> RefuteOrCex<TypeEnvironment, Vec<Candidate>> {
         unimplemented!()

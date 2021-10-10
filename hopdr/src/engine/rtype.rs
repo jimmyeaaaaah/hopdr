@@ -343,7 +343,6 @@ impl Clone for TypeEnvironment {
     }
 }
 
-
 impl TypeEnvironment {
     pub fn new() -> TypeEnvironment {
         TypeEnvironment {
