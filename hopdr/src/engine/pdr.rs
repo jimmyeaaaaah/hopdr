@@ -1,8 +1,10 @@
 use super::rtype;
-use super::rtype::TypeEnvironment;
+use super::rtype::{PosEnvironment, TypeEnvironment};
 use super::VerificationResult;
+use crate::formula::hes;
 use crate::formula::hes::Problem;
 use std::collections::HashMap;
+use std::ops::Neg;
 use std::unimplemented;
 
 use super::candidate::Sty as Candidate;
@@ -14,6 +16,8 @@ enum PDRResult {
 }
 
 type NodeID = u64;
+
+type NegEnvironment = TypeEnvironment<Candidate>;
 
 struct CandidateTree {
     root: Option<Vec<NodeID>>,
@@ -84,7 +88,7 @@ struct CandidateNode {
 
 struct HoPDR<'a> {
     models: CandidateTree,
-    envs: Vec<TypeEnvironment>,
+    envs: Vec<PosEnvironment>,
     problem: &'a Problem,
 }
 
@@ -93,17 +97,17 @@ enum RefuteOrCex<A, B> {
     Cex(B),
 }
 
-impl TypeEnvironment {
-    fn new_top_env(problem: &Problem) -> TypeEnvironment {
-        let mut new_env = TypeEnvironment::new();
+impl PosEnvironment {
+    fn new_top_env(problem: &Problem) -> PosEnvironment {
+        let mut new_env = PosEnvironment::new();
         for c in problem.clauses.iter() {
             new_env.add_top(c.head.id, &c.head.ty)
         }
         new_env
     }
 
-    fn new_bot_env(problem: &Problem) -> TypeEnvironment {
-        let mut new_env = TypeEnvironment::new();
+    fn new_bot_env(problem: &Problem) -> PosEnvironment {
+        let mut new_env = PosEnvironment::new();
         for c in problem.clauses.iter() {
             new_env.add_bot(c.head.id, &c.head.ty)
         }
@@ -121,21 +125,26 @@ fn handle_type_check(result: Result<(), rtype::Error>) -> bool {
     }
 }
 
-fn transformer(env: TypeEnvironment) -> TypeEnvironment {
+fn transformer(env: PosEnvironment) -> PosEnvironment {
     unimplemented!()
 }
+fn calculate_cex(env: &PosEnvironment, formula: hes::Goal, candidate: Candidate) -> NegEnvironment {
+    unimplemented!()
+}
+
 impl<'a> HoPDR<'a> {
     // generates a candidate
     // Assumption: self.check_valid() == false
     fn candidate(&mut self) {
+        //calculate_cex(self.top_env(), self.problem.top.clone(), );
         unimplemented!()
     }
 
-    fn is_refutable(&self, _c: &Candidate) -> RefuteOrCex<TypeEnvironment, Vec<Candidate>> {
+    fn is_refutable(&self, _c: &Candidate) -> RefuteOrCex<PosEnvironment, Vec<Candidate>> {
         unimplemented!()
     }
 
-    fn top_env(&self) -> &TypeEnvironment {
+    fn top_env(&self) -> &PosEnvironment {
         self.envs.last().unwrap()
     }
 
@@ -174,11 +183,11 @@ impl<'a> HoPDR<'a> {
     }
 
     fn initialize(&mut self) {
-        self.envs.push(TypeEnvironment::new_top_env(self.problem));
+        self.envs.push(PosEnvironment::new_top_env(self.problem));
     }
 
     fn unfold(&mut self) {
-        self.envs.push(TypeEnvironment::new_bot_env(self.problem));
+        self.envs.push(PosEnvironment::new_bot_env(self.problem));
     }
 
     fn valid(&mut self) -> PDRResult {
@@ -210,7 +219,7 @@ impl<'a> HoPDR<'a> {
         }
     }
 
-    fn conflict(&mut self, c: CandidateNode, refute_env: TypeEnvironment) {
+    fn conflict(&mut self, c: CandidateNode, refute_env: PosEnvironment) {
         for i in 0..c.level {
             for (k, ts) in refute_env.map.iter() {
                 for t in ts.iter() {

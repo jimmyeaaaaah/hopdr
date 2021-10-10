@@ -331,11 +331,13 @@ impl Fv for Tau<pcsp::Atom> {
     }
 }
 
-pub struct TypeEnvironment {
+pub struct TypeEnvironment<Ty> {
     pub map: HashMap<Ident, Vec<Ty>>,
 }
 
-impl Clone for TypeEnvironment {
+pub type PosEnvironment = TypeEnvironment<Ty>;
+
+impl Clone for PosEnvironment {
     fn clone(&self) -> Self {
         Self {
             map: self.map.clone(),
@@ -343,8 +345,8 @@ impl Clone for TypeEnvironment {
     }
 }
 
-impl TypeEnvironment {
-    pub fn new() -> TypeEnvironment {
+impl TypeEnvironment<Ty> {
+    pub fn new() -> TypeEnvironment<Ty> {
         TypeEnvironment {
             map: HashMap::new(),
         }
@@ -393,7 +395,7 @@ impl TypeEnvironment {
 #[derive(Clone)]
 pub struct Environment {
     // Assumption: all variables are alpha-renamed.
-    map: TypeEnvironment,
+    map: PosEnvironment,
     imap: IntegerEnvironment,
 }
 
@@ -404,12 +406,12 @@ impl Environment {
 
     pub fn new() -> Environment {
         Environment {
-            map: TypeEnvironment::new(),
+            map: PosEnvironment::new(),
             imap: IntegerEnvironment::new(),
         }
     }
 
-    pub fn from_type_environment(map: TypeEnvironment) -> Environment {
+    pub fn from_type_environment(map: PosEnvironment) -> Environment {
         Environment {
             map: map,
             imap: IntegerEnvironment::new(),
@@ -564,13 +566,13 @@ fn check_smt(c: &Constraint) -> Result<(), Error> {
     }
 }
 
-pub fn type_check_top(toplevel: &Goal, env: &TypeEnvironment) -> Result<(), Error> {
+pub fn type_check_top(toplevel: &Goal, env: &PosEnvironment) -> Result<(), Error> {
     let mut env = Environment::from_type_environment(env.clone());
     let cnstr = type_check_goal(toplevel, &mut env)?;
     check_smt(&cnstr)
 }
 
-pub fn type_check_clause(clause: &Clause, rty: Ty, env: &TypeEnvironment) -> Result<(), Error> {
+pub fn type_check_clause(clause: &Clause, rty: Ty, env: &PosEnvironment) -> Result<(), Error> {
     let mut t = rty;
     let mut env = Environment::from_type_environment(env.clone());
     for arg in clause.args.iter() {
