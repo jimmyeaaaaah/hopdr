@@ -1,11 +1,11 @@
 use std::collections::HashMap;
-use std::fmt;
 use std::collections::HashSet;
+use std::fmt;
 use std::iter::FromIterator;
 use std::vec;
 
-use super::{Conjunctive, Constraint, Ident, Op, Rename, Subst, Top, Fv, PredKind};
 use super::pcsp;
+use super::{Conjunctive, Constraint, Fv, Ident, Op, PredKind, Rename, Subst, Top};
 use crate::util::P;
 
 #[derive(Debug, Clone)]
@@ -40,7 +40,7 @@ impl CHCHead {
     fn predicate<'a>(&'a self) -> Option<(&'a Ident, &'a Vec<Ident>)> {
         match self {
             CHCHead::Predicate(i, args) => Some((i, args)),
-            _ => None
+            _ => None,
         }
     }
     pub fn mk_true() -> CHCHead {
@@ -65,28 +65,25 @@ impl Rename for CHCHead {
     }
 }
 
-
-
 #[derive(Debug, Clone)]
 pub struct CHC<A> {
     pub body: A,
     pub head: CHCHead,
 }
 
-impl <A: Rename> Rename for CHC<A> {
+impl<A: Rename> Rename for CHC<A> {
     fn rename(&self, x: &Ident, y: &Ident) -> Self {
         CHC::new(self.head.rename(x, y), self.body.rename(x, y))
     }
 }
 
-
-impl <A> CHC<A> {
+impl<A> CHC<A> {
     fn new(head: CHCHead, body: A) -> CHC<A> {
-        CHC{head, body}
+        CHC { head, body }
     }
 }
 
-impl <A: fmt::Display> fmt::Display for CHC<A> {
+impl<A: fmt::Display> fmt::Display for CHC<A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} -> {}", self.body, self.head)
     }
@@ -96,8 +93,7 @@ impl CHC<pcsp::Atom> {
     fn replace_inner(expr: &pcsp::Atom, target: &CHC<pcsp::Atom>) -> pcsp::Atom {
         let (target_p, target_args) = target.head.predicate().unwrap();
         match expr.kind() {
-            pcsp::AtomKind::True |
-            pcsp::AtomKind::Constraint(_) => expr.clone(),
+            pcsp::AtomKind::True | pcsp::AtomKind::Constraint(_) => expr.clone(),
             pcsp::AtomKind::Predicate(p, _) if p != target_p => expr.clone(),
             pcsp::AtomKind::Predicate(_, args) => {
                 assert!(args.len() == target_args.len());
@@ -107,20 +103,22 @@ impl CHC<pcsp::Atom> {
                     }
                 }
                 target.body.clone()
-            },
-            pcsp::AtomKind::Conj(x, y) => {
-                pcsp::Atom::mk_conj(Self::replace_inner(x, target), Self::replace_inner(y, target))
             }
-            pcsp::AtomKind::Disj(x, y) => {
-                pcsp::Atom::mk_disj(Self::replace_inner(x, target), Self::replace_inner(y, target))
-            },
+            pcsp::AtomKind::Conj(x, y) => pcsp::Atom::mk_conj(
+                Self::replace_inner(x, target),
+                Self::replace_inner(y, target),
+            ),
+            pcsp::AtomKind::Disj(x, y) => pcsp::Atom::mk_disj(
+                Self::replace_inner(x, target),
+                Self::replace_inner(y, target),
+            ),
         }
     }
     fn replace(self, target: &CHC<pcsp::Atom>) -> CHC<pcsp::Atom> {
         assert!(!self.head.have_same_predicate(&target.head));
         assert!(target.head.predicate().is_some());
         let body = Self::replace_inner(&self.body, target);
-        CHC{body, ..self}
+        CHC { body, ..self }
     }
 
     fn resolve_target(&self, target: &Ident) -> Result<Constraint, ResolutionError> {
@@ -136,7 +134,7 @@ impl CHC<pcsp::Atom> {
             CHCHead::Constraint(c) => c.clone(),
             CHCHead::Predicate(_, _) => return Err(ResolutionError::IllegalConstraint),
         };
-        
+
         let mut result = Constraint::mk_true();
         for body in bodies.iter() {
             // 2. check
@@ -144,43 +142,48 @@ impl CHC<pcsp::Atom> {
             for body in body.iter() {
                 debug!("body: {}", body);
             }
-            let mut preds = body.iter().filter_map(|x| match x {
-                CHCHead::Constraint(_) => None,
-                CHCHead::Predicate(p, l) => Some((p, l)),
-            }).collect::<Vec<_>>();
-            let (p, l) = 
-                if preds.len() == 0 {
-                    return Err(ResolutionError::IllegalConstraint)
-                } else if preds.len() > 1 {
-                    let (p, l) = preds.pop().unwrap();
-                    if p != target {
+            let mut preds = body
+                .iter()
+                .filter_map(|x| match x {
+                    CHCHead::Constraint(_) => None,
+                    CHCHead::Predicate(p, l) => Some((p, l)),
+                })
+                .collect::<Vec<_>>();
+            let (p, l) = if preds.len() == 0 {
+                return Err(ResolutionError::IllegalConstraint);
+            } else if preds.len() > 1 {
+                let (p, l) = preds.pop().unwrap();
+                if p != target {
+                    return Err(ResolutionError::IllegalConstraint);
+                }
+                for (p2, l2) in preds {
+                    if p2 != target || l2.len() != l.len() {
                         return Err(ResolutionError::IllegalConstraint);
                     }
-                    for (p2, l2) in preds {
-                        if p2 != target || l2.len() != l.len() {
+                    for (x, y) in l.iter().zip(l2.iter()) {
+                        if x != y {
                             return Err(ResolutionError::IllegalConstraint);
                         }
-                        for (x, y) in l.iter().zip(l2.iter()) {
-                            if x != y {
-                                return Err(ResolutionError::IllegalConstraint);
-                            }
-                        }
                     }
-                    (p, l)
-                } else {
-                    let (p, l) = preds.pop().unwrap();
-                    if p != target {
-                        return Err(ResolutionError::IllegalConstraint);
-                    }
-                    (p, l)
-                };
+                }
+                (p, l)
+            } else {
+                let (p, l) = preds.pop().unwrap();
+                if p != target {
+                    return Err(ResolutionError::IllegalConstraint);
+                }
+                (p, l)
+            };
             // 3. simplify & negation
-            let constrs = body.iter().filter_map(|x| match x {
-                CHCHead::Constraint(c) => Some(c),
-                CHCHead::Predicate(_, _) => None,
-            }).collect::<Vec<_>>();
-            let mut h =  head.clone();
-            for c in constrs{
+            let constrs = body
+                .iter()
+                .filter_map(|x| match x {
+                    CHCHead::Constraint(c) => Some(c),
+                    CHCHead::Predicate(_, _) => None,
+                })
+                .collect::<Vec<_>>();
+            let mut h = head.clone();
+            for c in constrs {
                 match c.clone().negate() {
                     Some(c) => {
                         h = Constraint::mk_disj(c, h);
@@ -192,7 +195,6 @@ impl CHC<pcsp::Atom> {
         }
         Ok(result)
     }
-
 }
 
 fn cross_and(left: Vec<Vec<CHCHead>>, mut right: Vec<Vec<CHCHead>>) -> Vec<Vec<CHCHead>> {
@@ -211,13 +213,13 @@ pub fn to_dnf(atom: &pcsp::Atom) -> Vec<Vec<CHCHead>> {
     use pcsp::AtomKind;
     match atom.kind() {
         AtomKind::True => vec![vec![CHCHead::mk_true()]],
-        AtomKind::Constraint(c)  => vec![vec![CHCHead::mk_constraint(c.clone())]],
+        AtomKind::Constraint(c) => vec![vec![CHCHead::mk_constraint(c.clone())]],
         AtomKind::Predicate(p, l) => vec![vec![CHCHead::mk_predicate(*p, l.clone())]],
         AtomKind::Conj(x, y) => {
             let left = to_dnf(x);
             let right = to_dnf(y);
             cross_and(left, right)
-        },
+        }
         AtomKind::Disj(x, y) => {
             let mut left = to_dnf(x);
             let mut right = to_dnf(y);
@@ -232,7 +234,7 @@ pub enum ResolutionError {
     TargetVariableNotFound,
     CHCNotDeterministic,
     ContainsDisjunctions,
-    IllegalConstraint
+    IllegalConstraint,
 }
 
 fn simplify_atom(atom: pcsp::Atom) -> pcsp::Atom {
@@ -246,25 +248,23 @@ fn simplify_atom(atom: pcsp::Atom) -> pcsp::Atom {
                 let y2 = simplify_atom_inner(y);
                 match (x2, y2) {
                     (Ok(x1), Ok(x2)) => Ok(Constraint::mk_conj(x1, x2)),
-                    (Err(x), Ok(c)) | (Ok(c), Err(x)) => 
-                        Err(pcsp::Atom::mk_conj(x, pcsp::Atom::mk_constraint(c))),
-                    (Err(x), Err(y)) => {
-                        Err(pcsp::Atom::mk_conj(x, y))
+                    (Err(x), Ok(c)) | (Ok(c), Err(x)) => {
+                        Err(pcsp::Atom::mk_conj(x, pcsp::Atom::mk_constraint(c)))
                     }
+                    (Err(x), Err(y)) => Err(pcsp::Atom::mk_conj(x, y)),
                 }
-            },
+            }
             pcsp::AtomKind::Disj(x, y) => {
                 let x2 = simplify_atom_inner(x);
                 let y2 = simplify_atom_inner(y);
                 match (x2, y2) {
                     (Ok(x1), Ok(x2)) => Ok(Constraint::mk_disj(x1, x2)),
-                    (Err(x), Ok(c)) | (Ok(c), Err(x)) => 
-                        Err(pcsp::Atom::mk_disj(x, pcsp::Atom::mk_constraint(c))),
-                    (Err(x), Err(y)) => {
-                        Err(pcsp::Atom::mk_disj(x, y))
+                    (Err(x), Ok(c)) | (Ok(c), Err(x)) => {
+                        Err(pcsp::Atom::mk_disj(x, pcsp::Atom::mk_constraint(c)))
                     }
+                    (Err(x), Err(y)) => Err(pcsp::Atom::mk_disj(x, y)),
                 }
-            },
+            }
         }
     }
 
@@ -277,10 +277,10 @@ fn simplify_atom(atom: pcsp::Atom) -> pcsp::Atom {
 fn conjoin2vec(atom: &pcsp::Atom) -> Vec<pcsp::Atom> {
     fn conjoin2vec_inner(atom: &pcsp::Atom, result: &mut Vec<pcsp::Atom>) {
         match atom.kind() {
-            pcsp::AtomKind::True |
-            pcsp::AtomKind::Constraint(_) |
-            pcsp::AtomKind::Predicate(_, _)  |
-            pcsp::AtomKind::Disj(_, _) => result.push(atom.clone()),
+            pcsp::AtomKind::True
+            | pcsp::AtomKind::Constraint(_)
+            | pcsp::AtomKind::Predicate(_, _)
+            | pcsp::AtomKind::Disj(_, _) => result.push(atom.clone()),
             pcsp::AtomKind::Conj(x, y) => {
                 conjoin2vec_inner(x, result);
                 conjoin2vec_inner(y, result);
@@ -299,11 +299,9 @@ fn atom2chc_head(atom: pcsp::Atom) -> Option<CHCHead> {
         pcsp::AtomKind::True => Some(CHCHead::Constraint(Constraint::mk_true())),
         pcsp::AtomKind::Constraint(c) => Some(CHCHead::Constraint(c.clone())),
         pcsp::AtomKind::Conj(c1, c2) => None,
-        pcsp::AtomKind::Predicate(p, args) 
-            => Some(CHCHead::Predicate(*p, args.clone())),
+        pcsp::AtomKind::Predicate(p, args) => Some(CHCHead::Predicate(*p, args.clone())),
         pcsp::AtomKind::Disj(c1, c2) => None,
     }
-
 }
 
 pub fn pcsps2chcs(clauses: &[pcsp::PCSP<pcsp::Atom>]) -> Option<Vec<CHC<pcsp::Atom>>> {
@@ -313,12 +311,8 @@ pub fn pcsps2chcs(clauses: &[pcsp::PCSP<pcsp::Atom>]) -> Option<Vec<CHC<pcsp::At
         let atom_heads = conjoin2vec(&clause.head);
         for atom in atom_heads {
             match atom2chc_head(atom) {
-                Some(head) => {
-                    result.push(CHC::new(head, body.clone()))
-                },
-                None => {
-                    return None
-                }
+                Some(head) => result.push(CHC::new(head, body.clone())),
+                None => return None,
             }
         }
     }
@@ -326,30 +320,29 @@ pub fn pcsps2chcs(clauses: &[pcsp::PCSP<pcsp::Atom>]) -> Option<Vec<CHC<pcsp::At
 }
 
 // solve by resolution
-pub fn solve_by_resolution(target: Ident, clauses: Vec<CHC<pcsp::Atom>>) -> Result<Constraint, ResolutionError> {
+pub fn solve_by_resolution(
+    target: Ident,
+    clauses: Vec<CHC<pcsp::Atom>>,
+) -> Result<Constraint, ResolutionError> {
     debug!("solve_by_resolution: target={}", target);
-    
-    let mut defs= HashMap::new();
+
+    let mut defs = HashMap::new();
     let mut goals = Vec::new();
     for clause in clauses {
         match &clause.head {
             CHCHead::Constraint(_) => goals.push(clause),
             CHCHead::Predicate(p, args) => {
                 if defs.insert(*p, clause).is_some() {
-                    return Err(ResolutionError::CHCNotDeterministic)
+                    return Err(ResolutionError::CHCNotDeterministic);
                 }
-            },
+            }
         }
     }
     let mut defs = Vec::from_iter(defs.into_iter().map(|(_, x)| x));
     while defs.len() > 0 {
-        let target= defs.pop().unwrap();
-        goals = goals.into_iter().map(|g| {
-            g.replace(&target)
-        }).collect();
-        defs= defs.into_iter().map(|g| {
-            g.replace(&target)
-        }).collect();
+        let target = defs.pop().unwrap();
+        goals = goals.into_iter().map(|g| g.replace(&target)).collect();
+        defs = defs.into_iter().map(|g| g.replace(&target)).collect();
     }
     for c in goals.iter() {
         debug!("- constraint: {}", c)
@@ -358,9 +351,14 @@ pub fn solve_by_resolution(target: Ident, clauses: Vec<CHC<pcsp::Atom>>) -> Resu
     // subst をするべきで、
     unimplemented!()
 }
-pub fn simplify(c: &[CHC<pcsp::Atom>], c1: &[CHC<pcsp::Atom>], c2: &[CHC<pcsp::Atom>], l: &HashSet<Ident>) -> Result<Vec<CHC<pcsp::Atom>>, ResolutionError> {
-    let mut defs= HashMap::new();
-    let mut defs_l= HashMap::new();
+pub fn simplify(
+    c: &[CHC<pcsp::Atom>],
+    c1: &[CHC<pcsp::Atom>],
+    c2: &[CHC<pcsp::Atom>],
+    l: &HashSet<Ident>,
+) -> Result<Vec<CHC<pcsp::Atom>>, ResolutionError> {
+    let mut defs = HashMap::new();
+    let mut defs_l = HashMap::new();
     let mut goals = Vec::new();
     for clauses in [c, c1, c2].iter() {
         for clause in clauses.iter() {
@@ -368,14 +366,14 @@ pub fn simplify(c: &[CHC<pcsp::Atom>], c1: &[CHC<pcsp::Atom>], c2: &[CHC<pcsp::A
                 CHCHead::Constraint(_) => goals.push(clause.clone()),
                 CHCHead::Predicate(p, _) if l.contains(p) => {
                     if defs_l.insert(*p, clause.clone()).is_some() {
-                        return Err(ResolutionError::CHCNotDeterministic)
+                        return Err(ResolutionError::CHCNotDeterministic);
                     }
-                },
+                }
                 CHCHead::Predicate(p, _) => {
                     if defs.insert(*p, clause.clone()).is_some() {
-                        return Err(ResolutionError::CHCNotDeterministic)
+                        return Err(ResolutionError::CHCNotDeterministic);
                     }
-                },
+                }
             }
         }
     }
@@ -385,23 +383,17 @@ pub fn simplify(c: &[CHC<pcsp::Atom>], c1: &[CHC<pcsp::Atom>], c2: &[CHC<pcsp::A
     for (_, c) in defs.iter() {
         debug!("- constraint: {}", c);
     }
-    for (_,c) in defs_l.iter() {
+    for (_, c) in defs_l.iter() {
         debug!("- constraint: {}", c);
     }
     debug!("-------");
     let mut defs = Vec::from_iter(defs.into_iter().map(|(_, x)| x));
     let mut defs_l = Vec::from_iter(defs_l.into_iter().map(|(_, x)| x));
     while defs.len() > 0 {
-        let target= defs.pop().unwrap();
-        goals = goals.into_iter().map(|g| {
-            g.replace(&target)
-        }).collect();
-        defs = defs.into_iter().map(|g| {
-            g.replace(&target)
-        }).collect();
-        defs_l = defs_l.into_iter().map(|g| {
-            g.replace(&target)
-        }).collect();
+        let target = defs.pop().unwrap();
+        goals = goals.into_iter().map(|g| g.replace(&target)).collect();
+        defs = defs.into_iter().map(|g| g.replace(&target)).collect();
+        defs_l = defs_l.into_iter().map(|g| g.replace(&target)).collect();
     }
 
     // merge goals and defs_l
@@ -414,7 +406,10 @@ pub fn simplify(c: &[CHC<pcsp::Atom>], c1: &[CHC<pcsp::Atom>], c2: &[CHC<pcsp::A
     Ok(goals)
 }
 
-pub fn resolve_target(chcs: Vec<CHC<pcsp::Atom>>, target: &Ident) -> Result<Constraint, ResolutionError> {
+pub fn resolve_target(
+    chcs: Vec<CHC<pcsp::Atom>>,
+    target: &Ident,
+) -> Result<Constraint, ResolutionError> {
     let mut ret = Constraint::mk_true();
     for chc in chcs {
         let c = chc.resolve_target(target)?;

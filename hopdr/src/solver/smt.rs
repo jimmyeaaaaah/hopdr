@@ -2,15 +2,17 @@ use tempfile::{tempfile, NamedTempFile};
 
 use std::{fs::File, time::Duration};
 
-use crate::formula::{Constraint, ConstraintExpr, Fv, Ident, Op, OpExpr, OpKind, PredKind, QuantifierKind};
 use super::util;
+use crate::formula::{
+    Constraint, ConstraintExpr, Fv, Ident, Op, OpExpr, OpKind, PredKind, QuantifierKind,
+};
 
 #[derive(Debug)]
 pub enum SMTResult {
     Sat,
     Unsat,
     Unknown,
-    Timeout
+    Timeout,
 }
 
 #[derive(Copy, Clone)]
@@ -24,7 +26,7 @@ fn pred_to_smt2(p: &PredKind, args: &[String]) -> String {
         PredKind::Eq => format!("(= {})", args),
         PredKind::Neq => format!("(not (= {}))", args),
         PredKind::Leq => format!("(<= {})", args),
-        PredKind::Gt => format!("(> {})", args)
+        PredKind::Gt => format!("(> {})", args),
     }
 }
 
@@ -65,30 +67,33 @@ fn quantifier_to_smt2(q: &QuantifierKind) -> &'static str {
 fn constraint_to_smt2_inner(c: &Constraint, style: SMT2Style) -> String {
     let f = constraint_to_smt2_inner;
     match c.kind() {
-        ConstraintExpr::True => {"true".to_string()},
-        ConstraintExpr::False => {"false".to_string()}
+        ConstraintExpr::True => "true".to_string(),
+        ConstraintExpr::False => "false".to_string(),
         ConstraintExpr::Pred(p, l) => {
             let args = l.iter().map(|op| op_to_smt2(op)).collect::<Vec<_>>();
             pred_to_smt2(p, &args)
-        },
-        ConstraintExpr::Conj(c1, c2) => 
-            format!("(and {} {})", f(c1, style), f(c2, style)),
-        ConstraintExpr::Disj(c1, c2) => 
-            format!("(or {} {})", f(c1, style), f(c2, style)),
-        ConstraintExpr::Quantifier(q, x, c) => 
-            format!("({} (({} Int)) {})", quantifier_to_smt2(q), ident_2_smt2(&x.id), f(c, style))
+        }
+        ConstraintExpr::Conj(c1, c2) => format!("(and {} {})", f(c1, style), f(c2, style)),
+        ConstraintExpr::Disj(c1, c2) => format!("(or {} {})", f(c1, style), f(c2, style)),
+        ConstraintExpr::Quantifier(q, x, c) => format!(
+            "({} (({} Int)) {})",
+            quantifier_to_smt2(q),
+            ident_2_smt2(&x.id),
+            f(c, style)
+        ),
     }
 }
 
 fn constraint_to_smt2(c: &Constraint, style: SMT2Style) -> String {
     let fvs = c.fv();
     let c_s = constraint_to_smt2_inner(c, style);
-    let c_s = 
-    if fvs.len() > 0 {
+    let c_s = if fvs.len() > 0 {
         // (forall ((%s Int)) %s)
-        let decls = fvs.into_iter().map(|ident| {
-            format!("({} Int)", ident_2_smt2(&ident))
-        }).collect::<Vec<_>>().join("");
+        let decls = fvs
+            .into_iter()
+            .map(|ident| format!("({} Int)", ident_2_smt2(&ident)))
+            .collect::<Vec<_>>()
+            .join("");
         format!("(forall ({}) {})", decls, c_s)
     } else {
         c_s

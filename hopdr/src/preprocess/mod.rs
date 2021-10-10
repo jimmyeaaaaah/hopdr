@@ -3,11 +3,11 @@ pub mod hes;
 mod transform;
 mod typing;
 
-use rpds::{HashTrieMap};
-use crate::parse;
 use crate::formula;
-use hes::{ValidityChecking};
-use crate::formula::{Fv, Type as SimpleType, Variable, Ident, Subst};
+use crate::formula::{Fv, Ident, Subst, Type as SimpleType, Variable};
+use crate::parse;
+use hes::ValidityChecking;
+use rpds::HashTrieMap;
 
 type IdentMap = HashTrieMap<parse::Ident, formula::Ident>;
 pub struct Context {
@@ -17,6 +17,9 @@ pub struct Context {
 
 impl Context {
     fn new(ident_map: IdentMap, original: ValidityChecking<parse::Ident, SimpleType>) -> Context {
-        Context{ ident_map, original }
+        Context {
+            ident_map,
+            original,
+        }
     }
 }

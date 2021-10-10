@@ -1,12 +1,19 @@
-use std::{collections::{HashMap, HashSet}, ffi::FromBytesWithNulError, fmt::{self, Display}, rc::Rc, unimplemented};
+use std::{
+    collections::{HashMap, HashSet},
+    ffi::FromBytesWithNulError,
+    fmt::{self, Display},
+    rc::Rc,
+    unimplemented,
+};
 
-use crate::formula::{chc::pcsps2chcs, hes::{Atom, AtomKind, Clause, ConstKind, Goal, GoalKind}};
-use crate::formula::{pcsp, chc};
+use crate::formula::{chc, pcsp};
 use crate::formula::{
-    Conjunctive, Constraint, Ident, IntegerEnvironment, Op, Subst, Rename, Top, Type as SType,
-    TypeKind as STypeKind, P,
-    QuantifierKind,
-    Fv
+    chc::pcsps2chcs,
+    hes::{Atom, AtomKind, Clause, ConstKind, Goal, GoalKind},
+};
+use crate::formula::{
+    Conjunctive, Constraint, Fv, Ident, IntegerEnvironment, Op, QuantifierKind, Rename, Subst, Top,
+    Type as SType, TypeKind as STypeKind, P,
 };
 use crate::solver::smt;
 
@@ -25,7 +32,7 @@ pub type Ty = Tau<Constraint>;
 pub enum Error {
     TypeError,
     SMTTimeout,
-    SMTUnknown
+    SMTUnknown,
 }
 
 impl From<chc::ResolutionError> for Error {
@@ -34,29 +41,33 @@ impl From<chc::ResolutionError> for Error {
     }
 }
 
-impl fmt::Display for Error  {
+impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = match self {
             Error::TypeError => "type error",
             Error::SMTTimeout => "SMT Timeout",
-            Error::SMTUnknown => "SMT Unknown"
+            Error::SMTUnknown => "SMT Unknown",
         };
         write!(f, "{}", s)
     }
 }
 
-impl <C: fmt::Display> fmt::Display for Tau<C> {
+impl<C: fmt::Display> fmt::Display for Tau<C> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.kind() {
             TauKind::Proposition(c) => write!(f, "bool[{}]", c),
             TauKind::IArrow(i, t) => write!(f, "({}: int -> {})", i, t),
-            TauKind::Arrow(t1, t2) => write!(f, "({} -> {})", t1, t2)
+            TauKind::Arrow(t1, t2) => write!(f, "({} -> {})", t1, t2),
         }
     }
 }
 
-impl <C>Tau<C> {
-    fn clone_with_template(&self, env: IntegerEnvironment, new_idents: &mut HashSet<Ident>) -> Tau<pcsp::Atom> {
+impl<C> Tau<C> {
+    fn clone_with_template(
+        &self,
+        env: IntegerEnvironment,
+        new_idents: &mut HashSet<Ident>,
+    ) -> Tau<pcsp::Atom> {
         match self.kind() {
             TauKind::Proposition(_) => {
                 let args = env.variables();
@@ -112,7 +123,6 @@ impl<C: Subst + Rename> Rename for Tau<C> {
             TauKind::Arrow(l, r) => Tau::mk_arrow(l.rename(x, y), r.rename(x, y)),
         }
     }
-
 }
 
 impl<C: Subst> Tau<C> {
@@ -155,18 +165,22 @@ impl<C: Subst> Tau<C> {
     }
 }
 
-fn rename_constraints_by_types(chc: chc::CHC<pcsp::Atom>, t1: &Tau<pcsp::Atom>, t2: &Tau<pcsp::Atom>) -> chc::CHC<pcsp::Atom> {
+fn rename_constraints_by_types(
+    chc: chc::CHC<pcsp::Atom>,
+    t1: &Tau<pcsp::Atom>,
+    t2: &Tau<pcsp::Atom>,
+) -> chc::CHC<pcsp::Atom> {
     match (t1.kind(), t2.kind()) {
         (TauKind::Proposition(_), TauKind::Proposition(_)) => chc.clone(),
         (TauKind::IArrow(x, tx), TauKind::IArrow(y, ty)) => {
             let chc = rename_constraints_by_types(chc.rename(y, x), tx, &ty.rename(y, x));
             chc
-        },
+        }
         (TauKind::Arrow(s1, t1), TauKind::Arrow(s2, t2)) => {
             let chc = rename_constraints_by_types(chc, s1, s2);
             let chc = rename_constraints_by_types(chc, t1, t2);
             chc
-        },
+        }
         _ => panic!("program error"),
     }
 }
@@ -175,31 +189,45 @@ fn rename_integer_variable(t1: &Tau<pcsp::Atom>, t2: &Tau<pcsp::Atom>) -> Tau<pc
     match (t1.kind(), t2.kind()) {
         (TauKind::Proposition(_), TauKind::Proposition(_)) => t2.clone(),
         (TauKind::IArrow(x, tx), TauKind::IArrow(y, ty)) => {
-            let t= rename_integer_variable(tx, &ty.rename(y, x));
+            let t = rename_integer_variable(tx, &ty.rename(y, x));
             Tau::mk_iarrow(*x, t)
-        },
+        }
         (TauKind::Arrow(s1, t1), TauKind::Arrow(s2, t2)) => {
             let s2 = rename_integer_variable(s1, s2);
             let t2 = rename_integer_variable(t1, t2);
             Tau::mk_arrow(s2, t2)
-        },
+        }
         _ => panic!("program error"),
     }
 }
 
-fn infer_subtype(environment: &Environment, arrow_type: Tau<pcsp::Atom>, arg_t: Tau<pcsp::Atom>, lhs_c: &[chc::CHC<pcsp::Atom>], rhs_c: &[chc::CHC<pcsp::Atom>]) -> Result<(Tau<pcsp::Atom>, Vec<chc::CHC<pcsp::Atom>>), Error> {
-    debug!("infer_greatest_type: {} <: {} -> ?", arrow_type.clone(), arg_t.clone());
+fn infer_subtype(
+    environment: &Environment,
+    arrow_type: Tau<pcsp::Atom>,
+    arg_t: Tau<pcsp::Atom>,
+    lhs_c: &[chc::CHC<pcsp::Atom>],
+    rhs_c: &[chc::CHC<pcsp::Atom>],
+) -> Result<(Tau<pcsp::Atom>, Vec<chc::CHC<pcsp::Atom>>), Error> {
+    debug!(
+        "infer_greatest_type: {} <: {} -> ?",
+        arrow_type.clone(),
+        arg_t.clone()
+    );
     let mut new_idents = HashSet::new();
     let (rhs_c_renamed, arg_t, ret_t) = match &*arrow_type {
         TauKind::Arrow(arg_t2, y) => {
-            // rename rhs_c 
+            // rename rhs_c
             let mut rhs_c_renamed = Vec::new();
             let arg_t_renamed = rename_integer_variable(arg_t2, &arg_t);
             for chc in rhs_c {
                 rhs_c_renamed.push(rename_constraints_by_types(chc.clone(), arg_t2, &arg_t))
             }
-            (rhs_c_renamed, arg_t_renamed, y.clone_with_template(environment.imap.clone(), &mut new_idents))
-        },
+            (
+                rhs_c_renamed,
+                arg_t_renamed,
+                y.clone_with_template(environment.imap.clone(), &mut new_idents),
+            )
+        }
         _ => panic!("program error"),
     };
     //let ret_t= generate_template(environment, ret_st);
@@ -212,8 +240,7 @@ fn infer_subtype(environment: &Environment, arrow_type: Tau<pcsp::Atom>, arg_t: 
     debug!("len2: {}", constraints.len());
 
     //let (t, c) = infer_greatest_type_inner(ret_t, Constraint::mk_true(), true);
-    // check environment; c |- arg_t < arg_t2 
-    
+    // check environment; c |- arg_t < arg_t2
 
     let chc_constraints = match pcsps2chcs(&constraints) {
         Some(x) => x,
@@ -304,24 +331,20 @@ impl Fv for Tau<pcsp::Atom> {
     }
 }
 
-pub struct Environment {
-    // Assumption: all variables are alpha-renamed.
-    map: HashMap<Ident, Vec<Ty>>,
-    imap: IntegerEnvironment,
+pub struct TypeEnvironment {
+    map: HashMap<Ident, Vec<Ty>>
 }
 
-impl Environment {
-    pub fn merge(&mut self, _env: &Environment) {
-        unimplemented!()
+impl Clone for TypeEnvironment {
+    fn clone(&self) -> Self {
+        Self { map: self.map.clone() }
     }
+}
 
-    pub fn new() -> Environment {
-        Environment {
-            map: HashMap::new(),
-            imap: IntegerEnvironment::new(),
-        }
+impl TypeEnvironment {
+    pub fn new() -> TypeEnvironment {
+        TypeEnvironment{ map: HashMap::new() }
     }
-
     fn add_(&mut self, v: Ident, t: Ty) {
         match self.map.get_mut(&v) {
             Some(s) => {
@@ -332,32 +355,21 @@ impl Environment {
             }
         }
     }
-
-    pub fn iadd(&mut self, v: Ident) {
-        self.imap = self.imap.clone().add(v);
-    }
-
-    pub fn tadd(&mut self, v: Ident, t: Ty) {
+    pub fn add(&mut self, v: Ident, t: Ty) {
         self.add_(v, t);
     }
-
+    pub fn exists(&self, v: &Ident) -> bool {
+        self.map.get(v).is_some()
+    }
     pub fn add_top(&mut self, v: Ident, st: &SType) {
-        self.tadd(v, Ty::new(TauKind::new_top(st)));
+        self.add(v, Ty::new(TauKind::new_top(st)));
     }
 
     pub fn add_bot(&mut self, v: Ident, st: &SType) {
-        self.tadd(v, Ty::new(TauKind::new_bot(st)));
+        self.add(v, Ty::new(TauKind::new_bot(st)));
     }
 
-    pub fn texists(&self, v: &Ident) -> bool {
-        self.map.get(v).is_some()
-    }
-
-    pub fn iexists(&self, v: &Ident) -> bool {
-        self.imap.exists(v)
-    }
-
-    pub fn tget<'a>(&'a self, v: &Ident) -> Option<&'a Vec<Ty>> {
+    pub fn get<'a>(&'a self, v: &Ident) -> Option<&'a Vec<Ty>> {
         debug!("tget: {}", v);
         let r = self.map.get(v);
         match r {
@@ -365,7 +377,7 @@ impl Environment {
                 for x in v.iter() {
                     debug!("tget cont: {}", x);
                 }
-            },
+            }
             None => {
                 debug!("not found");
             }
@@ -375,7 +387,57 @@ impl Environment {
 }
 
 
-fn int_expr(atom: &Atom, env: &Environment) -> Option<Ident> {
+
+#[derive(Clone)]
+pub struct Environment {
+    // Assumption: all variables are alpha-renamed.
+    map: TypeEnvironment,
+    imap: IntegerEnvironment,
+}
+
+impl Environment {
+    pub fn merge(&mut self, _env: &Environment) {
+        unimplemented!()
+    }
+
+    pub fn new() -> Environment {
+        Environment {
+            map: TypeEnvironment::new(),
+            imap: IntegerEnvironment::new(),
+        }
+    }
+
+    pub fn from_type_environment(map: TypeEnvironment) -> Environment {
+        Environment {
+            map: map,
+            imap: IntegerEnvironment::new(),
+        }
+    }
+
+    pub fn iadd(&mut self, v: Ident) {
+        self.imap = self.imap.clone().add(v);
+    }
+
+    pub fn tadd(&mut self, v: Ident, t: Ty) {
+        self.map.add(v, t)
+    }
+
+    pub fn texists(&self, v: &Ident) -> bool {
+        self.map.exists(v)
+    }
+
+    pub fn iexists(&self, v: &Ident) -> bool {
+        self.imap.exists(v)
+    }
+
+    pub fn tget<'a>(&'a self, v: &Ident) -> Option<&'a Vec<Ty>> {
+        debug!("tget: {}", v);
+        self.map.get(v)
+    }
+
+}
+
+fn int_expr<'a>(atom: &Atom, env: &Environment) -> Option<Ident> {
     use AtomKind::*;
     match atom.kind() {
         //Const(c) => match c.kind() {
@@ -387,21 +449,27 @@ fn int_expr(atom: &Atom, env: &Environment) -> Option<Ident> {
     }
 }
 
-fn type_check_atom(atom: &Atom, env: &Environment) -> Result<Vec<(Tau<pcsp::Atom>, Vec<chc::CHC<pcsp::Atom>>)>, Error> {
+fn type_check_atom<'a>(
+    atom: &Atom,
+    env: &Environment,
+) -> Result<Vec<(Tau<pcsp::Atom>, Vec<chc::CHC<pcsp::Atom>>)>, Error> {
     //debug!("type_check_atom: {}", atom);
     use AtomKind::*;
-    let r = 
-    match atom.kind() {
+    let r = match atom.kind() {
         App(x, arg) => {
             let ie = int_expr(arg, env);
             let ts = type_check_atom(x, env)?;
             match ie {
-                Some(y) => ts.into_iter().map(|(t, cs)| match t.kind() {
-                    TauKind::IArrow(x, t) => {
-                        (t.rename(x, &y), cs.into_iter().map(|c| c.rename(x, &y)).collect())
-                    },
-                    TauKind::Proposition(_) | TauKind::Arrow(_, _) => panic!("program error"),
-                }).collect(),
+                Some(y) => ts
+                    .into_iter()
+                    .map(|(t, cs)| match t.kind() {
+                        TauKind::IArrow(x, t) => (
+                            t.rename(x, &y),
+                            cs.into_iter().map(|c| c.rename(x, &y)).collect(),
+                        ),
+                        TauKind::Proposition(_) | TauKind::Arrow(_, _) => panic!("program error"),
+                    })
+                    .collect(),
                 None => {
                     let ss = type_check_atom(arg, env)?;
                     let mut result_ts = Vec::new();
@@ -415,24 +483,28 @@ fn type_check_atom(atom: &Atom, env: &Environment) -> Result<Vec<(Tau<pcsp::Atom
                 }
             }
         }
-        Var(v) => env.tget(v).unwrap().clone().into_iter().map(|x|(x.into(),Vec::new())).collect(),
+        Var(v) => env
+            .tget(v)
+            .unwrap()
+            .clone()
+            .into_iter()
+            .map(|x| (x.into(), Vec::new()))
+            .collect(),
     };
     //debug!("type_check_atom cont: {}", atom);
-    for (v,_) in r.iter() {
+    for (v, _) in r.iter() {
         debug!("type_check_atom cont ty: {}", v);
     }
     Ok(r)
 }
 
-
-fn type_check_goal(goal: &Goal, tenv: &Environment) -> Result<Constraint, Error> {
+fn type_check_goal<'a>(goal: &Goal, tenv: &mut Environment) -> Result<Constraint, Error> {
     debug!("type_check_goal start: {}", goal);
     use GoalKind::*;
     let f = type_check_goal;
-    let r = 
-    match goal.kind() {
+    let r = match goal.kind() {
         Atom(atom) => {
-            let (ts) = type_check_atom(atom, tenv)?;
+            let ts = type_check_atom(atom, tenv)?;
             for (t, constraints) in ts.iter() {
                 debug!("- type: {}", t);
                 for c in constraints.iter() {
@@ -446,7 +518,7 @@ fn type_check_goal(goal: &Goal, tenv: &Environment) -> Result<Constraint, Error>
                 let mut fvs = HashSet::new();
                 t.fv_with_vec(&mut fvs);
                 if fvs.len() > 1 {
-                    return Err(Error::TypeError)
+                    return Err(Error::TypeError);
                 }
                 if fvs.len() == 0 {
                     return match t.kind() {
@@ -476,7 +548,7 @@ fn type_check_goal(goal: &Goal, tenv: &Environment) -> Result<Constraint, Error>
             } else {
                 unimplemented!()
             }
-        },
+        }
     };
     debug!("type_check_goal: {} has type {} ", goal, r);
     Ok(r)
@@ -487,21 +559,22 @@ fn check_smt(c: &Constraint) -> Result<(), Error> {
         smt::SMTResult::Sat => Ok(()),
         smt::SMTResult::Unsat => Err(Error::TypeError),
         smt::SMTResult::Unknown => Err(Error::SMTUnknown),
-        smt::SMTResult::Timeout => Err(Error::SMTTimeout)
+        smt::SMTResult::Timeout => Err(Error::SMTTimeout),
     }
 }
 
-pub fn type_check_top(toplevel: &Goal, env: &Environment) -> Result<(), Error> {
-    let cnstr = type_check_goal(toplevel, env)?;
+pub fn type_check_top(toplevel: &Goal, env: &TypeEnvironment) -> Result<(), Error> {
+    let mut env = Environment::from_type_environment(env.clone());
+    let cnstr = type_check_goal(toplevel, &mut env)?;
     check_smt(&cnstr)
 }
 
-pub fn type_check_clause(clause: &Clause, rty: Ty, env: &Environment) -> Result<(), Error> {
+pub fn type_check_clause(clause: &Clause, rty: Ty, env: &TypeEnvironment) -> Result<(), Error> {
     let mut t = rty;
-    let mut env = env.clone();
+    let mut env = Environment::from_type_environment(env.clone());
     for arg in clause.args.iter() {
         match t.kind() {
-            TauKind::Proposition(_) => {panic!("program error")}
+            TauKind::Proposition(_) => panic!("program error"),
             TauKind::IArrow(x, s) => {
                 t = s.rename_variable(x, arg);
                 env.iadd(arg.clone());
@@ -517,7 +590,7 @@ pub fn type_check_clause(clause: &Clause, rty: Ty, env: &Environment) -> Result<
         _ => panic!("program error"),
     };
     let mut constraints = Vec::new();
-    let c2 = type_check_goal(&clause.body, env)?;
+    let c2 = type_check_goal(&clause.body, &mut env)?;
 
     constraints.push(pcsp::PCSP::new(c.clone(), c2.clone()));
     let mut c = Constraint::mk_false();

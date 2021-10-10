@@ -1,8 +1,8 @@
 mod hes;
 mod parse;
 
+use crate::util::P;
 pub use hes::*;
 pub use parse::parse;
-use crate::util::P;
 
 pub type Ident = P<String>;

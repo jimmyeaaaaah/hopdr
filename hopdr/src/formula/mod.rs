@@ -1,12 +1,12 @@
+pub mod chc;
 pub mod hes;
 pub mod pcsp;
-pub mod chc;
 pub mod ty;
 
-use std::{fmt};
 use std::collections::HashSet;
+use std::fmt;
 
-use rpds::Stack;
+use rpds::{Stack, HashTrieMap};
 
 pub use crate::formula::ty::*;
 use crate::util::global_counter;
@@ -124,10 +124,10 @@ impl Fv for Op {
             OpExpr::Op(_, x, y) => {
                 x.fv_with_vec(fvs);
                 y.fv_with_vec(fvs);
-            },
+            }
             OpExpr::Var(x) => {
                 fvs.insert(x.clone());
-            },
+            }
             OpExpr::Const(_) => {}
         }
     }
@@ -172,7 +172,6 @@ impl Op {
     pub fn mk_var(x: Ident) -> Op {
         Op::new(OpExpr::Var(x))
     }
-
 }
 
 impl Subst for Op {
@@ -205,7 +204,7 @@ pub trait Conjunctive {
     fn mk_conj(x: Self, y: Self) -> Self;
 }
 
-pub trait Subst : Sized {
+pub trait Subst: Sized {
     fn subst_multi(&self, substs: &[(Ident, Op)]) -> Self {
         assert!(substs.len() > 0);
         let mut ret = self.subst(&substs[0].0, &substs[0].1);
@@ -221,7 +220,7 @@ pub trait Subst : Sized {
     }
 }
 
-pub trait Rename : Sized {
+pub trait Rename: Sized {
     fn rename(&self, x: &Ident, y: &Ident) -> Self;
 }
 
@@ -309,7 +308,9 @@ impl Subst for Constraint {
             Conj(r, l) => Constraint::mk_conj(r.subst(x, v), l.subst(x, v)),
             Disj(r, l) => Constraint::mk_disj(r.subst(x, v), l.subst(x, v)),
             // assumption: vars are different each other ?
-            Quantifier(q, var, cstr) => Constraint::mk_quantifier(*q, var.clone(), cstr.subst(x, v)),
+            Quantifier(q, var, cstr) => {
+                Constraint::mk_quantifier(*q, var.clone(), cstr.subst(x, v))
+            }
         }
     }
 }
@@ -330,7 +331,9 @@ impl Rename for Constraint {
             Conj(r, l) => Constraint::mk_conj(r.rename(x, y), l.rename(x, y)),
             Disj(r, l) => Constraint::mk_disj(r.rename(x, y), l.rename(x, y)),
             // assumption: vars are different each other ?
-            Quantifier(q, var, cstr) if &var.id != x && &var.id != y => Constraint::mk_quantifier(*q, var.clone(), cstr.rename(x, y)),
+            Quantifier(q, var, cstr) if &var.id != x && &var.id != y => {
+                Constraint::mk_quantifier(*q, var.clone(), cstr.rename(x, y))
+            }
             Quantifier(q, var, cstr) => panic!("assumption broken"),
         }
     }
@@ -366,7 +369,7 @@ impl Constraint {
             y
         } else if x.is_false() {
             x
-        }else {
+        } else {
             Constraint::new(ConstraintExpr::Disj(x, y))
         }
     }
@@ -377,21 +380,19 @@ impl Constraint {
             ConstraintExpr::False => Some(Constraint::mk_true()),
             ConstraintExpr::True => Some(Constraint::mk_false()),
             ConstraintExpr::Pred(p, v) => Some(Constraint::mk_pred(p.negate(), v.clone())),
-            ConstraintExpr::Conj(c1, c2) => {
-                match (c1.clone().negate(), c2.clone().negate()) {
-                    (Some(c1), Some(c2)) => Some(Constraint::mk_disj(c1, c2)),
-                    _ => None,
-                }
+            ConstraintExpr::Conj(c1, c2) => match (c1.clone().negate(), c2.clone().negate()) {
+                (Some(c1), Some(c2)) => Some(Constraint::mk_disj(c1, c2)),
+                _ => None,
             },
-            ConstraintExpr::Disj(c1, c2) => {
-                match (c1.clone().negate(), c2.clone().negate()) {
-                    (Some(c1), Some(c2)) => Some(Constraint::mk_conj(c1, c2)),
-                    _ => None,
-                }
+            ConstraintExpr::Disj(c1, c2) => match (c1.clone().negate(), c2.clone().negate()) {
+                (Some(c1), Some(c2)) => Some(Constraint::mk_conj(c1, c2)),
+                _ => None,
             },
             ConstraintExpr::Quantifier(q, v, c) => {
                 let q = q.negate();
-                c.clone().negate().map(|c| Constraint::mk_quantifier(q, v.clone(), c))
+                c.clone()
+                    .negate()
+                    .map(|c| Constraint::mk_quantifier(q, v.clone(), c))
             }
         }
     }
@@ -411,27 +412,33 @@ impl Constraint {
 
     pub fn remove_quantifier(self) -> Constraint {
         match self.kind() {
-            ConstraintExpr::True | ConstraintExpr::False | ConstraintExpr::Pred(_, _) => self.clone(),
-            ConstraintExpr::Conj(c1, c2) => Constraint::mk_conj(c1.clone().remove_quantifier(), c2.clone().remove_quantifier()),
-            ConstraintExpr::Disj(c1, c2) => Constraint::mk_disj(c1.clone().remove_quantifier(), c2.clone().remove_quantifier()),
+            ConstraintExpr::True | ConstraintExpr::False | ConstraintExpr::Pred(_, _) => {
+                self.clone()
+            }
+            ConstraintExpr::Conj(c1, c2) => Constraint::mk_conj(
+                c1.clone().remove_quantifier(),
+                c2.clone().remove_quantifier(),
+            ),
+            ConstraintExpr::Disj(c1, c2) => Constraint::mk_disj(
+                c1.clone().remove_quantifier(),
+                c2.clone().remove_quantifier(),
+            ),
             ConstraintExpr::Quantifier(_, _, c) => c.clone().remove_quantifier(),
         }
     }
-
 }
 impl Fv for Constraint {
     type Id = Ident;
 
     fn fv_with_vec(&self, fvs: &mut HashSet<Self::Id>) {
         match self.kind() {
-            ConstraintExpr::True |  ConstraintExpr::False => {},
+            ConstraintExpr::True | ConstraintExpr::False => {}
             ConstraintExpr::Pred(_, ops) => {
                 for op in ops.iter() {
                     op.fv_with_vec(fvs);
                 }
             }
-            ConstraintExpr::Conj(x, y) | 
-            ConstraintExpr::Disj(x , y) => {
+            ConstraintExpr::Conj(x, y) | ConstraintExpr::Disj(x, y) => {
                 x.fv_with_vec(fvs);
                 y.fv_with_vec(fvs);
             }
@@ -460,13 +467,9 @@ impl Ident {
         Ident { id }
     }
     pub fn rename_idents(args: &Vec<Ident>, x: &Ident, y: &Ident) -> Vec<Ident> {
-        args.iter().map(|arg| {
-            if arg == x {
-                *y
-            } else {
-                *arg
-            }
-        }).collect()
+        args.iter()
+            .map(|arg| if arg == x { *y } else { *arg })
+            .collect()
     }
 }
 
@@ -476,7 +479,6 @@ pub struct VariableS {
     pub ty: Type,
 }
 pub type Variable = P<VariableS>;
-
 
 impl fmt::Display for Variable {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -496,7 +498,7 @@ impl Variable {
     }
     pub fn fresh(ty: Type) -> Variable {
         let id = Ident::fresh();
-        Variable::new(VariableS{ id ,ty })
+        Variable::new(VariableS { id, ty })
     }
 }
 

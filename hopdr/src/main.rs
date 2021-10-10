@@ -42,16 +42,21 @@ fn main() {
         println!("{}", fml);
     }
 
-
     let mut types = Vec::new();
     {
         use engine::*;
+        use formula::{Constraint, Ident, Op, PredKind, Top};
         use rtype::Tau;
-        use formula::{Constraint, Top, Ident, PredKind, Op};
         // S
         let n = Ident::fresh();
         let m = Ident::fresh();
-        let t = Tau::mk_iarrow(m, Tau::mk_prop_ty(Constraint::mk_pred(PredKind::Leq, vec![Op::mk_var(n), Op::mk_var(m)])));
+        let t = Tau::mk_iarrow(
+            m,
+            Tau::mk_prop_ty(Constraint::mk_pred(
+                PredKind::Leq,
+                vec![Op::mk_var(n), Op::mk_var(m)],
+            )),
+        );
         let t = Tau::mk_arrow(t, Tau::mk_prop_ty(Constraint::mk_true()));
         let t = Tau::mk_iarrow(n, t);
         println!("{}", &t);
@@ -60,7 +65,13 @@ fn main() {
         // K
         let n = Ident::fresh();
         let m = Ident::fresh();
-        let t = Tau::mk_iarrow(m, Tau::mk_prop_ty(Constraint::mk_pred(PredKind::Leq, vec![Op::mk_var(n), Op::mk_var(m)])));
+        let t = Tau::mk_iarrow(
+            m,
+            Tau::mk_prop_ty(Constraint::mk_pred(
+                PredKind::Leq,
+                vec![Op::mk_var(n), Op::mk_var(m)],
+            )),
+        );
         let t = Tau::mk_iarrow(n, t);
         println!("{}", &t);
         types.push(t);
@@ -69,27 +80,43 @@ fn main() {
         let n = Ident::fresh();
         let m = Ident::fresh();
         let p = Ident::fresh();
-        let t = Tau::mk_iarrow(p, Tau::mk_prop_ty(Constraint::mk_pred(PredKind::Leq, vec![Op::mk_const(0), Op::mk_var(p)])));
+        let t = Tau::mk_iarrow(
+            p,
+            Tau::mk_prop_ty(Constraint::mk_pred(
+                PredKind::Leq,
+                vec![Op::mk_const(0), Op::mk_var(p)],
+            )),
+        );
         //let t = Tau::mk_iarrow(p, Tau::mk_prop_ty(Constraint::mk_true()));
-        let s = Tau::mk_iarrow(m, Tau::mk_prop_ty(Constraint::mk_pred(PredKind::Leq, vec![Op::mk_var(n), Op::mk_var(m)])));
+        let s = Tau::mk_iarrow(
+            m,
+            Tau::mk_prop_ty(Constraint::mk_pred(
+                PredKind::Leq,
+                vec![Op::mk_var(n), Op::mk_var(m)],
+            )),
+        );
         let t = Tau::mk_arrow(s, t);
         let t = Tau::mk_iarrow(n, t);
         println!("{}", &t);
         types.push(t);
     }
 
-    let mut env = engine::rtype::Environment::new();
+    let mut env = engine::rtype::TypeEnvironment::new();
 
     for (fml, ty) in vc.clauses.iter().zip(types.iter()) {
-        env.tadd(fml.head.id, ty.clone());
+        env.add(fml.head.id, ty.clone());
     }
 
     for (fml, ty) in vc.clauses.iter().zip(types.iter()) {
-        println!("{}:{}\n -> {:?}", fml, ty.clone(), engine::rtype::type_check_clause(fml, ty.clone(), &mut env));
+        println!(
+            "{}:{}\n -> {:?}",
+            fml,
+            ty.clone(),
+            engine::rtype::type_check_clause(fml, ty.clone(), &mut env)
+        );
     }
 
     main2();
-
 
     println!("{}", infer(vc));
     //use engine::*;
@@ -107,7 +134,6 @@ fn main() {
 
     //let clause = engine::Clause::new()
 }
-
 
 fn main2() {
     let (_, f) = parse::parse::<VerboseError<&str>>(
@@ -133,17 +159,28 @@ fn main2() {
         println!("{}", fml);
     }
 
-
     let mut types = Vec::new();
     {
         use engine::*;
+        use formula::{Constraint, Ident, Op, PredKind, Top};
         use rtype::Tau;
-        use formula::{Constraint, Top, Ident, PredKind, Op};
         // X
         let n = Ident::fresh();
         let m = Ident::fresh();
-        let t = Tau::mk_iarrow(m, Tau::mk_prop_ty(Constraint::mk_pred(PredKind::Neq, vec![Op::mk_const(0), Op::mk_var(m)])));
-        let t = Tau::mk_arrow(t, Tau::mk_prop_ty(Constraint::mk_pred(PredKind::Gt, vec![Op::mk_var(n), Op::mk_const(0)])));
+        let t = Tau::mk_iarrow(
+            m,
+            Tau::mk_prop_ty(Constraint::mk_pred(
+                PredKind::Neq,
+                vec![Op::mk_const(0), Op::mk_var(m)],
+            )),
+        );
+        let t = Tau::mk_arrow(
+            t,
+            Tau::mk_prop_ty(Constraint::mk_pred(
+                PredKind::Gt,
+                vec![Op::mk_var(n), Op::mk_const(0)],
+            )),
+        );
         let t = Tau::mk_iarrow(n, t);
         println!("{}", &t);
         types.push(t);
@@ -151,8 +188,20 @@ fn main2() {
         // Y
         let n = Ident::fresh();
         let m = Ident::fresh();
-        let t = Tau::mk_iarrow(m, Tau::mk_prop_ty(Constraint::mk_pred(PredKind::Neq, vec![Op::mk_const(0), Op::mk_var(m)])));
-        let t = Tau::mk_arrow(t, Tau::mk_prop_ty(Constraint::mk_pred(PredKind::Gt, vec![Op::mk_var(n), Op::mk_const(0)])));
+        let t = Tau::mk_iarrow(
+            m,
+            Tau::mk_prop_ty(Constraint::mk_pred(
+                PredKind::Neq,
+                vec![Op::mk_const(0), Op::mk_var(m)],
+            )),
+        );
+        let t = Tau::mk_arrow(
+            t,
+            Tau::mk_prop_ty(Constraint::mk_pred(
+                PredKind::Gt,
+                vec![Op::mk_var(n), Op::mk_const(0)],
+            )),
+        );
         let t = Tau::mk_iarrow(n, t);
         println!("{}", &t);
         types.push(t);
@@ -160,7 +209,13 @@ fn main2() {
         // K
         let n = Ident::fresh();
         let m = Ident::fresh();
-        let t = Tau::mk_iarrow(m, Tau::mk_prop_ty(Constraint::mk_pred(PredKind::Leq, vec![Op::mk_var(n), Op::mk_var(m)])));
+        let t = Tau::mk_iarrow(
+            m,
+            Tau::mk_prop_ty(Constraint::mk_pred(
+                PredKind::Leq,
+                vec![Op::mk_var(n), Op::mk_var(m)],
+            )),
+        );
         let t = Tau::mk_iarrow(n, t);
         println!("{}", &t);
         types.push(t);
@@ -169,22 +224,39 @@ fn main2() {
         let n = Ident::fresh();
         let m = Ident::fresh();
         let p = Ident::fresh();
-        let t = Tau::mk_iarrow(p, Tau::mk_prop_ty(Constraint::mk_pred(PredKind::Leq, vec![Op::mk_const(0), Op::mk_var(p)])));
+        let t = Tau::mk_iarrow(
+            p,
+            Tau::mk_prop_ty(Constraint::mk_pred(
+                PredKind::Leq,
+                vec![Op::mk_const(0), Op::mk_var(p)],
+            )),
+        );
         //let t = Tau::mk_iarrow(p, Tau::mk_prop_ty(Constraint::mk_true()));
-        let s = Tau::mk_iarrow(m, Tau::mk_prop_ty(Constraint::mk_pred(PredKind::Leq, vec![Op::mk_var(n), Op::mk_var(m)])));
+        let s = Tau::mk_iarrow(
+            m,
+            Tau::mk_prop_ty(Constraint::mk_pred(
+                PredKind::Leq,
+                vec![Op::mk_var(n), Op::mk_var(m)],
+            )),
+        );
         let t = Tau::mk_arrow(s, t);
         let t = Tau::mk_iarrow(n, t);
         println!("{}", &t);
         types.push(t);
     }
 
-    let mut env = engine::rtype::Environment::new();
+    let mut env = engine::rtype::TypeEnvironment::new();
 
     for (fml, ty) in vc.clauses.iter().zip(types.iter()) {
-        env.tadd(fml.head.id, ty.clone());
+        env.add(fml.head.id, ty.clone());
     }
 
     for (fml, ty) in vc.clauses.iter().zip(types.iter()) {
-        println!("{}:{}\n -> {:?}", fml, ty.clone(), engine::rtype::type_check_clause(fml, ty.clone(), &mut env));
+        println!(
+            "{}:{}\n -> {:?}",
+            fml,
+            ty.clone(),
+            engine::rtype::type_check_clause(fml, ty.clone(), &mut env)
+        );
     }
 }

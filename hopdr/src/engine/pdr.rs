@@ -1,9 +1,11 @@
-use super::rtype::Environment;
 use super::rtype;
+use super::rtype::TypeEnvironment;
 use super::VerificationResult;
 use crate::formula::hes::Problem;
+use std::collections::HashMap;
 use std::unimplemented;
 
+use super::candidate::{Sty as Candidate};
 
 enum PDRResult {
     Valid,
@@ -11,14 +13,70 @@ enum PDRResult {
     Unknown,
 }
 
-struct Candidate {
-    env: Environment,
-    index: u64,
+type NodeID = u64;
+
+struct CandidateTree {
+    root: Option<Vec<NodeID>>,
+    labels: HashMap<NodeID, Candidate>,
+    children: HashMap<NodeID, Vec<NodeID>>,
+    current_id: u64,
+}
+
+impl CandidateTree {
+    fn empty() -> CandidateTree {
+        CandidateTree {
+            current_id: 0,
+            root: None,
+            labels: HashMap::new(),
+            children: HashMap::new(),
+        }
+    }
+
+    fn get_new_id(&mut self) -> NodeID {
+        let id = self.current_id;
+        self.current_id += 1;
+        id
+    }
+
+    fn is_epsilon(&self) -> bool {
+        self.root.is_none()
+    }
+    fn get_unprocessed_leaf(&self) -> Option<CandidateNode> {
+        for (key, _) in self.labels.iter() {
+            if !self.children.contains_key(key) {
+                let c = self.labels[key].clone();
+                return Some(CandidateNode { id: *key, label: c });
+            }
+        }
+        None
+    }
+
+    fn add_new_candidate(&mut self, candidate: Candidate) -> NodeID {
+        let id = self.get_new_id();
+        self.labels.insert(id, candidate);
+        id
+    }
+
+    fn add_children(&mut self, node: CandidateNode, candidates: &[Candidate]) {
+        if !self.children.contains_key(&node.id) {
+            self.children.insert(node.id, Vec::new());
+        }
+        for c in candidates {
+            let node_id = self.add_new_candidate(c.clone());
+            self.children.get_mut(&node.id).unwrap().push(node_id);
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct CandidateNode {
+    id: u64,
+    label: Candidate
 }
 
 struct HoPDR<'a> {
-    models: Vec<Candidate>,
-    envs: Vec<Environment>,
+    models: CandidateTree,
+    envs: Vec<TypeEnvironment>,
     problem: &'a Problem,
 }
 
@@ -27,21 +85,21 @@ enum RefuteOrCex<A, B> {
     Cex(B),
 }
 
-fn transformer(env: Environment) -> Environment {
+fn transformer(env: TypeEnvironment) -> TypeEnvironment {
     unimplemented!()
 }
 
-impl Environment { 
-    fn new_top_env(problem: &Problem) -> Environment {
-        let mut new_env = Environment::new();
+impl TypeEnvironment {
+    fn new_top_env(problem: &Problem) -> TypeEnvironment {
+        let mut new_env = TypeEnvironment::new();
         for c in problem.clauses.iter() {
             new_env.add_top(c.head.id, &c.head.ty)
         }
         new_env
     }
 
-    fn new_bot_env(problem: &Problem) -> Environment {
-        let mut new_env = Environment::new();
+    fn new_bot_env(problem: &Problem) -> TypeEnvironment {
+        let mut new_env = TypeEnvironment::new();
         for c in problem.clauses.iter() {
             new_env.add_bot(c.head.id, &c.head.ty)
         }
@@ -50,13 +108,13 @@ impl Environment {
 }
 
 impl<'a> HoPDR<'a> {
-    fn top_env(&self) -> &Environment {
-        &self.envs.last().unwrap()
+    fn top_env(&mut self) -> &mut TypeEnvironment {
+        self.envs.last_mut().unwrap()
     }
 
     fn new(problem: &'a Problem) -> HoPDR<'a> {
         let mut hopdr = HoPDR {
-            models: Vec::new(),
+            models: CandidateTree::empty(),
             envs: Vec::new(),
             problem,
         };
@@ -64,7 +122,7 @@ impl<'a> HoPDR<'a> {
         hopdr
     }
 
-    fn check_valid(&self) -> bool {
+    fn check_valid(&mut self) -> bool {
         // rtype::type_check_clause(fml, ty.clone(), &mut env);
         // println!("{}:{}\n -> {:?}", fml, ty.clone(), );
         match rtype::type_check_top(&self.problem.top, self.top_env()) {
@@ -72,9 +130,8 @@ impl<'a> HoPDR<'a> {
             Err(e) => match e {
                 rtype::Error::TypeError => false,
                 rtype::Error::SMTTimeout | rtype::Error::SMTUnknown => panic!("smt check fail.."),
-            }
+            },
         }
-
     }
 
     fn check_inductive(&self) -> bool {
@@ -82,57 +139,65 @@ impl<'a> HoPDR<'a> {
     }
 
     fn initialize(&mut self) {
-        self.envs.push(Environment::new_top_env(self.problem));
+        self.envs.push(TypeEnvironment::new_top_env(self.problem));
     }
 
     fn unfold(&mut self) {
-        self.envs.push(Environment::new_bot_env(self.problem));
+        self.envs.push(TypeEnvironment::new_bot_env(self.problem));
     }
 
     fn valid(&mut self) -> PDRResult {
-        unimplemented!()
+        dbg!("PDR valid");
+        PDRResult::Valid
     }
 
-    // generates a candidate 
+    fn invalid(&mut self) -> PDRResult {
+        dbg!("PDR invalid");
+        PDRResult::Invalid
+    }
+
+    // generates a candidate
     // Assumption: self.check_valid() == false
-    fn candidate(&mut self) {
+    fn candidate(&mut self) {}
 
-    }
-
-    fn is_refutable(&self, _c: &Candidate) -> RefuteOrCex<Environment, Candidate> {
+    fn is_refutable(&self, _c: &Candidate) -> RefuteOrCex<TypeEnvironment, Vec<Candidate>> {
         unimplemented!()
     }
 
-    fn check_feasible(&mut self) -> PDRResult {
+    fn check_feasible(&mut self) -> bool {
         loop {
-            match self.models.pop() {
-                Some(c) => match self.is_refutable(&c) {
+            match self.models.get_unprocessed_leaf() {
+                Some(c) => match self.is_refutable(&c.label) {
                     RefuteOrCex::Refutable(env) => {
                         self.conflict(c, env);
+                        if self.models.is_epsilon() {
+                            return false;
+                        }
                     }
                     RefuteOrCex::Cex(c2) => {
-                        self.models.push(c);
-                        self.decide(c2);
+                        self.decide(c, c2);
                     }
                 },
-                None => return PDRResult::Unknown,
+                None => { return true }
             }
         }
     }
 
-    fn conflict(&mut self, _candidate: Candidate, _refute_env: Environment) {}
+    fn conflict(&mut self, _candidate: CandidateNode, _refute_env: TypeEnvironment) {}
 
-    fn decide(&mut self, candidate: Candidate) {
-        self.models.push(candidate);
+    fn decide(&mut self, parent: CandidateNode, children: Vec<Candidate>) {
+        self.models.add_children(parent, &children);
     }
 
     fn run(&mut self) -> PDRResult {
         loop {
-            if self.check_valid() {
+            if !self.check_valid() {
                 self.candidate();
-                self.check_feasible();
+                if self.check_feasible() {
+                    return self.invalid();
+                }
             } else if self.check_inductive() {
-                return self.valid()
+                return self.valid();
             } else {
                 self.unfold()
             }

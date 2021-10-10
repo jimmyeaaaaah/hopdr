@@ -1,9 +1,5 @@
 use std::{collections::HashMap, error::Error, fmt, mem::uninitialized, unimplemented};
 
-
-
-
-
 use super::alpha::alpha_renaming;
 use super::transform::transform;
 use super::typing::typing;
@@ -31,7 +27,7 @@ pub enum ExprKind<Id, Ty> {
 }
 pub type Expr<Id, Ty> = Unique<ExprKind<Id, Ty>>;
 
-impl <Ty: fmt::Display, Id: fmt::Display> fmt::Display for Expr<Id, Ty> {
+impl<Ty: fmt::Display, Id: fmt::Display> fmt::Display for Expr<Id, Ty> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.kind() {
             ExprKind::Var(id) => write!(f, "{}", id),
@@ -48,7 +44,7 @@ impl <Ty: fmt::Display, Id: fmt::Display> fmt::Display for Expr<Id, Ty> {
     }
 }
 
-impl <Id, Ty>Expr<Id, Ty> {
+impl<Id, Ty> Expr<Id, Ty> {
     pub fn mk_var(x: Id) -> Expr<Id, Ty> {
         Expr::new(ExprKind::Var(x))
     }
@@ -99,7 +95,7 @@ impl From<VariableS<formula::Ident, SimpleType>> for formula::Variable {
     }
 }
 
-impl <Id, Ty>VariableS<Id, Ty> {
+impl<Id, Ty> VariableS<Id, Ty> {
     pub fn new(id: Id, ty: Ty) -> VariableS<Id, Ty> {
         VariableS { id, ty }
     }

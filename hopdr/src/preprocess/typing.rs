@@ -1,12 +1,10 @@
-
-
 use rpds::HashTrieMap;
 use std::{collections::HashMap, error::Error, fmt, mem::uninitialized, unimplemented};
 
 use super::hes::{Clause as ClauseS, Expr, ExprKind, ValidityChecking, VariableS};
-use crate::{formula::{Type as SimpleType}, parse::Ident};
 use crate::parse;
 use crate::util::{global_counter, P};
+use crate::{formula::Type as SimpleType, parse::Ident};
 
 type Clause<Ty> = ClauseS<parse::Ident, Ty>;
 type ExprTmp = Expr<parse::Ident, TmpType>;
@@ -125,15 +123,19 @@ impl ExprTmp {
             parse::ExprKind::Num(x) => Expr::mk_num(x),
             parse::ExprKind::True => Expr::mk_true(),
             parse::ExprKind::False => Expr::mk_false(),
-            parse::ExprKind::Op(op, e1, e2) => Expr::mk_op(op, ExprTmp::from(e1), ExprTmp::from(e2)),
-            parse::ExprKind::Pred(p, e1, e2) => Expr::mk_pred(p, ExprTmp::from(e1), ExprTmp::from(e2)),
+            parse::ExprKind::Op(op, e1, e2) => {
+                Expr::mk_op(op, ExprTmp::from(e1), ExprTmp::from(e2))
+            }
+            parse::ExprKind::Pred(p, e1, e2) => {
+                Expr::mk_pred(p, ExprTmp::from(e1), ExprTmp::from(e2))
+            }
             parse::ExprKind::App(e1, e2) => Expr::mk_app(ExprTmp::from(e1), ExprTmp::from(e2)),
             parse::ExprKind::And(e1, e2) => Expr::mk_and(ExprTmp::from(e1), ExprTmp::from(e2)),
             parse::ExprKind::Or(e1, e2) => Expr::mk_or(ExprTmp::from(e1), ExprTmp::from(e2)),
             parse::ExprKind::Univ(x, e) => {
                 let id = VariableS::from_ident(x);
                 Expr::mk_univ(id, ExprTmp::from(e))
-            },
+            }
             _ => panic!("not implemented"),
         }
     }
@@ -191,7 +193,7 @@ impl ExprTmp {
                 let x = x.ty_subst(subst);
                 let y = y.ty_subst(subst);
                 ExprSimpleType::mk_op(o, x, y)
-            },
+            }
             ExprKind::Pred(p, x, y) => {
                 let x = x.ty_subst(subst);
                 let y = y.ty_subst(subst);

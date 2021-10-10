@@ -1,7 +1,7 @@
-use std::fmt;
 use std::collections::HashSet;
+use std::fmt;
 
-use super::{Conjunctive, Constraint, Ident, Op, Subst, Rename, Top, Fv, PredKind};
+use super::{Conjunctive, Constraint, Fv, Ident, Op, PredKind, Rename, Subst, Top};
 use crate::util::P;
 
 #[derive(Debug)]
@@ -25,7 +25,7 @@ impl fmt::Display for Atom {
                     write!(f, "{},", op)?;
                 }
                 write!(f, ")")
-            },
+            }
             AtomKind::Conj(x, y) => write!(f, "({} & {})", x, y),
             AtomKind::Disj(x, y) => write!(f, "({} & {})", x, y),
         }
@@ -46,21 +46,22 @@ impl Atom {
         match self.kind() {
             AtomKind::True | AtomKind::Constraint(_) => false,
             AtomKind::Predicate(_, _) => true,
-            AtomKind::Conj(c1, c2) | AtomKind::Disj(c1, c2)
-                => c1.contains_predicate() && c2.contains_predicate(),
+            AtomKind::Conj(c1, c2) | AtomKind::Disj(c1, c2) => {
+                c1.contains_predicate() && c2.contains_predicate()
+            }
         }
     }
     pub fn extract_pred_and_constr(&self) -> Option<(Constraint, Ident)> {
         match self.kind() {
             AtomKind::True | AtomKind::Constraint(_) => None,
             AtomKind::Predicate(i, _) => Some((Constraint::mk_false(), i.clone())),
-            AtomKind::Conj(x, y) 
-            | AtomKind::Conj(y, x) if x.contains_predicate() => 
-                y.negate().map(|c2| 
-                    x.extract_pred_and_constr().map(
-                        |(c, i)| (Constraint::mk_disj(c, c2), i)
-                    )
-                ).flatten(),
+            AtomKind::Conj(x, y) | AtomKind::Conj(y, x) if x.contains_predicate() => y
+                .negate()
+                .map(|c2| {
+                    x.extract_pred_and_constr()
+                        .map(|(c, i)| (Constraint::mk_disj(c, c2), i))
+                })
+                .flatten(),
             _ => None,
         }
     }
@@ -75,7 +76,7 @@ impl Atom {
                     (_, None) | (None, _) => None,
                     (Some(x), Some(y)) => Some(Constraint::mk_disj(x.clone(), y.clone())),
                 }
-            },
+            }
             AtomKind::Disj(l, r) => {
                 let l = l.negate();
                 let r = r.negate();
@@ -83,7 +84,7 @@ impl Atom {
                     (_, None) | (None, _) => None,
                     (Some(x), Some(y)) => Some(Constraint::mk_conj(x.clone(), y.clone())),
                 }
-            },
+            }
             AtomKind::Predicate(_, _) => None,
         }
     }
@@ -104,10 +105,14 @@ impl Atom {
             AtomKind::True => Some(Constraint::mk_true()),
             AtomKind::Constraint(c) => Some(c.clone()),
             AtomKind::Predicate(_, _) => None,
-            AtomKind::Conj(x, y) => 
-                x.to_constraint().map(|x|y.to_constraint().map(|y|Constraint::mk_conj(x, y))).flatten(),
-            AtomKind::Disj(x, y) => 
-                x.to_constraint().map(|x|y.to_constraint().map(|y|Constraint::mk_disj(x, y))).flatten(),
+            AtomKind::Conj(x, y) => x
+                .to_constraint()
+                .map(|x| y.to_constraint().map(|y| Constraint::mk_conj(x, y)))
+                .flatten(),
+            AtomKind::Disj(x, y) => x
+                .to_constraint()
+                .map(|x| y.to_constraint().map(|y| Constraint::mk_disj(x, y)))
+                .flatten(),
         }
     }
 }
@@ -119,9 +124,8 @@ impl Fv for Atom {
             AtomKind::True | AtomKind::Constraint(_) => (),
             AtomKind::Predicate(ident, _) => {
                 fvs.insert(*ident);
-            },
-            AtomKind::Conj(x, y) | AtomKind::Disj(x, y )
-                => {
+            }
+            AtomKind::Conj(x, y) | AtomKind::Disj(x, y) => {
                 x.fv_with_vec(fvs);
                 y.fv_with_vec(fvs);
             }
@@ -188,7 +192,7 @@ pub struct PCSP<A> {
     pub head: A,
 }
 
-impl <A> PCSP<A> {
+impl<A> PCSP<A> {
     pub fn new(body: A, head: A) -> PCSP<A> {
         PCSP { body, head }
     }
@@ -200,7 +204,7 @@ impl PCSP<Constraint> {
     }
 }
 
-impl <A: fmt::Display> fmt::Display for PCSP<A> {
+impl<A: fmt::Display> fmt::Display for PCSP<A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} -> {}", self.body, self.head)
     }

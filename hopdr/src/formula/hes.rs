@@ -97,7 +97,7 @@ impl Goal {
     pub fn is_true(&self) -> bool {
         match self.kind() {
             GoalKind::Constr(c) if c.is_true() => true,
-            _ => false
+            _ => false,
         }
     }
     pub fn mk_atom(x: Atom) -> Goal {

@@ -1,3 +1,4 @@
+pub mod candidate;
 mod infer;
 mod pdr;
 pub mod rtype;
