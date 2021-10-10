@@ -5,7 +5,7 @@ use crate::formula::hes::Problem;
 use std::collections::HashMap;
 use std::unimplemented;
 
-use super::candidate::{Sty as Candidate};
+use super::candidate::Sty as Candidate;
 
 enum PDRResult {
     Valid,
@@ -71,7 +71,7 @@ impl CandidateTree {
 #[derive(Clone, Debug)]
 struct CandidateNode {
     id: u64,
-    label: Candidate
+    label: Candidate,
 }
 
 struct HoPDR<'a> {
@@ -178,7 +178,7 @@ impl<'a> HoPDR<'a> {
                         self.decide(c, c2);
                     }
                 },
-                None => { return true }
+                None => return true,
             }
         }
     }

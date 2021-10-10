@@ -6,7 +6,7 @@ pub mod ty;
 use std::collections::HashSet;
 use std::fmt;
 
-use rpds::{Stack, HashTrieMap};
+use rpds::{HashTrieMap, Stack};
 
 pub use crate::formula::ty::*;
 use crate::util::global_counter;

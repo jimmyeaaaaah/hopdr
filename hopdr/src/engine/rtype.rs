@@ -332,18 +332,22 @@ impl Fv for Tau<pcsp::Atom> {
 }
 
 pub struct TypeEnvironment {
-    map: HashMap<Ident, Vec<Ty>>
+    map: HashMap<Ident, Vec<Ty>>,
 }
 
 impl Clone for TypeEnvironment {
     fn clone(&self) -> Self {
-        Self { map: self.map.clone() }
+        Self {
+            map: self.map.clone(),
+        }
     }
 }
 
 impl TypeEnvironment {
     pub fn new() -> TypeEnvironment {
-        TypeEnvironment{ map: HashMap::new() }
+        TypeEnvironment {
+            map: HashMap::new(),
+        }
     }
     fn add_(&mut self, v: Ident, t: Ty) {
         match self.map.get_mut(&v) {
@@ -385,8 +389,6 @@ impl TypeEnvironment {
         r
     }
 }
-
-
 
 #[derive(Clone)]
 pub struct Environment {
@@ -434,7 +436,6 @@ impl Environment {
         debug!("tget: {}", v);
         self.map.get(v)
     }
-
 }
 
 fn int_expr<'a>(atom: &Atom, env: &Environment) -> Option<Ident> {
