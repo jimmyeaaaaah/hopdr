@@ -332,7 +332,7 @@ impl Fv for Tau<pcsp::Atom> {
 }
 
 pub struct TypeEnvironment {
-    map: HashMap<Ident, Vec<Ty>>,
+    pub map: HashMap<Ident, Vec<Ty>>,
 }
 
 impl Clone for TypeEnvironment {
@@ -342,6 +342,7 @@ impl Clone for TypeEnvironment {
         }
     }
 }
+
 
 impl TypeEnvironment {
     pub fn new() -> TypeEnvironment {

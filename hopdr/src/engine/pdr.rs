@@ -18,6 +18,7 @@ type NodeID = u64;
 struct CandidateTree {
     root: Option<Vec<NodeID>>,
     labels: HashMap<NodeID, Candidate>,
+    levels: HashMap<NodeID, u64>,
     children: HashMap<NodeID, Vec<NodeID>>,
     current_id: u64,
 }
@@ -28,6 +29,7 @@ impl CandidateTree {
             current_id: 0,
             root: None,
             labels: HashMap::new(),
+            levels: HashMap::new(),
             children: HashMap::new(),
         }
     }
@@ -45,7 +47,8 @@ impl CandidateTree {
         for (key, _) in self.labels.iter() {
             if !self.children.contains_key(key) {
                 let c = self.labels[key].clone();
-                return Some(CandidateNode { id: *key, label: c });
+                let lv = self.levels[key].clone();
+                return Some(CandidateNode { id: *key, level: lv, label: c });
             }
         }
         None
@@ -70,6 +73,7 @@ impl CandidateTree {
 
 #[derive(Clone, Debug)]
 struct CandidateNode {
+    level: u64,
     id: u64,
     label: Candidate,
 }
@@ -134,6 +138,9 @@ impl<'a> HoPDR<'a> {
         }
     }
 
+    // 1. Γ_i |- Γ_{i-1}
+    // 2. Γ_i |- \psi : *<T>
+    // Assumption: 2 has been already satisfied
     fn check_inductive(&self) -> bool {
         unimplemented!()
     }
@@ -183,7 +190,15 @@ impl<'a> HoPDR<'a> {
         }
     }
 
-    fn conflict(&mut self, _candidate: CandidateNode, _refute_env: TypeEnvironment) {}
+    fn conflict(&mut self, c: CandidateNode, refute_env: TypeEnvironment) {
+        for i in 0..c.level {
+            for (k, ts) in refute_env.map.iter() {
+                for t in ts.iter() {
+                    self.envs[i as usize].add(*k, t.clone());
+                }
+            }
+        }
+    }
 
     fn decide(&mut self, parent: CandidateNode, children: Vec<Candidate>) {
         self.models.add_children(parent, &children);
