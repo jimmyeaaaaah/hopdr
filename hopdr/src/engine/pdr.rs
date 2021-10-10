@@ -93,10 +93,6 @@ enum RefuteOrCex<A, B> {
     Cex(B),
 }
 
-fn transformer(env: TypeEnvironment) -> TypeEnvironment {
-    unimplemented!()
-}
-
 impl TypeEnvironment {
     fn new_top_env(problem: &Problem) -> TypeEnvironment {
         let mut new_env = TypeEnvironment::new();
@@ -116,19 +112,27 @@ impl TypeEnvironment {
 }
 
 fn handle_type_check(result: Result<(), rtype::Error>) -> bool {
-        match result {
-            Ok(()) => true,
-            Err(e) => match e {
-                rtype::Error::TypeError => false,
-                rtype::Error::SMTTimeout | rtype::Error::SMTUnknown => panic!("smt check fail.."),
-            },
-        }
-
+    match result {
+        Ok(()) => true,
+        Err(e) => match e {
+            rtype::Error::TypeError => false,
+            rtype::Error::SMTTimeout | rtype::Error::SMTUnknown => panic!("smt check fail.."),
+        },
+    }
 }
 
+fn transformer(env: TypeEnvironment) -> TypeEnvironment {
+    unimplemented!()
+}
 impl<'a> HoPDR<'a> {
-    fn top_env_mut(&mut self) -> &mut TypeEnvironment {
-        self.envs.last_mut().unwrap()
+    // generates a candidate
+    // Assumption: self.check_valid() == false
+    fn candidate(&mut self) {
+        unimplemented!()
+    }
+
+    fn is_refutable(&self, _c: &Candidate) -> RefuteOrCex<TypeEnvironment, Vec<Candidate>> {
+        unimplemented!()
     }
 
     fn top_env(&self) -> &TypeEnvironment {
@@ -148,7 +152,7 @@ impl<'a> HoPDR<'a> {
     fn check_valid(&mut self) -> bool {
         // rtype::type_check_clause(fml, ty.clone(), &mut env);
         // println!("{}:{}\n -> {:?}", fml, ty.clone(), );
-        let result = rtype::type_check_top(&self.problem.top, self.top_env()) ;
+        let result = rtype::type_check_top(&self.problem.top, self.top_env());
         handle_type_check(result)
     }
 
@@ -185,16 +189,6 @@ impl<'a> HoPDR<'a> {
     fn invalid(&mut self) -> PDRResult {
         dbg!("PDR invalid");
         PDRResult::Invalid
-    }
-
-    // generates a candidate
-    // Assumption: self.check_valid() == false
-    fn candidate(&mut self) {
-        unimplemented!()
-    }
-
-    fn is_refutable(&self, _c: &Candidate) -> RefuteOrCex<TypeEnvironment, Vec<Candidate>> {
-        unimplemented!()
     }
 
     fn check_feasible(&mut self) -> bool {
