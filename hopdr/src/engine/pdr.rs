@@ -1,13 +1,14 @@
 use super::rtype;
 use super::rtype::{PosEnvironment, TypeEnvironment};
 use super::VerificationResult;
-use crate::formula::hes;
 use crate::formula::hes::Problem;
+use crate::formula::{hes, Ident};
+use crate::formula::{Constraint, Top};
 use std::collections::HashMap;
 use std::ops::Neg;
 use std::unimplemented;
 
-use super::candidate::Sty as Candidate;
+use super::candidate::Sty;
 
 enum PDRResult {
     Valid,
@@ -17,7 +18,25 @@ enum PDRResult {
 
 type NodeID = u64;
 
-type NegEnvironment = TypeEnvironment<Candidate>;
+type NegEnvironment = TypeEnvironment<Sty>;
+
+impl NegEnvironment {
+    fn to_candidates(self) -> Vec<Candidate> {
+        let mut v = Vec::new();
+        for (ident, stys) in self.map.into_iter() {
+            for sty in stys {
+                v.push(Candidate { ident, sty });
+            }
+        }
+        v
+    }
+}
+
+#[derive(Debug, Clone)]
+struct Candidate {
+    pub ident: Ident,
+    pub sty: Sty,
+}
 
 struct CandidateTree {
     root: Option<Vec<NodeID>>,
@@ -47,6 +66,7 @@ impl CandidateTree {
     fn is_epsilon(&self) -> bool {
         self.root.is_none()
     }
+
     fn get_unprocessed_leaf(&self) -> Option<CandidateNode> {
         for (key, _) in self.labels.iter() {
             if !self.children.contains_key(key) {
@@ -68,7 +88,17 @@ impl CandidateTree {
         id
     }
 
-    fn add_children(&mut self, node: CandidateNode, candidates: &[Candidate]) {
+    pub fn add_root_children(&mut self, candidates: &[Candidate]) {
+        assert!(self.is_epsilon());
+        let mut v = Vec::new();
+        for c in candidates {
+            let node_id = self.add_new_candidate(c.clone());
+            v.push(node_id);
+        }
+        self.root = Some(v);
+    }
+
+    pub fn add_children(&mut self, node: CandidateNode, candidates: &[Candidate]) {
         if !self.children.contains_key(&node.id) {
             self.children.insert(node.id, Vec::new());
         }
@@ -76,6 +106,11 @@ impl CandidateTree {
             let node_id = self.add_new_candidate(c.clone());
             self.children.get_mut(&node.id).unwrap().push(node_id);
         }
+    }
+
+    fn add_root_negative_type_env(&mut self, nenv: NegEnvironment) {
+        let candidates = nenv.to_candidates();
+        self.add_root_children(&candidates);
     }
 }
 
@@ -128,20 +163,25 @@ fn handle_type_check(result: Result<(), rtype::Error>) -> bool {
 fn transformer(env: PosEnvironment) -> PosEnvironment {
     unimplemented!()
 }
-fn calculate_cex(env: &PosEnvironment, formula: hes::Goal, candidate: Candidate) -> NegEnvironment {
+fn calculate_cex(env: &PosEnvironment, formula: hes::Goal, candidate: Sty) -> NegEnvironment {
     unimplemented!()
 }
 
 impl<'a> HoPDR<'a> {
     // generates a candidate
     // Assumption: self.check_valid() == false
-    fn candidate(&mut self) {
-        //calculate_cex(self.top_env(), self.problem.top.clone(), );
+    fn is_refutable(&self, _c: &Candidate) -> RefuteOrCex<PosEnvironment, Vec<Candidate>> {
+        // 1. generate constraints: calculate t s.t. c.sty ~ t and check if Env |- formula[c.ident] : t.
+        // 2. if not typable, calculate cex
+        // 3. if typable, returns the type
         unimplemented!()
     }
 
-    fn is_refutable(&self, _c: &Candidate) -> RefuteOrCex<PosEnvironment, Vec<Candidate>> {
-        unimplemented!()
+    fn candidate(&mut self) {
+        //calculate_cex(self.top_env(), self.problem.top.clone(), );
+        let top_false = Sty::mk_prop_ty(Constraint::mk_true());
+        let nenv = calculate_cex(self.top_env(), self.problem.top.clone(), top_false);
+        self.models.add_root_negative_type_env(nenv);
     }
 
     fn top_env(&self) -> &PosEnvironment {
