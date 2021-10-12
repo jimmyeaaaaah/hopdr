@@ -1,4 +1,11 @@
-use std::{collections::{HashMap, HashSet}, ffi::FromBytesWithNulError, fmt::{self, Display}, marker::{PhantomData, PhantomPinned}, rc::Rc, unimplemented};
+use std::{
+    collections::{HashMap, HashSet},
+    ffi::FromBytesWithNulError,
+    fmt::{self, Display},
+    marker::{PhantomData, PhantomPinned},
+    rc::Rc,
+    unimplemented,
+};
 
 use crate::formula::{chc, pcsp};
 use crate::formula::{
@@ -10,7 +17,7 @@ use crate::formula::{
     Type as SType, TypeKind as STypeKind,
 };
 use crate::solver::smt;
-use crate::util::{PhantomPtr as P};
+use crate::util::PhantomPtr as P;
 
 #[derive(Debug)]
 pub enum TauKind<P, C> {
@@ -183,7 +190,10 @@ fn rename_constraints_by_types<P>(
     }
 }
 
-fn rename_integer_variable<P>(t1: &Tau<P, pcsp::Atom>, t2: &Tau<P, pcsp::Atom>) -> Tau<P, pcsp::Atom> {
+fn rename_integer_variable<P>(
+    t1: &Tau<P, pcsp::Atom>,
+    t2: &Tau<P, pcsp::Atom>,
+) -> Tau<P, pcsp::Atom> {
     match (t1.kind(), t2.kind()) {
         (TauKind::Proposition(_), TauKind::Proposition(_)) => t2.clone(),
         (TauKind::IArrow(x, tx), TauKind::IArrow(y, ty)) => {
@@ -315,7 +325,7 @@ impl TyKind {
     }
 }
 
-impl <P> Fv for Tau<P, pcsp::Atom> {
+impl<P> Fv for Tau<P, pcsp::Atom> {
     type Id = Ident;
     fn fv_with_vec(&self, fvs: &mut HashSet<Self::Id>) {
         match self.kind() {

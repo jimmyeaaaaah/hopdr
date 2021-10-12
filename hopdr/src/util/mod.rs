@@ -121,7 +121,10 @@ impl<T, S> PhantomPtr<T, S> {
 
 impl<T, S> PhantomPtr<T, S> {
     pub fn new(v: T) -> PhantomPtr<T, S> {
-        PhantomPtr { ptr: Rc::new(v), __phantom: PhantomData }
+        PhantomPtr {
+            ptr: Rc::new(v),
+            __phantom: PhantomData,
+        }
     }
 }
 
@@ -143,7 +146,7 @@ impl<T, S> Clone for PhantomPtr<T, S> {
     fn clone(&self) -> PhantomPtr<T, S> {
         PhantomPtr {
             ptr: self.ptr.clone(),
-            __phantom: PhantomData
+            __phantom: PhantomData,
         }
     }
 }
