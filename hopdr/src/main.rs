@@ -101,7 +101,7 @@ fn main() {
         types.push(t);
     }
 
-    let mut env = engine::rtype::TypeEnvironment::new();
+    let mut env = engine::rtype::PosEnvironment::new();
 
     for (fml, ty) in vc.clauses.iter().zip(types.iter()) {
         env.add(fml.head.id, ty.clone());
@@ -245,7 +245,7 @@ fn main2() {
         types.push(t);
     }
 
-    let mut env = engine::rtype::TypeEnvironment::new();
+    let mut env = engine::rtype::PosEnvironment::new();
 
     for (fml, ty) in vc.clauses.iter().zip(types.iter()) {
         env.add(fml.head.id, ty.clone());

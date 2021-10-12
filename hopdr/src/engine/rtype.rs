@@ -1,10 +1,4 @@
-use std::{
-    collections::{HashMap, HashSet},
-    ffi::FromBytesWithNulError,
-    fmt::{self, Display},
-    rc::Rc,
-    unimplemented,
-};
+use std::{collections::{HashMap, HashSet}, ffi::FromBytesWithNulError, fmt::{self, Display}, marker::{PhantomData, PhantomPinned}, rc::Rc, unimplemented};
 
 use crate::formula::{chc, pcsp};
 use crate::formula::{
@@ -13,20 +7,24 @@ use crate::formula::{
 };
 use crate::formula::{
     Conjunctive, Constraint, Fv, Ident, IntegerEnvironment, Op, QuantifierKind, Rename, Subst, Top,
-    Type as SType, TypeKind as STypeKind, P,
+    Type as SType, TypeKind as STypeKind,
 };
 use crate::solver::smt;
+use crate::util::{PhantomPtr as P};
 
 #[derive(Debug)]
-pub enum TauKind<C> {
+pub enum TauKind<P, C> {
     Proposition(C),
-    IArrow(Ident, Tau<C>),
-    Arrow(Tau<C>, Tau<C>),
+    IArrow(Ident, Tau<P, C>),
+    Arrow(Tau<P, C>, Tau<P, C>),
 }
 
-pub type TyKind = TauKind<Constraint>;
-pub type Tau<C> = P<TauKind<C>>;
-pub type Ty = Tau<Constraint>;
+#[derive(Debug)]
+pub struct Positive {}
+
+pub type Tau<Pos, C> = P<TauKind<Pos, C>, Pos>;
+pub type TyKind = TauKind<Positive, Constraint>;
+pub type Ty = Tau<Positive, Constraint>;
 
 #[derive(Debug)]
 pub enum Error {
@@ -52,7 +50,7 @@ impl fmt::Display for Error {
     }
 }
 
-impl<C: fmt::Display> fmt::Display for Tau<C> {
+impl<P, C: fmt::Display> fmt::Display for Tau<P, C> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.kind() {
             TauKind::Proposition(c) => write!(f, "bool[{}]", c),
@@ -62,12 +60,12 @@ impl<C: fmt::Display> fmt::Display for Tau<C> {
     }
 }
 
-impl<C> Tau<C> {
-    fn clone_with_template(
+impl<P, C> Tau<P, C> {
+    fn clone_with_template<Positivity>(
         &self,
         env: IntegerEnvironment,
         new_idents: &mut HashSet<Ident>,
-    ) -> Tau<pcsp::Atom> {
+    ) -> Tau<Positivity, pcsp::Atom> {
         match self.kind() {
             TauKind::Proposition(_) => {
                 let args = env.variables();
@@ -88,8 +86,8 @@ impl<C> Tau<C> {
     }
 }
 
-impl From<Tau<Constraint>> for Tau<pcsp::Atom> {
-    fn from(from: Tau<Constraint>) -> Tau<pcsp::Atom> {
+impl<Positivity> From<Tau<Positivity, Constraint>> for Tau<Positivity, pcsp::Atom> {
+    fn from(from: Tau<Positivity, Constraint>) -> Tau<Positivity, pcsp::Atom> {
         match from.kind() {
             TauKind::Proposition(c) => Tau::mk_prop_ty(c.clone().into()),
             TauKind::IArrow(x, e) => Tau::mk_iarrow(x.clone(), e.clone().into()),
@@ -102,9 +100,9 @@ impl From<Tau<Constraint>> for Tau<pcsp::Atom> {
     }
 }
 
-impl<C: Subst> Subst for Tau<C> {
+impl<P, C: Subst> Subst for Tau<P, C> {
     // \tau[v/x]
-    fn subst(&self, x: &Ident, v: &Op) -> Tau<C> {
+    fn subst(&self, x: &Ident, v: &Op) -> Tau<P, C> {
         match self.kind() {
             TauKind::Proposition(c) => Tau::mk_prop_ty(c.subst(x, v)),
             TauKind::IArrow(id, _body) if id == x => self.clone(),
@@ -114,8 +112,8 @@ impl<C: Subst> Subst for Tau<C> {
     }
 }
 
-impl<C: Subst + Rename> Rename for Tau<C> {
-    fn rename(&self, x: &Ident, y: &Ident) -> Tau<C> {
+impl<P, C: Subst + Rename> Rename for Tau<P, C> {
+    fn rename(&self, x: &Ident, y: &Ident) -> Tau<P, C> {
         match self.kind() {
             TauKind::Proposition(c) => Tau::mk_prop_ty(c.rename(x, y)),
             TauKind::IArrow(id, _body) if id == x => self.clone(),
@@ -125,27 +123,27 @@ impl<C: Subst + Rename> Rename for Tau<C> {
     }
 }
 
-impl<C: Subst> Tau<C> {
-    pub fn mk_prop_ty(c: C) -> Tau<C> {
+impl<P, C: Subst> Tau<P, C> {
+    pub fn mk_prop_ty(c: C) -> Tau<P, C> {
         Tau::new(TauKind::Proposition(c))
     }
 
-    pub fn mk_iarrow(id: Ident, t: Tau<C>) -> Tau<C> {
+    pub fn mk_iarrow(id: Ident, t: Tau<P, C>) -> Tau<P, C> {
         Tau::new(TauKind::IArrow(id, t))
     }
 
-    pub fn mk_arrow(t: Tau<C>, s: Tau<C>) -> Tau<C> {
+    pub fn mk_arrow(t: Tau<P, C>, s: Tau<P, C>) -> Tau<P, C> {
         Tau::new(TauKind::Arrow(t, s))
     }
 
-    fn app(&self, v: &Op) -> Tau<C> {
+    fn app(&self, v: &Op) -> Tau<P, C> {
         match self.kind() {
             TauKind::IArrow(x, t) => t.subst(x, v),
             _ => panic!("program error: tried to app integer to non-integer arrow type"),
         }
     }
 
-    fn arrow_unwrap(&self) -> (Tau<C>, Tau<C>) {
+    fn arrow_unwrap(&self) -> (Tau<P, C>, Tau<P, C>) {
         match self.kind() {
             TauKind::Arrow(x, y) => (x.clone(), y.clone()),
             _ => panic!("unwrap fail"),
@@ -165,10 +163,10 @@ impl<C: Subst> Tau<C> {
     }
 }
 
-fn rename_constraints_by_types(
+fn rename_constraints_by_types<P>(
     chc: chc::CHC<pcsp::Atom>,
-    t1: &Tau<pcsp::Atom>,
-    t2: &Tau<pcsp::Atom>,
+    t1: &Tau<P, pcsp::Atom>,
+    t2: &Tau<P, pcsp::Atom>,
 ) -> chc::CHC<pcsp::Atom> {
     match (t1.kind(), t2.kind()) {
         (TauKind::Proposition(_), TauKind::Proposition(_)) => chc.clone(),
@@ -185,7 +183,7 @@ fn rename_constraints_by_types(
     }
 }
 
-fn rename_integer_variable(t1: &Tau<pcsp::Atom>, t2: &Tau<pcsp::Atom>) -> Tau<pcsp::Atom> {
+fn rename_integer_variable<P>(t1: &Tau<P, pcsp::Atom>, t2: &Tau<P, pcsp::Atom>) -> Tau<P, pcsp::Atom> {
     match (t1.kind(), t2.kind()) {
         (TauKind::Proposition(_), TauKind::Proposition(_)) => t2.clone(),
         (TauKind::IArrow(x, tx), TauKind::IArrow(y, ty)) => {
@@ -203,11 +201,11 @@ fn rename_integer_variable(t1: &Tau<pcsp::Atom>, t2: &Tau<pcsp::Atom>) -> Tau<pc
 
 fn infer_subtype(
     environment: &Environment,
-    arrow_type: Tau<pcsp::Atom>,
-    arg_t: Tau<pcsp::Atom>,
+    arrow_type: Tau<Positive, pcsp::Atom>,
+    arg_t: Tau<Positive, pcsp::Atom>,
     lhs_c: &[chc::CHC<pcsp::Atom>],
     rhs_c: &[chc::CHC<pcsp::Atom>],
-) -> Result<(Tau<pcsp::Atom>, Vec<chc::CHC<pcsp::Atom>>), Error> {
+) -> Result<(Tau<Positive, pcsp::Atom>, Vec<chc::CHC<pcsp::Atom>>), Error> {
     debug!(
         "infer_greatest_type: {} <: {} -> ?",
         arrow_type.clone(),
@@ -231,8 +229,8 @@ fn infer_subtype(
         _ => panic!("program error"),
     };
     //let ret_t= generate_template(environment, ret_st);
-    let lhs: Tau<pcsp::Atom> = arrow_type.into();
-    let rhs: Tau<pcsp::Atom> = Tau::mk_arrow(arg_t.into(), ret_t.clone());
+    let lhs: Tau<Positive, pcsp::Atom> = arrow_type.into();
+    let rhs: Tau<Positive, pcsp::Atom> = Tau::mk_arrow(arg_t.into(), ret_t.clone());
     debug!("len lhs: {}", lhs_c.len());
     debug!("len rhs: {}", rhs_c.len());
     let mut constraints = Vec::new();
@@ -253,8 +251,8 @@ fn infer_subtype(
 
 fn generate_constraint_inner<A: Conjunctive + Clone + Rename + Subst + fmt::Debug + Display>(
     rty: A,
-    lhs: &Tau<A>,
-    rhs: &Tau<A>,
+    lhs: &Tau<Positive, A>,
+    rhs: &Tau<Positive, A>,
     constraints: &mut Vec<pcsp::PCSP<A>>,
 ) {
     match (lhs.kind(), rhs.kind()) {
@@ -279,8 +277,8 @@ fn generate_constraint_inner<A: Conjunctive + Clone + Rename + Subst + fmt::Debu
 }
 
 fn generate_constraint<A: Conjunctive + Clone + Rename + Subst + Top + fmt::Debug + Display>(
-    lhs: &Tau<A>,
-    rhs: &Tau<A>,
+    lhs: &Tau<Positive, A>,
+    rhs: &Tau<Positive, A>,
     constraints: &mut Vec<pcsp::PCSP<A>>,
 ) {
     debug!("generate_constraint: {} <: {}", lhs, rhs);
@@ -317,7 +315,7 @@ impl TyKind {
     }
 }
 
-impl Fv for Tau<pcsp::Atom> {
+impl <P> Fv for Tau<P, pcsp::Atom> {
     type Id = Ident;
     fn fv_with_vec(&self, fvs: &mut HashSet<Self::Id>) {
         match self.kind() {
@@ -455,7 +453,7 @@ fn int_expr<'a>(atom: &Atom, env: &Environment) -> Option<Ident> {
 fn type_check_atom<'a>(
     atom: &Atom,
     env: &Environment,
-) -> Result<Vec<(Tau<pcsp::Atom>, Vec<chc::CHC<pcsp::Atom>>)>, Error> {
+) -> Result<Vec<(Tau<Positive, pcsp::Atom>, Vec<chc::CHC<pcsp::Atom>>)>, Error> {
     //debug!("type_check_atom: {}", atom);
     use AtomKind::*;
     let r = match atom.kind() {

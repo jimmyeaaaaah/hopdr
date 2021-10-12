@@ -1,3 +1,4 @@
+use std::marker::PhantomData;
 use std::ops::Deref;
 use std::{fmt, rc::Rc};
 
@@ -93,6 +94,63 @@ impl<T: ?Sized> Deref for Unique<T> {
 
     fn deref(&self) -> &T {
         &self.ptr
+    }
+}
+
+// Phantom Pointer
+
+#[derive(Debug, Eq, PartialEq, Hash)]
+pub struct PhantomPtr<T: ?Sized, S> {
+    ptr: Rc<T>,
+    __phantom: PhantomData<S>,
+}
+
+#[allow(non_snake_case)]
+pub fn PhantomPtr<T: 'static, S>(value: T) -> PhantomPtr<T, S> {
+    PhantomPtr {
+        ptr: Rc::new(value),
+        __phantom: PhantomData,
+    }
+}
+
+impl<T, S> PhantomPtr<T, S> {
+    pub fn kind<'a>(&'a self) -> &'a T {
+        &*self.ptr
+    }
+}
+
+impl<T, S> PhantomPtr<T, S> {
+    pub fn new(v: T) -> PhantomPtr<T, S> {
+        PhantomPtr { ptr: Rc::new(v), __phantom: PhantomData }
+    }
+}
+
+impl<T: fmt::Display, S> fmt::Display for PhantomPtr<T, S> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(self.kind(), f)
+    }
+}
+
+impl<T: ?Sized, S> Deref for PhantomPtr<T, S> {
+    type Target = T;
+
+    fn deref(&self) -> &T {
+        &self.ptr
+    }
+}
+
+impl<T, S> Clone for PhantomPtr<T, S> {
+    fn clone(&self) -> PhantomPtr<T, S> {
+        PhantomPtr {
+            ptr: self.ptr.clone(),
+            __phantom: PhantomData
+        }
+    }
+}
+
+impl<T, S> From<T> for PhantomPtr<T, S> {
+    fn from(x: T) -> PhantomPtr<T, S> {
+        PhantomPtr::new(x)
     }
 }
 
