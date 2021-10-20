@@ -31,6 +31,7 @@ fn consistent(s: &Sty, t: &rtype::Tau<rtype::Positive, pcsp::Atom>) -> fofml::At
             let c2 = consistent(s2, t2);
             Atom::mk_disj(c1, c2)
         }
+        _ => panic!("program error"),
     }
 }
 
