@@ -483,7 +483,7 @@ impl<P, C: Top + Bot + Subst + Rename> Environment<Tau<P, C>> {
         self.map.get(v)
     }
 
-    pub fn add_arg_types(&mut self, args: &[Ident], ty: Tau<P, C>) {
+    pub fn add_arg_types(&mut self, args: &[Ident], ty: Tau<P, C>) -> Tau<P, C> {
         let mut tmp_t = ty;
         for arg in args {
             match tmp_t.kind() {
@@ -498,6 +498,7 @@ impl<P, C: Top + Bot + Subst + Rename> Environment<Tau<P, C>> {
                 }
             }
         }
+        tmp_t
     }
 }
 
@@ -640,21 +641,8 @@ pub fn type_check_top(toplevel: &Goal, env: &PosEnvironment) -> Result<(), Error
 }
 
 pub fn type_check_clause(clause: &Clause, rty: Ty, env: &PosEnvironment) -> Result<(), Error> {
-    let mut t = rty;
     let mut env = Environment::from_type_environment(env.clone());
-    for arg in clause.args.iter() {
-        match t.kind() {
-            TauKind::Proposition(_) => panic!("program error"),
-            TauKind::IArrow(x, s) => {
-                t = s.rename_variable(x, arg);
-                env.iadd(arg.clone());
-            }
-            TauKind::Arrow(x, y) => {
-                env.tadd(arg.clone(), x.clone());
-                t = y.clone();
-            }
-        }
-    }
+    let t = env.add_arg_types(&clause.args, rty);
     let c = match t.kind() {
         TauKind::Proposition(c) => c,
         _ => panic!("program error"),
