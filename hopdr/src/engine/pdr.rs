@@ -1,5 +1,5 @@
 use super::rtype;
-use super::rtype::{PosEnvironment, TypeEnvironment};
+use super::rtype::{PosEnvironment, Ty, TypeEnvironment};
 use super::VerificationResult;
 use crate::formula::hes::Problem;
 use crate::formula::{hes, Ident};
@@ -174,6 +174,7 @@ impl<'a> HoPDR<'a> {
         // 1. generate constraints: calculate t s.t. c.sty ~ t and check if Env |- formula[c.ident] : t.
         // 2. if not typable, calculate cex
         // 3. if typable, returns the type
+
         unimplemented!()
     }
 

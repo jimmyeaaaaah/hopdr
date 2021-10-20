@@ -1,4 +1,5 @@
 pub mod chc;
+pub mod fofml;
 pub mod hes;
 pub mod pcsp;
 pub mod ty;
@@ -200,6 +201,10 @@ pub trait Top {
     fn mk_true() -> Self;
 }
 
+pub trait Bot {
+    fn mk_false() -> Self;
+}
+
 pub trait Conjunctive {
     fn mk_conj(x: Self, y: Self) -> Self;
 }
@@ -279,6 +284,11 @@ impl Top for Constraint {
         Constraint::new(ConstraintExpr::True)
     }
 }
+impl Bot for Constraint {
+    fn mk_false() -> Constraint {
+        Constraint::new(ConstraintExpr::False)
+    }
+}
 
 impl Conjunctive for Constraint {
     fn mk_conj(x: Constraint, y: Constraint) -> Constraint {
@@ -351,9 +361,6 @@ impl Constraint {
             ConstraintExpr::False => true,
             _ => false,
         }
-    }
-    pub fn mk_false() -> Constraint {
-        Constraint::new(ConstraintExpr::False)
     }
 
     pub fn mk_quantifier(q: QuantifierKind, v: Variable, c: Constraint) -> Constraint {

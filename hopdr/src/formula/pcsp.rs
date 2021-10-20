@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::fmt;
 
-use super::{Conjunctive, Constraint, Fv, Ident, Op, PredKind, Rename, Subst, Top};
+use super::{Bot, Conjunctive, Constraint, Fv, Ident, Op, PredKind, Rename, Subst, Top};
 use crate::util::P;
 
 #[derive(Debug)]
@@ -96,9 +96,6 @@ impl Atom {
             _ => Atom::new(Conj(x.clone(), y.clone())),
         }
     }
-    pub fn mk_false() -> Atom {
-        Atom::mk_constraint(Constraint::mk_false())
-    }
 
     pub fn to_constraint(&self) -> Option<Constraint> {
         match self.kind() {
@@ -149,6 +146,12 @@ impl From<Constraint> for Atom {
 impl Top for Atom {
     fn mk_true() -> Self {
         Atom::new(AtomKind::True)
+    }
+}
+
+impl Bot for Atom {
+    fn mk_false() -> Atom {
+        Atom::mk_constraint(Constraint::mk_false())
     }
 }
 

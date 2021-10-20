@@ -5,7 +5,7 @@ use std::iter::FromIterator;
 use std::vec;
 
 use super::pcsp;
-use super::{Conjunctive, Constraint, Fv, Ident, Op, PredKind, Rename, Subst, Top};
+use super::{Bot, Conjunctive, Constraint, Fv, Ident, Op, PredKind, Rename, Subst, Top};
 use crate::util::P;
 
 #[derive(Debug, Clone)]

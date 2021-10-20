@@ -13,8 +13,8 @@ use crate::formula::{
     hes::{Atom, AtomKind, Clause, ConstKind, Goal, GoalKind},
 };
 use crate::formula::{
-    Conjunctive, Constraint, Fv, Ident, IntegerEnvironment, Op, QuantifierKind, Rename, Subst, Top,
-    Type as SType, TypeKind as STypeKind,
+    Bot, Conjunctive, Constraint, Fv, Ident, IntegerEnvironment, Op, QuantifierKind, Rename, Subst,
+    Top, Type as SType, TypeKind as STypeKind,
 };
 use crate::solver::smt;
 use crate::util::PhantomPtr as P;
@@ -30,7 +30,7 @@ pub enum TauKind<P, C> {
 pub struct Positive {}
 
 pub type Tau<Pos, C> = P<TauKind<Pos, C>, Pos>;
-pub type TyKind = TauKind<Positive, Constraint>;
+pub type TyKind<P, C> = TauKind<P, C>;
 pub type Ty = Tau<Positive, Constraint>;
 
 #[derive(Debug)]
@@ -68,7 +68,7 @@ impl<P, C: fmt::Display> fmt::Display for Tau<P, C> {
 }
 
 impl<P, C> Tau<P, C> {
-    fn clone_with_template<Positivity>(
+    pub fn clone_with_template<Positivity>(
         &self,
         env: IntegerEnvironment,
         new_idents: &mut HashSet<Ident>,
@@ -93,17 +93,23 @@ impl<P, C> Tau<P, C> {
     }
 }
 
-impl<Positivity> From<Tau<Positivity, Constraint>> for Tau<Positivity, pcsp::Atom> {
-    fn from(from: Tau<Positivity, Constraint>) -> Tau<Positivity, pcsp::Atom> {
+impl<Positivity> From<&Tau<Positivity, Constraint>> for Tau<Positivity, pcsp::Atom> {
+    fn from(from: &Tau<Positivity, Constraint>) -> Tau<Positivity, pcsp::Atom> {
         match from.kind() {
             TauKind::Proposition(c) => Tau::mk_prop_ty(c.clone().into()),
-            TauKind::IArrow(x, e) => Tau::mk_iarrow(x.clone(), e.clone().into()),
+            TauKind::IArrow(x, e) => Tau::mk_iarrow(x.clone(), e.into()),
             TauKind::Arrow(e, e2) => {
-                let e = e.clone().into();
-                let e2 = e2.clone().into();
+                let e = e.into();
+                let e2 = e2.into();
                 Tau::mk_arrow(e, e2)
             }
         }
+    }
+}
+
+impl<Positivity> From<Tau<Positivity, Constraint>> for Tau<Positivity, pcsp::Atom> {
+    fn from(from: Tau<Positivity, Constraint>) -> Tau<Positivity, pcsp::Atom> {
+        (&from).into()
     }
 }
 
@@ -209,8 +215,8 @@ fn rename_integer_variable<P>(
     }
 }
 
-fn infer_subtype(
-    environment: &Environment,
+fn infer_subtype<C>(
+    environment: &Environment<Tau<Positive, C>>,
     arrow_type: Tau<Positive, pcsp::Atom>,
     arg_t: Tau<Positive, pcsp::Atom>,
     lhs_c: &[chc::CHC<pcsp::Atom>],
@@ -295,11 +301,31 @@ fn generate_constraint<A: Conjunctive + Clone + Rename + Subst + Top + fmt::Debu
     generate_constraint_inner(A::mk_true(), lhs, rhs, constraints)
 }
 
-impl TyKind {
-    fn new_top(st: &SType) -> TyKind {
+pub trait TTop {
+    fn mk_top(st: &SType) -> Self;
+}
+
+pub trait TBot {
+    fn mk_bot(st: &SType) -> Self;
+}
+
+impl<P, C: Top + Bot> TTop for Tau<P, C> {
+    fn mk_top(st: &SType) -> Self {
+        Tau::new(TyKind::new_top(st))
+    }
+}
+
+impl<P, C: Top + Bot> TBot for Tau<P, C> {
+    fn mk_bot(st: &SType) -> Self {
+        Tau::new(TyKind::new_bot(st))
+    }
+}
+
+impl<P, C: Top + Bot> TyKind<P, C> {
+    fn new_top(st: &SType) -> TyKind<P, C> {
         use STypeKind::*;
         match st.kind() {
-            Proposition => TauKind::Proposition(Constraint::mk_true()),
+            Proposition => TauKind::Proposition(C::mk_true()),
             Arrow(x, y) if **x == Integer => {
                 TauKind::IArrow(Ident::fresh(), Tau::new(TauKind::new_top(y)))
             }
@@ -309,11 +335,10 @@ impl TyKind {
             Integer => panic!("integer occurs at the result position"),
         }
     }
-
-    fn new_bot(st: &SType) -> TyKind {
+    fn new_bot(st: &SType) -> TyKind<P, C> {
         use STypeKind::*;
         match st.kind() {
-            Proposition => TauKind::Proposition(Constraint::mk_false()),
+            Proposition => TauKind::Proposition(C::mk_false()),
             Arrow(x, y) if **x == Integer => {
                 TauKind::IArrow(Ident::fresh(), Tau::new(TauKind::new_top(y)))
             }
@@ -339,8 +364,8 @@ impl<P> Fv for Tau<P, pcsp::Atom> {
     }
 }
 
-pub struct TypeEnvironment<Ty> {
-    pub map: HashMap<Ident, Vec<Ty>>,
+pub struct TypeEnvironment<Type> {
+    pub map: HashMap<Ident, Vec<Type>>,
 }
 
 pub type PosEnvironment = TypeEnvironment<Ty>;
@@ -353,13 +378,13 @@ impl Clone for PosEnvironment {
     }
 }
 
-impl TypeEnvironment<Ty> {
-    pub fn new() -> TypeEnvironment<Ty> {
+impl<P, C: Top + Bot> TypeEnvironment<Tau<P, C>> {
+    pub fn new() -> TypeEnvironment<Tau<P, C>> {
         TypeEnvironment {
             map: HashMap::new(),
         }
     }
-    fn add_(&mut self, v: Ident, t: Ty) {
+    fn add_(&mut self, v: Ident, t: Tau<P, C>) {
         match self.map.get_mut(&v) {
             Some(s) => {
                 s.push(t);
@@ -369,27 +394,27 @@ impl TypeEnvironment<Ty> {
             }
         }
     }
-    pub fn add(&mut self, v: Ident, t: Ty) {
+    pub fn add(&mut self, v: Ident, t: Tau<P, C>) {
         self.add_(v, t);
     }
     pub fn exists(&self, v: &Ident) -> bool {
         self.map.get(v).is_some()
     }
     pub fn add_top(&mut self, v: Ident, st: &SType) {
-        self.add(v, Ty::new(TauKind::new_top(st)));
+        self.add(v, Tau::mk_top(st));
     }
 
     pub fn add_bot(&mut self, v: Ident, st: &SType) {
-        self.add(v, Ty::new(TauKind::new_bot(st)));
+        self.add(v, Tau::mk_bot(st));
     }
 
-    pub fn get<'a>(&'a self, v: &Ident) -> Option<&'a Vec<Ty>> {
+    pub fn get<'a>(&'a self, v: &Ident) -> Option<&'a Vec<Tau<P, C>>> {
         debug!("tget: {}", v);
         let r = self.map.get(v);
         match r {
             Some(v) => {
                 for x in v.iter() {
-                    debug!("tget cont: {}", x);
+                    //debug!("tget cont: {}", x);
                 }
             }
             None => {
@@ -400,26 +425,37 @@ impl TypeEnvironment<Ty> {
     }
 }
 
-#[derive(Clone)]
-pub struct Environment {
+pub struct Environment<Ty> {
     // Assumption: all variables are alpha-renamed.
-    map: PosEnvironment,
+    map: TypeEnvironment<Ty>,
     imap: IntegerEnvironment,
 }
+impl<P> From<&TypeEnvironment<Tau<P, Constraint>>> for TypeEnvironment<Tau<P, pcsp::Atom>> {
+    fn from(e: &TypeEnvironment<Tau<P, Constraint>>) -> Self {
+        let mut env: TypeEnvironment<Tau<P, pcsp::Atom>> = TypeEnvironment::new();
+        for (x, ys) in e.map.iter() {
+            for y in ys {
+                let t = y.into();
+                env.add(*x, t);
+            }
+        }
+        env
+    }
+}
 
-impl Environment {
-    pub fn merge(&mut self, _env: &Environment) {
+impl<P, C: Top + Bot + Subst + Rename> Environment<Tau<P, C>> {
+    pub fn merge(&mut self, _env: &Environment<Tau<P, C>>) {
         unimplemented!()
     }
 
-    pub fn new() -> Environment {
+    pub fn new() -> Environment<Tau<P, C>> {
         Environment {
-            map: PosEnvironment::new(),
+            map: TypeEnvironment::new(),
             imap: IntegerEnvironment::new(),
         }
     }
 
-    pub fn from_type_environment(map: PosEnvironment) -> Environment {
+    pub fn from_type_environment(map: TypeEnvironment<Tau<P, C>>) -> Environment<Tau<P, C>> {
         Environment {
             map: map,
             imap: IntegerEnvironment::new(),
@@ -430,7 +466,7 @@ impl Environment {
         self.imap = self.imap.clone().add(v);
     }
 
-    pub fn tadd(&mut self, v: Ident, t: Ty) {
+    pub fn tadd(&mut self, v: Ident, t: Tau<P, C>) {
         self.map.add(v, t)
     }
 
@@ -442,13 +478,33 @@ impl Environment {
         self.imap.exists(v)
     }
 
-    pub fn tget<'a>(&'a self, v: &Ident) -> Option<&'a Vec<Ty>> {
+    pub fn tget<'a>(&'a self, v: &Ident) -> Option<&'a Vec<Tau<P, C>>> {
         debug!("tget: {}", v);
         self.map.get(v)
     }
+
+    pub fn add_arg_types(&mut self, args: &[Ident], ty: Tau<P, C>) {
+        let mut tmp_t = ty;
+        for arg in args {
+            match tmp_t.kind() {
+                TauKind::Proposition(_) => panic!("program error"),
+                TauKind::IArrow(x, s) => {
+                    tmp_t = s.rename_variable(x, arg);
+                    self.iadd(arg.clone());
+                }
+                TauKind::Arrow(x, y) => {
+                    self.tadd(arg.clone(), x.clone());
+                    tmp_t = y.clone();
+                }
+            }
+        }
+    }
 }
 
-fn int_expr<'a>(atom: &Atom, env: &Environment) -> Option<Ident> {
+fn int_expr<'a, P, C: Top + Bot + Subst + Rename>(
+    atom: &Atom,
+    env: &Environment<Tau<P, C>>,
+) -> Option<Ident> {
     use AtomKind::*;
     match atom.kind() {
         //Const(c) => match c.kind() {
@@ -462,7 +518,7 @@ fn int_expr<'a>(atom: &Atom, env: &Environment) -> Option<Ident> {
 
 fn type_check_atom<'a>(
     atom: &Atom,
-    env: &Environment,
+    env: &Environment<Tau<Positive, Constraint>>,
 ) -> Result<Vec<(Tau<Positive, pcsp::Atom>, Vec<chc::CHC<pcsp::Atom>>)>, Error> {
     //debug!("type_check_atom: {}", atom);
     use AtomKind::*;
@@ -509,7 +565,10 @@ fn type_check_atom<'a>(
     Ok(r)
 }
 
-fn type_check_goal<'a>(goal: &Goal, tenv: &mut Environment) -> Result<Constraint, Error> {
+fn type_check_goal<'a>(
+    goal: &Goal,
+    tenv: &mut Environment<Tau<Positive, Constraint>>,
+) -> Result<Constraint, Error> {
     debug!("type_check_goal start: {}", goal);
     use GoalKind::*;
     let f = type_check_goal;

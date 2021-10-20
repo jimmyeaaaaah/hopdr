@@ -2,6 +2,11 @@ use std::marker::PhantomData;
 use std::ops::Deref;
 use std::{fmt, rc::Rc};
 
+//pub trait Kind {
+//    type Ty;
+//    fn kind<'a>(&'a self) -> &'a Self::Ty;
+//}
+
 // readonly pointer
 #[derive(Debug, Eq, PartialEq, Hash)]
 pub struct P<T: ?Sized> {
