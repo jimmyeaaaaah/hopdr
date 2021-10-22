@@ -517,10 +517,11 @@ fn int_expr<'a, P, C: Top + Bot + Subst + Rename>(
     }
 }
 
-fn type_check_atom<'a>(
+fn type_check_atom<'a, C: Top + Bot + Rename + Subst> (
     atom: &Atom,
-    env: &Environment<Tau<Positive, Constraint>>,
-) -> Result<Vec<(Tau<Positive, pcsp::Atom>, Vec<chc::CHC<pcsp::Atom>>)>, Error> {
+    env: &Environment<Tau<Positive, C>>,
+) -> Result<Vec<(Tau<Positive, pcsp::Atom>, Vec<chc::CHC<pcsp::Atom>>)>, Error> where
+    Tau<Positive, C>: Into<Tau<Positive, pcsp::Atom>> {
     //debug!("type_check_atom: {}", atom);
     use AtomKind::*;
     let r = match atom.kind() {
