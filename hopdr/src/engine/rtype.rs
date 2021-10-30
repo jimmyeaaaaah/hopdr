@@ -91,6 +91,12 @@ impl<P, C> Tau<P, C> {
             }
         }
     }
+    pub fn is_prop(&self) -> bool {
+        match self.kind() {
+            TauKind::Proposition(_) => true,
+            _ => false,
+        }
+    }
 }
 
 impl<Positivity> From<&Tau<Positivity, Constraint>> for Tau<Positivity, pcsp::Atom> {
@@ -517,11 +523,13 @@ fn int_expr<'a, P, C: Top + Bot + Subst + Rename>(
     }
 }
 
-fn type_check_atom<'a, C: Top + Bot + Rename + Subst> (
+fn type_check_atom<'a, C: Top + Bot + Rename + Subst>(
     atom: &Atom,
     env: &Environment<Tau<Positive, C>>,
-) -> Result<Vec<(Tau<Positive, pcsp::Atom>, Vec<chc::CHC<pcsp::Atom>>)>, Error> where
-    Tau<Positive, C>: Into<Tau<Positive, pcsp::Atom>> {
+) -> Result<Vec<(Tau<Positive, pcsp::Atom>, Vec<chc::CHC<pcsp::Atom>>)>, Error>
+where
+    Tau<Positive, C>: Into<Tau<Positive, pcsp::Atom>>,
+{
     //debug!("type_check_atom: {}", atom);
     use AtomKind::*;
     let r = match atom.kind() {
@@ -564,6 +572,37 @@ fn type_check_atom<'a, C: Top + Bot + Rename + Subst> (
     for (v, _) in r.iter() {
         debug!("type_check_atom cont ty: {}", v);
     }
+    Ok(r)
+}
+
+fn infer_type_goal<'a>(
+    goal: &Goal,
+    tenv: &mut Environment<Tau<Positive, pcsp::Atom>>,
+) -> Result<pcsp::Atom, Error> {
+    debug!("type_check_goal start: {}", goal);
+    use GoalKind::*;
+    let f = infer_type_goal;
+    let r = match goal.kind() {
+        Atom(atom) => {
+            let ts = type_check_atom(atom, tenv)?;
+            let mut ret_constr = pcsp::Atom::mk_false();
+            for (t, cs) in ts {
+                unimplemented!()
+            }
+        }
+        Constr(c) => c.clone().into(),
+        Conj(x, y) => pcsp::Atom::mk_conj(f(x, tenv)?, f(y, tenv)?),
+        Disj(x, y) => pcsp::Atom::mk_disj(f(x, tenv)?, f(y, tenv)?),
+        Univ(v, x) => {
+            if v.ty.is_int() {
+                tenv.iadd(v.id);
+                pcsp::Atom::mk_quantifier(QuantifierKind::Universal, v.id, f(x, tenv)?)
+            } else {
+                unimplemented!()
+            }
+        }
+    };
+    debug!("type_check_goal: {} has type {} ", goal, r);
     Ok(r)
 }
 

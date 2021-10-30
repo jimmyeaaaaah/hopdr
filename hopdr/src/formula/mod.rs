@@ -71,7 +71,7 @@ impl fmt::Display for OpKind {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum QuantifierKind {
     Universal,
     Existential,

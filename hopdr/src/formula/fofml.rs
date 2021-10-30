@@ -106,6 +106,10 @@ impl From<pcsp::Atom> for Atom {
             pcsp::AtomKind::Predicate(p, l) => Atom::mk_pred(p.clone(), l.clone()),
             pcsp::AtomKind::Conj(x, y) => Atom::mk_conj(x.clone().into(), y.clone().into()),
             pcsp::AtomKind::Disj(x, y) => Atom::mk_disj(x.clone().into(), y.clone().into()),
+            pcsp::AtomKind::Quantifier(q, x, c) if *q == QuantifierKind::Universal => {
+                Atom::mk_univq(*x, c.clone().into())
+            }
+            pcsp::AtomKind::Quantifier(q, x, c) => panic!("fail"),
         }
     }
 }

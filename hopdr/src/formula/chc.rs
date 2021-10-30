@@ -5,7 +5,7 @@ use std::iter::FromIterator;
 use std::vec;
 
 use super::pcsp;
-use super::{Bot, Conjunctive, Constraint, Fv, Ident, Op, PredKind, Rename, Subst, Top};
+use super::{Bot, Conjunctive, Constraint, Fv, Ident, Op, PredKind, Rename, Subst, Top, Type};
 use crate::util::P;
 
 #[derive(Debug, Clone)]
@@ -112,6 +112,9 @@ impl CHC<pcsp::Atom> {
                 Self::replace_inner(x, target),
                 Self::replace_inner(y, target),
             ),
+            pcsp::AtomKind::Quantifier(q, x, c) => {
+                pcsp::Atom::mk_quantifier(*q, *x, Self::replace_inner(c, target))
+            }
         }
     }
     fn replace(self, target: &CHC<pcsp::Atom>) -> CHC<pcsp::Atom> {
@@ -226,6 +229,7 @@ pub fn to_dnf(atom: &pcsp::Atom) -> Vec<Vec<CHCHead>> {
             left.append(&mut right);
             left
         }
+        AtomKind::Quantifier(_, _, _) => unimplemented!(),
     }
 }
 
@@ -265,6 +269,7 @@ fn simplify_atom(atom: pcsp::Atom) -> pcsp::Atom {
                     (Err(x), Err(y)) => Err(pcsp::Atom::mk_disj(x, y)),
                 }
             }
+            pcsp::AtomKind::Quantifier(_, _, _) => todo!(),
         }
     }
 
@@ -280,7 +285,8 @@ fn conjoin2vec(atom: &pcsp::Atom) -> Vec<pcsp::Atom> {
             pcsp::AtomKind::True
             | pcsp::AtomKind::Constraint(_)
             | pcsp::AtomKind::Predicate(_, _)
-            | pcsp::AtomKind::Disj(_, _) => result.push(atom.clone()),
+            | pcsp::AtomKind::Disj(_, _)
+            | pcsp::AtomKind::Quantifier(_, _, _) => result.push(atom.clone()),
             pcsp::AtomKind::Conj(x, y) => {
                 conjoin2vec_inner(x, result);
                 conjoin2vec_inner(y, result);
@@ -301,6 +307,7 @@ fn atom2chc_head(atom: pcsp::Atom) -> Option<CHCHead> {
         pcsp::AtomKind::Conj(c1, c2) => None,
         pcsp::AtomKind::Predicate(p, args) => Some(CHCHead::Predicate(*p, args.clone())),
         pcsp::AtomKind::Disj(c1, c2) => None,
+        pcsp::AtomKind::Quantifier(q, x, c) => None,
     }
 }
 

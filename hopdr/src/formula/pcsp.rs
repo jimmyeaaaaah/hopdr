@@ -1,7 +1,10 @@
 use std::collections::HashSet;
 use std::fmt;
 
-use super::{Bot, Conjunctive, Constraint, Fv, Ident, Op, PredKind, Rename, Subst, Top};
+use super::{
+    Bot, Conjunctive, Constraint, Fv, Ident, Op, PredKind, QuantifierKind, Rename, Subst, Top,
+    Type, Variable,
+};
 use crate::util::P;
 
 #[derive(Debug)]
@@ -11,6 +14,7 @@ pub enum AtomKind {
     Predicate(Ident, Vec<Ident>),
     Conj(Atom, Atom),
     Disj(Atom, Atom),
+    Quantifier(QuantifierKind, Ident, Atom),
 }
 pub type Atom = P<AtomKind>;
 
@@ -28,6 +32,7 @@ impl fmt::Display for Atom {
             }
             AtomKind::Conj(x, y) => write!(f, "({} & {})", x, y),
             AtomKind::Disj(x, y) => write!(f, "({} & {})", x, y),
+            AtomKind::Quantifier(q, x, c) => write!(f, "{} {}. {}", q, x, c),
         }
     }
 }
@@ -49,6 +54,7 @@ impl Atom {
             AtomKind::Conj(c1, c2) | AtomKind::Disj(c1, c2) => {
                 c1.contains_predicate() && c2.contains_predicate()
             }
+            AtomKind::Quantifier(_, _, c) => c.contains_predicate(),
         }
     }
     pub fn extract_pred_and_constr(&self) -> Option<(Constraint, Ident)> {
@@ -85,7 +91,7 @@ impl Atom {
                     (Some(x), Some(y)) => Some(Constraint::mk_conj(x.clone(), y.clone())),
                 }
             }
-            AtomKind::Predicate(_, _) => None,
+            AtomKind::Predicate(_, _) | AtomKind::Quantifier(_, _, _) => None,
         }
     }
     pub fn mk_disj(x: Self, y: Self) -> Atom {
@@ -95,6 +101,18 @@ impl Atom {
             (_, True) => x.clone(),
             _ => Atom::new(Conj(x.clone(), y.clone())),
         }
+    }
+    pub fn mk_conj(x: Self, y: Self) -> Atom {
+        use AtomKind::*;
+        match (&*x, &*y) {
+            (False, _) => y.clone(),
+            (_, False) => x.clone(),
+            _ => Atom::new(Disj(x.clone(), y.clone())),
+        }
+    }
+
+    pub fn mk_quantifier(q: QuantifierKind, x: Ident, c: Self) -> Atom {
+        Atom::new(AtomKind::Quantifier(q, x, c))
     }
 
     pub fn to_constraint(&self) -> Option<Constraint> {
@@ -110,6 +128,9 @@ impl Atom {
                 .to_constraint()
                 .map(|x| y.to_constraint().map(|y| Constraint::mk_disj(x, y)))
                 .flatten(),
+            AtomKind::Quantifier(q, x, c) => c
+                .to_constraint()
+                .map(|c| Constraint::mk_quantifier(*q, Variable::mk(*x, Type::mk_type_int()), c)),
         }
     }
 }
@@ -125,6 +146,10 @@ impl Fv for Atom {
             AtomKind::Conj(x, y) | AtomKind::Disj(x, y) => {
                 x.fv_with_vec(fvs);
                 y.fv_with_vec(fvs);
+            }
+            AtomKind::Quantifier(_, x, c) => {
+                c.fv_with_vec(fvs);
+                fvs.remove(x);
             }
         }
     }
@@ -185,6 +210,7 @@ impl Rename for Atom {
             }
             AtomKind::Conj(a, b) => Atom::mk_conj(a.rename(x, y), b.rename(x, y)),
             AtomKind::Disj(a, b) => Atom::mk_disj(a.rename(x, y), b.rename(x, y)),
+            AtomKind::Quantifier(q, z, c) => Atom::mk_quantifier(*q, *z, c.rename(x, y)),
         }
     }
 }
