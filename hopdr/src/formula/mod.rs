@@ -344,7 +344,7 @@ impl Rename for Constraint {
             Quantifier(q, var, cstr) if &var.id != x && &var.id != y => {
                 Constraint::mk_quantifier(*q, var.clone(), cstr.rename(x, y))
             }
-            Quantifier(q, var, cstr) => panic!("assumption broken"),
+            Quantifier(_, _, _) => panic!("assumption broken"),
         }
     }
 }
@@ -374,7 +374,7 @@ impl Constraint {
             y
         } else if x.is_false() {
             y
-        } else if x.is_false() {
+        } else if y.is_false() {
             x
         } else {
             Constraint::new(ConstraintExpr::Disj(x, y))
