@@ -35,26 +35,26 @@ fn consistent(s: &Sty, t: &rtype::Tau<rtype::Positive, pcsp::Atom>) -> fofml::At
     }
 }
 
-type E = Environment<rtype::Tau<rtype::Positive, pcsp::Atom>>;
-type T = rtype::Tau<rtype::Positive, pcsp::Atom>;
-fn types_inner(g: &hes::Goal, t: T, env: &mut E) -> fofml::Atom {
-    unimplemented!()
-}
-
 fn types(
     env: &rtype::PosEnvironment,
     cl: &hes::Clause,
     rty: rtype::Tau<rtype::Positive, pcsp::Atom>,
 ) -> fofml::Atom {
     let mut env = Environment::from_type_environment(env.into());
-    let t = env.add_arg_types(&cl.args, rty);
-    types_inner(&cl.body, t, &mut env)
+    let t = env.add_arg_types(&cl.args, rty.into());
+    let c = match t.kind() {
+        rtype::TauKind::Proposition(c) => c,
+        _ => panic!("program error"),
+    };
+    let c2 = rtype::type_check_goal(&cl.body, &mut env).unwrap();
+    let p = pcsp::PCSP::new(c.clone(), c2.clone());
+    p.into()
 }
 
 impl Sty {
     pub fn is_refutable(self, clause: &hes::Clause, env: rtype::PosEnvironment) {
         let mut new_idents = HashSet::new();
-        let ty: T = self.clone_with_template(IntegerEnvironment::new(), &mut new_idents);
+        let ty = self.clone_with_template(IntegerEnvironment::new(), &mut new_idents);
         let fml = consistent(&self, &ty);
         let fml2 = types(&env, clause, ty);
         let fml = fofml::Atom::mk_conj(fml, fml2);

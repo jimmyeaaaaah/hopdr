@@ -57,30 +57,30 @@ impl Atom {
             AtomKind::Quantifier(_, _, c) => c.contains_predicate(),
         }
     }
-    pub fn extract_pred_and_constr(&self) -> Option<(Constraint, Ident)> {
+    pub fn extract_pred_and_constr(&self) -> Option<(Atom, Ident)> {
         match self.kind() {
             AtomKind::True | AtomKind::Constraint(_) => None,
-            AtomKind::Predicate(i, _) => Some((Constraint::mk_false(), i.clone())),
+            AtomKind::Predicate(i, _) => Some((Atom::mk_false(), i.clone())),
             AtomKind::Conj(x, y) | AtomKind::Conj(y, x) if x.contains_predicate() => y
                 .negate()
                 .map(|c2| {
                     x.extract_pred_and_constr()
-                        .map(|(c, i)| (Constraint::mk_disj(c, c2), i))
+                        .map(|(c, i)| (Atom::mk_disj(c, c2), i))
                 })
                 .flatten(),
             _ => None,
         }
     }
-    pub fn negate(&self) -> Option<Constraint> {
+    pub fn negate(&self) -> Option<Self> {
         match self.kind() {
-            AtomKind::True => Some(Constraint::mk_false()),
-            AtomKind::Constraint(c) => c.clone().negate(),
+            AtomKind::True => Some(Atom::mk_false()),
+            AtomKind::Constraint(c) => c.clone().negate().map(|x| x.into()),
             AtomKind::Conj(l, r) => {
                 let l = l.negate();
                 let r = r.negate();
                 match (l, r) {
                     (_, None) | (None, _) => None,
-                    (Some(x), Some(y)) => Some(Constraint::mk_disj(x.clone(), y.clone())),
+                    (Some(x), Some(y)) => Some(Atom::mk_disj(x.clone(), y.clone())),
                 }
             }
             AtomKind::Disj(l, r) => {
@@ -88,7 +88,7 @@ impl Atom {
                 let r = r.negate();
                 match (l, r) {
                     (_, None) | (None, _) => None,
-                    (Some(x), Some(y)) => Some(Constraint::mk_conj(x.clone(), y.clone())),
+                    (Some(x), Some(y)) => Some(Atom::mk_conj(x.clone(), y.clone())),
                 }
             }
             AtomKind::Predicate(_, _) | AtomKind::Quantifier(_, _, _) => None,
@@ -104,11 +104,8 @@ impl Atom {
     }
     pub fn mk_conj(x: Self, y: Self) -> Atom {
         use AtomKind::*;
-        match (&*x, &*y) {
-            (False, _) => y.clone(),
-            (_, False) => x.clone(),
-            _ => Atom::new(Disj(x.clone(), y.clone())),
-        }
+        // TODO: trivial optimization
+        Atom::new(Disj(x.clone(), y.clone()))
     }
 
     pub fn mk_quantifier(q: QuantifierKind, x: Ident, c: Self) -> Atom {

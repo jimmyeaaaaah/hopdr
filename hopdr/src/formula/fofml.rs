@@ -114,6 +114,12 @@ impl From<pcsp::Atom> for Atom {
     }
 }
 
+impl From<pcsp::PCSP<pcsp::Atom>> for Atom {
+    fn from(from: pcsp::PCSP<pcsp::Atom>) -> Atom {
+        Atom::mk_disj(Atom::mk_not(from.body.into()), from.head.into())
+    }
+}
+
 impl Top for Atom {
     fn mk_true() -> Self {
         Atom::new(AtomKind::True)

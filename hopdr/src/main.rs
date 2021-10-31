@@ -108,11 +108,12 @@ fn main() {
     }
 
     for (fml, ty) in vc.clauses.iter().zip(types.iter()) {
+        let env = (&env).into();
         println!(
             "{}:{}\n -> {:?}",
             fml,
             ty.clone(),
-            engine::rtype::type_check_clause(fml, ty.clone(), &mut env)
+            engine::rtype::type_check_clause(fml, ty.clone(), env)
         );
     }
 
@@ -252,11 +253,12 @@ fn main2() {
     }
 
     for (fml, ty) in vc.clauses.iter().zip(types.iter()) {
+        let env = (&env).into();
         println!(
             "{}:{}\n -> {:?}",
             fml,
             ty.clone(),
-            engine::rtype::type_check_clause(fml, ty.clone(), &mut env)
+            engine::rtype::type_check_clause(fml, ty.clone(), env)
         );
     }
 }

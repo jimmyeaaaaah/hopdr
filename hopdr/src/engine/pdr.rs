@@ -202,7 +202,7 @@ impl<'a> HoPDR<'a> {
     fn check_valid(&mut self) -> bool {
         // rtype::type_check_clause(fml, ty.clone(), &mut env);
         // println!("{}:{}\n -> {:?}", fml, ty.clone(), );
-        let result = rtype::type_check_top(&self.problem.top, self.top_env());
+        let result = rtype::type_check_top(&self.problem.top, self.top_env().into());
         handle_type_check(result)
     }
 
@@ -214,7 +214,7 @@ impl<'a> HoPDR<'a> {
         for clause in self.problem.clauses.iter() {
             let tys = env.get(&clause.head.id).unwrap();
             for ty in tys {
-                let result = rtype::type_check_clause(clause, ty.clone(), env);
+                let result = rtype::type_check_clause(clause, ty.clone(), env.into());
                 if !handle_type_check(result) {
                     return false;
                 }

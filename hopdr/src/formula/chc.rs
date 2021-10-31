@@ -124,7 +124,7 @@ impl CHC<pcsp::Atom> {
         CHC { body, ..self }
     }
 
-    fn resolve_target(&self, target: &Ident) -> Result<Constraint, ResolutionError> {
+    fn resolve_target(&self, targets: &HashSet<Ident>) -> Result<pcsp::Atom, ResolutionError> {
         // 1. transform body of chc to disjunction normal form: bodies
         // 2. check when P(x, y, z) /\ P'(x', y', z') then x = x' and y = y' and z = z' and P = P' = target
         // 3. transform each body in bodies to P(x, y, z) /\ constraint => constraint'
@@ -138,7 +138,7 @@ impl CHC<pcsp::Atom> {
             CHCHead::Predicate(_, _) => return Err(ResolutionError::IllegalConstraint),
         };
 
-        let mut result = Constraint::mk_true();
+        let mut result = pcsp::Atom::mk_true();
         for body in bodies.iter() {
             // 2. check
             debug!("bodies:");
@@ -156,11 +156,11 @@ impl CHC<pcsp::Atom> {
                 return Err(ResolutionError::IllegalConstraint);
             } else if preds.len() > 1 {
                 let (p, l) = preds.pop().unwrap();
-                if p != target {
+                if !targets.contains(p) {
                     return Err(ResolutionError::IllegalConstraint);
                 }
                 for (p2, l2) in preds {
-                    if p2 != target || l2.len() != l.len() {
+                    if !targets.contains(p2) || l2.len() != l.len() {
                         return Err(ResolutionError::IllegalConstraint);
                     }
                     for (x, y) in l.iter().zip(l2.iter()) {
@@ -172,7 +172,7 @@ impl CHC<pcsp::Atom> {
                 (p, l)
             } else {
                 let (p, l) = preds.pop().unwrap();
-                if p != target {
+                if !targets.contains(p) {
                     return Err(ResolutionError::IllegalConstraint);
                 }
                 (p, l)
@@ -181,20 +181,20 @@ impl CHC<pcsp::Atom> {
             let constrs = body
                 .iter()
                 .filter_map(|x| match x {
-                    CHCHead::Constraint(c) => Some(c),
+                    CHCHead::Constraint(c) => Some(c.clone().into()),
                     CHCHead::Predicate(_, _) => None,
                 })
-                .collect::<Vec<_>>();
-            let mut h = head.clone();
+                .collect::<Vec<pcsp::Atom>>();
+            let mut h = head.clone().into();
             for c in constrs {
                 match c.clone().negate() {
                     Some(c) => {
-                        h = Constraint::mk_disj(c, h);
+                        h = pcsp::Atom::mk_disj(c, h);
                     }
                     None => return Err(ResolutionError::IllegalConstraint),
                 };
             }
-            result = Constraint::mk_conj(h, result);
+            result = pcsp::Atom::mk_conj(h, result);
         }
         Ok(result)
     }
@@ -415,12 +415,12 @@ pub fn simplify(
 
 pub fn resolve_target(
     chcs: Vec<CHC<pcsp::Atom>>,
-    target: &Ident,
-) -> Result<Constraint, ResolutionError> {
-    let mut ret = Constraint::mk_true();
+    targets: &HashSet<Ident>,
+) -> Result<pcsp::Atom, ResolutionError> {
+    let mut ret = pcsp::Atom::mk_true();
     for chc in chcs {
-        let c = chc.resolve_target(target)?;
-        ret = Constraint::mk_conj(c, ret);
+        let c = chc.resolve_target(targets)?;
+        ret = pcsp::Atom::mk_conj(c, ret);
     }
     Ok(ret)
 }
