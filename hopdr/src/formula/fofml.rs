@@ -38,7 +38,7 @@ impl fmt::Display for Atom {
 }
 
 impl Atom {
-    pub fn check_satisfiability(&self) -> Option<HashMap<Ident, Constraint>> {
+    pub fn check_satisfiability(&self) -> Option<HashMap<Ident, (Vec<Ident>, Constraint)>> {
         unimplemented!()
     }
     pub fn mk_disj(x: Self, y: Self) -> Atom {

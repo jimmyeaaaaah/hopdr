@@ -1,3 +1,4 @@
+use super::candidate::NegEnvironment;
 use super::rtype;
 use super::rtype::{PosEnvironment, TypeEnvironment};
 use super::VerificationResult;
@@ -9,19 +10,8 @@ use std::collections::HashMap;
 use std::unimplemented;
 
 use super::candidate::Sty;
-
-enum PDRResult {
-    Valid,
-    Invalid,
-    Unknown,
-}
-
-type NodeID = u64;
-
-type NegEnvironment = TypeEnvironment<Sty>;
-
 impl NegEnvironment {
-    fn to_candidates(self) -> Vec<Candidate> {
+    pub fn to_candidates(self) -> Vec<Candidate> {
         let mut v = Vec::new();
         for (ident, stys) in self.map.into_iter() {
             for sty in stys {
@@ -31,6 +21,14 @@ impl NegEnvironment {
         v
     }
 }
+
+enum PDRResult {
+    Valid,
+    Invalid,
+    Unknown,
+}
+
+type NodeID = u64;
 
 #[derive(Debug, Clone)]
 struct Candidate {
@@ -161,26 +159,41 @@ fn handle_type_check(result: Result<(), rtype::Error>) -> bool {
 fn transformer(_env: PosEnvironment) -> PosEnvironment {
     unimplemented!()
 }
-fn calculate_cex(_env: &PosEnvironment, _formula: hes::Goal, _candidate: Sty) -> NegEnvironment {
+fn calculate_cex(env: &PosEnvironment, clause: &hes::Clause, candidate: Sty) -> NegEnvironment {
     unimplemented!()
 }
 
 impl<'a> HoPDR<'a> {
     // generates a candidate
     // Assumption: self.check_valid() == false
-    fn is_refutable(&self, _c: &Candidate) -> RefuteOrCex<PosEnvironment, Vec<Candidate>> {
+    fn is_refutable(&self, candidate: &Candidate) -> RefuteOrCex<PosEnvironment, Vec<Candidate>> {
         // 1. generate constraints: calculate t s.t. c.sty ~ t and check if Env |- formula[c.ident] : t.
         // 2. if not typable, calculate cex
         // 3. if typable, returns the type
-
-        unimplemented!()
+        match candidate
+            .sty
+            .is_refutable(self.get_clause_by_id(&candidate.ident), self.top_env())
+        {
+            Some(_) => todo!(),
+            None => todo!(),
+        }
     }
 
     fn candidate(&mut self) {
         //calculate_cex(self.top_env(), self.problem.top.clone(), );
         let top_false = Sty::mk_prop_ty(Constraint::mk_true());
-        let nenv = calculate_cex(self.top_env(), self.problem.top.clone(), top_false);
-        self.models.add_root_negative_type_env(nenv);
+        //let nenv = calculate_cex(self.top_env(), self.problem.top, top_false);
+        //self.models.add_root_negative_type_env(nenv);
+        unimplemented!()
+    }
+
+    fn get_clause_by_id(&'a self, id: &Ident) -> &'a hes::Clause {
+        for c in self.problem.clauses.iter() {
+            if c.head.id == id {
+                return c;
+            }
+        }
+        panic!("no such clause with id = {}", id);
     }
 
     fn top_env(&self) -> &PosEnvironment {

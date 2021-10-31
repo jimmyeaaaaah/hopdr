@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 use super::{
@@ -156,6 +156,23 @@ impl Atom {
     // auxiliary function for generating constraint
     pub fn mk_constraint(c: Constraint) -> Atom {
         Atom::new(AtomKind::Constraint(c))
+    }
+    pub fn assign(&self, model: &HashMap<Ident, (Vec<Ident>, Constraint)>) -> Constraint {
+        match self.kind() {
+            AtomKind::True => Constraint::mk_true(),
+            AtomKind::Constraint(c) => c.clone(),
+            AtomKind::Predicate(p, l) => match model.get(p) {
+                Some((r, c)) => c.rename_idents_with_slices(l, r),
+                None => panic!("not found: {}", p),
+            },
+            AtomKind::Conj(x, y) => Constraint::mk_conj(x.assign(model), y.assign(model)),
+            AtomKind::Disj(x, y) => Constraint::mk_disj(x.assign(model), y.assign(model)),
+            AtomKind::Quantifier(q, x, c) => Constraint::mk_quantifier(
+                *q,
+                Variable::mk(*x, Type::mk_type_int()),
+                c.assign(model),
+            ),
+        }
     }
 }
 

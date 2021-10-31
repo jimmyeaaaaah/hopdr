@@ -139,6 +139,16 @@ impl<P, C: Subst + Rename> Rename for Tau<P, C> {
     }
 }
 
+impl<P> Tau<P, pcsp::Atom> {
+    pub fn assign(self, model: &HashMap<Ident, (Vec<Ident>, Constraint)>) -> Tau<P, Constraint> {
+        match self.kind() {
+            TauKind::Proposition(p) => Tau::mk_prop_ty(p.assign(model)),
+            TauKind::IArrow(v, x) => Tau::mk_iarrow(*v, x.assign(model)),
+            TauKind::Arrow(x, y) => Tau::mk_arrow(x.assign(model), y.assign(model)),
+        }
+    }
+}
+
 impl<P, C: Subst> Tau<P, C> {
     pub fn mk_prop_ty(c: C) -> Tau<P, C> {
         Tau::new(TauKind::Proposition(c))

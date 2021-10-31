@@ -10,6 +10,7 @@ use crate::formula::{Conjunctive, Constraint, IntegerEnvironment, Rename};
 #[derive(Debug)]
 pub struct Negative {}
 pub type Sty = rtype::Tau<Negative, Constraint>;
+pub type NegEnvironment = rtype::TypeEnvironment<Sty>;
 
 fn consistent(s: &Sty, t: &rtype::Tau<rtype::Positive, pcsp::Atom>) -> fofml::Atom {
     use fofml::Atom;
@@ -49,14 +50,21 @@ fn types(
 }
 
 impl Sty {
-    pub fn is_refutable(self, clause: &hes::Clause, env: rtype::PosEnvironment) {
+    // returns Ok(positive type) when this candidate is refutable
+    // otherwise, Err(NegEnvironmet) where NegEnvironment is a negative type environment Δ
+    // such that Δ |- clause: self
+    pub fn is_refutable(
+        self,
+        clause: &hes::Clause,
+        env: &rtype::PosEnvironment,
+    ) -> Result<rtype::Ty, NegEnvironment> {
         let mut new_idents = HashSet::new();
         let ty = self.clone_with_template(IntegerEnvironment::new(), &mut new_idents);
         let fml = consistent(&self, &ty);
-        let fml2 = types(&env, clause, ty);
+        let fml2 = types(env, clause, ty);
         let fml = fofml::Atom::mk_conj(fml, fml2);
         match fml.check_satisfiability() {
-            Some(_model) => unimplemented!(),
+            Some(model) => Ok(ty.assign(&model)),
             None => unimplemented!(),
         }
     }

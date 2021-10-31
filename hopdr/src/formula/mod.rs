@@ -227,6 +227,24 @@ pub trait Subst: Sized {
 
 pub trait Rename: Sized {
     fn rename(&self, x: &Ident, y: &Ident) -> Self;
+    // TODO: fix type xs
+    fn rename_idents(&self, xs: &[(Ident, Ident)]) -> Self {
+        assert!(xs.len() > 0);
+        let mut c = self.rename(&xs[0].0, &xs[0].1);
+        for (x, y) in &xs[1..] {
+            c = self.rename(x, y);
+        }
+        c
+    }
+    fn rename_idents_with_slices(&self, xs: &[Ident], ys: &[Ident]) -> Self {
+        assert!(xs.len() == ys.len());
+        // TODO: Fix this bad impl
+        let mut v = Vec::new();
+        for (x, y) in xs.iter().zip(ys.iter()) {
+            v.push((*x, *y))
+        }
+        self.rename_idents(&v)
+    }
 }
 
 pub trait Fv {
