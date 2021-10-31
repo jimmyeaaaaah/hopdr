@@ -10,8 +10,6 @@ use crate::formula::{OpKind, PredKind, Type as SimpleType};
 use crate::parse;
 use crate::util::Unique;
 
-type Ident = String;
-
 #[derive(Debug)]
 pub enum ExprKind<Id, Ty> {
     Var(Id),
@@ -87,7 +85,6 @@ impl<Id: fmt::Display, Ty: fmt::Display> fmt::Display for VariableS<Id, Ty> {
         write!(f, "{}: {}", self.id, self.ty)
     }
 }
-type Variable = VariableS<Ident, SimpleType>;
 
 impl From<VariableS<formula::Ident, SimpleType>> for formula::Variable {
     fn from(v: VariableS<formula::Ident, SimpleType>) -> formula::Variable {

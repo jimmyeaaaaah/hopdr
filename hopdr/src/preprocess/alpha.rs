@@ -4,9 +4,6 @@ use crate::formula;
 use crate::formula::Type as SimpleType;
 use crate::parse;
 
-type InVar = VariableS<parse::Ident, SimpleType>;
-type OutVar = VariableS<formula::Ident, SimpleType>;
-
 type In = ValidityChecking<parse::Ident, SimpleType>;
 type Out = ValidityChecking<formula::Ident, SimpleType>;
 

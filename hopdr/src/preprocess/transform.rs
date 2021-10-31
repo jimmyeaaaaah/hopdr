@@ -21,7 +21,6 @@ type InClause = super::hes::Clause<formula::Ident, SimpleType>;
 type OutClause = formula::hes::Clause;
 
 type InExpr = super::hes::Expr<formula::Ident, SimpleType>;
-type OutExpr = formula::hes::Goal;
 
 #[derive(Debug)]
 enum EitherExpr {
@@ -34,12 +33,6 @@ enum EitherExpr {
 }
 
 impl EitherExpr {
-    fn const_unwrap(self) -> formula::hes::Const {
-        match self {
-            EitherExpr::Const(c) => c,
-            _ => panic!("failed to unwrap const"),
-        }
-    }
     fn parse_atom(
         self,
         clauses: &mut Vec<OutClause>,

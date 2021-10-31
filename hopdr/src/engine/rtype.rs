@@ -152,14 +152,14 @@ impl<P, C: Subst> Tau<P, C> {
         Tau::new(TauKind::Arrow(t, s))
     }
 
-    fn app(&self, v: &Op) -> Tau<P, C> {
+    pub fn app(&self, v: &Op) -> Tau<P, C> {
         match self.kind() {
             TauKind::IArrow(x, t) => t.subst(x, v),
             _ => panic!("program error: tried to app integer to non-integer arrow type"),
         }
     }
 
-    fn arrow_unwrap(&self) -> (Tau<P, C>, Tau<P, C>) {
+    pub fn arrow_unwrap(&self) -> (Tau<P, C>, Tau<P, C>) {
         match self.kind() {
             TauKind::Arrow(x, y) => (x.clone(), y.clone()),
             _ => panic!("unwrap fail"),

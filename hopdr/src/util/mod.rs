@@ -162,33 +162,6 @@ impl<T, S> From<T> for PhantomPtr<T, S> {
     }
 }
 
-macro_rules! rc_wrapper {
-    ($element: ident: $ty: ty) => {
-        pub struct $element {
-            ptr: Rc<$ty>,
-        }
-        impl $element {
-            pub fn new(elem: $ty) -> $element {
-                $element { ptr: Rc::new(elem) }
-            }
-        }
-
-        impl<T: fmt::Display> fmt::Display for $element {
-            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                fmt::Display::fmt(self.kind(), f)
-            }
-        }
-
-        impl<T: ?Sized> Deref for $element {
-            type Target = T;
-
-            fn deref(&self) -> &T {
-                &self.ptr
-            }
-        }
-    };
-}
-
 static mut TYVAR_COUNTER: u64 = 0;
 pub fn global_counter() -> u64 {
     unsafe {
