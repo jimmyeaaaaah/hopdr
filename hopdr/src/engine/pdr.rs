@@ -1,6 +1,6 @@
 use super::candidate::NegEnvironment;
 use super::rtype;
-use super::rtype::{PosEnvironment, TypeEnvironment};
+use super::rtype::PosEnvironment;
 use super::VerificationResult;
 use crate::formula::hes::Problem;
 use crate::formula::{hes, Ident};
@@ -11,7 +11,7 @@ use std::unimplemented;
 
 use super::candidate::Sty;
 impl NegEnvironment {
-    pub fn to_candidates(self) -> Vec<Candidate> {
+    fn to_candidates(self) -> Vec<Candidate> {
         let mut v = Vec::new();
         for (ident, stys) in self.map.into_iter() {
             for sty in stys {
@@ -102,11 +102,6 @@ impl CandidateTree {
             let node_id = self.add_new_candidate(c.clone());
             self.children.get_mut(&node.id).unwrap().push(node_id);
         }
-    }
-
-    fn add_root_negative_type_env(&mut self, nenv: NegEnvironment) {
-        let candidates = nenv.to_candidates();
-        self.add_root_children(&candidates);
     }
 }
 

@@ -140,7 +140,7 @@ impl<P, C: Subst + Rename> Rename for Tau<P, C> {
 }
 
 impl<P> Tau<P, pcsp::Atom> {
-    pub fn assign(self, model: &HashMap<Ident, (Vec<Ident>, Constraint)>) -> Tau<P, Constraint> {
+    pub fn assign(&self, model: &HashMap<Ident, (Vec<Ident>, Constraint)>) -> Tau<P, Constraint> {
         match self.kind() {
             TauKind::Proposition(p) => Tau::mk_prop_ty(p.assign(model)),
             TauKind::IArrow(v, x) => Tau::mk_iarrow(*v, x.assign(model)),
