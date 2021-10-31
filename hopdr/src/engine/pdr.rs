@@ -156,17 +156,10 @@ fn handle_type_check(result: Result<(), rtype::Error>) -> bool {
     }
 }
 
-fn transformer(_env: PosEnvironment) -> PosEnvironment {
-    unimplemented!()
-}
-fn calculate_cex(env: &PosEnvironment, clause: &hes::Clause, candidate: Sty) -> NegEnvironment {
-    unimplemented!()
-}
-
 impl<'a> HoPDR<'a> {
     // generates a candidate
     // Assumption: self.check_valid() == false
-    fn is_refutable(&self, candidate: &Candidate) -> RefuteOrCex<PosEnvironment, Vec<Candidate>> {
+    fn is_refutable(&self, candidate: &Candidate) -> RefuteOrCex<rtype::Ty, Vec<Candidate>> {
         // 1. generate constraints: calculate t s.t. c.sty ~ t and check if Env |- formula[c.ident] : t.
         // 2. if not typable, calculate cex
         // 3. if typable, returns the type
@@ -174,22 +167,23 @@ impl<'a> HoPDR<'a> {
             .sty
             .is_refutable(self.get_clause_by_id(&candidate.ident), self.top_env())
         {
-            Some(_) => todo!(),
-            None => todo!(),
+            Ok(t) => RefuteOrCex::Refutable(t),
+            Err(c) => RefuteOrCex::Cex(c.to_candidates()),
         }
     }
 
     fn candidate(&mut self) {
-        //calculate_cex(self.top_env(), self.problem.top.clone(), );
         let top_false = Sty::mk_prop_ty(Constraint::mk_true());
-        //let nenv = calculate_cex(self.top_env(), self.problem.top, top_false);
-        //self.models.add_root_negative_type_env(nenv);
-        unimplemented!()
+        let candidates = match top_false.is_refutable_top(&self.problem.top, self.top_env()) {
+            Ok(_) => panic!("program error"),
+            Err(c) => c.to_candidates(),
+        };
+        self.models.add_root_children(&candidates);
     }
 
     fn get_clause_by_id(&'a self, id: &Ident) -> &'a hes::Clause {
         for c in self.problem.clauses.iter() {
-            if c.head.id == id {
+            if &c.head.id == id {
                 return c;
             }
         }
@@ -256,8 +250,8 @@ impl<'a> HoPDR<'a> {
         loop {
             match self.models.get_unprocessed_leaf() {
                 Some(c) => match self.is_refutable(&c.label) {
-                    RefuteOrCex::Refutable(env) => {
-                        self.conflict(c, env);
+                    RefuteOrCex::Refutable(t) => {
+                        self.conflict(c, t);
                         if self.models.is_epsilon() {
                             return false;
                         }
@@ -271,13 +265,9 @@ impl<'a> HoPDR<'a> {
         }
     }
 
-    fn conflict(&mut self, c: CandidateNode, refute_env: PosEnvironment) {
+    fn conflict(&mut self, c: CandidateNode, refute_ty: rtype::Ty) {
         for i in 0..c.level {
-            for (k, ts) in refute_env.map.iter() {
-                for t in ts.iter() {
-                    self.envs[i as usize].add(*k, t.clone());
-                }
-            }
+            self.envs[i as usize].add(c.label.ident, refute_ty.clone());
         }
     }
 
