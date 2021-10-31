@@ -1,5 +1,3 @@
-use rpds::HashTrieMap;
-
 use super::hes::{Clause, Expr, ExprKind, ValidityChecking, VariableS};
 use super::{Context, IdentMap as Environment};
 use crate::formula;
@@ -35,18 +33,18 @@ fn alpha_rename_expr(
     let f = alpha_rename_expr;
     use ExprKind::*;
     match expr.kind() {
-        Var(i) => Expr::mk_var(env.get(i).unwrap().clone()),
-        Num(x) => Expr::mk_num(x.clone()),
+        Var(i) => Expr::mk_var(*env.get(i).unwrap()),
+        Num(x) => Expr::mk_num(*x),
         True => Expr::mk_true(),
         False => Expr::mk_false(),
-        Op(op, e1, e2) => Expr::mk_op(op.clone(), f(env.clone(), e1), f(env, e2)),
-        Pred(p, e1, e2) => Expr::mk_pred(p.clone(), f(env.clone(), e1), f(env, e2)),
+        Op(op, e1, e2) => Expr::mk_op(*op, f(env.clone(), e1), f(env, e2)),
+        Pred(p, e1, e2) => Expr::mk_pred(*p, f(env.clone(), e1), f(env, e2)),
         App(e1, e2) => Expr::mk_app(f(env.clone(), e1), f(env, e2)),
         And(e1, e2) => Expr::mk_and(f(env.clone(), e1), f(env, e2)),
         Or(e1, e2) => Expr::mk_or(f(env.clone(), e1), f(env, e2)),
         Univ(x, e) => {
             let id = formula::Ident::fresh();
-            let env = env.insert(x.id.clone(), id.clone());
+            let env = env.insert(x.id.clone(), id);
             let v = VariableS {
                 id,
                 ty: x.ty.clone(),
@@ -64,7 +62,7 @@ fn alpha_rename_clause<'a>(mut env: Environment, c: &'a InClause) -> OutClause {
         args.push(k);
     }
 
-    let id = env.get(&c.id.id).unwrap().clone();
+    let id = *env.get(&c.id.id).unwrap();
     let ty = c.id.ty.clone();
     let id = VariableS { id, ty };
     let expr = alpha_rename_expr(env, &c.expr);

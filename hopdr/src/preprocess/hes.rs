@@ -1,4 +1,4 @@
-use std::{collections::HashMap, error::Error, fmt, mem::uninitialized, unimplemented};
+use std::fmt;
 
 use super::alpha::alpha_renaming;
 use super::transform::transform;
@@ -8,7 +8,7 @@ use crate::formula;
 use crate::formula::hes;
 use crate::formula::{OpKind, PredKind, Type as SimpleType};
 use crate::parse;
-use crate::util::{global_counter, Unique, P};
+use crate::util::Unique;
 
 type Ident = String;
 

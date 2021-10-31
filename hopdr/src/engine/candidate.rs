@@ -1,14 +1,11 @@
 use std::collections::HashSet;
 
 use super::rtype;
-use super::rtype::{Environment, TypeEnvironment};
+use super::rtype::Environment;
 use crate::formula::fofml;
 use crate::formula::hes;
 use crate::formula::pcsp;
-use crate::formula::{
-    Bot, Conjunctive, Constraint, Fv, Ident, IntegerEnvironment, Op, QuantifierKind, Rename, Subst,
-    Top,
-};
+use crate::formula::{Conjunctive, Constraint, IntegerEnvironment, Rename};
 
 #[derive(Debug)]
 pub struct Negative {}
@@ -24,7 +21,7 @@ fn consistent(s: &Sty, t: &rtype::Tau<rtype::Positive, pcsp::Atom>) -> fofml::At
         (IArrow(x, s), IArrow(y, t)) => {
             let t = t.rename(y, x);
             let c = consistent(s, &t);
-            Atom::mk_univq(x.clone(), c)
+            Atom::mk_univq(*x, c)
         }
         (Arrow(s1, s2), Arrow(t1, t2)) => {
             let c1 = Atom::mk_not(consistent(s1, t1));
@@ -41,13 +38,13 @@ fn types(
     rty: rtype::Tau<rtype::Positive, pcsp::Atom>,
 ) -> fofml::Atom {
     let mut env = Environment::from_type_environment(env.into());
-    let t = env.add_arg_types(&cl.args, rty.into());
+    let t = env.add_arg_types(&cl.args, rty);
     let c = match t.kind() {
         rtype::TauKind::Proposition(c) => c,
         _ => panic!("program error"),
     };
     let c2 = rtype::type_check_goal(&cl.body, &mut env).unwrap();
-    let p = pcsp::PCSP::new(c.clone(), c2.clone());
+    let p = pcsp::PCSP::new(c.clone(), c2);
     p.into()
 }
 
@@ -59,7 +56,7 @@ impl Sty {
         let fml2 = types(&env, clause, ty);
         let fml = fofml::Atom::mk_conj(fml, fml2);
         match fml.check_satisfiability() {
-            Some(model) => unimplemented!(),
+            Some(_model) => unimplemented!(),
             None => unimplemented!(),
         }
     }

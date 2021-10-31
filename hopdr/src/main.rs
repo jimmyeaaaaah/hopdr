@@ -12,7 +12,6 @@ pub mod util;
 
 use engine::infer;
 
-use env_logger::Env;
 use nom::error::VerboseError;
 
 fn main() {
@@ -37,7 +36,7 @@ fn main() {
         }
     }
 
-    let (vc, ctx) = preprocess::hes::preprocess(f);
+    let (vc, _ctx) = preprocess::hes::preprocess(f);
     for fml in vc.clauses.iter() {
         println!("{}", fml);
     }
@@ -155,7 +154,7 @@ fn main2() {
         }
     }
 
-    let (vc, ctx) = preprocess::hes::preprocess(f);
+    let (vc, _ctx) = preprocess::hes::preprocess(f);
     for fml in vc.clauses.iter() {
         println!("{}", fml);
     }
@@ -163,7 +162,7 @@ fn main2() {
     let mut types = Vec::new();
     {
         use engine::*;
-        use formula::{Constraint, Ident, Op, PredKind, Top};
+        use formula::{Constraint, Ident, Op, PredKind};
         use rtype::Tau;
         // X
         let n = Ident::fresh();

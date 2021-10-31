@@ -1,6 +1,6 @@
-use tempfile::{tempfile, NamedTempFile};
+use tempfile::NamedTempFile;
 
-use std::{fs::File, time::Duration};
+use std::time::Duration;
 
 use super::util;
 use crate::formula::{
@@ -87,7 +87,7 @@ fn constraint_to_smt2_inner(c: &Constraint, style: SMT2Style) -> String {
 fn constraint_to_smt2(c: &Constraint, style: SMT2Style) -> String {
     let fvs = c.fv();
     let c_s = constraint_to_smt2_inner(c, style);
-    let c_s = if fvs.len() > 0 {
+    let c_s = if !fvs.is_empty() {
         // (forall ((%s Int)) %s)
         let decls = fvs
             .into_iter()

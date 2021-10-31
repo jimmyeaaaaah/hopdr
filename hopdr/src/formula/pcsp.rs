@@ -60,7 +60,7 @@ impl Atom {
     pub fn extract_pred_and_constr(&self) -> Option<(Atom, Ident)> {
         match self.kind() {
             AtomKind::True | AtomKind::Constraint(_) => None,
-            AtomKind::Predicate(i, _) => Some((Atom::mk_false(), i.clone())),
+            AtomKind::Predicate(i, _) => Some((Atom::mk_false(), *i)),
             AtomKind::Conj(x, y) | AtomKind::Conj(y, x) if x.contains_predicate() => y
                 .negate()
                 .map(|c2| {
@@ -80,7 +80,7 @@ impl Atom {
                 let r = r.negate();
                 match (l, r) {
                     (_, None) | (None, _) => None,
-                    (Some(x), Some(y)) => Some(Atom::mk_disj(x.clone(), y.clone())),
+                    (Some(x), Some(y)) => Some(Atom::mk_disj(x, y)),
                 }
             }
             AtomKind::Disj(l, r) => {
@@ -88,7 +88,7 @@ impl Atom {
                 let r = r.negate();
                 match (l, r) {
                     (_, None) | (None, _) => None,
-                    (Some(x), Some(y)) => Some(Atom::mk_conj(x.clone(), y.clone())),
+                    (Some(x), Some(y)) => Some(Atom::mk_conj(x, y)),
                 }
             }
             AtomKind::Predicate(_, _) | AtomKind::Quantifier(_, _, _) => None,
@@ -105,7 +105,7 @@ impl Atom {
     pub fn mk_conj(x: Self, y: Self) -> Atom {
         use AtomKind::*;
         // TODO: trivial optimization
-        Atom::new(Disj(x.clone(), y.clone()))
+        Atom::new(Disj(x, y))
     }
 
     pub fn mk_quantifier(q: QuantifierKind, x: Ident, c: Self) -> Atom {

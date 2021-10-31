@@ -5,8 +5,7 @@ use std::iter::FromIterator;
 use std::vec;
 
 use super::pcsp;
-use super::{Bot, Conjunctive, Constraint, Fv, Ident, Op, PredKind, Rename, Subst, Top, Type};
-use crate::util::P;
+use super::{Conjunctive, Constraint, Ident, Rename, Top};
 
 #[derive(Debug, Clone)]
 pub enum CHCHead {
@@ -19,7 +18,7 @@ impl fmt::Display for CHCHead {
             CHCHead::Constraint(c) => write!(f, "{}", c),
             CHCHead::Predicate(i, args) => {
                 write!(f, "{}(", i)?;
-                if args.len() > 0 {
+                if !args.is_empty() {
                     write!(f, "{}", args[0])?;
                 }
                 for arg in args[1..].iter() {
@@ -152,7 +151,7 @@ impl CHC<pcsp::Atom> {
                     CHCHead::Predicate(p, l) => Some((p, l)),
                 })
                 .collect::<Vec<_>>();
-            let (p, l) = if preds.len() == 0 {
+            let (_p, _l) = if preds.is_empty() {
                 return Err(ResolutionError::IllegalConstraint);
             } else if preds.len() > 1 {
                 let (p, l) = preds.pop().unwrap();
@@ -304,10 +303,10 @@ fn atom2chc_head(atom: pcsp::Atom) -> Option<CHCHead> {
     match atom.kind() {
         pcsp::AtomKind::True => Some(CHCHead::Constraint(Constraint::mk_true())),
         pcsp::AtomKind::Constraint(c) => Some(CHCHead::Constraint(c.clone())),
-        pcsp::AtomKind::Conj(c1, c2) => None,
+        pcsp::AtomKind::Conj(_c1, _c2) => None,
         pcsp::AtomKind::Predicate(p, args) => Some(CHCHead::Predicate(*p, args.clone())),
-        pcsp::AtomKind::Disj(c1, c2) => None,
-        pcsp::AtomKind::Quantifier(q, x, c) => None,
+        pcsp::AtomKind::Disj(_c1, _c2) => None,
+        pcsp::AtomKind::Quantifier(_q, _x, _c) => None,
     }
 }
 
@@ -338,7 +337,7 @@ pub fn solve_by_resolution(
     for clause in clauses {
         match &clause.head {
             CHCHead::Constraint(_) => goals.push(clause),
-            CHCHead::Predicate(p, args) => {
+            CHCHead::Predicate(p, _args) => {
                 if defs.insert(*p, clause).is_some() {
                     return Err(ResolutionError::CHCNotDeterministic);
                 }
@@ -346,7 +345,7 @@ pub fn solve_by_resolution(
         }
     }
     let mut defs = Vec::from_iter(defs.into_iter().map(|(_, x)| x));
-    while defs.len() > 0 {
+    while !defs.is_empty() {
         let target = defs.pop().unwrap();
         goals = goals.into_iter().map(|g| g.replace(&target)).collect();
         defs = defs.into_iter().map(|g| g.replace(&target)).collect();
@@ -396,7 +395,7 @@ pub fn simplify(
     debug!("-------");
     let mut defs = Vec::from_iter(defs.into_iter().map(|(_, x)| x));
     let mut defs_l = Vec::from_iter(defs_l.into_iter().map(|(_, x)| x));
-    while defs.len() > 0 {
+    while !defs.is_empty() {
         let target = defs.pop().unwrap();
         goals = goals.into_iter().map(|g| g.replace(&target)).collect();
         defs = defs.into_iter().map(|g| g.replace(&target)).collect();

@@ -1,5 +1,5 @@
 use rpds::HashTrieMap;
-use std::{collections::HashMap, error::Error, fmt, mem::uninitialized, unimplemented};
+use std::{collections::HashMap, fmt};
 
 use super::hes::{Clause as ClauseS, Expr, ExprKind, ValidityChecking, VariableS};
 use crate::parse;
@@ -145,7 +145,9 @@ impl ExprTmp {
         constraints: &mut Constraints,
     ) -> TmpType {
         match self.kind() {
-            ExprKind::Var(ident) => env.get(ident).expect(&format!("not found {}", ident)),
+            ExprKind::Var(ident) => env
+                .get(ident)
+                .unwrap_or_else(|| panic!("not found {}", ident)),
             ExprKind::Num(_) => TmpType::mk_int(),
             ExprKind::True | ExprKind::False => TmpType::mk_prop(),
             ExprKind::Op(_, e1, e2) => {
@@ -227,12 +229,12 @@ impl Clause<TmpType> {
     pub fn from(vc: parse::Clause) -> Clause<TmpType> {
         let id = VariableS::from_ident(vc.id);
         let expr = ExprTmp::from(vc.expr);
-        let c = Clause {
+
+        Clause {
             id,
-            args: vc.args.into_iter().map(|x| Ident::new(x)).collect(),
+            args: vc.args.into_iter().map(Ident::new).collect(),
             expr,
-        };
-        c
+        }
     }
     fn append_constraints<'a>(&'a self, mut env: Environment<'a>, constraints: &mut Constraints) {
         let ret_ty = TmpType::fresh_type_variable();
@@ -333,11 +335,11 @@ struct Constraints(Vec<Constraint>);
 
 impl fmt::Display for Constraints {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "[constraints]\n")?;
+        writeln!(f, "[constraints]")?;
         for c in self.0.iter() {
-            write!(f, "{}\n", c)?;
+            writeln!(f, "{}", c)?;
         }
-        write!(f, "\n")
+        writeln!(f)
     }
 }
 
@@ -438,10 +440,7 @@ pub fn typing(
         fixpoint: parse::Fixpoint::Greatest,
     });
 
-    let formulas = formulas
-        .into_iter()
-        .map(|x| Clause::<TmpType>::from(x))
-        .collect();
+    let formulas = formulas.into_iter().map(Clause::<TmpType>::from).collect();
     let ty_subst = {
         let env = generate_global_environment(&formulas);
         let mut constraints = Constraints::new();
@@ -457,12 +456,12 @@ pub fn typing(
             let ty = ty_subst.subst(clause.id.ty);
             let id = VariableS {
                 id: clause.id.id,
-                ty: ty,
+                ty,
             };
             let expr = clause.expr.ty_subst(&ty_subst);
             Clause {
                 id,
-                expr: expr,
+                expr,
                 args: clause.args,
             }
         })

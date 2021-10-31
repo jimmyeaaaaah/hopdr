@@ -1,11 +1,11 @@
 use super::rtype;
-use super::rtype::{PosEnvironment, Ty, TypeEnvironment};
+use super::rtype::{PosEnvironment, TypeEnvironment};
 use super::VerificationResult;
 use crate::formula::hes::Problem;
 use crate::formula::{hes, Ident};
 use crate::formula::{Constraint, Top};
 use std::collections::HashMap;
-use std::ops::Neg;
+
 use std::unimplemented;
 
 use super::candidate::Sty;
@@ -71,7 +71,7 @@ impl CandidateTree {
         for (key, _) in self.labels.iter() {
             if !self.children.contains_key(key) {
                 let c = self.labels[key].clone();
-                let lv = self.levels[key].clone();
+                let lv = self.levels[key];
                 return Some(CandidateNode {
                     id: *key,
                     level: lv,
@@ -99,9 +99,7 @@ impl CandidateTree {
     }
 
     pub fn add_children(&mut self, node: CandidateNode, candidates: &[Candidate]) {
-        if !self.children.contains_key(&node.id) {
-            self.children.insert(node.id, Vec::new());
-        }
+        self.children.entry(node.id).or_insert_with(Vec::new);
         for c in candidates {
             let node_id = self.add_new_candidate(c.clone());
             self.children.get_mut(&node.id).unwrap().push(node_id);
@@ -160,10 +158,10 @@ fn handle_type_check(result: Result<(), rtype::Error>) -> bool {
     }
 }
 
-fn transformer(env: PosEnvironment) -> PosEnvironment {
+fn transformer(_env: PosEnvironment) -> PosEnvironment {
     unimplemented!()
 }
-fn calculate_cex(env: &PosEnvironment, formula: hes::Goal, candidate: Sty) -> NegEnvironment {
+fn calculate_cex(_env: &PosEnvironment, _formula: hes::Goal, _candidate: Sty) -> NegEnvironment {
     unimplemented!()
 }
 

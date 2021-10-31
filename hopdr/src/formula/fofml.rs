@@ -2,9 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 use super::pcsp;
-use super::{
-    Bot, Conjunctive, Constraint, Fv, Ident, Op, PredKind, QuantifierKind, Rename, Subst, Top,
-};
+use super::{Bot, Conjunctive, Constraint, Fv, Ident, Op, PredKind, QuantifierKind, Subst, Top};
 use crate::util::P;
 
 #[derive(Debug)]
@@ -103,13 +101,13 @@ impl From<pcsp::Atom> for Atom {
         match from.kind() {
             pcsp::AtomKind::True => Atom::mk_true(),
             pcsp::AtomKind::Constraint(c) => Atom::mk_constraint(c.clone()),
-            pcsp::AtomKind::Predicate(p, l) => Atom::mk_pred(p.clone(), l.clone()),
+            pcsp::AtomKind::Predicate(p, l) => Atom::mk_pred(*p, l.clone()),
             pcsp::AtomKind::Conj(x, y) => Atom::mk_conj(x.clone().into(), y.clone().into()),
             pcsp::AtomKind::Disj(x, y) => Atom::mk_disj(x.clone().into(), y.clone().into()),
             pcsp::AtomKind::Quantifier(q, x, c) if *q == QuantifierKind::Universal => {
                 Atom::mk_univq(*x, c.clone().into())
             }
-            pcsp::AtomKind::Quantifier(q, x, c) => panic!("fail"),
+            pcsp::AtomKind::Quantifier(_q, _x, _c) => panic!("fail"),
         }
     }
 }

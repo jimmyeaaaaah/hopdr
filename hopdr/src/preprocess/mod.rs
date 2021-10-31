@@ -4,7 +4,7 @@ mod transform;
 mod typing;
 
 use crate::formula;
-use crate::formula::{Fv, Ident, Subst, Type as SimpleType, Variable};
+use crate::formula::Type as SimpleType;
 use crate::parse;
 use hes::ValidityChecking;
 use rpds::HashTrieMap;

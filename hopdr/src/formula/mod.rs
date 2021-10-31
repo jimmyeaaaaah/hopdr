@@ -7,7 +7,7 @@ pub mod ty;
 use std::collections::HashSet;
 use std::fmt;
 
-use rpds::{HashTrieMap, Stack};
+use rpds::Stack;
 
 pub use crate::formula::ty::*;
 use crate::util::global_counter;
@@ -127,7 +127,7 @@ impl Fv for Op {
                 y.fv_with_vec(fvs);
             }
             OpExpr::Var(x) => {
-                fvs.insert(x.clone());
+                fvs.insert(*x);
             }
             OpExpr::Const(_) => {}
         }
@@ -149,7 +149,7 @@ impl IntegerEnvironment {
                 return true;
             }
         }
-        return false;
+        false
     }
     pub fn variables(&self) -> Vec<Ident> {
         // assumes alpha-renamed
@@ -191,7 +191,7 @@ impl Rename for Op {
         match self.kind() {
             OpExpr::Op(k, x, y) => Op::mk_bin_op(*k, x.rename(id, id2), y.rename(id, id2)),
 
-            OpExpr::Var(id3) if id == id3 => Op::mk_var(id2.clone()),
+            OpExpr::Var(id3) if id == id3 => Op::mk_var(*id2),
             _ => self.clone(),
         }
     }
@@ -211,7 +211,7 @@ pub trait Conjunctive {
 
 pub trait Subst: Sized {
     fn subst_multi(&self, substs: &[(Ident, Op)]) -> Self {
-        assert!(substs.len() > 0);
+        assert!(!substs.is_empty());
         let mut ret = self.subst(&substs[0].0, &substs[0].1);
         for (ident, val) in &substs[1..] {
             ret = ret.subst(ident, val);
@@ -220,7 +220,7 @@ pub trait Subst: Sized {
     }
     fn subst(&self, x: &Ident, v: &Op) -> Self;
     fn rename_variable(&self, x: &Ident, y: &Ident) -> Self {
-        let op = Op::mk_var(y.clone());
+        let op = Op::mk_var(*y);
         self.subst(x, &op)
     }
 }
@@ -264,7 +264,7 @@ impl fmt::Display for Constraint {
                     return write!(f, "{} {} {}", ops[0], p, ops[1]);
                 }
                 write!(f, "{}(", p)?;
-                if ops.len() > 0 {
+                if !ops.is_empty() {
                     write!(f, "{}", ops[0])?;
                     for op in &ops[1..] {
                         write!(f, ", {}", op)?;

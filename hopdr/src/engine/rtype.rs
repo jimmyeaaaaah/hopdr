@@ -1,16 +1,13 @@
 use std::{
     collections::{HashMap, HashSet},
-    ffi::FromBytesWithNulError,
     fmt::{self, Display},
-    marker::{PhantomData, PhantomPinned},
-    rc::Rc,
     unimplemented,
 };
 
 use crate::formula::{chc, pcsp};
 use crate::formula::{
     chc::pcsps2chcs,
-    hes::{Atom, AtomKind, Clause, ConstKind, Goal, GoalKind},
+    hes::{Atom, AtomKind, Clause, Goal, GoalKind},
 };
 use crate::formula::{
     Bot, Conjunctive, Constraint, Fv, Ident, IntegerEnvironment, Op, QuantifierKind, Rename, Subst,
@@ -103,7 +100,7 @@ impl<Positivity> From<&Tau<Positivity, Constraint>> for Tau<Positivity, pcsp::At
     fn from(from: &Tau<Positivity, Constraint>) -> Tau<Positivity, pcsp::Atom> {
         match from.kind() {
             TauKind::Proposition(c) => Tau::mk_prop_ty(c.clone().into()),
-            TauKind::IArrow(x, e) => Tau::mk_iarrow(x.clone(), e.into()),
+            TauKind::IArrow(x, e) => Tau::mk_iarrow(*x, e.into()),
             TauKind::Arrow(e, e2) => {
                 let e = e.into();
                 let e2 = e2.into();
@@ -188,15 +185,14 @@ fn rename_constraints_by_types<P>(
     t2: &Tau<P, pcsp::Atom>,
 ) -> chc::CHC<pcsp::Atom> {
     match (t1.kind(), t2.kind()) {
-        (TauKind::Proposition(_), TauKind::Proposition(_)) => chc.clone(),
+        (TauKind::Proposition(_), TauKind::Proposition(_)) => chc,
         (TauKind::IArrow(x, tx), TauKind::IArrow(y, ty)) => {
-            let chc = rename_constraints_by_types(chc.rename(y, x), tx, &ty.rename(y, x));
-            chc
+            rename_constraints_by_types(chc.rename(y, x), tx, &ty.rename(y, x))
         }
         (TauKind::Arrow(s1, t1), TauKind::Arrow(s2, t2)) => {
             let chc = rename_constraints_by_types(chc, s1, s2);
-            let chc = rename_constraints_by_types(chc, t1, t2);
-            chc
+
+            rename_constraints_by_types(chc, t1, t2)
         }
         _ => panic!("program error"),
     }
@@ -228,11 +224,7 @@ fn infer_subtype<C>(
     lhs_c: &[chc::CHC<pcsp::Atom>],
     rhs_c: &[chc::CHC<pcsp::Atom>],
 ) -> Result<(Tau<Positive, pcsp::Atom>, Vec<chc::CHC<pcsp::Atom>>), Error> {
-    debug!(
-        "infer_greatest_type: {} <: {} -> ?",
-        arrow_type.clone(),
-        arg_t.clone()
-    );
+    debug!("infer_greatest_type: {} <: {} -> ?", arrow_type, arg_t);
     let mut new_idents = HashSet::new();
     let (rhs_c_renamed, arg_t, ret_t) = match &*arrow_type {
         TauKind::Arrow(arg_t2, y) => {
@@ -251,8 +243,8 @@ fn infer_subtype<C>(
         _ => panic!("program error"),
     };
     //let ret_t= generate_template(environment, ret_st);
-    let lhs: Tau<Positive, pcsp::Atom> = arrow_type.into();
-    let rhs: Tau<Positive, pcsp::Atom> = Tau::mk_arrow(arg_t.into(), ret_t.clone());
+    let lhs: Tau<Positive, pcsp::Atom> = arrow_type;
+    let rhs: Tau<Positive, pcsp::Atom> = Tau::mk_arrow(arg_t, ret_t.clone());
     debug!("len lhs: {}", lhs_c.len());
     debug!("len rhs: {}", rhs_c.len());
     let mut constraints = Vec::new();
@@ -419,7 +411,7 @@ impl<P, C: Top + Bot> TypeEnvironment<Tau<P, C>> {
         let r = self.map.get(v);
         match r {
             Some(v) => {
-                for x in v.iter() {
+                for _x in v.iter() {
                     //debug!("tget cont: {}", x);
                 }
             }
@@ -463,7 +455,7 @@ impl<P, C: Top + Bot + Subst + Rename> Environment<Tau<P, C>> {
 
     pub fn from_type_environment(map: TypeEnvironment<Tau<P, C>>) -> Environment<Tau<P, C>> {
         Environment {
-            map: map,
+            map,
             imap: IntegerEnvironment::new(),
         }
     }
@@ -496,10 +488,10 @@ impl<P, C: Top + Bot + Subst + Rename> Environment<Tau<P, C>> {
                 TauKind::Proposition(_) => panic!("program error"),
                 TauKind::IArrow(x, s) => {
                     tmp_t = s.rename_variable(x, arg);
-                    self.iadd(arg.clone());
+                    self.iadd(*arg);
                 }
                 TauKind::Arrow(x, y) => {
-                    self.tadd(arg.clone(), x.clone());
+                    self.tadd(*arg, x.clone());
                     tmp_t = y.clone();
                 }
             }
@@ -518,7 +510,7 @@ fn int_expr<'a, P, C: Top + Bot + Subst + Rename>(
         //    Int(x) => Some(Op::mk_const(*x)),
         //    _ => None,
         //},
-        Var(v) if env.iexists(v) => Some(v.clone()),
+        Var(v) if env.iexists(v) => Some(*v),
         _ => None,
     }
 }
@@ -634,7 +626,7 @@ pub fn type_check_goal<'a>(
 }
 
 fn check_smt(c: &Constraint) -> Result<(), Error> {
-    match smt::smt_solve(&c) {
+    match smt::smt_solve(c) {
         smt::SMTResult::Sat => Ok(()),
         smt::SMTResult::Unsat => Err(Error::TypeError),
         smt::SMTResult::Unknown => Err(Error::SMTUnknown),
@@ -667,7 +659,7 @@ pub fn type_check_clause(
     let c2 = type_check_goal(&clause.body, &mut env)?
         .to_constraint()
         .unwrap();
-    let c2 = pcsp::PCSP::new(c.clone(), c2.clone());
+    let c2 = pcsp::PCSP::new(c, c2);
     let c = c2.to_constraint().unwrap().remove_quantifier();
     debug!("constraint: {}", &c);
 

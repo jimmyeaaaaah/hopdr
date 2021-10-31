@@ -79,7 +79,7 @@ impl EitherExpr {
                     ret_t = SimpleType::mk_type_arrow(ti.clone(), ret_t);
                 }
                 let head_id = Ident::fresh();
-                let head = Variable::mk(head_id.clone(), ret_t);
+                let head = Variable::mk(head_id, ret_t);
                 let body = hes::Goal::mk_constr(body_c);
                 let clause = hes::Clause::new(body, head, args);
                 clauses.push(clause);
@@ -135,7 +135,7 @@ fn transform_expr_inner(
     use formula::hes::{Const, Goal};
     use formula::Top;
     match input.kind() {
-        Var(x) => EitherExpr::Var(x.clone()),
+        Var(x) => EitherExpr::Var(*x),
         App(e1, e2) => {
             let e1 =
                 transform_expr_inner(e1, clauses, constraints).parse_atom(clauses, constraints);
@@ -149,12 +149,12 @@ fn transform_expr_inner(
         Op(x, y, z) => {
             let e1 = transform_expr_inner(y, clauses, constraints).op_unwrap();
             let e2 = transform_expr_inner(z, clauses, constraints).op_unwrap();
-            EitherExpr::mk_op(formula::Op::mk_bin_op(x.clone(), e1, e2))
+            EitherExpr::mk_op(formula::Op::mk_bin_op(*x, e1, e2))
         }
         Pred(p, x, y) => {
             let x = transform_expr_inner(x, clauses, constraints).op_unwrap();
             let y = transform_expr_inner(y, clauses, constraints).op_unwrap();
-            EitherExpr::mk_constraint(formula::Constraint::mk_pred(p.clone(), vec![x, y]))
+            EitherExpr::mk_constraint(formula::Constraint::mk_pred(*p, vec![x, y]))
         }
         And(x, y) => {
             let x = transform_expr_inner(x, clauses, constraints).goal_unwrap();
@@ -177,7 +177,7 @@ fn transform_expr(expr: &InExpr, clauses: &mut Vec<OutClause>) -> formula::hes::
     use formula::hes::Goal;
     use formula::{Conjunctive, Constraint, Top};
     let mut constraints = (Vec::new(), Vec::new());
-    let g = transform_expr_inner(&expr, clauses, &mut constraints).goal_unwrap();
+    let g = transform_expr_inner(expr, clauses, &mut constraints).goal_unwrap();
 
     let mut c = Constraint::mk_true();
     let (vs, cs) = constraints;

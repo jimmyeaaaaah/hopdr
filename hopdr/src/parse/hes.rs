@@ -142,8 +142,8 @@ impl Clone for Expr {
     fn clone(&self) -> Expr {
         match self.kind() {
             ExprKind::Var(id) => Expr::mk_var(id.clone()),
-            ExprKind::Op(op, e1, e2) => Expr::mk_op(op.clone(), e1.clone(), e2.clone()),
-            ExprKind::Pred(pred, e1, e2) => Expr::mk_pred(pred.clone(), e1.clone(), e2.clone()),
+            ExprKind::Op(op, e1, e2) => Expr::mk_op(*op, e1.clone(), e2.clone()),
+            ExprKind::Pred(pred, e1, e2) => Expr::mk_pred(*pred, e1.clone(), e2.clone()),
             ExprKind::App(e1, e2) => Expr::mk_app(e1.clone(), e2.clone()),
             ExprKind::And(e1, e2) => Expr::mk_and(e1.clone(), e2.clone()),
             ExprKind::Or(e1, e2) => Expr::mk_or(e1.clone(), e2.clone()),
