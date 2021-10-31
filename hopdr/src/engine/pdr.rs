@@ -22,10 +22,9 @@ impl NegEnvironment {
     }
 }
 
-enum PDRResult {
+pub enum PDRResult {
     Valid,
     Invalid,
-    Unknown,
 }
 
 type NodeID = u64;
@@ -275,10 +274,10 @@ impl<'a> HoPDR<'a> {
             if !self.check_valid() {
                 self.candidate();
                 if self.check_feasible() {
-                    return self.invalid();
+                    break self.invalid();
                 }
             } else if self.check_inductive() {
-                return self.valid();
+                break self.valid();
             } else {
                 self.unfold()
             }
