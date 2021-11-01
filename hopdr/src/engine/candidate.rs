@@ -2,13 +2,14 @@ use std::collections::HashSet;
 
 use super::rtype;
 use super::rtype::Environment;
+use super::rtype::PosEnvironment;
 use crate::formula::chc;
 use crate::formula::fofml;
 use crate::formula::hes;
 use crate::formula::hes::{Goal, GoalKind};
 use crate::formula::pcsp;
 use crate::formula::{
-    Bot, Conjunctive, Constraint, Fv, IntegerEnvironment, QuantifierKind, Rename,
+    Bot, Conjunctive, Constraint, Fv, IntegerEnvironment, QuantifierKind, Rename, Top,
 };
 
 #[derive(Debug)]
@@ -16,7 +17,10 @@ pub struct Negative {}
 pub type Sty = rtype::Tau<Negative, Constraint>;
 pub type NegEnvironment = rtype::TypeEnvironment<Sty>;
 
-fn consistent(s: &Sty, t: &rtype::Tau<rtype::Positive, pcsp::Atom>) -> fofml::Atom {
+fn consistent(
+    s: &rtype::Tau<Negative, pcsp::Atom>,
+    t: &rtype::Tau<rtype::Positive, pcsp::Atom>,
+) -> fofml::Atom {
     use fofml::Atom;
     use rtype::TauKind::*;
     match (s.kind(), t.kind()) {
@@ -60,10 +64,62 @@ fn types(
     p.into()
 }
 
+fn types_negative(
+    env: rtype::TypeEnvironment<rtype::Tau<Negative, pcsp::Atom>>,
+    cl: &hes::Clause,
+    sty: rtype::Tau<Negative, pcsp::Atom>,
+) -> fofml::Atom {
+    let mut env = Environment::from_type_environment(env);
+    let t = env.add_arg_types(&cl.args, sty);
+    let c = match t.kind() {
+        rtype::TauKind::Proposition(c) => c,
+        _ => panic!("program error"),
+    };
+    let c2 = type_check_goal(&cl.body, &mut env).unwrap();
+    let p = pcsp::PCSP::new(c.clone(), c2);
+    p.into()
+}
+
+fn env_consistent(
+    env: &PosEnvironment,
+    nenv: &rtype::TypeEnvironment<rtype::Tau<Negative, pcsp::Atom>>,
+) -> fofml::Atom {
+    let mut result = fofml::Atom::mk_true();
+    for (i, v) in env.map.iter() {
+        let mut tmp = fofml::Atom::mk_false();
+        let w = nenv.get(i).unwrap();
+        for x in w {
+            let x = x.clone().into();
+            for y in v {
+                let y = y.clone().into();
+                let fml = consistent(&x, &y);
+                tmp = fofml::Atom::mk_disj(tmp, fml);
+            }
+        }
+        result = fofml::Atom::mk_conj(result, tmp);
+    }
+    result
+}
+
 impl Sty {
-    // returns Ok(positive type) when this candidate is refutable
-    // otherwise, Err(NegEnvironmet) where NegEnvironment is a negative type environment Δ
-    // such that Δ |- clause: self
+    pub fn is_cex_available(
+        &self,
+        clause: &hes::Clause,
+        env: &rtype::PosEnvironment,
+    ) -> Option<NegEnvironment> {
+        let mut new_idents = HashSet::new();
+        let template_env: rtype::TypeEnvironment<rtype::Tau<Negative, pcsp::Atom>> =
+            env.clone_with_template(&mut new_idents);
+        // generate_constraint
+        let fml2 = env_consistent(env, &template_env);
+        let fml = types_negative(template_env, clause, self.clone().into());
+        let fml = fofml::Atom::mk_conj(fml, fml2);
+        // check_sat
+        match fml.check_satisfiability() {
+            Some(model) => unimplemented!(),
+            None => None,
+        }
+    }
     pub fn is_refutable_top(
         &self,
         g: &hes::Goal,
@@ -76,14 +132,17 @@ impl Sty {
 
         let mut new_idents = HashSet::new();
         let ty = self.clone_with_template(IntegerEnvironment::new(), &mut new_idents);
-        let fml = consistent(self, &ty);
+        let fml = consistent(&self.clone().into(), &ty);
         let fml2 = types_top(env, g, cnstr);
         let fml = fofml::Atom::mk_conj(fml, fml2);
         match fml.check_satisfiability() {
             Some(model) => Ok(ty.assign(&model)),
-            None => unimplemented!(),
+            None => unimplemented!(), //Err(self.is_cex_available(clause, env).unwrap()),
         }
     }
+    /// returns Ok(positive type) when this candidate is refutable
+    /// otherwise, Err(NegEnvironmet) where NegEnvironment is a negative type environment Δ
+    /// such that Δ |- clause: self
     pub fn is_refutable(
         &self,
         clause: &hes::Clause,
@@ -91,19 +150,12 @@ impl Sty {
     ) -> Result<rtype::Ty, NegEnvironment> {
         let mut new_idents = HashSet::new();
         let ty = self.clone_with_template(IntegerEnvironment::new(), &mut new_idents);
-        let fml = consistent(self, &ty);
+        let fml = consistent(&self.clone().into(), &ty);
         let fml2 = types(env, clause, ty.clone());
         let fml = fofml::Atom::mk_conj(fml, fml2);
         match fml.check_satisfiability() {
             Some(model) => Ok(ty.assign(&model)),
-            None => {
-                let mut new_idents = HashSet::new();
-                let _template_env: rtype::TypeEnvironment<rtype::Tau<Negative, pcsp::Atom>> =
-                    env.clone_with_template(&mut new_idents);
-                // generate_constraint
-                // check_sat
-                unimplemented!()
-            }
+            None => Err(self.is_cex_available(clause, env).unwrap()),
         }
     }
 }
