@@ -227,13 +227,13 @@ fn rename_integer_variable<P>(
     }
 }
 
-fn infer_subtype<C>(
-    environment: &Environment<Tau<Positive, C>>,
-    arrow_type: Tau<Positive, pcsp::Atom>,
-    arg_t: Tau<Positive, pcsp::Atom>,
+fn infer_subtype<P: fmt::Debug, C>(
+    environment: &Environment<Tau<P, C>>,
+    arrow_type: Tau<P, pcsp::Atom>,
+    arg_t: Tau<P, pcsp::Atom>,
     lhs_c: &[chc::CHC<pcsp::Atom>],
     rhs_c: &[chc::CHC<pcsp::Atom>],
-) -> Result<(Tau<Positive, pcsp::Atom>, Vec<chc::CHC<pcsp::Atom>>), Error> {
+) -> Result<(Tau<P, pcsp::Atom>, Vec<chc::CHC<pcsp::Atom>>), Error> {
     debug!("infer_greatest_type: {} <: {} -> ?", arrow_type, arg_t);
     let mut new_idents = HashSet::new();
     let (rhs_c_renamed, arg_t, ret_t) = match &*arrow_type {
@@ -253,8 +253,8 @@ fn infer_subtype<C>(
         _ => panic!("program error"),
     };
     //let ret_t= generate_template(environment, ret_st);
-    let lhs: Tau<Positive, pcsp::Atom> = arrow_type;
-    let rhs: Tau<Positive, pcsp::Atom> = Tau::mk_arrow(arg_t, ret_t.clone());
+    let lhs: Tau<P, pcsp::Atom> = arrow_type;
+    let rhs: Tau<P, pcsp::Atom> = Tau::mk_arrow(arg_t, ret_t.clone());
     debug!("len lhs: {}", lhs_c.len());
     debug!("len rhs: {}", rhs_c.len());
     let mut constraints = Vec::new();
@@ -273,10 +273,13 @@ fn infer_subtype<C>(
     Ok((ret_t, c))
 }
 
-fn generate_constraint_inner<A: Conjunctive + Clone + Rename + Subst + fmt::Debug + Display>(
+fn generate_constraint_inner<
+    P: fmt::Debug,
+    A: Conjunctive + Clone + Rename + Subst + fmt::Debug + Display,
+>(
     rty: A,
-    lhs: &Tau<Positive, A>,
-    rhs: &Tau<Positive, A>,
+    lhs: &Tau<P, A>,
+    rhs: &Tau<P, A>,
     constraints: &mut Vec<pcsp::PCSP<A>>,
 ) {
     match (lhs.kind(), rhs.kind()) {
@@ -300,9 +303,12 @@ fn generate_constraint_inner<A: Conjunctive + Clone + Rename + Subst + fmt::Debu
     }
 }
 
-fn generate_constraint<A: Conjunctive + Clone + Rename + Subst + Top + fmt::Debug + Display>(
-    lhs: &Tau<Positive, A>,
-    rhs: &Tau<Positive, A>,
+fn generate_constraint<
+    P: fmt::Debug,
+    A: Conjunctive + Clone + Rename + Subst + Top + fmt::Debug + Display,
+>(
+    lhs: &Tau<P, A>,
+    rhs: &Tau<P, A>,
     constraints: &mut Vec<pcsp::PCSP<A>>,
 ) {
     debug!("generate_constraint: {} <: {}", lhs, rhs);
@@ -432,6 +438,21 @@ impl<P, C: Top + Bot> TypeEnvironment<Tau<P, C>> {
         r
     }
 }
+impl<P> TypeEnvironment<Tau<P, Constraint>> {
+    pub fn clone_with_template<P2>(
+        &self,
+        new_idents: &mut HashSet<Ident>,
+    ) -> TypeEnvironment<Tau<P2, pcsp::Atom>> {
+        let mut env = TypeEnvironment::new();
+        for (i, ts) in self.map.iter() {
+            for t in ts {
+                let st = t.clone_with_template(IntegerEnvironment::new(), new_idents);
+                env.add(*i, st);
+            }
+        }
+        env
+    }
+}
 
 pub struct Environment<Ty> {
     // Assumption: all variables are alpha-renamed.
@@ -525,12 +546,12 @@ fn int_expr<'a, P, C: Top + Bot + Subst + Rename>(
     }
 }
 
-fn type_check_atom<'a, C: Top + Bot + Rename + Subst>(
+pub fn type_check_atom<'a, P: fmt::Debug, C: Top + Bot + Rename + Subst>(
     atom: &Atom,
-    env: &Environment<Tau<Positive, C>>,
-) -> Result<Vec<(Tau<Positive, pcsp::Atom>, Vec<chc::CHC<pcsp::Atom>>)>, Error>
+    env: &Environment<Tau<P, C>>,
+) -> Result<Vec<(Tau<P, pcsp::Atom>, Vec<chc::CHC<pcsp::Atom>>)>, Error>
 where
-    Tau<Positive, C>: Into<Tau<Positive, pcsp::Atom>>,
+    Tau<P, C>: Into<Tau<P, pcsp::Atom>>,
 {
     //debug!("type_check_atom: {}", atom);
     use AtomKind::*;
@@ -599,15 +620,6 @@ pub fn type_check_goal<'a>(
             for (t, constraints) in ts {
                 let mut targets = HashSet::new();
                 t.fv_with_vec(&mut targets);
-                // if fvs.len() > 1 {
-                //     return Err(Error::TypeError);
-                // }
-                // if fvs.len() == 0 {
-                //     return match t.kind() {
-                //         TauKind::Proposition(c) => Ok(c.to_constraint().unwrap()),
-                //         TauKind::IArrow(_, _) | TauKind::Arrow(_, _) => panic!("program error"),
-                //     };
-                // }
                 match t.kind() {
                     TauKind::Proposition(_) => {
                         let c = chc::resolve_target(constraints, &targets).unwrap();

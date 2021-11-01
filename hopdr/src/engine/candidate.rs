@@ -2,10 +2,14 @@ use std::collections::HashSet;
 
 use super::rtype;
 use super::rtype::Environment;
+use crate::formula::chc;
 use crate::formula::fofml;
 use crate::formula::hes;
+use crate::formula::hes::{Goal, GoalKind};
 use crate::formula::pcsp;
-use crate::formula::{Conjunctive, Constraint, IntegerEnvironment, Rename};
+use crate::formula::{
+    Bot, Conjunctive, Constraint, Fv, IntegerEnvironment, QuantifierKind, Rename,
+};
 
 #[derive(Debug)]
 pub struct Negative {}
@@ -92,7 +96,63 @@ impl Sty {
         let fml = fofml::Atom::mk_conj(fml, fml2);
         match fml.check_satisfiability() {
             Some(model) => Ok(ty.assign(&model)),
-            None => unimplemented!(),
+            None => {
+                let mut new_idents = HashSet::new();
+                let _template_env: rtype::TypeEnvironment<rtype::Tau<Negative, pcsp::Atom>> =
+                    env.clone_with_template(&mut new_idents);
+                // generate_constraint
+                // check_sat
+                unimplemented!()
+            }
         }
     }
+}
+
+pub fn type_check_goal<'a>(
+    goal: &Goal,
+    tenv: &mut Environment<rtype::Tau<Negative, pcsp::Atom>>,
+) -> Result<pcsp::Atom, rtype::Error> {
+    debug!("type_check_goal start: {}", goal);
+    let f = type_check_goal;
+    use rtype::{type_check_atom, TauKind};
+    use GoalKind::*;
+    let r = match goal.kind() {
+        Atom(atom) => {
+            let ts = type_check_atom(atom, tenv)?;
+            for (t, constraints) in ts.iter() {
+                debug!("- type: {}", t);
+                for c in constraints.iter() {
+                    debug!("-- constraint: {}", c)
+                }
+            }
+
+            // TODO: here calculate greatest type
+            let mut ret_constr = pcsp::Atom::mk_false();
+            for (t, constraints) in ts {
+                let mut targets = HashSet::new();
+                t.fv_with_vec(&mut targets);
+                match t.kind() {
+                    TauKind::Proposition(_) => {
+                        let c = chc::resolve_target(constraints, &targets).unwrap();
+                        debug!("final constraint: {}", c);
+                        ret_constr = pcsp::Atom::mk_disj(ret_constr, c.clone());
+                    }
+                    _ => panic!("program error. The result type of atom must be prop."),
+                }
+            }
+            ret_constr
+        }
+        Constr(c) => c.clone().negate().unwrap().into(),
+        Conj(x, y) => pcsp::Atom::mk_disj(f(x, tenv)?, f(y, tenv)?),
+        Disj(x, y) => pcsp::Atom::mk_conj(f(x, tenv)?, f(y, tenv)?),
+        Univ(v, x) => {
+            if v.ty.is_int() {
+                pcsp::Atom::mk_quantifier(QuantifierKind::Existential, v.id, f(x, tenv)?)
+            } else {
+                unimplemented!()
+            }
+        }
+    };
+    debug!("type_check_goal: {} has type {} ", goal, r);
+    Ok(r)
 }
