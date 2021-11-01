@@ -525,6 +525,9 @@ impl Variable {
         let id = Ident::fresh();
         Variable::new(VariableS { id, ty })
     }
+    pub fn fresh_prop() -> Variable {
+        Variable::fresh(Type::mk_type_prop())
+    }
 }
 
 #[derive(Clone, Debug)]

@@ -168,9 +168,9 @@ impl<'a> HoPDR<'a> {
 
     fn candidate(&mut self) {
         let top_false = Sty::mk_prop_ty(Constraint::mk_true());
-        let candidates = match top_false.is_refutable_top(&self.problem.top, self.top_env()) {
-            Ok(_) => panic!("program error"),
-            Err(c) => c.to_candidates(),
+        let candidates = match top_false.is_cex_available_top(&self.problem.top, self.top_env()) {
+            Some(c) => c.to_candidates(),
+            None => panic!("program error"),
         };
         self.models.add_root_children(&candidates);
     }

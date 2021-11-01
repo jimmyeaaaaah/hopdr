@@ -156,4 +156,9 @@ impl Clause {
     pub fn new(body: Goal, head: Variable, args: Vec<Ident>) -> Clause {
         Clause { body, head, args }
     }
+    pub fn new_top_clause(body: Goal) -> Clause {
+        let head = Variable::fresh_prop();
+        let args = Vec::new();
+        Clause { body, head, args }
+    }
 }

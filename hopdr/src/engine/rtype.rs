@@ -384,7 +384,7 @@ pub struct TypeEnvironment<Type> {
 
 pub type PosEnvironment = TypeEnvironment<Ty>;
 
-impl Clone for PosEnvironment {
+impl<T: Clone> Clone for TypeEnvironment<T> {
     fn clone(&self) -> Self {
         Self {
             map: self.map.clone(),

@@ -65,11 +65,11 @@ fn types(
 }
 
 fn types_negative(
-    env: rtype::TypeEnvironment<rtype::Tau<Negative, pcsp::Atom>>,
+    env: &rtype::TypeEnvironment<rtype::Tau<Negative, pcsp::Atom>>,
     cl: &hes::Clause,
     sty: rtype::Tau<Negative, pcsp::Atom>,
 ) -> fofml::Atom {
-    let mut env = Environment::from_type_environment(env);
+    let mut env = Environment::from_type_environment(env.clone());
     let t = env.add_arg_types(&cl.args, sty);
     let c = match t.kind() {
         rtype::TauKind::Proposition(c) => c,
@@ -102,6 +102,21 @@ fn env_consistent(
 }
 
 impl Sty {
+    pub fn is_cex_available_top(
+        &self,
+        g: &hes::Goal,
+        env: &rtype::PosEnvironment,
+    ) -> Option<NegEnvironment> {
+        // assert if self is prop sty
+        match self.kind() {
+            rtype::TauKind::Proposition(c) => (),
+            rtype::TauKind::IArrow(_, _) | rtype::TauKind::Arrow(_, _) => panic!("program error"),
+        };
+        let dummy_clause = hes::Clause::new_top_clause(g.clone());
+        self.is_cex_available(&dummy_clause, env)
+    }
+
+    /// returns Some(Δ) s.t. Δ |- clause: self iff cex is avalable
     pub fn is_cex_available(
         &self,
         clause: &hes::Clause,
@@ -112,11 +127,19 @@ impl Sty {
             env.clone_with_template(&mut new_idents);
         // generate_constraint
         let fml2 = env_consistent(env, &template_env);
-        let fml = types_negative(template_env, clause, self.clone().into());
+        let fml = types_negative(&template_env, clause, self.clone().into());
         let fml = fofml::Atom::mk_conj(fml, fml2);
         // check_sat
         match fml.check_satisfiability() {
-            Some(model) => unimplemented!(),
+            Some(model) => {
+                let mut result_env = rtype::TypeEnvironment::new();
+                for (i, v) in template_env.map {
+                    for x in v {
+                        result_env.add(i, x.assign(&model));
+                    }
+                }
+                Some(result_env)
+            }
             None => None,
         }
     }
@@ -125,20 +148,12 @@ impl Sty {
         g: &hes::Goal,
         env: &rtype::PosEnvironment,
     ) -> Result<rtype::Ty, NegEnvironment> {
-        let cnstr = match self.kind() {
-            rtype::TauKind::Proposition(c) => c.clone(),
+        match self.kind() {
+            rtype::TauKind::Proposition(c) => (),
             rtype::TauKind::IArrow(_, _) | rtype::TauKind::Arrow(_, _) => panic!("program error"),
         };
-
-        let mut new_idents = HashSet::new();
-        let ty = self.clone_with_template(IntegerEnvironment::new(), &mut new_idents);
-        let fml = consistent(&self.clone().into(), &ty);
-        let fml2 = types_top(env, g, cnstr);
-        let fml = fofml::Atom::mk_conj(fml, fml2);
-        match fml.check_satisfiability() {
-            Some(model) => Ok(ty.assign(&model)),
-            None => unimplemented!(), //Err(self.is_cex_available(clause, env).unwrap()),
-        }
+        let dummy_clause = hes::Clause::new_top_clause(g.clone());
+        self.is_refutable(&dummy_clause, env)
     }
     /// returns Ok(positive type) when this candidate is refutable
     /// otherwise, Err(NegEnvironmet) where NegEnvironment is a negative type environment Δ
