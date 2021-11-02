@@ -94,7 +94,7 @@ impl Atom {
             AtomKind::Predicate(_, _) | AtomKind::Quantifier(_, _, _) => None,
         }
     }
-    pub fn mk_disj(x: Self, y: Self) -> Atom {
+    pub fn mk_conj(x: Self, y: Self) -> Atom {
         use AtomKind::*;
         match (&*x, &*y) {
             (True, _) => y.clone(),
@@ -102,7 +102,7 @@ impl Atom {
             _ => Atom::new(Conj(x.clone(), y.clone())),
         }
     }
-    pub fn mk_conj(x: Self, y: Self) -> Atom {
+    pub fn mk_disj(x: Self, y: Self) -> Atom {
         use AtomKind::*;
         // TODO: trivial optimization
         Atom::new(Disj(x, y))

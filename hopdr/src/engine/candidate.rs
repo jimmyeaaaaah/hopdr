@@ -172,7 +172,7 @@ pub fn type_check_goal<'a>(
     goal: &Goal,
     tenv: &mut Environment<rtype::Tau<Negative, pcsp::Atom>>,
 ) -> Result<pcsp::Atom, rtype::Error> {
-    debug!("type_check_goal start: {}", goal);
+    debug!("type_check_goal(negative) start: {}", goal);
     let f = type_check_goal;
     use rtype::{type_check_atom, TauKind};
     use GoalKind::*;
