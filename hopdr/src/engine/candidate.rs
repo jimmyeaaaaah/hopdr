@@ -41,13 +41,6 @@ fn consistent(
     }
 }
 
-fn types_top(env: &rtype::PosEnvironment, g: &hes::Goal, rty: Constraint) -> fofml::Atom {
-    let mut env = Environment::from_type_environment(env.into());
-    let c2 = rtype::type_check_goal(g, &mut env).unwrap();
-    let p = pcsp::PCSP::new(rty.into(), c2);
-    p.into()
-}
-
 fn types(
     env: &rtype::PosEnvironment,
     cl: &hes::Clause,
@@ -109,7 +102,7 @@ impl Sty {
     ) -> Option<NegEnvironment> {
         // assert if self is prop sty
         match self.kind() {
-            rtype::TauKind::Proposition(c) => (),
+            rtype::TauKind::Proposition(_) => (),
             rtype::TauKind::IArrow(_, _) | rtype::TauKind::Arrow(_, _) => panic!("program error"),
         };
         let dummy_clause = hes::Clause::new_top_clause(g.clone());
@@ -149,7 +142,7 @@ impl Sty {
         env: &rtype::PosEnvironment,
     ) -> Result<rtype::Ty, NegEnvironment> {
         match self.kind() {
-            rtype::TauKind::Proposition(c) => (),
+            rtype::TauKind::Proposition(_) => (),
             rtype::TauKind::IArrow(_, _) | rtype::TauKind::Arrow(_, _) => panic!("program error"),
         };
         let dummy_clause = hes::Clause::new_top_clause(g.clone());

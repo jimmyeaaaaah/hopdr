@@ -95,12 +95,13 @@ fn type_check_1() {
 
     for (fml, ty) in vc.clauses.iter().zip(types.iter()) {
         let env = (&env).into();
-        println!(
-            "{}:{}\n -> {:?}",
-            fml,
-            ty.clone(),
-            engine::rtype::type_check_clause(fml, ty.clone(), env)
-        );
+        assert!(engine::rtype::type_check_clause(fml, ty.clone(), env).is_ok());
+        //println!(
+        //"{}:{}\n -> {:?}",
+        //fml,
+        //ty.clone(),
+        //engine::rtype::type_check_clause(fml, ty.clone(), env)
+        //);
     }
 }
 
