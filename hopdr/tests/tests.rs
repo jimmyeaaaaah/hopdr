@@ -1,29 +1,17 @@
-extern crate lazy_static;
-#[macro_use]
-extern crate log;
+extern crate hopdr;
 
-pub mod engine;
-pub mod formula;
-pub mod parse;
-pub mod preprocess;
-pub mod solver;
-pub mod util;
-
-use engine::infer;
-
+use hopdr::*;
 use nom::error::VerboseError;
 
-fn main() {
-    env_logger::init();
-    // RUST_LOG=info (trace, debug, etc..)
-    debug!("starting up");
+#[test]
+fn type_check_1() {
     let (_, f) = parse::parse::<VerboseError<&str>>(
         "
-        S n k = (n > 0 | k 0) & (n <= 0 | S (n - 1) (L n k));
-        K m n = m <= n;
-        L n k m = k (n + m);
-        M = S 1 (K 1);
-         ",
+		S n k = (n > 0 | k 0) & (n <= 0 | S (n - 1) (L n k));
+		K m n = m <= n;
+		L n k m = k (n + m);
+		M = S 1 (K 1);
+		 ",
     )
     .unwrap();
 
@@ -114,35 +102,18 @@ fn main() {
             engine::rtype::type_check_clause(fml, ty.clone(), env)
         );
     }
-
-    main2();
-
-    println!("{}", infer(vc));
-    //use engine::*;
-    //use formula::{Variable, Ident, Constraint, PredKind, Op};
-    //// S n k = (n != 0 \/ k m) /\ (n = 0 | S (n - 1) k)
-
-    //let n = Variable::mk(Ident::fresh(), Type::mk_type_int());
-    //let k = Variable::mk(Ident::fresh(), Type::mk_type_arrow(Type::mk_type_int(), Type::mk_type_prop()));
-
-    //let expr_1 = Goal::mk_constr(Constraint::mk_pred(PredKind::Neq, vec![Op::mk_var(n.id()), Op::mk_const(0)]));
-    //let expr_2 = Goal::mk_constr(Constraint::mk_atom)
-
-    //let args = vec![n, k];
-    //let s = Ident::fresh();
-
-    //let clause = engine::Clause::new()
 }
 
-fn main2() {
+#[test]
+fn type_check_2() {
     let (_, f) = parse::parse::<VerboseError<&str>>(
         "
-        X n f = f n & X (n + 1) f;
-        Y n f = f n & X (n - 1) f;
-        E n = n != 0;
-        Z x = X x E | Y (0 - x) E;
-        M = Z 1;
-         ",
+	    X n f = f n & X (n + 1) f;
+	    Y n f = f n & X (n - 1) f;
+	    E n = n != 0;
+	    Z x = X x E | Y (0 - x) E;
+	    M = Z 1;
+	     ",
     )
     .unwrap();
     match &f {

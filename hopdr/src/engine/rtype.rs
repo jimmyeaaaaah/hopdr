@@ -555,6 +555,7 @@ where
 {
     //debug!("type_check_atom: {}", atom);
     use AtomKind::*;
+    debug!("type_check_atom: {}", atom);
     let r = match atom.kind() {
         App(x, arg) => {
             let ie = int_expr(arg, env);

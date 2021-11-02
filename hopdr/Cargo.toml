@@ -4,6 +4,15 @@ version = "0.1.0"
 authors = ["moratorium08 <moratorium08@gmail.com>"]
 edition = "2018"
 
+[[bin]]
+name = "hopdr"
+path = "src/bin/main.rs"
+doc = false
+
+[lib]
+name = "hopdr"
+path = "src/lib.rs"
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]

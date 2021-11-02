@@ -167,6 +167,7 @@ impl<'a> HoPDR<'a> {
     }
 
     fn candidate(&mut self) {
+        debug!("candidate");
         let top_false = Sty::mk_prop_ty(Constraint::mk_true());
         let candidates = match top_false.is_cex_available_top(&self.problem.top, self.top_env()) {
             Some(c) => c.to_candidates(),
@@ -199,6 +200,7 @@ impl<'a> HoPDR<'a> {
     }
 
     fn check_valid(&mut self) -> bool {
+        debug!("check_valid");
         // rtype::type_check_clause(fml, ty.clone(), &mut env);
         // println!("{}:{}\n -> {:?}", fml, ty.clone(), );
         let result = rtype::type_check_top(&self.problem.top, self.top_env().into());
