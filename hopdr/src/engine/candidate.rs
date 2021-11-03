@@ -207,12 +207,13 @@ pub fn type_check_goal<'a>(
         Disj(x, y) => pcsp::Atom::mk_conj(f(x, tenv)?, f(y, tenv)?),
         Univ(v, x) => {
             if v.ty.is_int() {
+                tenv.iadd(v.id);
                 pcsp::Atom::mk_quantifier(QuantifierKind::Existential, v.id, f(x, tenv)?)
             } else {
                 unimplemented!()
             }
         }
     };
-    debug!("type_check_goal: {} has type {} ", goal, r);
+    debug!("type_check_goal(negative): {} has type {} ", goal, r);
     Ok(r)
 }
