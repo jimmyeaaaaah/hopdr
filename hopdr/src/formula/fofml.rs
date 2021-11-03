@@ -57,8 +57,14 @@ impl Atom {
     pub fn mk_pred(p: Ident, l: Vec<Ident>) -> Atom {
         Atom::new(AtomKind::Predicate(p, l))
     }
+    fn mk_quantifier(q: QuantifierKind, x: Ident, c: Atom) -> Atom {
+        Atom::new(AtomKind::Quantifier(q, x, c))
+    }
     pub fn mk_univq(x: Ident, c: Atom) -> Atom {
-        Atom::new(AtomKind::Quantifier(QuantifierKind::Universal, x, c))
+        Atom::mk_quantifier(QuantifierKind::Universal, x, c)
+    }
+    pub fn mk_existq(x: Ident, c: Atom) -> Atom {
+        Atom::mk_quantifier(QuantifierKind::Existential, x, c)
     }
 }
 
@@ -101,6 +107,9 @@ impl From<pcsp::Atom> for Atom {
             pcsp::AtomKind::Disj(x, y) => Atom::mk_disj(x.clone().into(), y.clone().into()),
             pcsp::AtomKind::Quantifier(q, x, c) if *q == QuantifierKind::Universal => {
                 Atom::mk_univq(*x, c.clone().into())
+            }
+            pcsp::AtomKind::Quantifier(q, x, c) if *q == QuantifierKind::Existential => {
+                Atom::mk_existq(*x, c.clone().into())
             }
             pcsp::AtomKind::Quantifier(_q, _x, _c) => panic!("fail"),
         }
