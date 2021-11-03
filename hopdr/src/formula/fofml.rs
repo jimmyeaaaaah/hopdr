@@ -46,35 +46,54 @@ pub struct Template {
 }
 
 impl Template {
-    fn new(id: Ident, nargs: u64) -> Template {
-        unimplemented!()
+    fn new(id: Ident, nargs: usize) -> Template {
+        let mut coef_linear = Vec::new();
+        for _ in 0..nargs {
+            coef_linear.push(Ident::fresh());
+        }
+        Template { id, coef_linear }
+    }
+
+    fn apply(&self, args: &[Ident]) -> Constraint {
+        use crate::formula::{Op, OpKind, PredKind};
+        let mut c = Constraint::mk_false();
+
+        fn gen_linear_sum(coefs: &[Ident], args: &[Ident]) -> Op {
+            if args.len() > 0 {
+                let mut cur = Op::mk_var(args[0]);
+                for (id, coef) in args[1..].iter().zip(coefs[1..].iter()) {
+                    let id = Op::mk_var(*id);
+                    let coef = Op::mk_var(*coef);
+                    let term = Op::mk_bin_op(OpKind::Mul, coef, id);
+                    cur = Op::mk_bin_op(OpKind::Add, cur, term)
+                }
+                cur
+            } else {
+                Op::mk_const(0)
+            }
+        }
+        let o = gen_linear_sum(&self.coef_linear, args);
+        c = Constraint::mk_pred(PredKind::Eq, vec![o, Op::mk_const(0)]);
+        c
     }
 }
 
 impl Atom {
-    fn replace_by_template(
-        &self,
-        coefs: &mut Vec<Ident>,
-        map: &mut HashMap<Ident, Template>,
-    ) -> Constraint {
+    fn replace_by_template(&self, map: &HashMap<Ident, Template>) -> Constraint {
         match self.kind() {
             AtomKind::True => Constraint::mk_true(),
             AtomKind::Constraint(c) => c.clone(),
-            AtomKind::Conj(x, y) => Constraint::mk_conj(
-                x.replace_by_template(coefs, map),
-                y.replace_by_template(coefs, map),
-            ),
-            AtomKind::Disj(x, y) => Constraint::mk_disj(
-                x.replace_by_template(coefs, map),
-                y.replace_by_template(coefs, map),
-            ),
-            AtomKind::Not(c) => c.replace_by_template(coefs, map).negate().unwrap(),
+            AtomKind::Conj(x, y) => {
+                Constraint::mk_conj(x.replace_by_template(map), y.replace_by_template(map))
+            }
+            AtomKind::Disj(x, y) => {
+                Constraint::mk_disj(x.replace_by_template(map), y.replace_by_template(map))
+            }
+            AtomKind::Not(c) => c.replace_by_template(map).negate().unwrap(),
             AtomKind::Quantifier(q, v, x) => {
-                Constraint::mk_quantifier_int(*q, *v, x.replace_by_template(coefs, map))
+                Constraint::mk_quantifier_int(*q, *v, x.replace_by_template(map))
             }
-            AtomKind::Predicate(p, l) => {
-                unimplemented!()
-            }
+            AtomKind::Predicate(p, l) => map.get(p).unwrap().apply(l),
         }
     }
     /// check the satisfiability of the given fofml formula
@@ -82,6 +101,17 @@ impl Atom {
         &self,
         map: &HashMap<Ident, pcsp::Predicate>,
     ) -> Option<HashMap<Ident, (Vec<Ident>, Constraint)>> {
+        let mut templates = HashMap::new();
+        for predicate in map.values() {
+            templates.insert(
+                predicate.id,
+                Template::new(predicate.id, predicate.args.len()),
+            );
+        }
+        let c = self.replace_by_template(&templates);
+        // check satisfiability of c
+        // get model
+        // generate map predicate -> constraints
         unimplemented!()
     }
     pub fn mk_disj(x: Self, y: Self) -> Atom {
