@@ -5,6 +5,7 @@ use super::VerificationResult;
 use crate::formula::hes::Problem;
 use crate::formula::{hes, Ident};
 use crate::formula::{Constraint, Top};
+use crate::util::dprintln;
 use std::collections::HashMap;
 
 use std::unimplemented;
@@ -26,6 +27,9 @@ pub enum PDRResult {
     Valid,
     Invalid,
 }
+
+pub const NOLOG: u64 = 0;
+pub const DEBUG: u64 = 1;
 
 type NodeID = u64;
 
@@ -52,6 +56,10 @@ impl CandidateTree {
             levels: HashMap::new(),
             children: HashMap::new(),
         }
+    }
+
+    fn size(&self) -> usize {
+        self.labels.len()
     }
 
     fn get_new_id(&mut self) -> NodeID {
@@ -111,10 +119,12 @@ struct CandidateNode {
     label: Candidate,
 }
 
-struct HoPDR<'a> {
+pub struct HoPDR<'a> {
     models: CandidateTree,
     envs: Vec<PosEnvironment>,
     problem: &'a Problem,
+    loop_cnt: u64,
+    verbose: u64,
 }
 
 enum RefuteOrCex<A, B> {
@@ -151,6 +161,17 @@ fn handle_type_check(result: Result<(), rtype::Error>) -> bool {
 }
 
 impl<'a> HoPDR<'a> {
+    #[allow(dead_code)]
+    fn dump_state(&self) {
+        println!("[PDR STATE]");
+        println!("- current loop: {}", self.loop_cnt);
+        println!("- size of env: {}", self.envs.len());
+        println!("- size of model: {}", self.models.size());
+        for (level, e) in self.envs.iter().enumerate() {
+            println!("Level {}", level);
+            println!("{}", e);
+        }
+    }
     // generates a candidate
     // Assumption: self.check_valid() == false
     fn is_refutable(&self, candidate: &Candidate) -> RefuteOrCex<rtype::Ty, Vec<Candidate>> {
@@ -194,9 +215,15 @@ impl<'a> HoPDR<'a> {
             models: CandidateTree::empty(),
             envs: Vec::new(),
             problem,
+            loop_cnt: 0,
+            verbose: 0,
         };
         hopdr.initialize();
         hopdr
+    }
+
+    pub fn set_verbosity_level(&mut self, v: u64) {
+        self.verbose = v;
     }
 
     fn check_valid(&mut self) -> bool {
@@ -204,6 +231,7 @@ impl<'a> HoPDR<'a> {
         // rtype::type_check_clause(fml, ty.clone(), &mut env);
         // println!("{}:{}\n -> {:?}", fml, ty.clone(), );
         let result = rtype::type_check_top(&self.problem.top, self.top_env().into());
+        debug!("check_valid: {:?}", result);
         handle_type_check(result)
     }
 
@@ -217,6 +245,7 @@ impl<'a> HoPDR<'a> {
             for ty in tys {
                 let result = rtype::type_check_clause(clause, ty.clone(), env.into());
                 if !handle_type_check(result) {
+                    debug!("not inductive");
                     return false;
                 }
             }
@@ -233,12 +262,14 @@ impl<'a> HoPDR<'a> {
     }
 
     fn valid(&mut self) -> PDRResult {
-        dbg!("PDR valid");
+        debug!("PDR valid");
+        dprintln!(self.verbose, DEBUG, "[PDR]valid");
         PDRResult::Valid
     }
 
     fn invalid(&mut self) -> PDRResult {
-        dbg!("PDR invalid");
+        debug!("PDR invalid");
+        dprintln!(self.verbose, DEBUG, "[PDR]invalid");
         PDRResult::Invalid
     }
 
@@ -272,7 +303,10 @@ impl<'a> HoPDR<'a> {
     }
 
     fn run(&mut self) -> PDRResult {
+        dprintln!(self.verbose, DEBUG, "[PDR] target formula");
+        dprintln!(self.verbose, DEBUG, "{}", self.problem);
         loop {
+            self.dump_state();
             if !self.check_valid() {
                 self.candidate();
                 if self.check_feasible() {
@@ -283,12 +317,17 @@ impl<'a> HoPDR<'a> {
             } else {
                 self.unfold()
             }
+            use std::{thread, time};
+            let asec = time::Duration::from_secs(1);
+            thread::sleep(asec);
         }
     }
 }
 
 pub fn infer(problem: Problem) -> VerificationResult {
     let mut pdr = HoPDR::new(&problem);
+    pdr.set_verbosity_level(DEBUG);
     pdr.run();
+
     unimplemented!()
 }

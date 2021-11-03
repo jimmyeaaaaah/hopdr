@@ -42,12 +42,7 @@ impl Atom {
         unimplemented!()
     }
     pub fn mk_disj(x: Self, y: Self) -> Atom {
-        use AtomKind::*;
-        match (&*x, &*y) {
-            (True, _) => y.clone(),
-            (_, True) => x.clone(),
-            _ => Atom::new(Conj(x.clone(), y.clone())),
-        }
+        Atom::new(AtomKind::Disj(x.clone(), y.clone()))
     }
     pub fn mk_false() -> Atom {
         Atom::mk_constraint(Constraint::mk_false())

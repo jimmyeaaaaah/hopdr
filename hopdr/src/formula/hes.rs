@@ -152,6 +152,16 @@ pub struct Problem {
     pub top: Goal,
 }
 
+impl fmt::Display for Problem {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        writeln!(f, "toplevel: {}", &self.top)?;
+        for c in self.clauses.iter() {
+            writeln!(f, "- {}", c)?;
+        }
+        fmt::Result::Ok(())
+    }
+}
+
 impl Clause {
     pub fn new(body: Goal, head: Variable, args: Vec<Ident>) -> Clause {
         Clause { body, head, args }

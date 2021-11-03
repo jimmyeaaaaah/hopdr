@@ -7,7 +7,11 @@ use hopdr::*;
 use nom::error::VerboseError;
 
 fn main() {
-    env_logger::init();
+    env_logger::builder()
+        .format_timestamp(None)
+        .format_module_path(false)
+        .format_level(false)
+        .init();
     // RUST_LOG=info (trace, debug, etc..)
     println!("starting PDR...");
     let (_, f) = parse::parse::<VerboseError<&str>>(

@@ -140,10 +140,6 @@ impl CHC<pcsp::Atom> {
         let mut result = pcsp::Atom::mk_true();
         for body in bodies.iter() {
             // 2. check
-            debug!("bodies:");
-            for body in body.iter() {
-                debug!("body: {}", body);
-            }
             let mut preds = body
                 .iter()
                 .filter_map(|x| match x {
@@ -350,9 +346,9 @@ pub fn solve_by_resolution(
         goals = goals.into_iter().map(|g| g.replace(&target)).collect();
         defs = defs.into_iter().map(|g| g.replace(&target)).collect();
     }
-    for c in goals.iter() {
-        debug!("- constraint: {}", c)
-    }
+    // for c in goals.iter() {
+    //     debug!("- constraint: {}", c)
+    // }
 
     // subst をするべきで、
     unimplemented!()
@@ -383,16 +379,16 @@ pub fn simplify(
             }
         }
     }
-    for c in goals.iter() {
-        debug!("- constraint: {}", c);
-    }
-    for (_, c) in defs.iter() {
-        debug!("- constraint: {}", c);
-    }
-    for (_, c) in defs_l.iter() {
-        debug!("- constraint: {}", c);
-    }
-    debug!("-------");
+    // for c in goals.iter() {
+    //     debug!("- constraint: {}", c);
+    // }
+    // for (_, c) in defs.iter() {
+    //     debug!("- constraint: {}", c);
+    // }
+    // for (_, c) in defs_l.iter() {
+    //     debug!("- constraint: {}", c);
+    // }
+    // debug!("-------");
     let mut defs = Vec::from_iter(defs.into_iter().map(|(_, x)| x));
     let mut defs_l = Vec::from_iter(defs_l.into_iter().map(|(_, x)| x));
     while !defs.is_empty() {
@@ -406,9 +402,9 @@ pub fn simplify(
     for def in defs_l {
         goals.push(def);
     }
-    for c in goals.iter() {
-        debug!("- constraint: {}", c)
-    }
+    // for c in goals.iter() {
+    //     debug!("- constraint: {}", c)
+    // }
     Ok(goals)
 }
 

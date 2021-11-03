@@ -31,7 +31,7 @@ impl fmt::Display for Atom {
                 write!(f, ")")
             }
             AtomKind::Conj(x, y) => write!(f, "({} & {})", x, y),
-            AtomKind::Disj(x, y) => write!(f, "({} & {})", x, y),
+            AtomKind::Disj(x, y) => write!(f, "({} | {})", x, y),
             AtomKind::Quantifier(q, x, c) => write!(f, "{} {}. {}", q, x, c),
         }
     }

@@ -6,9 +6,7 @@ use std::time::Duration;
 
 pub fn save_to_file(s: String) -> NamedTempFile {
     let mut tf = NamedTempFile::new().unwrap();
-    debug!("data");
-    debug!("{}", &s);
-    debug!("data end");
+    // debug!("{}", &s);
     write!(tf, "{}", s).unwrap();
     tf
 }

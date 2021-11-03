@@ -234,7 +234,7 @@ fn infer_subtype<P: fmt::Debug, C>(
     lhs_c: &[chc::CHC<pcsp::Atom>],
     rhs_c: &[chc::CHC<pcsp::Atom>],
 ) -> Result<(Tau<P, pcsp::Atom>, Vec<chc::CHC<pcsp::Atom>>), Error> {
-    debug!("infer_greatest_type: {} <: {} -> ?", arrow_type, arg_t);
+    // debug!("infer_greatest_type: {} <: {} -> ?", arrow_type, arg_t);
     let mut new_idents = HashSet::new();
     let (rhs_c_renamed, arg_t, ret_t) = match &*arrow_type {
         TauKind::Arrow(arg_t2, y) => {
@@ -255,11 +255,8 @@ fn infer_subtype<P: fmt::Debug, C>(
     //let ret_t= generate_template(environment, ret_st);
     let lhs: Tau<P, pcsp::Atom> = arrow_type;
     let rhs: Tau<P, pcsp::Atom> = Tau::mk_arrow(arg_t, ret_t.clone());
-    debug!("len lhs: {}", lhs_c.len());
-    debug!("len rhs: {}", rhs_c.len());
     let mut constraints = Vec::new();
     generate_constraint(&lhs, &rhs, &mut constraints);
-    debug!("len2: {}", constraints.len());
 
     //let (t, c) = infer_greatest_type_inner(ret_t, Constraint::mk_true(), true);
     // check environment; c |- arg_t < arg_t2
@@ -311,7 +308,7 @@ fn generate_constraint<
     rhs: &Tau<P, A>,
     constraints: &mut Vec<pcsp::PCSP<A>>,
 ) {
-    debug!("generate_constraint: {} <: {}", lhs, rhs);
+    // debug!("generate_constraint: {} <: {}", lhs, rhs);
     generate_constraint_inner(A::mk_true(), lhs, rhs, constraints)
 }
 
@@ -354,10 +351,10 @@ impl<P, C: Top + Bot> TyKind<P, C> {
         match st.kind() {
             Proposition => TauKind::Proposition(C::mk_false()),
             Arrow(x, y) if **x == Integer => {
-                TauKind::IArrow(Ident::fresh(), Tau::new(TauKind::new_top(y)))
+                TauKind::IArrow(Ident::fresh(), Tau::new(TauKind::new_bot(y)))
             }
             Arrow(x, y) => {
-                TauKind::Arrow(Tau::new(TauKind::new_top(x)), Tau::new(TauKind::new_top(y)))
+                TauKind::Arrow(Tau::new(TauKind::new_top(x)), Tau::new(TauKind::new_bot(y)))
             }
             Integer => panic!("integer occurs at the result position"),
         }
@@ -392,6 +389,25 @@ impl<T: Clone> Clone for TypeEnvironment<T> {
     }
 }
 
+impl<T: Display> Display for TypeEnvironment<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for (idx, ts) in self.map.iter() {
+            write!(f, "{} : ", idx)?;
+            let mut fst = true;
+            for t in ts {
+                if fst {
+                    fst = false;
+                } else {
+                    write!(f, ", ")?;
+                }
+                write!(f, "{}", t)?;
+            }
+            writeln!(f)?;
+        }
+        writeln!(f)
+    }
+}
+
 impl<P, C: Top + Bot> TypeEnvironment<Tau<P, C>> {
     pub fn new() -> TypeEnvironment<Tau<P, C>> {
         TypeEnvironment {
@@ -423,7 +439,6 @@ impl<P, C: Top + Bot> TypeEnvironment<Tau<P, C>> {
     }
 
     pub fn get<'a>(&'a self, v: &Ident) -> Option<&'a Vec<Tau<P, C>>> {
-        debug!("tget: {}", v);
         let r = self.map.get(v);
         match r {
             Some(v) => {
@@ -508,7 +523,6 @@ impl<P, C: Top + Bot + Subst + Rename> Environment<Tau<P, C>> {
     }
 
     pub fn tget<'a>(&'a self, v: &Ident) -> Option<&'a Vec<Tau<P, C>>> {
-        debug!("tget: {}", v);
         self.map.get(v)
     }
 
@@ -553,7 +567,6 @@ pub fn type_check_atom<'a, P: fmt::Debug, C: Top + Bot + Rename + Subst>(
 where
     Tau<P, C>: Into<Tau<P, pcsp::Atom>>,
 {
-    //debug!("type_check_atom: {}", atom);
     use AtomKind::*;
     debug!("type_check_atom: {}", atom);
     let r = match atom.kind() {
@@ -592,7 +605,7 @@ where
             .map(|x| (x.into(), Vec::new()))
             .collect(),
     };
-    //debug!("type_check_atom cont: {}", atom);
+    debug!("type_check_atom cont: {}", atom);
     for (v, _) in r.iter() {
         debug!("type_check_atom cont ty: {}", v);
     }
@@ -603,18 +616,18 @@ pub fn type_check_goal<'a>(
     goal: &Goal,
     tenv: &mut Environment<Tau<Positive, pcsp::Atom>>,
 ) -> Result<pcsp::Atom, Error> {
-    debug!("type_check_goal start: {}", goal);
+    //debug!("type_check_goal start: {}", goal);
     use GoalKind::*;
     let f = type_check_goal;
     let r = match goal.kind() {
         Atom(atom) => {
             let ts = type_check_atom(atom, tenv)?;
-            for (t, constraints) in ts.iter() {
-                debug!("- type: {}", t);
-                for c in constraints.iter() {
-                    debug!("-- constraint: {}", c)
-                }
-            }
+            // for (t, constraints) in ts.iter() {
+            //     debug!("- type: {}", t);
+            //     for c in constraints.iter() {
+            //         debug!("-- constraint: {}", c)
+            //     }
+            // }
 
             // TODO: here calculate greatest type
             let mut ret_constr = pcsp::Atom::mk_false();
@@ -624,7 +637,6 @@ pub fn type_check_goal<'a>(
                 match t.kind() {
                     TauKind::Proposition(_) => {
                         let c = chc::resolve_target(constraints, &targets).unwrap();
-                        debug!("final constraint: {}", c);
                         ret_constr = pcsp::Atom::mk_disj(ret_constr, c.clone());
                     }
                     _ => panic!("program error. The result type of atom must be prop."),
@@ -684,7 +696,6 @@ pub fn type_check_clause(
         .unwrap();
     let c2 = pcsp::PCSP::new(c, c2);
     let c = c2.to_constraint().unwrap().remove_quantifier();
-    debug!("constraint: {}", &c);
 
     check_smt(&c)
 }
