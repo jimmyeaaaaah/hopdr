@@ -68,12 +68,16 @@ impl<P, C> Tau<P, C> {
     pub fn clone_with_template<Positivity>(
         &self,
         env: IntegerEnvironment,
-        new_idents: &mut HashSet<Ident>,
+        new_idents: &mut HashMap<Ident, pcsp::Predicate>,
     ) -> Tau<Positivity, pcsp::Atom> {
         match self.kind() {
             TauKind::Proposition(_) => {
                 let args = env.variables();
-                let a = pcsp::Atom::fresh_pred(args, new_idents);
+                let p = pcsp::Predicate::fresh_pred(args);
+                let id = p.id;
+                let args = p.args.clone();
+                new_idents.insert(p.id, p);
+                let a = pcsp::Atom::mk_pred(id, args);
                 Tau::mk_prop_ty(a)
             }
             TauKind::IArrow(x, t) => {
@@ -235,7 +239,7 @@ fn infer_subtype<P: fmt::Debug, C>(
     rhs_c: &[chc::CHC<pcsp::Atom>],
 ) -> Result<(Tau<P, pcsp::Atom>, Vec<chc::CHC<pcsp::Atom>>), Error> {
     // debug!("infer_greatest_type: {} <: {} -> ?", arrow_type, arg_t);
-    let mut new_idents = HashSet::new();
+    let mut new_idents = HashMap::new();
     let (rhs_c_renamed, arg_t, ret_t) = match &*arrow_type {
         TauKind::Arrow(arg_t2, y) => {
             // rename rhs_c
@@ -456,7 +460,7 @@ impl<P, C: Top + Bot> TypeEnvironment<Tau<P, C>> {
 impl<P> TypeEnvironment<Tau<P, Constraint>> {
     pub fn clone_with_template<P2>(
         &self,
-        new_idents: &mut HashSet<Ident>,
+        new_idents: &mut HashMap<Ident, pcsp::Predicate>,
     ) -> TypeEnvironment<Tau<P2, pcsp::Atom>> {
         let mut env = TypeEnvironment::new();
         for (i, ts) in self.map.iter() {

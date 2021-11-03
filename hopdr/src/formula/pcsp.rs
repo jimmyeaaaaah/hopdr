@@ -18,6 +18,19 @@ pub enum AtomKind {
 }
 pub type Atom = P<AtomKind>;
 
+// TODO: replace AtomKind::Predicate(Ident, Vec<Ident>) -> AtomKind::Predicate(Predicate)
+pub struct Predicate {
+    pub id: Ident,
+    pub args: Vec<Ident>,
+}
+
+impl Predicate {
+    pub fn fresh_pred(args: Vec<Ident>) -> Predicate {
+        let id = Ident::fresh();
+        Predicate { id, args }
+    }
+}
+
 impl fmt::Display for Atom {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.kind() {
@@ -40,12 +53,6 @@ impl fmt::Display for Atom {
 impl Atom {
     pub fn mk_pred(ident: Ident, args: Vec<Ident>) -> Atom {
         Atom::new(AtomKind::Predicate(ident, args))
-    }
-    pub fn fresh_pred(args: Vec<Ident>, new_idents: &mut HashSet<Ident>) -> Atom {
-        let ident = Ident::fresh();
-        let r = new_idents.insert(ident);
-        assert!(r);
-        Atom::mk_pred(ident, args)
     }
     pub fn contains_predicate(&self) -> bool {
         match self.kind() {

@@ -357,7 +357,7 @@ pub fn simplify(
     c: &[CHC<pcsp::Atom>],
     c1: &[CHC<pcsp::Atom>],
     c2: &[CHC<pcsp::Atom>],
-    l: &HashSet<Ident>,
+    l: &HashMap<Ident, pcsp::Predicate>,
 ) -> Result<Vec<CHC<pcsp::Atom>>, ResolutionError> {
     let mut defs = HashMap::new();
     let mut defs_l = HashMap::new();
@@ -366,7 +366,7 @@ pub fn simplify(
         for clause in clauses.iter() {
             match &clause.head {
                 CHCHead::Constraint(_) => goals.push(clause.clone()),
-                CHCHead::Predicate(p, _) if l.contains(p) => {
+                CHCHead::Predicate(p, _) if l.contains_key(p) => {
                     if defs_l.insert(*p, clause.clone()).is_some() {
                         return Err(ResolutionError::CHCNotDeterministic);
                     }

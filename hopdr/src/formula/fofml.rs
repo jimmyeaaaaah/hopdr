@@ -37,8 +37,51 @@ impl fmt::Display for Atom {
     }
 }
 
+///
+/// P(x1, x2) -> a1 x1 + a2 x2 + b >= 0
+pub struct Template {
+    // information of the original predicate
+    id: Ident,
+    coef_linear: Vec<Ident>,
+}
+
+impl Template {
+    fn new(id: Ident, nargs: u64) -> Template {
+        unimplemented!()
+    }
+}
+
 impl Atom {
-    pub fn check_satisfiability(&self) -> Option<HashMap<Ident, (Vec<Ident>, Constraint)>> {
+    fn replace_by_template(
+        &self,
+        coefs: &mut Vec<Ident>,
+        map: &mut HashMap<Ident, Template>,
+    ) -> Constraint {
+        match self.kind() {
+            AtomKind::True => Constraint::mk_true(),
+            AtomKind::Constraint(c) => c.clone(),
+            AtomKind::Conj(x, y) => Constraint::mk_conj(
+                x.replace_by_template(coefs, map),
+                y.replace_by_template(coefs, map),
+            ),
+            AtomKind::Disj(x, y) => Constraint::mk_disj(
+                x.replace_by_template(coefs, map),
+                y.replace_by_template(coefs, map),
+            ),
+            AtomKind::Not(c) => c.replace_by_template(coefs, map).negate().unwrap(),
+            AtomKind::Quantifier(q, v, x) => {
+                Constraint::mk_quantifier_int(*q, *v, x.replace_by_template(coefs, map))
+            }
+            AtomKind::Predicate(p, l) => {
+                unimplemented!()
+            }
+        }
+    }
+    /// check the satisfiability of the given fofml formula
+    pub fn check_satisfiability(
+        &self,
+        map: &HashMap<Ident, pcsp::Predicate>,
+    ) -> Option<HashMap<Ident, (Vec<Ident>, Constraint)>> {
         unimplemented!()
     }
     pub fn mk_disj(x: Self, y: Self) -> Atom {

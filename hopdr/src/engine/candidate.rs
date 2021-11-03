@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::collections::HashSet;
 
 use super::rtype;
@@ -115,7 +116,7 @@ impl Sty {
         clause: &hes::Clause,
         env: &rtype::PosEnvironment,
     ) -> Option<NegEnvironment> {
-        let mut new_idents = HashSet::new();
+        let mut new_idents = HashMap::new();
         let template_env: rtype::TypeEnvironment<rtype::Tau<Negative, pcsp::Atom>> =
             env.clone_with_template(&mut new_idents);
         // generate_constraint
@@ -123,7 +124,7 @@ impl Sty {
         let fml = types_negative(&template_env, clause, self.clone().into());
         let fml = fofml::Atom::mk_conj(fml, fml2);
         // check_sat
-        match fml.check_satisfiability() {
+        match fml.check_satisfiability(&new_idents) {
             Some(model) => {
                 let mut result_env = rtype::TypeEnvironment::new();
                 for (i, v) in template_env.map {
@@ -156,12 +157,12 @@ impl Sty {
         clause: &hes::Clause,
         env: &rtype::PosEnvironment,
     ) -> Result<rtype::Ty, NegEnvironment> {
-        let mut new_idents = HashSet::new();
+        let mut new_idents = HashMap::new();
         let ty = self.clone_with_template(IntegerEnvironment::new(), &mut new_idents);
         let fml = consistent(&self.clone().into(), &ty);
         let fml2 = types(env, clause, ty.clone());
         let fml = fofml::Atom::mk_conj(fml, fml2);
-        match fml.check_satisfiability() {
+        match fml.check_satisfiability(&new_idents) {
             Some(model) => Ok(ty.assign(&model)),
             None => Err(self.is_cex_available(clause, env).unwrap()),
         }

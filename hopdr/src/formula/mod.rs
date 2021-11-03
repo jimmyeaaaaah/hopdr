@@ -385,6 +385,14 @@ impl Constraint {
         Constraint::new(ConstraintExpr::Quantifier(q, v, c))
     }
 
+    pub fn mk_quantifier_int(q: QuantifierKind, v: Ident, c: Constraint) -> Constraint {
+        Constraint::new(ConstraintExpr::Quantifier(
+            q,
+            Variable::mk(v, Type::mk_type_int()),
+            c,
+        ))
+    }
+
     pub fn mk_disj(x: Constraint, y: Constraint) -> Constraint {
         if x.is_true() {
             x
