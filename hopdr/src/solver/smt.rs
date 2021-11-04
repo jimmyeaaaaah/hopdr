@@ -6,6 +6,7 @@ use super::util;
 use crate::formula::{
     Constraint, ConstraintExpr, Fv, Ident, Op, OpExpr, OpKind, PredKind, QuantifierKind,
 };
+use lexpr;
 
 #[derive(Debug)]
 pub enum SMTResult {
@@ -16,6 +17,34 @@ pub enum SMTResult {
 }
 
 pub struct Model {}
+
+fn parse_declare_fun(v: lexpr::Value) -> (Ident, i64) {
+    unimplemented!()
+}
+
+impl Model {
+    fn from_z3_model_str(s: &str) -> Result<Model, lexpr::parse::Error> {
+        use lexpr::Value;
+        let x = lexpr::from_str(s)?;
+        println!("{:?}", x);
+        let models: Vec<_> = match x {
+            Value::Cons(x) => x.into_iter().map(|(v, _)| parse_declare_fun(v)).collect(),
+            _ => panic!("parse error: smt2 model"),
+        };
+        unimplemented!()
+    }
+}
+
+#[test]
+fn z3_parse_model() {
+    let model = "(
+        (define-fun x () Int
+          289)
+        (define-fun y () Int
+          1)
+      )";
+    Model::from_z3_model_str(model);
+}
 
 #[derive(Copy, Clone)]
 pub enum SMT2Style {
@@ -91,7 +120,7 @@ fn constraint_to_smt2_inner(c: &Constraint, style: SMT2Style) -> String {
     }
 }
 
-fn constraint_to_smt2(c: &Constraint, style: SMT2Style) -> String {
+fn constraint_to_smt2(c: &Constraint, style: SMT2Style, check_model: bool) -> String {
     let fvs = c.fv();
     let c_s = constraint_to_smt2_inner(c, style);
     let c_s = if !fvs.is_empty() {
@@ -105,7 +134,12 @@ fn constraint_to_smt2(c: &Constraint, style: SMT2Style) -> String {
     } else {
         c_s
     };
-    format!("(assert {})\n(check-sat)\n", c_s)
+    let model = if check_model {
+        format!("(check-model)")
+    } else {
+        format!("")
+    };
+    format!("(assert {})\n(check-sat)\n{}\n", c_s, model)
 }
 
 fn save_smt2(smt_string: String) -> NamedTempFile {
@@ -134,7 +168,7 @@ fn z3_solver(smt_string: String) -> String {
 impl SMTSolver for Z3Solver {
     fn solve(&mut self, c: &Constraint) -> SMTResult {
         debug!("smt_solve: {}", c);
-        let smt2 = constraint_to_smt2(c, SMT2Style::Z3);
+        let smt2 = constraint_to_smt2(c, SMT2Style::Z3, false);
         let s = z3_solver(smt2);
         debug!("smt_solve result: {:?}", &s);
         if s.starts_with("sat") {
@@ -146,6 +180,30 @@ impl SMTSolver for Z3Solver {
         }
     }
     fn solve_with_model(&mut self, c: &Constraint) -> Result<Model, SMTResult> {
-        unimplemented!()
+        debug!("smt_solve_with_model: {}", c);
+        let smt2 = constraint_to_smt2(c, SMT2Style::Z3, false);
+        let s = z3_solver(smt2);
+        if s.starts_with("sat") {
+            Ok(Model::from_z3_model_str(&s).unwrap())
+        } else if s.starts_with("unsat") {
+            Err(SMTResult::Unsat)
+        } else {
+            Err(SMTResult::Unknown)
+        }
     }
+}
+
+#[test]
+fn z3_sat_model() {
+    let s = "(declare-const x Int)
+    (declare-const y Int)
+    (assert (>= x 189))
+    (assert (<= (+ x y) 290))
+    (check-sat)
+    (get-model)"
+        .to_string();
+    let r = z3_solver(s);
+    assert!(r.starts_with("sat"));
+    let pos = r.find("\n").unwrap();
+    Model::from_z3_model_str(&r[pos..]);
 }
