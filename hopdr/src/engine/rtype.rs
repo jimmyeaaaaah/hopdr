@@ -665,7 +665,8 @@ pub fn type_check_goal<'a>(
 }
 
 fn check_smt(c: &Constraint) -> Result<(), Error> {
-    match smt::smt_solve(c) {
+    let mut solver = smt::default_solver();
+    match solver.solve(c) {
         smt::SMTResult::Sat => Ok(()),
         smt::SMTResult::Unsat => Err(Error::TypeError),
         smt::SMTResult::Unknown => Err(Error::SMTUnknown),

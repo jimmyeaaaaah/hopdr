@@ -15,9 +15,16 @@ pub enum SMTResult {
     Timeout,
 }
 
+pub struct Model {}
+
 #[derive(Copy, Clone)]
 pub enum SMT2Style {
     Z3,
+}
+
+pub trait SMTSolver {
+    fn solve(&mut self, c: &Constraint) -> SMTResult;
+    fn solve_with_model(&mut self, c: &Constraint) -> Result<Model, SMTResult>;
 }
 
 fn pred_to_smt2(p: &PredKind, args: &[String]) -> String {
@@ -105,24 +112,40 @@ fn save_smt2(smt_string: String) -> NamedTempFile {
     util::save_to_file(smt_string)
 }
 
-fn z3_solver(smt_string: String) -> SMTResult {
-    let f = save_smt2(smt_string);
-    let args = vec![f.path().to_str().unwrap()];
-    let out = util::exec_with_timeout("z3", &args, Duration::from_secs(1));
-    let s = std::str::from_utf8(&out).unwrap();
-    if s.starts_with("sat") {
-        SMTResult::Sat
-    } else if s.starts_with("unsat") {
-        SMTResult::Unsat
-    } else {
-        SMTResult::Unknown
+struct Z3Solver {}
+
+pub fn smt_solver(s: SMT2Style) -> Box<dyn SMTSolver> {
+    match s {
+        SMT2Style::Z3 => Box::new(Z3Solver {}),
     }
 }
 
-pub fn smt_solve(c: &Constraint) -> SMTResult {
-    debug!("smt_solve: {}", c);
-    let smt2 = constraint_to_smt2(c, SMT2Style::Z3);
-    let r = z3_solver(smt2);
-    debug!("smt_solve result: {:?}", &r);
-    r
+pub fn default_solver() -> Box<dyn SMTSolver> {
+    smt_solver(SMT2Style::Z3)
+}
+
+fn z3_solver(smt_string: String) -> String {
+    let f = save_smt2(smt_string);
+    let args = vec![f.path().to_str().unwrap()];
+    let out = util::exec_with_timeout("z3", &args, Duration::from_secs(1));
+    String::from_utf8(out).unwrap()
+}
+
+impl SMTSolver for Z3Solver {
+    fn solve(&mut self, c: &Constraint) -> SMTResult {
+        debug!("smt_solve: {}", c);
+        let smt2 = constraint_to_smt2(c, SMT2Style::Z3);
+        let s = z3_solver(smt2);
+        debug!("smt_solve result: {:?}", &s);
+        if s.starts_with("sat") {
+            SMTResult::Sat
+        } else if s.starts_with("unsat") {
+            SMTResult::Unsat
+        } else {
+            SMTResult::Unknown
+        }
+    }
+    fn solve_with_model(&mut self, c: &Constraint) -> Result<Model, SMTResult> {
+        unimplemented!()
+    }
 }
