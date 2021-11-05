@@ -2,7 +2,10 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 use super::pcsp;
-use super::{Bot, Conjunctive, Constraint, Fv, Ident, Op, PredKind, QuantifierKind, Subst, Top};
+use super::{
+    Bot, Conjunctive, Constraint, Fv, Ident, Op, OpKind, PredKind, QuantifierKind, Subst, Top,
+};
+use crate::solver::smt;
 use crate::util::P;
 
 #[derive(Debug)]
@@ -42,7 +45,24 @@ impl fmt::Display for Atom {
 pub struct Template {
     // information of the original predicate
     id: Ident,
+    nargs: usize,
     coef_linear: Vec<Ident>,
+}
+
+fn gen_linear_sum(coefs: impl IntoIterator<Item = Op>, args: &[Ident]) -> Op {
+    if args.len() > 0 {
+        let mut coefs = coefs.into_iter();
+        let c = coefs.next().unwrap();
+        let mut cur = Op::mk_bin_op(OpKind::Mul, c, Op::mk_var(args[0]));
+        for (id, coef) in args[1..].iter().zip(coefs) {
+            let id = Op::mk_var(*id);
+            let term = Op::mk_bin_op(OpKind::Mul, coef, id);
+            cur = Op::mk_bin_op(OpKind::Add, cur, term)
+        }
+        cur
+    } else {
+        Op::mk_const(0)
+    }
 }
 
 impl Template {
@@ -51,30 +71,29 @@ impl Template {
         for _ in 0..nargs {
             coef_linear.push(Ident::fresh());
         }
-        Template { id, coef_linear }
+        Template {
+            id,
+            nargs,
+            coef_linear,
+        }
     }
 
     fn apply(&self, args: &[Ident]) -> Constraint {
-        use crate::formula::{Op, OpKind, PredKind};
         let mut c = Constraint::mk_false();
 
-        fn gen_linear_sum(coefs: &[Ident], args: &[Ident]) -> Op {
-            if args.len() > 0 {
-                let mut cur = Op::mk_var(args[0]);
-                for (id, coef) in args[1..].iter().zip(coefs[1..].iter()) {
-                    let id = Op::mk_var(*id);
-                    let coef = Op::mk_var(*coef);
-                    let term = Op::mk_bin_op(OpKind::Mul, coef, id);
-                    cur = Op::mk_bin_op(OpKind::Add, cur, term)
-                }
-                cur
-            } else {
-                Op::mk_const(0)
-            }
-        }
-        let o = gen_linear_sum(&self.coef_linear, args);
+        let o = gen_linear_sum(self.coef_linear.iter().map(|x| Op::mk_var(*x)), args);
         c = Constraint::mk_pred(PredKind::Eq, vec![o, Op::mk_const(0)]);
         c
+    }
+
+    fn iter<'a>(&'a self) -> Box<dyn 'a + Iterator<Item = &'a Ident>> {
+        Box::new(self.coef_linear.iter())
+    }
+
+    fn to_constraint(self, model: &smt::Model) -> (Vec<Ident>, Constraint) {
+        let args = (0..self.nargs).into_iter().map(|_| Ident::fresh());
+
+        unimplemented!()
     }
 }
 
@@ -102,17 +121,30 @@ impl Atom {
         map: &HashMap<Ident, pcsp::Predicate>,
     ) -> Option<HashMap<Ident, (Vec<Ident>, Constraint)>> {
         let mut templates = HashMap::new();
+        let mut fvs = HashSet::new();
         for predicate in map.values() {
-            templates.insert(
-                predicate.id,
-                Template::new(predicate.id, predicate.args.len()),
-            );
+            let t = Template::new(predicate.id, predicate.args.len());
+            for i in t.iter() {
+                fvs.insert(*i);
+            }
+            templates.insert(predicate.id, t);
         }
         let c = self.replace_by_template(&templates);
-        // check satisfiability of c
-        // get model
+        // check satisfiability of c and get model
+        let mut solver = smt::default_solver();
+        let model = match solver.solve_with_model(&c, &fvs) {
+            Ok(model) => model,
+            Err(_) => {
+                // when c is unsat, returns None
+                return None;
+            }
+        };
         // generate map predicate -> constraints
-        unimplemented!()
+        let h = templates
+            .into_iter()
+            .map(|(p, t)| (p, t.to_constraint(&model)))
+            .collect();
+        Some(h)
     }
     pub fn mk_disj(x: Self, y: Self) -> Atom {
         Atom::new(AtomKind::Disj(x.clone(), y.clone()))
