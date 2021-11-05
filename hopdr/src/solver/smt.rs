@@ -1,6 +1,6 @@
 use tempfile::NamedTempFile;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
 use super::util;
@@ -18,11 +18,12 @@ pub enum SMTResult {
     Timeout,
 }
 
+#[derive(Debug)]
 pub struct Model {
     model: HashMap<Ident, i64>,
 }
 
-fn encode_ident(x: Ident) -> String {
+fn encode_ident(x: &Ident) -> String {
     format!("x{}", x)
 }
 
@@ -64,7 +65,7 @@ impl Model {
         Ok(Model { model })
     }
 
-    fn get(&self, x: &Ident) -> Option<i64> {
+    pub fn get(&self, x: &Ident) -> Option<i64> {
         self.model.get(x).cloned()
     }
 }
@@ -95,7 +96,11 @@ pub enum SMT2Style {
 
 pub trait SMTSolver {
     fn solve(&mut self, c: &Constraint) -> SMTResult;
-    fn solve_with_model(&mut self, c: &Constraint) -> Result<Model, SMTResult>;
+    fn solve_with_model(
+        &mut self,
+        c: &Constraint,
+        fvs: &HashSet<Ident>,
+    ) -> Result<Model, SMTResult>;
 }
 
 fn pred_to_smt2(p: &PredKind, args: &[String]) -> String {
@@ -119,7 +124,7 @@ fn opkind_2_smt2(o: &OpKind) -> &'static str {
 }
 
 fn ident_2_smt2(ident: &Ident) -> String {
-    format!("x_{}", ident)
+    encode_ident(ident)
 }
 
 fn op_to_smt2(op: &Op) -> String {
@@ -162,26 +167,21 @@ fn constraint_to_smt2_inner(c: &Constraint, style: SMT2Style) -> String {
     }
 }
 
-fn constraint_to_smt2(c: &Constraint, style: SMT2Style, check_model: bool) -> String {
-    let fvs = c.fv();
+fn constraint_to_smt2(c: &Constraint, style: SMT2Style, fvs: Option<&HashSet<Ident>>) -> String {
     let c_s = constraint_to_smt2_inner(c, style);
-    let c_s = if !fvs.is_empty() {
-        // (forall ((%s Int)) %s)
-        let decls = fvs
-            .into_iter()
-            .map(|ident| format!("({} Int)", ident_2_smt2(&ident)))
+    let decls = match fvs {
+        Some(fvs) => fvs
+            .iter()
+            .map(|ident| format!("(declare-const {} Int)", encode_ident(ident)))
             .collect::<Vec<_>>()
-            .join("");
-        format!("(forall ({}) {})", decls, c_s)
-    } else {
-        c_s
+            .join("\n"),
+        None => format!(""),
     };
-    let model = if check_model {
-        format!("(check-model)")
-    } else {
-        format!("")
+    let model = match fvs {
+        Some(_) => format!("(get-model)"),
+        None => format!(""),
     };
-    format!("(assert {})\n(check-sat)\n{}\n", c_s, model)
+    format!("{}\n(assert {})\n(check-sat)\n{}\n", decls, c_s, model)
 }
 
 fn save_smt2(smt_string: String) -> NamedTempFile {
@@ -210,7 +210,7 @@ fn z3_solver(smt_string: String) -> String {
 impl SMTSolver for Z3Solver {
     fn solve(&mut self, c: &Constraint) -> SMTResult {
         debug!("smt_solve: {}", c);
-        let smt2 = constraint_to_smt2(c, SMT2Style::Z3, false);
+        let smt2 = constraint_to_smt2(c, SMT2Style::Z3, None);
         let s = z3_solver(smt2);
         debug!("smt_solve result: {:?}", &s);
         if s.starts_with("sat") {
@@ -221,12 +221,17 @@ impl SMTSolver for Z3Solver {
             SMTResult::Unknown
         }
     }
-    fn solve_with_model(&mut self, c: &Constraint) -> Result<Model, SMTResult> {
+    fn solve_with_model(
+        &mut self,
+        c: &Constraint,
+        fvs: &HashSet<Ident>,
+    ) -> Result<Model, SMTResult> {
         debug!("smt_solve_with_model: {}", c);
-        let smt2 = constraint_to_smt2(c, SMT2Style::Z3, false);
+        let smt2 = constraint_to_smt2(c, SMT2Style::Z3, Some(fvs));
         let s = z3_solver(smt2);
         if s.starts_with("sat") {
-            Ok(Model::from_z3_model_str(&s).unwrap())
+            let pos = s.find("\n").unwrap();
+            Ok(Model::from_z3_model_str(&s[pos..]).unwrap())
         } else if s.starts_with("unsat") {
             Err(SMTResult::Unsat)
         } else {
@@ -248,4 +253,26 @@ fn z3_sat_model() {
     assert!(r.starts_with("sat"));
     let pos = r.find("\n").unwrap();
     assert!(Model::from_z3_model_str(&r[pos..]).is_ok())
+}
+
+#[test]
+fn z3_sat_model_from_constraint() {
+    use crate::formula::{Conjunctive, PredKind};
+    let i1 = Ident::fresh();
+    let i2 = Ident::fresh();
+    let fvs = HashSet::from([i1, i2]);
+    let x1 = Op::mk_var(i1);
+    let x2 = Op::mk_var(i2);
+    // x1 > x2 /\ x2 = 0
+    let c = Constraint::mk_conj(
+        Constraint::mk_pred(PredKind::Gt, vec![x1, x2.clone()]),
+        Constraint::mk_pred(PredKind::Eq, vec![x2, Op::mk_const(0)]),
+    );
+    let mut solver = smt_solver(SMT2Style::Z3);
+    match solver.solve_with_model(&c, &fvs) {
+        Ok(model) => {
+            assert_eq!(model.get(&i2).unwrap(), 0)
+        }
+        Err(_) => panic!("test failed"),
+    }
 }

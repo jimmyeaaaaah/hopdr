@@ -504,8 +504,9 @@ impl Ident {
             .map(|arg| if arg == x { *y } else { *arg })
             .collect()
     }
+    /// assumption: string expression is x_\d+
     pub fn from_str(s: &str) -> Option<Ident> {
-        match s.parse() {
+        match (&s[2..]).parse() {
             Ok(id) => Some(Ident { id }),
             Err(_) => None,
         }
