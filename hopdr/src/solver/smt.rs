@@ -1,5 +1,6 @@
 use tempfile::NamedTempFile;
 
+use std::collections::HashMap;
 use std::time::Duration;
 
 use super::util;
@@ -7,6 +8,7 @@ use crate::formula::{
     Constraint, ConstraintExpr, Fv, Ident, Op, OpExpr, OpKind, PredKind, QuantifierKind,
 };
 use lexpr;
+use lexpr::Value;
 
 #[derive(Debug)]
 pub enum SMTResult {
@@ -16,34 +18,74 @@ pub enum SMTResult {
     Timeout,
 }
 
-pub struct Model {}
+pub struct Model {
+    model: HashMap<Ident, i64>,
+}
+
+fn encode_ident(x: Ident) -> String {
+    format!("x{}", x)
+}
+
+fn parse_variable(v: &str) -> Ident {
+    assert!(v.starts_with("x"));
+    Ident::from_str(&v[1..]).unwrap_or_else(|| panic!("parse fail"))
+}
 
 fn parse_declare_fun(v: lexpr::Value) -> (Ident, i64) {
-    unimplemented!()
+    // parse fail
+    let errmsg = "smt model parse fail";
+    let mut itr = v
+        .as_cons()
+        .unwrap_or_else(|| panic!("{}", errmsg))
+        .iter()
+        .map(|x| x.car());
+
+    let _ = itr.next().unwrap_or_else(|| panic!("{}", errmsg));
+    //assert_eq!(v.as_symbol().unwrap(), "define-fun");
+
+    let x = itr.next().unwrap_or_else(|| panic!("{}", errmsg));
+    let v = x.as_symbol().unwrap_or_else(|| panic!("{}", errmsg));
+    let ident = parse_variable(v);
+
+    let _ = itr.next().unwrap_or_else(|| panic!("{}", errmsg));
+    let _ = itr.next().unwrap_or_else(|| panic!("{}", errmsg));
+    let x = itr.next().unwrap_or_else(|| panic!("{}", errmsg));
+    let v = x.as_i64().unwrap_or_else(|| panic!("{}", errmsg));
+    (ident, v)
 }
 
 impl Model {
     fn from_z3_model_str(s: &str) -> Result<Model, lexpr::parse::Error> {
-        use lexpr::Value;
         let x = lexpr::from_str(s)?;
-        println!("{:?}", x);
-        let models: Vec<_> = match x {
+        let model: HashMap<Ident, i64> = match x {
             Value::Cons(x) => x.into_iter().map(|(v, _)| parse_declare_fun(v)).collect(),
             _ => panic!("parse error: smt2 model"),
         };
-        unimplemented!()
+        Ok(Model { model })
+    }
+
+    fn get(&self, x: &Ident) -> Option<i64> {
+        self.model.get(x).cloned()
     }
 }
 
 #[test]
 fn z3_parse_model() {
     let model = "(
-        (define-fun x () Int
+        (define-fun x1 () Int
           289)
-        (define-fun y () Int
+        (define-fun x2 () Int
           1)
       )";
-    Model::from_z3_model_str(model);
+    match Model::from_z3_model_str(model) {
+        Ok(m) => {
+            let x1 = m.get(&1.into()).unwrap();
+            let x2 = m.get(&2.into()).unwrap();
+            assert_eq!(x1, 289);
+            assert_eq!(x2, 1);
+        }
+        Err(_) => panic!("model is broken"),
+    }
 }
 
 #[derive(Copy, Clone)]
@@ -195,15 +237,15 @@ impl SMTSolver for Z3Solver {
 
 #[test]
 fn z3_sat_model() {
-    let s = "(declare-const x Int)
-    (declare-const y Int)
-    (assert (>= x 189))
-    (assert (<= (+ x y) 290))
+    let s = "(declare-const x1 Int)
+    (declare-const x2 Int)
+    (assert (>= x1 189))
+    (assert (<= (+ x1 x2) 290))
     (check-sat)
     (get-model)"
         .to_string();
     let r = z3_solver(s);
     assert!(r.starts_with("sat"));
     let pos = r.find("\n").unwrap();
-    Model::from_z3_model_str(&r[pos..]);
+    assert!(Model::from_z3_model_str(&r[pos..]).is_ok())
 }

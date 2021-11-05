@@ -504,6 +504,18 @@ impl Ident {
             .map(|arg| if arg == x { *y } else { *arg })
             .collect()
     }
+    pub fn from_str(s: &str) -> Option<Ident> {
+        match s.parse() {
+            Ok(id) => Some(Ident { id }),
+            Err(_) => None,
+        }
+    }
+}
+
+impl From<u64> for Ident {
+    fn from(id: u64) -> Self {
+        Ident { id }
+    }
 }
 
 #[derive(Debug)]
