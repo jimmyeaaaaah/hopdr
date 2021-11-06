@@ -91,9 +91,18 @@ impl Template {
     }
 
     fn to_constraint(self, model: &smt::Model) -> (Vec<Ident>, Constraint) {
-        let args = (0..self.nargs).into_iter().map(|_| Ident::fresh());
+        let args = (0..self.nargs)
+            .into_iter()
+            .map(|_| Ident::fresh())
+            .collect::<Vec<_>>();
 
-        unimplemented!()
+        let op_args = self.coef_linear.iter().map(|x| {
+            let v = model.get(x).unwrap();
+            Op::mk_const(v)
+        });
+        let o = gen_linear_sum(op_args, &args);
+        let c = Constraint::mk_pred(PredKind::Eq, vec![o, Op::mk_const(0)]);
+        (args, c)
     }
 }
 

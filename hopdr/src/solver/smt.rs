@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use super::util;
 use crate::formula::{
-    Constraint, ConstraintExpr, Fv, Ident, Op, OpExpr, OpKind, PredKind, QuantifierKind,
+    Constraint, ConstraintExpr, Ident, Op, OpExpr, OpKind, PredKind, QuantifierKind,
 };
 use lexpr;
 use lexpr::Value;

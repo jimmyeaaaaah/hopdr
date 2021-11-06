@@ -28,6 +28,7 @@ pub enum PDRResult {
     Invalid,
 }
 
+#[allow(dead_code)]
 pub const NOLOG: u64 = 0;
 pub const DEBUG: u64 = 1;
 
