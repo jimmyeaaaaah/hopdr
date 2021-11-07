@@ -50,7 +50,7 @@ pub struct Template {
 }
 
 fn gen_linear_sum(coefs: impl IntoIterator<Item = Op>, args: &[Ident]) -> Op {
-    if args.len() > 0 {
+    if !args.is_empty() {
         let mut coefs = coefs.into_iter();
         let c = coefs.next().unwrap();
         let mut cur = Op::mk_bin_op(OpKind::Mul, c, Op::mk_var(args[0]));
@@ -158,7 +158,7 @@ impl Atom {
         Some(h)
     }
     pub fn mk_disj(x: Self, y: Self) -> Atom {
-        Atom::new(AtomKind::Disj(x.clone(), y.clone()))
+        Atom::new(AtomKind::Disj(x, y))
     }
     pub fn mk_false() -> Atom {
         Atom::mk_constraint(Constraint::mk_false())

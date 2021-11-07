@@ -81,7 +81,7 @@ fn env_consistent(
         let mut tmp = fofml::Atom::mk_false();
         let w = nenv.get(i).unwrap();
         for x in w {
-            let x = x.clone().into();
+            let x = x.clone();
             for y in v {
                 let y = y.clone().into();
                 let fml = consistent(&x, &y);

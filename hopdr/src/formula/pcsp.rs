@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 use super::{
-    Bot, Conjunctive, Constraint, Fv, Ident, Op, PredKind, QuantifierKind, Rename, Subst, Top,
+    Bot, Conjunctive, Constraint, Fv, Ident, QuantifierKind, Rename, Subst, Top,
     Type, Variable,
 };
 use crate::util::P;
@@ -228,7 +228,7 @@ impl Subst for Atom {
                 let mut new_ops = Vec::new();
                 for id in args.iter() {
                     if id == x {
-                        new_ops.push(target.clone());
+                        new_ops.push(target);
                     } else {
                         new_ops.push(*id);
                     }
@@ -239,7 +239,7 @@ impl Subst for Atom {
             AtomKind::Disj(r, l) => Atom::mk_disj(r.subst(x, v), l.subst(x, v)),
             // assumption: vars are different each other ?
             AtomKind::Quantifier(q, var, cstr) => {
-                Atom::mk_quantifier(*q, var.clone(), cstr.subst(x, v))
+                Atom::mk_quantifier(*q, *var, cstr.subst(x, v))
             }
         }
     }

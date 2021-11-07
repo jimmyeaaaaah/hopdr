@@ -28,7 +28,7 @@ fn encode_ident(x: &Ident) -> String {
 }
 
 fn parse_variable(v: &str) -> Ident {
-    assert!(v.starts_with("x"));
+    assert!(v.starts_with('x'));
     Ident::from_str(&v[1..]).unwrap_or_else(|| panic!("parse fail"))
 }
 
@@ -178,8 +178,8 @@ fn constraint_to_smt2(
     let c_s = if !vars.is_empty() {
         // (forall ((%s Int)) %s)
         let decls = vars
-            .into_iter()
-            .map(|ident| format!("({} Int)", ident_2_smt2(&ident)))
+            .iter()
+            .map(|ident| format!("({} Int)", ident_2_smt2(ident)))
             .collect::<Vec<_>>()
             .join("");
         format!("(forall ({}) {})", decls, c_s)
@@ -196,7 +196,7 @@ fn constraint_to_smt2(
         None => format!(""),
     };
     let model = match fvs {
-        Some(_) => format!("(get-model)"),
+        Some(_) => "(get-model)".to_string(),
         None => format!(""),
     };
     format!("{}\n(assert {})\n(check-sat)\n{}\n", decls, c_s, model)
@@ -252,7 +252,7 @@ impl SMTSolver for Z3Solver {
         let s = z3_solver(smt2);
         debug!("smt_solve result: {:?}", &s);
         if s.starts_with("sat") {
-            let pos = s.find("\n").unwrap();
+            let pos = s.find('\n').unwrap();
             Ok(Model::from_z3_model_str(&s[pos..]).unwrap())
         } else if s.starts_with("unsat") {
             Err(SMTResult::Unsat)
@@ -273,7 +273,7 @@ fn z3_sat_model() {
         .to_string();
     let r = z3_solver(s);
     assert!(r.starts_with("sat"));
-    let pos = r.find("\n").unwrap();
+    let pos = r.find('\n').unwrap();
     assert!(Model::from_z3_model_str(&r[pos..]).is_ok())
 }
 

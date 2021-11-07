@@ -161,7 +161,7 @@ impl IntegerEnvironment {
     }
 
     pub fn iter(&self) -> impl Iterator<Item = Ident> + '_ {
-        self.imap.iter().map(|x| *x)
+        self.imap.iter().copied()
     }
 }
 
@@ -233,7 +233,7 @@ pub trait Rename: Sized {
     fn rename(&self, x: &Ident, y: &Ident) -> Self;
     // TODO: fix type xs
     fn rename_idents(&self, xs: &[(Ident, Ident)]) -> Self {
-        assert!(xs.len() > 0);
+        assert!(!xs.is_empty());
         let mut c = self.rename(&xs[0].0, &xs[0].1);
         for (x, y) in &xs[1..] {
             c = c.rename(x, y);
