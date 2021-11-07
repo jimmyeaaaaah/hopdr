@@ -188,6 +188,7 @@ impl<'a> HoPDR<'a> {
     // generates a candidate
     // Assumption: self.check_valid() == false
     fn is_refutable(&self, candidate: &Candidate) -> RefuteOrCex<rtype::Ty, Vec<Candidate>> {
+        debug!("[Candidate] is_refutable");
         // 1. generate constraints: calculate t s.t. c.sty ~ t and check if Env |- formula[c.ident] : t.
         // 2. if not typable, calculate cex
         // 3. if typable, returns the type
@@ -287,6 +288,7 @@ impl<'a> HoPDR<'a> {
     }
 
     fn check_feasible(&mut self) -> bool {
+        debug!("[PDR]check feasible");
         loop {
             match self.models.get_unprocessed_leaf() {
                 Some(c) => match self.is_refutable(&c.label) {
@@ -306,12 +308,14 @@ impl<'a> HoPDR<'a> {
     }
 
     fn conflict(&mut self, c: CandidateNode, refute_ty: rtype::Ty) {
+        debug!("[PDR]conflict: {} <-> {}", &c.label, &refute_ty);
         for i in 0..c.level {
             self.envs[i as usize].add(c.label.ident, refute_ty.clone());
         }
     }
 
     fn decide(&mut self, parent: CandidateNode, children: Vec<Candidate>) {
+        debug!("[PDR]decide");
         self.models.add_children(parent, &children);
     }
 
@@ -330,9 +334,9 @@ impl<'a> HoPDR<'a> {
             } else {
                 self.unfold()
             }
-            use std::{thread, time};
-            let asec = time::Duration::from_secs(1);
-            thread::sleep(asec);
+            //use std::{thread, time};
+            //let asec = time::Duration::from_secs(1);
+            //thread::sleep(asec);
         }
     }
 }

@@ -127,6 +127,7 @@ impl Atom {
     /// check the satisfiability of the given fofml formula
     pub fn check_satisfiability(
         &self,
+        vars: &HashSet<Ident>,
         map: &HashMap<Ident, pcsp::Predicate>,
     ) -> Option<HashMap<Ident, (Vec<Ident>, Constraint)>> {
         let mut templates = HashMap::new();
@@ -134,7 +135,6 @@ impl Atom {
         for predicate in map.values() {
             let t = Template::new(predicate.id, predicate.args.len());
             for i in t.coef_iter() {
-                debug!("added {}", *i);
                 fvs.insert(*i);
             }
             templates.insert(predicate.id, t);
@@ -142,12 +142,13 @@ impl Atom {
         let c = self.replace_by_template(&templates);
         // check satisfiability of c and get model
         let mut solver = smt::default_solver();
-        let model = match solver.solve_with_model(&c, &HashSet::new(), &fvs) {
+        let model = match solver.solve_with_model(&c, vars, &fvs) {
             Ok(model) => model,
-            Err(_) => {
+            Err(smt::SMTResult::Unsat) => {
                 // when c is unsat, returns None
                 return None;
             }
+            _ => panic!("program error"),
         };
         // generate map predicate -> constraints
         let h = templates

@@ -475,8 +475,8 @@ impl<P> TypeEnvironment<Tau<P, Constraint>> {
 
 pub struct Environment<Ty> {
     // Assumption: all variables are alpha-renamed.
-    map: TypeEnvironment<Ty>,
-    imap: IntegerEnvironment,
+    pub map: TypeEnvironment<Ty>,
+    pub imap: IntegerEnvironment,
 }
 impl<P> From<&TypeEnvironment<Tau<P, Constraint>>> for TypeEnvironment<Tau<P, pcsp::Atom>> {
     fn from(e: &TypeEnvironment<Tau<P, Constraint>>) -> Self {

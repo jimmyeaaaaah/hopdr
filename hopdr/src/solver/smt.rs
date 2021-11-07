@@ -247,9 +247,6 @@ impl SMTSolver for Z3Solver {
         fvs: &HashSet<Ident>,
     ) -> Result<Model, SMTResult> {
         debug!("smt_solve_with_model: {} {}", c, fvs.len());
-        for fv in fvs.iter() {
-            debug!("- {}", fv);
-        }
         let smt2 = constraint_to_smt2(c, SMT2Style::Z3, vars, Some(fvs));
         debug!("smt2: {}", &smt2);
         let s = z3_solver(smt2);
@@ -294,7 +291,7 @@ fn z3_sat_model_from_constraint() {
         Constraint::mk_pred(PredKind::Eq, vec![x2, Op::mk_const(0)]),
     );
     let mut solver = smt_solver(SMT2Style::Z3);
-    match solver.solve_with_model(&c, &fvs, &HashSet::new()) {
+    match solver.solve_with_model(&c, &HashSet::new(), &fvs) {
         Ok(model) => {
             assert_eq!(model.get(&i2).unwrap(), 0)
         }

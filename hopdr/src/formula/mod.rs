@@ -236,7 +236,7 @@ pub trait Rename: Sized {
         assert!(xs.len() > 0);
         let mut c = self.rename(&xs[0].0, &xs[0].1);
         for (x, y) in &xs[1..] {
-            c = self.rename(x, y);
+            c = c.rename(x, y);
         }
         c
     }

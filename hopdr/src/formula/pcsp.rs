@@ -169,7 +169,10 @@ impl Atom {
             AtomKind::True => Constraint::mk_true(),
             AtomKind::Constraint(c) => c.clone(),
             AtomKind::Predicate(p, l) => match model.get(p) {
-                Some((r, c)) => c.rename_idents_with_slices(l, r),
+                Some((r, c)) => {
+                    debug!("assign: {:?}, {:?}", r, l);
+                    c.rename_idents_with_slices(r, l)
+                }
                 None => panic!("not found: {}", p),
             },
             AtomKind::Conj(x, y) => Constraint::mk_conj(x.assign(model), y.assign(model)),
