@@ -8,6 +8,7 @@ use crate::formula::{Constraint, Top};
 use crate::util::dprintln;
 use std::collections::HashMap;
 
+use std::fmt::Display;
 use std::unimplemented;
 
 use super::candidate::Sty;
@@ -38,6 +39,12 @@ type NodeID = u64;
 struct Candidate {
     pub ident: Ident,
     pub sty: Sty,
+}
+
+impl Display for Candidate {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}: {}", &self.ident, &self.sty)
+    }
 }
 
 struct CandidateTree {
@@ -88,17 +95,22 @@ impl CandidateTree {
         None
     }
 
-    fn add_new_candidate(&mut self, candidate: Candidate) -> NodeID {
+    fn add_new_candidate(&mut self, candidate: Candidate, level: u64) -> NodeID {
         let id = self.get_new_id();
         self.labels.insert(id, candidate);
+        self.levels.insert(id, level);
         id
     }
 
     pub fn add_root_children(&mut self, candidates: &[Candidate]) {
         assert!(self.is_epsilon());
+        debug!("add_root_children");
+        for c in candidates {
+            println!("- {}", c);
+        }
         let mut v = Vec::new();
         for c in candidates {
-            let node_id = self.add_new_candidate(c.clone());
+            let node_id = self.add_new_candidate(c.clone(), 0);
             v.push(node_id);
         }
         self.root = Some(v);
@@ -107,7 +119,7 @@ impl CandidateTree {
     pub fn add_children(&mut self, node: CandidateNode, candidates: &[Candidate]) {
         self.children.entry(node.id).or_insert_with(Vec::new);
         for c in candidates {
-            let node_id = self.add_new_candidate(c.clone());
+            let node_id = self.add_new_candidate(c.clone(), node.level + 1);
             self.children.get_mut(&node.id).unwrap().push(node_id);
         }
     }

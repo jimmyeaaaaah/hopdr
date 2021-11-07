@@ -159,6 +159,10 @@ impl IntegerEnvironment {
         self.imap.push_mut(v);
         self
     }
+
+    pub fn iter(&self) -> impl Iterator<Item = Ident> + '_ {
+        self.imap.iter().map(|x| *x)
+    }
 }
 
 impl Op {

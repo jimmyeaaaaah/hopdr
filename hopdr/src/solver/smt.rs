@@ -60,7 +60,7 @@ impl Model {
         let x = lexpr::from_str(s)?;
         let model: HashMap<Ident, i64> = match x {
             Value::Cons(x) => x.into_iter().map(|(v, _)| parse_declare_fun(v)).collect(),
-            _ => panic!("parse error: smt2 model"),
+            _ => panic!("parse error: smt2 model: {}", s),
         };
         Ok(Model { model })
     }
@@ -95,10 +95,11 @@ pub enum SMT2Style {
 }
 
 pub trait SMTSolver {
-    fn solve(&mut self, c: &Constraint) -> SMTResult;
+    fn solve(&mut self, c: &Constraint, vars: &HashSet<Ident>) -> SMTResult;
     fn solve_with_model(
         &mut self,
         c: &Constraint,
+        vars: &HashSet<Ident>,
         fvs: &HashSet<Ident>,
     ) -> Result<Model, SMTResult>;
 }
@@ -167,8 +168,25 @@ fn constraint_to_smt2_inner(c: &Constraint, style: SMT2Style) -> String {
     }
 }
 
-fn constraint_to_smt2(c: &Constraint, style: SMT2Style, fvs: Option<&HashSet<Ident>>) -> String {
+fn constraint_to_smt2(
+    c: &Constraint,
+    style: SMT2Style,
+    vars: &HashSet<Ident>,
+    fvs: Option<&HashSet<Ident>>,
+) -> String {
     let c_s = constraint_to_smt2_inner(c, style);
+    let c_s = if !vars.is_empty() {
+        // (forall ((%s Int)) %s)
+        let decls = vars
+            .into_iter()
+            .map(|ident| format!("({} Int)", ident_2_smt2(&ident)))
+            .collect::<Vec<_>>()
+            .join("");
+        format!("(forall ({}) {})", decls, c_s)
+    } else {
+        c_s
+    };
+
     let decls = match fvs {
         Some(fvs) => fvs
             .iter()
@@ -208,9 +226,10 @@ fn z3_solver(smt_string: String) -> String {
 }
 
 impl SMTSolver for Z3Solver {
-    fn solve(&mut self, c: &Constraint) -> SMTResult {
+    fn solve(&mut self, c: &Constraint, vars: &HashSet<Ident>) -> SMTResult {
         debug!("smt_solve: {}", c);
-        let smt2 = constraint_to_smt2(c, SMT2Style::Z3, None);
+        let smt2 = constraint_to_smt2(c, SMT2Style::Z3, vars, None);
+        debug!("smt2: {}", &smt2);
         let s = z3_solver(smt2);
         debug!("smt_solve result: {:?}", &s);
         if s.starts_with("sat") {
@@ -224,11 +243,17 @@ impl SMTSolver for Z3Solver {
     fn solve_with_model(
         &mut self,
         c: &Constraint,
+        vars: &HashSet<Ident>,
         fvs: &HashSet<Ident>,
     ) -> Result<Model, SMTResult> {
-        debug!("smt_solve_with_model: {}", c);
-        let smt2 = constraint_to_smt2(c, SMT2Style::Z3, Some(fvs));
+        debug!("smt_solve_with_model: {} {}", c, fvs.len());
+        for fv in fvs.iter() {
+            debug!("- {}", fv);
+        }
+        let smt2 = constraint_to_smt2(c, SMT2Style::Z3, vars, Some(fvs));
+        debug!("smt2: {}", &smt2);
         let s = z3_solver(smt2);
+        debug!("smt_solve result: {:?}", &s);
         if s.starts_with("sat") {
             let pos = s.find("\n").unwrap();
             Ok(Model::from_z3_model_str(&s[pos..]).unwrap())
@@ -269,7 +294,7 @@ fn z3_sat_model_from_constraint() {
         Constraint::mk_pred(PredKind::Eq, vec![x2, Op::mk_const(0)]),
     );
     let mut solver = smt_solver(SMT2Style::Z3);
-    match solver.solve_with_model(&c, &fvs) {
+    match solver.solve_with_model(&c, &fvs, &HashSet::new()) {
         Ok(model) => {
             assert_eq!(model.get(&i2).unwrap(), 0)
         }

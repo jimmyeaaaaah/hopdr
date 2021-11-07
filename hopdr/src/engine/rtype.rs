@@ -664,9 +664,9 @@ pub fn type_check_goal<'a>(
     Ok(r)
 }
 
-fn check_smt(c: &Constraint) -> Result<(), Error> {
+fn check_smt(c: &Constraint, vars: &HashSet<Ident>) -> Result<(), Error> {
     let mut solver = smt::default_solver();
-    match solver.solve(c) {
+    match solver.solve(c, vars) {
         smt::SMTResult::Sat => Ok(()),
         smt::SMTResult::Unsat => Err(Error::TypeError),
         smt::SMTResult::Unknown => Err(Error::SMTUnknown),
@@ -682,7 +682,7 @@ pub fn type_check_top(
     let cnstr = type_check_goal(toplevel, &mut env)?
         .to_constraint()
         .unwrap();
-    check_smt(&cnstr)
+    check_smt(&cnstr, &env.imap.iter().collect())
 }
 
 pub fn type_check_clause(
@@ -690,6 +690,7 @@ pub fn type_check_clause(
     rty: Ty,
     env: TypeEnvironment<Tau<Positive, pcsp::Atom>>,
 ) -> Result<(), Error> {
+    debug!("type_check_clause: {}: {}", clause, rty);
     let mut env = Environment::from_type_environment(env);
     let t = env.add_arg_types(&clause.args, rty.into());
     let c = match t.kind() {
@@ -699,8 +700,10 @@ pub fn type_check_clause(
     let c2 = type_check_goal(&clause.body, &mut env)?
         .to_constraint()
         .unwrap();
+    println!("typecheck_clause constraint: {}", c);
     let c2 = pcsp::PCSP::new(c, c2);
     let c = c2.to_constraint().unwrap().remove_quantifier();
 
-    check_smt(&c)
+    debug!("{:?}", env.imap.iter().collect::<Vec<_>>());
+    check_smt(&c, &env.imap.iter().collect())
 }

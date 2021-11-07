@@ -214,9 +214,31 @@ impl Conjunctive for Atom {
 
 impl Subst for Atom {
     fn subst(&self, x: &Ident, v: &super::Op) -> Self {
-        let eq = vec![Op::mk_var(*x), v.clone()];
-        let c = Atom::mk_constraint(Constraint::mk_pred(PredKind::Eq, eq));
-        Atom::mk_conj(c, self.clone())
+        match self.kind() {
+            AtomKind::True => self.clone(),
+            AtomKind::Constraint(c) => Atom::mk_constraint(c.subst(x, v)),
+            AtomKind::Predicate(k, args) => {
+                let target = match v.kind() {
+                    super::OpExpr::Var(v) => *v,
+                    _ => unimplemented!("not implemented"),
+                };
+                let mut new_ops = Vec::new();
+                for id in args.iter() {
+                    if id == x {
+                        new_ops.push(target.clone());
+                    } else {
+                        new_ops.push(*id);
+                    }
+                }
+                Atom::mk_pred(*k, new_ops)
+            }
+            AtomKind::Conj(r, l) => Atom::mk_conj(r.subst(x, v), l.subst(x, v)),
+            AtomKind::Disj(r, l) => Atom::mk_disj(r.subst(x, v), l.subst(x, v)),
+            // assumption: vars are different each other ?
+            AtomKind::Quantifier(q, var, cstr) => {
+                Atom::mk_quantifier(*q, var.clone(), cstr.subst(x, v))
+            }
+        }
     }
 }
 

@@ -86,8 +86,8 @@ impl Template {
         c
     }
 
-    fn iter<'a>(&'a self) -> Box<dyn 'a + Iterator<Item = &'a Ident>> {
-        Box::new(self.coef_linear.iter())
+    fn coef_iter<'a>(&'a self) -> impl Iterator<Item = &'a Ident> {
+        self.coef_linear.iter()
     }
 
     fn to_constraint(self, model: &smt::Model) -> (Vec<Ident>, Constraint) {
@@ -133,7 +133,8 @@ impl Atom {
         let mut fvs = HashSet::new();
         for predicate in map.values() {
             let t = Template::new(predicate.id, predicate.args.len());
-            for i in t.iter() {
+            for i in t.coef_iter() {
+                debug!("added {}", *i);
                 fvs.insert(*i);
             }
             templates.insert(predicate.id, t);
@@ -141,7 +142,7 @@ impl Atom {
         let c = self.replace_by_template(&templates);
         // check satisfiability of c and get model
         let mut solver = smt::default_solver();
-        let model = match solver.solve_with_model(&c, &fvs) {
+        let model = match solver.solve_with_model(&c, &HashSet::new(), &fvs) {
             Ok(model) => model,
             Err(_) => {
                 // when c is unsat, returns None
