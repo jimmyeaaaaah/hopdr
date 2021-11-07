@@ -2,8 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 use super::{
-    Bot, Conjunctive, Constraint, Fv, Ident, QuantifierKind, Rename, Subst, Top,
-    Type, Variable,
+    Bot, Conjunctive, Constraint, Fv, Ident, QuantifierKind, Rename, Subst, Top, Type, Variable,
 };
 use crate::util::P;
 
@@ -238,9 +237,7 @@ impl Subst for Atom {
             AtomKind::Conj(r, l) => Atom::mk_conj(r.subst(x, v), l.subst(x, v)),
             AtomKind::Disj(r, l) => Atom::mk_disj(r.subst(x, v), l.subst(x, v)),
             // assumption: vars are different each other ?
-            AtomKind::Quantifier(q, var, cstr) => {
-                Atom::mk_quantifier(*q, *var, cstr.subst(x, v))
-            }
+            AtomKind::Quantifier(q, var, cstr) => Atom::mk_quantifier(*q, *var, cstr.subst(x, v)),
         }
     }
 }

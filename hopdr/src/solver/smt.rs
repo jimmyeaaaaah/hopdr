@@ -34,13 +34,15 @@ fn parse_variable(v: &str) -> Ident {
 
 fn parse_declare_fun(v: lexpr::Value) -> (Ident, i64) {
     // parse fail
-    let errmsg = "smt model parse fail";
-    let mut itr = v
-        .as_cons()
-        .unwrap_or_else(|| panic!("{}", errmsg))
-        .iter()
-        .map(|x| x.car());
-
+    println!("{:?}", &v);
+    const errmsg: &str = "smt model parse fail";
+    fn cons_value_to_iter<'a>(v: &'a lexpr::Value) -> impl Iterator<Item = &'a lexpr::Value> {
+        v.as_cons()
+            .unwrap_or_else(|| panic!("{}", errmsg))
+            .iter()
+            .map(|x| x.car())
+    }
+    let mut itr = cons_value_to_iter(&v);
     let _ = itr.next().unwrap_or_else(|| panic!("{}", errmsg));
     //assert_eq!(v.as_symbol().unwrap(), "define-fun");
 
@@ -48,10 +50,20 @@ fn parse_declare_fun(v: lexpr::Value) -> (Ident, i64) {
     let v = x.as_symbol().unwrap_or_else(|| panic!("{}", errmsg));
     let ident = parse_variable(v);
 
-    let _ = itr.next().unwrap_or_else(|| panic!("{}", errmsg));
-    let _ = itr.next().unwrap_or_else(|| panic!("{}", errmsg));
-    let x = itr.next().unwrap_or_else(|| panic!("{}", errmsg));
-    let v = x.as_i64().unwrap_or_else(|| panic!("{}", errmsg));
+    let _ = itr.next().unwrap_or_else(|| panic!("{}", errmsg)); // null
+    let _ = itr.next().unwrap_or_else(|| panic!("{}", errmsg)); // int
+    let x = itr.next().unwrap_or_else(|| panic!("{}", errmsg)); // integer or (- 1)
+    let v = match x.as_i64() {
+        Some(v) => v,
+        None => {
+            let mut itr = cons_value_to_iter(x);
+            let x = itr.next().unwrap_or_else(|| panic!("{}", errmsg));
+            assert_eq!(x.as_symbol().unwrap_or_else(|| panic!("{}", errmsg)), "-");
+            let x = itr.next().unwrap_or_else(|| panic!("{}", errmsg));
+            -x.as_i64().unwrap_or_else(|| panic!("{}", errmsg))
+        }
+    };
+
     (ident, v)
 }
 
@@ -73,16 +85,16 @@ impl Model {
 #[test]
 fn z3_parse_model() {
     let model = "(
-        (define-fun x1 () Int
-          289)
-        (define-fun x2 () Int
+        (define-fun x_x1 () Int
+        (- 1))
+        (define-fun x_x2 () Int
           1)
       )";
     match Model::from_z3_model_str(model) {
         Ok(m) => {
             let x1 = m.get(&1.into()).unwrap();
             let x2 = m.get(&2.into()).unwrap();
-            assert_eq!(x1, 289);
+            assert_eq!(x1, -1);
             assert_eq!(x2, 1);
         }
         Err(_) => panic!("model is broken"),
