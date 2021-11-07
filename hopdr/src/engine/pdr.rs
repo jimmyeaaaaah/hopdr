@@ -51,6 +51,7 @@ struct CandidateTree {
     root: Option<Vec<NodeID>>,
     labels: HashMap<NodeID, Candidate>,
     levels: HashMap<NodeID, u64>,
+    parents: HashMap<NodeID, Option<NodeID>>,
     children: HashMap<NodeID, Vec<NodeID>>,
     current_id: u64,
 }
@@ -63,6 +64,7 @@ impl CandidateTree {
             labels: HashMap::new(),
             levels: HashMap::new(),
             children: HashMap::new(),
+            parents: HashMap::new(),
         }
     }
 
@@ -112,6 +114,7 @@ impl CandidateTree {
         for c in candidates {
             let node_id = self.add_new_candidate(c.clone(), 0);
             v.push(node_id);
+            self.parents.insert(node_id, None);
         }
         self.root = Some(v);
     }
@@ -121,6 +124,21 @@ impl CandidateTree {
         for c in candidates {
             let node_id = self.add_new_candidate(c.clone(), node.level + 1);
             self.children.get_mut(&node.id).unwrap().push(node_id);
+            self.parents.insert(node_id, Some(node.id));
+        }
+    }
+    pub fn refute(&mut self, node: CandidateNode) {
+        let parent = self.parents.get(&node.id).unwrap();
+        match parent {
+            Some(p) => {
+                for child in self.children[p].iter() {
+                    self.levels.remove(child);
+                    self.labels.remove(child);
+                }
+            }
+            None => {
+                *self = Self::empty();
+            }
         }
     }
 }
@@ -299,6 +317,7 @@ impl<'a> HoPDR<'a> {
                         }
                     }
                     RefuteOrCex::Cex(c2) => {
+                        println!("decide");
                         self.decide(c, c2);
                     }
                 },
@@ -309,9 +328,10 @@ impl<'a> HoPDR<'a> {
 
     fn conflict(&mut self, c: CandidateNode, refute_ty: rtype::Ty) {
         debug!("[PDR]conflict: {} <-> {}", &c.label, &refute_ty);
-        for i in 0..c.level {
+        for i in 0..(self.envs.len() as u64 - c.level) {
             self.envs[i as usize].add(c.label.ident, refute_ty.clone());
         }
+        self.models.refute(c);
     }
 
     fn decide(&mut self, parent: CandidateNode, children: Vec<Candidate>) {

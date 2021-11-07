@@ -700,7 +700,7 @@ pub fn type_check_clause(
     let c2 = type_check_goal(&clause.body, &mut env)?
         .to_constraint()
         .unwrap();
-    println!("typecheck_clause constraint: {}", c);
+    debug!("typecheck_clause constraint: {}", c);
     let c2 = pcsp::PCSP::new(c, c2);
     let c = c2.to_constraint().unwrap().remove_quantifier();
 
