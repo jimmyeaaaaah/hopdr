@@ -107,9 +107,9 @@ impl CandidateTree {
     pub fn add_root_children(&mut self, candidates: &[Candidate]) {
         assert!(self.is_epsilon());
         debug!("add_root_children");
-        for c in candidates {
-            println!("- {}", c);
-        }
+        //for c in candidates {
+        //    println!("- {}", c);
+        //}
         let mut v = Vec::new();
         for c in candidates {
             let node_id = self.add_new_candidate(c.clone(), 0);

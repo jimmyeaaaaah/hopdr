@@ -140,7 +140,7 @@ impl<'a> Template<'a> {
         // Here, the list of templates
         // 1. ax + by + c = d
         template_kinds.push(Box::new(new_eq_template(nargs)));
-        template_kinds.push(Box::new(new_gt_template(nargs)));
+        //template_kinds.push(Box::new(new_gt_template(nargs)));
         Template {
             id,
             nargs,
