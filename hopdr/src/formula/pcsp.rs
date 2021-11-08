@@ -183,6 +183,33 @@ impl Atom {
             ),
         }
     }
+
+    pub fn integer_fv(&self) -> HashSet<Ident> {
+        fn inner(atom: &Atom, fvs: &mut HashSet<Ident>) {
+            match atom.kind() {
+                AtomKind::True => (),
+                AtomKind::Constraint(c) => {
+                    c.fv_with_vec(fvs);
+                }
+                AtomKind::Predicate(_, args) => {
+                    for a in args {
+                        fvs.insert(*a);
+                    }
+                }
+                AtomKind::Conj(x, y) | AtomKind::Disj(x, y) => {
+                    inner(x, fvs);
+                    inner(y, fvs);
+                }
+                AtomKind::Quantifier(_, x, c) => {
+                    inner(c, fvs);
+                    fvs.remove(x);
+                }
+            }
+        }
+        let mut fvs = HashSet::new();
+        inner(self, &mut fvs);
+        fvs
+    }
 }
 
 impl From<Constraint> for Atom {

@@ -4,7 +4,7 @@ use std::{
     unimplemented,
 };
 
-use crate::formula::{chc, pcsp};
+use crate::formula::{chc, pcsp, Variable};
 use crate::formula::{
     chc::pcsps2chcs,
     hes::{Atom, AtomKind, Clause, Goal, GoalKind},
@@ -661,7 +661,16 @@ pub fn type_check_goal<'a>(
         }
     };
     debug!("type_check_goal: {} has type {} ", goal, r);
-    Ok(r)
+    let mut cnstr = r;
+    let fvs = cnstr.integer_fv();
+    debug!("fvlen: {}", fvs.len());
+    for fv in fvs {
+        debug!("{}", fv);
+        if !tenv.iexists(&fv) {
+            cnstr = pcsp::Atom::mk_quantifier(QuantifierKind::Universal, fv, cnstr);
+        }
+    }
+    Ok(cnstr)
 }
 
 fn check_smt(c: &Constraint, vars: &HashSet<Ident>) -> Result<(), Error> {
