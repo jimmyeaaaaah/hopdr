@@ -40,14 +40,67 @@ impl fmt::Display for Atom {
     }
 }
 
+trait TemplateKind {
+    fn apply(&self, args: &[Ident]) -> Constraint;
+    fn instantiate(&self, args: &[Ident], model: &smt::Model) -> Constraint;
+    fn coefs<'a>(&'a self) -> Box<dyn Iterator<Item = &'a Ident> + 'a>;
+}
+
+struct EqTemplate {
+    eq_coef_linear: Vec<Ident>,
+    eq_const_linear: Ident,
+}
+impl EqTemplate {
+    fn new(nargs: usize) -> EqTemplate {
+        let mut eq_coef_linear = Vec::new();
+        for _ in 0..nargs {
+            eq_coef_linear.push(Ident::fresh());
+        }
+        let eq_const_linear = Ident::fresh();
+        EqTemplate {
+            eq_coef_linear,
+            eq_const_linear,
+        }
+    }
+    fn to_constraint(coefs: impl Iterator<Item = Op>, args: &[Ident], constant: Op) -> Constraint {
+        let o = gen_linear_sum(coefs, args);
+        let o = Op::mk_bin_op(OpKind::Add, o, constant);
+        Constraint::mk_pred(PredKind::Eq, vec![o, Op::mk_const(0)])
+    }
+}
+
+impl TemplateKind for EqTemplate {
+    fn apply(&self, args: &[Ident]) -> Constraint {
+        let coefs = self.eq_coef_linear.iter().map(|x| Op::mk_var(*x));
+        let constant = Op::mk_var(self.eq_const_linear);
+        EqTemplate::to_constraint(coefs, args, constant)
+    }
+
+    fn instantiate(&self, args: &[Ident], model: &smt::Model) -> Constraint {
+        let coefs = self.eq_coef_linear.iter().map(|x| {
+            let v = model.get(x).unwrap();
+            Op::mk_const(v)
+        });
+        let constant = Op::mk_const(model.get(&self.eq_const_linear).unwrap());
+        EqTemplate::to_constraint(coefs, args, constant)
+    }
+
+    fn coefs<'a>(&'a self) -> Box<dyn Iterator<Item = &'a Ident> + 'a> {
+        Box::new(
+            self.eq_coef_linear
+                .iter()
+                .chain(vec![&self.eq_const_linear]),
+        )
+    }
+}
+
 ///
 /// P(x1, x2) -> a1 x1 + a2 x2 + b >= 0
-pub struct Template {
+pub struct Template<'a> {
     // information of the original predicate
     id: Ident,
     nargs: usize,
-    eq_coef_linear: Vec<Ident>,
-    eq_const_linear: Ident,
+    template_kinds: Vec<Box<dyn TemplateKind + 'a>>,
 }
 
 fn gen_linear_sum(coefs: impl IntoIterator<Item = Op>, args: &[Ident]) -> Op {
@@ -66,34 +119,29 @@ fn gen_linear_sum(coefs: impl IntoIterator<Item = Op>, args: &[Ident]) -> Op {
     }
 }
 
-impl Template {
-    fn new(id: Ident, nargs: usize) -> Template {
-        let mut eq_coef_linear = Vec::new();
-        for _ in 0..nargs {
-            eq_coef_linear.push(Ident::fresh());
-        }
-        let eq_const_linear = Ident::fresh();
+impl<'a> Template<'a> {
+    fn new(id: Ident, nargs: usize) -> Template<'a> {
+        let mut template_kinds: Vec<Box<dyn TemplateKind>> = Vec::new();
+        // Here, the list of templates
+        // 1. ax + by + c = d
+        template_kinds.push(Box::new(EqTemplate::new(nargs)));
         Template {
             id,
             nargs,
-            eq_coef_linear,
-            eq_const_linear,
+            template_kinds,
         }
     }
 
     fn apply(&self, args: &[Ident]) -> Constraint {
-        let mut c = Constraint::mk_false();
-
-        let o = gen_linear_sum(self.eq_coef_linear.iter().map(|x| Op::mk_var(*x)), args);
-        let o = Op::mk_bin_op(OpKind::Add, o, Op::mk_var(self.eq_const_linear));
-        c = Constraint::mk_pred(PredKind::Eq, vec![o, Op::mk_const(0)]);
+        let mut c = Constraint::mk_true();
+        for t in self.template_kinds.iter() {
+            c = Constraint::mk_conj(t.apply(args), c);
+        }
         c
     }
 
-    fn coef_iter<'a>(&'a self) -> impl Iterator<Item = &'a Ident> {
-        self.eq_coef_linear
-            .iter()
-            .chain(vec![&self.eq_const_linear])
+    fn coef_iter(&'a self) -> impl Iterator<Item = &'a Ident> {
+        self.template_kinds.iter().map(|x| x.coefs()).flatten()
     }
 
     fn to_constraint(self, model: &smt::Model) -> (Vec<Ident>, Constraint) {
@@ -101,18 +149,10 @@ impl Template {
             .into_iter()
             .map(|_| Ident::fresh())
             .collect::<Vec<_>>();
-
-        let op_args = self.eq_coef_linear.iter().map(|x| {
-            let v = model.get(x).unwrap();
-            Op::mk_const(v)
-        });
-        let o = gen_linear_sum(op_args, &args);
-        let o = Op::mk_bin_op(
-            OpKind::Add,
-            o,
-            Op::mk_const(model.get(&self.eq_const_linear).unwrap()),
-        );
-        let c = Constraint::mk_pred(PredKind::Eq, vec![o, Op::mk_const(0)]);
+        let mut c = Constraint::mk_true();
+        for t in self.template_kinds.iter() {
+            c = Constraint::mk_conj(t.instantiate(&args, model), c);
+        }
         (args, c)
     }
 }

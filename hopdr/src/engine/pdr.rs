@@ -226,6 +226,11 @@ impl<'a> HoPDR<'a> {
             Some(c) => c.to_candidates(),
             None => panic!("program error"),
         };
+        //println!("candidates");
+        //for c in candidates.iter() {
+        //    println!("- {}", c);
+        //}
+
         self.models.add_root_children(&candidates);
     }
 

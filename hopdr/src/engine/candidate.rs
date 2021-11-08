@@ -41,6 +41,12 @@ fn consistent(
         _ => panic!("program error"),
     }
 }
+fn conflict(
+    s: &rtype::Tau<Negative, pcsp::Atom>,
+    t: &rtype::Tau<rtype::Positive, pcsp::Atom>,
+) -> fofml::Atom {
+    fofml::Atom::mk_not(consistent(s, t))
+}
 
 fn types(
     env: &mut Environment<rtype::Tau<rtype::Positive, pcsp::Atom>>,
@@ -161,7 +167,7 @@ impl Sty {
         let mut check_env = Environment::from_type_environment(env.into());
 
         let ty = self.clone_with_template(IntegerEnvironment::new(), &mut new_idents);
-        let fml = consistent(&self.clone().into(), &ty);
+        let fml = conflict(&self.clone().into(), &ty);
         let fml2 = types(&mut check_env, clause, ty.clone());
         let fml = fofml::Atom::mk_conj(fml, fml2);
         match fml.check_satisfiability(&check_env.imap.iter().collect(), &new_idents) {
