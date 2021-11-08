@@ -46,10 +46,13 @@ trait TemplateKind {
     fn coefs<'a>(&'a self) -> Box<dyn Iterator<Item = &'a Ident> + 'a>;
 }
 
-trait Linear {
-    fn get_coefs<'a>(&'a self) -> &'a [Ident];
-    fn get_constant<'a>(&'a self) -> &'a Ident;
-    fn get_predicate(&self) -> PredKind;
+struct Linear {
+    coefs: Vec<Ident>,
+    constant: Ident,
+    predicate: PredKind,
+}
+
+impl Linear {
     fn to_constraint(
         &self,
         coefs: impl Iterator<Item = Op>,
@@ -58,56 +61,51 @@ trait Linear {
     ) -> Constraint {
         let o = gen_linear_sum(coefs, args);
         let o = Op::mk_bin_op(OpKind::Add, o, constant);
-        Constraint::mk_pred(self.get_predicate(), vec![o, Op::mk_const(0)])
+        Constraint::mk_pred(self.predicate, vec![o, Op::mk_const(0)])
     }
 }
 
-struct EqTemplate {
-    coefs: Vec<Ident>,
-    constant: Ident,
-}
-impl EqTemplate {
-    fn new(nargs: usize) -> EqTemplate {
+impl Linear {
+    fn new(nargs: usize, predicate: PredKind) -> Linear {
         let mut coefs = Vec::new();
         for _ in 0..nargs {
             coefs.push(Ident::fresh());
         }
         let constant = Ident::fresh();
-        EqTemplate { coefs, constant }
-    }
-}
-impl Linear for EqTemplate {
-    fn get_coefs<'a>(&'a self) -> &'a [Ident] {
-        &self.coefs
-    }
-
-    fn get_constant<'a>(&'a self) -> &'a Ident {
-        &self.constant
-    }
-
-    fn get_predicate(&self) -> PredKind {
-        PredKind::Eq
+        Linear {
+            coefs,
+            constant,
+            predicate,
+        }
     }
 }
 
-impl<T: Linear> TemplateKind for T {
+fn new_eq_template(nargs: usize) -> Linear {
+    Linear::new(nargs, PredKind::Eq)
+}
+
+fn new_gt_template(nargs: usize) -> Linear {
+    Linear::new(nargs, PredKind::Gt)
+}
+
+impl TemplateKind for Linear {
     fn apply(&self, args: &[Ident]) -> Constraint {
-        let coefs = self.get_coefs().iter().map(|x| Op::mk_var(*x));
-        let constant = Op::mk_var(*self.get_constant());
+        let coefs = self.coefs.iter().map(|x| Op::mk_var(*x));
+        let constant = Op::mk_var(self.constant);
         self.to_constraint(coefs, args, constant)
     }
 
     fn instantiate(&self, args: &[Ident], model: &smt::Model) -> Constraint {
-        let coefs = self.get_coefs().iter().map(|x| {
+        let coefs = self.coefs.iter().map(|x| {
             let v = model.get(x).unwrap();
             Op::mk_const(v)
         });
-        let constant = Op::mk_const(model.get(&self.get_constant()).unwrap());
+        let constant = Op::mk_const(model.get(&self.constant).unwrap());
         self.to_constraint(coefs, args, constant)
     }
 
     fn coefs<'a>(&'a self) -> Box<dyn Iterator<Item = &'a Ident> + 'a> {
-        Box::new(self.get_coefs().iter().chain(vec![self.get_constant()]))
+        Box::new(self.coefs.iter().chain(vec![&self.constant]))
     }
 }
 
@@ -141,7 +139,8 @@ impl<'a> Template<'a> {
         let mut template_kinds: Vec<Box<dyn TemplateKind>> = Vec::new();
         // Here, the list of templates
         // 1. ax + by + c = d
-        template_kinds.push(Box::new(EqTemplate::new(nargs)));
+        template_kinds.push(Box::new(new_eq_template(nargs)));
+        template_kinds.push(Box::new(new_gt_template(nargs)));
         Template {
             id,
             nargs,
