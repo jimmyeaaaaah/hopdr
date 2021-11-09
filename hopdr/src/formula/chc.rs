@@ -4,6 +4,7 @@ use std::fmt;
 use std::iter::FromIterator;
 use std::vec;
 
+use super::fofml;
 use super::pcsp;
 use super::{Conjunctive, Constraint, Ident, Rename, Top};
 
@@ -123,7 +124,7 @@ impl CHC<pcsp::Atom> {
         CHC { body, ..self }
     }
 
-    fn resolve_target(&self, targets: &HashSet<Ident>) -> Result<pcsp::Atom, ResolutionError> {
+    fn resolve_target(&self, target: &Ident) -> Result<fofml::Atom, ResolutionError> {
         // 1. transform body of chc to disjunction normal form: bodies
         // 2. check when P(x, y, z) /\ P'(x', y', z') then x = x' and y = y' and z = z' and P = P' = target
         // 3. transform each body in bodies to P(x, y, z) /\ constraint => constraint'
@@ -134,62 +135,59 @@ impl CHC<pcsp::Atom> {
         let bodies = to_dnf(&self.body);
         let head = match &self.head {
             CHCHead::Constraint(c) => c.clone(),
-            CHCHead::Predicate(_, _) => return Err(ResolutionError::IllegalConstraint),
+            CHCHead::Predicate(_, _) => {
+                error!("head was illeagal");
+                return Err(ResolutionError::IllegalConstraint);
+            }
         };
 
-        let mut result = pcsp::Atom::mk_true();
+        let mut result = fofml::Atom::mk_true();
         for body in bodies.iter() {
             // 2. check
-            let mut preds = body
-                .iter()
-                .filter_map(|x| match x {
-                    CHCHead::Constraint(_) => None,
-                    CHCHead::Predicate(p, l) => Some((p, l)),
-                })
-                .collect::<Vec<_>>();
-            let (_p, _l) = if preds.is_empty() {
-                return Err(ResolutionError::IllegalConstraint);
-            } else if preds.len() > 1 {
-                let (p, l) = preds.pop().unwrap();
-                if !targets.contains(p) {
-                    return Err(ResolutionError::IllegalConstraint);
-                }
-                for (p2, l2) in preds {
-                    if !targets.contains(p2) || l2.len() != l.len() {
-                        return Err(ResolutionError::IllegalConstraint);
-                    }
-                    for (x, y) in l.iter().zip(l2.iter()) {
-                        if x != y {
-                            return Err(ResolutionError::IllegalConstraint);
+            let mut target_arguments: Option<&Vec<Ident>> = None;
+            for b in body.iter() {
+                match b {
+                    CHCHead::Predicate(p, l) => {
+                        // check if the argument the same as the previous occurence
+                        // for checking whether the assumption holds
+                        match target_arguments {
+                            Some(l2) => {
+                                if l.len() != l2.len() {
+                                    return Err(ResolutionError::IllegalConstraint);
+                                }
+                                for (x, y) in l.iter().zip(l2.iter()) {
+                                    if x != y {
+                                        return Err(ResolutionError::IllegalConstraint);
+                                    }
+                                }
+                            }
+                            None => {
+                                target_arguments = Some(l);
+                            }
                         }
                     }
+                    _ => (),
                 }
-                (p, l)
-            } else {
-                let (p, l) = preds.pop().unwrap();
-                if !targets.contains(p) {
-                    return Err(ResolutionError::IllegalConstraint);
-                }
-                (p, l)
-            };
+            }
+            if target_arguments.is_none() {
+                return Err(ResolutionError::IllegalConstraint);
+            }
             // 3. simplify & negation
             let constrs = body
                 .iter()
                 .filter_map(|x| match x {
                     CHCHead::Constraint(c) => Some(c.clone().into()),
-                    CHCHead::Predicate(_, _) => None,
+                    CHCHead::Predicate(p, l) if p != target => {
+                        Some(fofml::Atom::mk_pred(*p, l.clone()))
+                    }
+                    CHCHead::Predicate(p, l) => None,
                 })
-                .collect::<Vec<pcsp::Atom>>();
+                .collect::<Vec<fofml::Atom>>();
             let mut h = head.clone().into();
             for c in constrs {
-                match c.clone().negate() {
-                    Some(c) => {
-                        h = pcsp::Atom::mk_disj(c, h);
-                    }
-                    None => return Err(ResolutionError::IllegalConstraint),
-                };
+                h = fofml::Atom::mk_disj(h, c.clone().negate())
             }
-            result = pcsp::Atom::mk_conj(h, result);
+            result = fofml::Atom::mk_conj(h, result);
         }
         Ok(result)
     }
@@ -410,12 +408,12 @@ pub fn simplify(
 
 pub fn resolve_target(
     chcs: Vec<CHC<pcsp::Atom>>,
-    targets: &HashSet<Ident>,
-) -> Result<pcsp::Atom, ResolutionError> {
-    let mut ret = pcsp::Atom::mk_true();
+    target: &Ident,
+) -> Result<fofml::Atom, ResolutionError> {
+    let mut ret = fofml::Atom::mk_true();
     for chc in chcs {
-        let c = chc.resolve_target(targets)?;
-        ret = pcsp::Atom::mk_conj(c, ret);
+        let c = chc.resolve_target(target)?;
+        ret = fofml::Atom::mk_conj(c, ret);
     }
     Ok(ret)
 }

@@ -74,7 +74,7 @@ fn types_negative(
         _ => panic!("program error"),
     };
     let c2 = type_check_goal(&cl.body, env).unwrap();
-    let p = pcsp::PCSP::new(c.clone(), c2);
+    let p = pcsp::PCSP::new(c.clone().into(), c2);
     p.into()
 }
 
@@ -180,7 +180,7 @@ impl Sty {
 pub fn type_check_goal<'a>(
     goal: &Goal,
     tenv: &mut Environment<rtype::Tau<Negative, pcsp::Atom>>,
-) -> Result<pcsp::Atom, rtype::Error> {
+) -> Result<fofml::Atom, rtype::Error> {
     debug!("type_check_goal(negative) start: {}", goal);
     let f = type_check_goal;
     use rtype::{type_check_atom, TauKind};
@@ -196,15 +196,17 @@ pub fn type_check_goal<'a>(
             }
 
             // TODO: here calculate greatest type
-            let mut ret_constr = pcsp::Atom::mk_false();
+            let mut ret_constr = fofml::Atom::mk_false();
             for (t, constraints) in ts {
-                let mut targets = HashSet::new();
-                t.fv_with_vec(&mut targets);
                 match t.kind() {
-                    TauKind::Proposition(_) => {
-                        let c = chc::resolve_target(constraints, &targets).unwrap();
+                    TauKind::Proposition(c) => {
+                        let target = match c.kind() {
+                            pcsp::AtomKind::Predicate(p, _) => p,
+                            _ => panic!("program error"),
+                        };
+                        let c = chc::resolve_target(constraints, target).unwrap();
                         debug!("final constraint: {}", c);
-                        ret_constr = pcsp::Atom::mk_disj(ret_constr, c.clone());
+                        ret_constr = fofml::Atom::mk_disj(ret_constr, c.clone());
                     }
                     _ => panic!("program error. The result type of atom must be prop."),
                 }
@@ -212,12 +214,12 @@ pub fn type_check_goal<'a>(
             ret_constr
         }
         Constr(c) => c.clone().negate().unwrap().into(),
-        Conj(x, y) => pcsp::Atom::mk_disj(f(x, tenv)?, f(y, tenv)?),
-        Disj(x, y) => pcsp::Atom::mk_conj(f(x, tenv)?, f(y, tenv)?),
+        Conj(x, y) => fofml::Atom::mk_disj(f(x, tenv)?, f(y, tenv)?),
+        Disj(x, y) => fofml::Atom::mk_conj(f(x, tenv)?, f(y, tenv)?),
         Univ(v, x) => {
             if v.ty.is_int() {
                 tenv.iadd(v.id);
-                pcsp::Atom::mk_quantifier(QuantifierKind::Existential, v.id, f(x, tenv)?)
+                fofml::Atom::mk_quantifier(QuantifierKind::Existential, v.id, f(x, tenv)?)
             } else {
                 unimplemented!()
             }

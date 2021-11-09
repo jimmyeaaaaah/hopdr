@@ -140,7 +140,8 @@ impl<'a> Template<'a> {
         // Here, the list of templates
         // 1. ax + by + c = d
         template_kinds.push(Box::new(new_eq_template(nargs)));
-        //template_kinds.push(Box::new(new_gt_template(nargs)));
+        // 1. ax + by + c > d
+        template_kinds.push(Box::new(new_gt_template(nargs)));
         Template {
             id,
             nargs,
@@ -240,7 +241,7 @@ impl Atom {
     pub fn mk_pred(p: Ident, l: Vec<Ident>) -> Atom {
         Atom::new(AtomKind::Predicate(p, l))
     }
-    fn mk_quantifier(q: QuantifierKind, x: Ident, c: Atom) -> Atom {
+    pub fn mk_quantifier(q: QuantifierKind, x: Ident, c: Atom) -> Atom {
         Atom::new(AtomKind::Quantifier(q, x, c))
     }
     pub fn mk_univq(x: Ident, c: Atom) -> Atom {
@@ -248,6 +249,9 @@ impl Atom {
     }
     pub fn mk_existq(x: Ident, c: Atom) -> Atom {
         Atom::mk_quantifier(QuantifierKind::Existential, x, c)
+    }
+    pub fn negate(self) -> Atom {
+        Atom::mk_not(self)
     }
 }
 
@@ -302,6 +306,12 @@ impl From<pcsp::Atom> for Atom {
 impl From<pcsp::PCSP<pcsp::Atom>> for Atom {
     fn from(from: pcsp::PCSP<pcsp::Atom>) -> Atom {
         Atom::mk_disj(Atom::mk_not(from.body.into()), from.head.into())
+    }
+}
+
+impl From<pcsp::PCSP<Atom>> for Atom {
+    fn from(from: pcsp::PCSP<Atom>) -> Atom {
+        Atom::mk_disj(Atom::mk_not(from.body), from.head)
     }
 }
 

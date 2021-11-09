@@ -619,7 +619,7 @@ where
 pub fn type_check_goal<'a>(
     goal: &Goal,
     tenv: &mut Environment<Tau<Positive, pcsp::Atom>>,
-) -> Result<pcsp::Atom, Error> {
+) -> Result<fofml::Atom, Error> {
     //debug!("type_check_goal start: {}", goal);
     use GoalKind::*;
     let f = type_check_goal;
@@ -636,12 +636,14 @@ pub fn type_check_goal<'a>(
             // TODO: here calculate greatest type
             let mut ret_constr = pcsp::Atom::mk_false();
             for (t, constraints) in ts {
-                let mut targets = HashSet::new();
-                t.fv_with_vec(&mut targets);
                 match t.kind() {
-                    TauKind::Proposition(_) => {
-                        let c = chc::resolve_target(constraints, &targets).unwrap();
-                        ret_constr = pcsp::Atom::mk_disj(ret_constr, c.clone());
+                    TauKind::Proposition(c) => {
+                        let target = match c.kind() {
+                            pcsp::AtomKind::Predicate(p, _) => p,
+                            _ => panic!("program error"),
+                        };
+                        let c = chc::resolve_target(constraints, target).unwrap();
+                        ret_constr = fofml::Atom::mk_disj(ret_constr, c.clone());
                     }
                     _ => panic!("program error. The result type of atom must be prop."),
                 }
