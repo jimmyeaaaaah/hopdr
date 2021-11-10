@@ -4,6 +4,7 @@ use std::fmt;
 use super::pcsp;
 use super::{
     Bot, Conjunctive, Constraint, Fv, Ident, Op, OpKind, PredKind, QuantifierKind, Subst, Top,
+    Type, Variable,
 };
 use crate::solver::smt;
 use crate::util::P;
@@ -252,6 +253,52 @@ impl Atom {
     }
     pub fn negate(self) -> Atom {
         Atom::mk_not(self)
+    }
+    pub fn integer_fv(&self) -> HashSet<Ident> {
+        fn inner(atom: &Atom, fvs: &mut HashSet<Ident>) {
+            match atom.kind() {
+                AtomKind::True => (),
+                AtomKind::Constraint(c) => {
+                    c.fv_with_vec(fvs);
+                }
+                AtomKind::Predicate(_, args) => {
+                    for a in args {
+                        fvs.insert(*a);
+                    }
+                }
+                AtomKind::Conj(x, y) | AtomKind::Disj(x, y) => {
+                    inner(x, fvs);
+                    inner(y, fvs);
+                }
+                AtomKind::Quantifier(_, x, c) => {
+                    inner(c, fvs);
+                    fvs.remove(x);
+                }
+                AtomKind::Not(x) => inner(x, fvs),
+            }
+        }
+        let mut fvs = HashSet::new();
+        inner(self, &mut fvs);
+        fvs
+    }
+    pub fn to_constraint(&self) -> Option<Constraint> {
+        match self.kind() {
+            AtomKind::True => Some(Constraint::mk_true()),
+            AtomKind::Constraint(c) => Some(c.clone()),
+            AtomKind::Predicate(_, _) => None,
+            AtomKind::Conj(x, y) => x
+                .to_constraint()
+                .map(|x| y.to_constraint().map(|y| Constraint::mk_conj(x, y)))
+                .flatten(),
+            AtomKind::Disj(x, y) => x
+                .to_constraint()
+                .map(|x| y.to_constraint().map(|y| Constraint::mk_disj(x, y)))
+                .flatten(),
+            AtomKind::Quantifier(q, x, c) => c
+                .to_constraint()
+                .map(|c| Constraint::mk_quantifier(*q, Variable::mk(*x, Type::mk_type_int()), c)),
+            AtomKind::Not(x) => x.to_constraint().map(|x| x.negate()).flatten(),
+        }
     }
 }
 

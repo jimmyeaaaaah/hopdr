@@ -59,7 +59,7 @@ fn types(
         _ => panic!("program error"),
     };
     let c2 = rtype::type_check_goal(&cl.body, env).unwrap();
-    let p = pcsp::PCSP::new(c.clone(), c2);
+    let p = pcsp::PCSP::new(c.clone().into(), c2);
     p.into()
 }
 
@@ -183,36 +183,10 @@ pub fn type_check_goal<'a>(
 ) -> Result<fofml::Atom, rtype::Error> {
     debug!("type_check_goal(negative) start: {}", goal);
     let f = type_check_goal;
-    use rtype::{type_check_atom, TauKind};
+    use rtype::type_check_atom_wrapper;
     use GoalKind::*;
     let r = match goal.kind() {
-        Atom(atom) => {
-            let ts = type_check_atom(atom, tenv)?;
-            for (t, constraints) in ts.iter() {
-                debug!("- type: {}", t);
-                for c in constraints.iter() {
-                    debug!("-- constraint: {}", c)
-                }
-            }
-
-            // TODO: here calculate greatest type
-            let mut ret_constr = fofml::Atom::mk_false();
-            for (t, constraints) in ts {
-                match t.kind() {
-                    TauKind::Proposition(c) => {
-                        let target = match c.kind() {
-                            pcsp::AtomKind::Predicate(p, _) => p,
-                            _ => panic!("program error"),
-                        };
-                        let c = chc::resolve_target(constraints, target).unwrap();
-                        debug!("final constraint: {}", c);
-                        ret_constr = fofml::Atom::mk_disj(ret_constr, c.clone());
-                    }
-                    _ => panic!("program error. The result type of atom must be prop."),
-                }
-            }
-            ret_constr
-        }
+        Atom(atom) => type_check_atom_wrapper(atom, tenv)?,
         Constr(c) => c.clone().negate().unwrap().into(),
         Conj(x, y) => fofml::Atom::mk_disj(f(x, tenv)?, f(y, tenv)?),
         Disj(x, y) => fofml::Atom::mk_conj(f(x, tenv)?, f(y, tenv)?),

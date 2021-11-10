@@ -4,7 +4,7 @@ use std::{
     unimplemented,
 };
 
-use crate::formula::{chc, pcsp, Variable};
+use crate::formula::{chc, fofml, pcsp, Variable};
 use crate::formula::{
     chc::pcsps2chcs,
     hes::{Atom, AtomKind, Clause, Goal, GoalKind},
@@ -616,6 +616,48 @@ where
     Ok(r)
 }
 
+pub(crate) fn type_check_atom_wrapper<P: fmt::Debug>(
+    atom: &Atom,
+    tenv: &mut Environment<Tau<P, pcsp::Atom>>,
+) -> Result<fofml::Atom, Error> {
+    let ts = type_check_atom(atom, tenv)?;
+    // for (t, constraints) in ts.iter() {
+    //     debug!("- type: {}", t);
+    //     for c in constraints.iter() {
+    //         debug!("-- constraint: {}", c)
+    //     }
+    // }
+
+    // TODO: here calculate greatest type
+    let mut ret_constr = fofml::Atom::mk_false();
+    for (t, constraints) in ts {
+        match t.kind() {
+            TauKind::Proposition(c) => {
+                let mut constraint_preds = HashSet::new();
+                c.fv_with_vec(&mut constraint_preds);
+                let mut tenv_preds = HashSet::new();
+                for ts in tenv.map.map.values() {
+                    for t in ts {
+                        t.fv_with_vec(&mut tenv_preds);
+                    }
+                }
+
+                let mut fvs = constraint_preds.difference(&tenv_preds);
+                for x in constraint_preds.difference(&tenv_preds) {
+                    debug!("> {}", x);
+                }
+                let c = match fvs.next() {
+                    Some(target) => chc::resolve_target(constraints, target).unwrap(),
+                    None => c.clone().into(),
+                };
+                ret_constr = fofml::Atom::mk_disj(ret_constr, c.clone());
+            }
+            _ => panic!("program error. The result type of atom must be prop."),
+        }
+    }
+    Ok(ret_constr)
+}
+
 pub fn type_check_goal<'a>(
     goal: &Goal,
     tenv: &mut Environment<Tau<Positive, pcsp::Atom>>,
@@ -623,40 +665,16 @@ pub fn type_check_goal<'a>(
     //debug!("type_check_goal start: {}", goal);
     use GoalKind::*;
     let f = type_check_goal;
+    // collect all predicate variables
     let r = match goal.kind() {
-        Atom(atom) => {
-            let ts = type_check_atom(atom, tenv)?;
-            // for (t, constraints) in ts.iter() {
-            //     debug!("- type: {}", t);
-            //     for c in constraints.iter() {
-            //         debug!("-- constraint: {}", c)
-            //     }
-            // }
-
-            // TODO: here calculate greatest type
-            let mut ret_constr = pcsp::Atom::mk_false();
-            for (t, constraints) in ts {
-                match t.kind() {
-                    TauKind::Proposition(c) => {
-                        let target = match c.kind() {
-                            pcsp::AtomKind::Predicate(p, _) => p,
-                            _ => panic!("program error"),
-                        };
-                        let c = chc::resolve_target(constraints, target).unwrap();
-                        ret_constr = fofml::Atom::mk_disj(ret_constr, c.clone());
-                    }
-                    _ => panic!("program error. The result type of atom must be prop."),
-                }
-            }
-            ret_constr
-        }
+        Atom(atom) => type_check_atom_wrapper(atom, tenv)?,
         Constr(c) => c.clone().into(),
-        Conj(x, y) => pcsp::Atom::mk_conj(f(x, tenv)?, f(y, tenv)?),
-        Disj(x, y) => pcsp::Atom::mk_disj(f(x, tenv)?, f(y, tenv)?),
+        Conj(x, y) => fofml::Atom::mk_conj(f(x, tenv)?, f(y, tenv)?),
+        Disj(x, y) => fofml::Atom::mk_disj(f(x, tenv)?, f(y, tenv)?),
         Univ(v, x) => {
             if v.ty.is_int() {
                 tenv.iadd(v.id);
-                pcsp::Atom::mk_quantifier(QuantifierKind::Universal, v.id, f(x, tenv)?)
+                fofml::Atom::mk_quantifier(QuantifierKind::Universal, v.id, f(x, tenv)?)
             } else {
                 unimplemented!()
             }
@@ -669,7 +687,7 @@ pub fn type_check_goal<'a>(
     for fv in fvs {
         debug!("{}", fv);
         if !tenv.iexists(&fv) {
-            cnstr = pcsp::Atom::mk_quantifier(QuantifierKind::Universal, fv, cnstr);
+            cnstr = fofml::Atom::mk_quantifier(QuantifierKind::Universal, fv, cnstr);
         }
     }
     Ok(cnstr)
