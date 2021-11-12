@@ -147,16 +147,22 @@ impl CHC<pcsp::Atom> {
             let mut target_arguments: Option<&Vec<Ident>> = None;
             for b in body.iter() {
                 match b {
-                    CHCHead::Predicate(p, l) => {
+                    CHCHead::Predicate(p, l) if p == target => {
                         // check if the argument the same as the previous occurence
                         // for checking whether the assumption holds
                         match target_arguments {
                             Some(l2) => {
                                 if l.len() != l2.len() {
+                                    debug!(
+                                        "[resolve target] l.len() != l2.len(): {} {}",
+                                        l.len(),
+                                        l2.len()
+                                    );
                                     return Err(ResolutionError::IllegalConstraint);
                                 }
                                 for (x, y) in l.iter().zip(l2.iter()) {
                                     if x != y {
+                                        debug!("[resolve target] x != y");
                                         return Err(ResolutionError::IllegalConstraint);
                                     }
                                 }
@@ -170,6 +176,7 @@ impl CHC<pcsp::Atom> {
                 }
             }
             if target_arguments.is_none() {
+                debug!("[resolve target] target_arguments.is_none()");
                 return Err(ResolutionError::IllegalConstraint);
             }
             // 3. simplify & negation
