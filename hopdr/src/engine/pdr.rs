@@ -54,12 +54,14 @@ struct CandidateTree {
     parents: HashMap<NodeID, Option<NodeID>>,
     children: HashMap<NodeID, Vec<NodeID>>,
     current_id: u64,
+    maximum_level: u64,
 }
 
 impl CandidateTree {
     fn empty() -> CandidateTree {
         CandidateTree {
             current_id: 0,
+            maximum_level: 0,
             root: None,
             labels: HashMap::new(),
             levels: HashMap::new(),
@@ -84,9 +86,11 @@ impl CandidateTree {
 
     fn get_unprocessed_leaf(&self) -> Option<CandidateNode> {
         for (key, _) in self.labels.iter() {
-            if !self.children.contains_key(key) {
+            if !self.children.contains_key(key) && self.levels[key] < self.maximum_level {
                 let c = self.labels[key].clone();
                 let lv = self.levels[key];
+                println!("level: {}", lv);
+                println!("label: {}", c);
                 return Some(CandidateNode {
                     id: *key,
                     level: lv,
@@ -104,7 +108,7 @@ impl CandidateTree {
         id
     }
 
-    pub fn add_root_children(&mut self, candidates: &[Candidate]) {
+    pub fn add_root_children(&mut self, candidates: &[Candidate], maximum_level: u64) {
         assert!(self.is_epsilon());
         debug!("add_root_children");
         //for c in candidates {
@@ -117,6 +121,7 @@ impl CandidateTree {
             self.parents.insert(node_id, None);
         }
         self.root = Some(v);
+        self.maximum_level = maximum_level;
     }
 
     pub fn add_children(&mut self, node: CandidateNode, candidates: &[Candidate]) {
@@ -139,6 +144,30 @@ impl CandidateTree {
             None => {
                 *self = Self::empty();
             }
+        }
+    }
+    pub fn show_tree(&self) {
+        fn show_tree_inner(tree: &CandidateTree, node_id: &NodeID, level: u64) {
+            for _ in 0..level {
+                print!("---");
+            }
+            print!(" ");
+            println!("{}", &tree.labels[node_id]);
+            match tree.children.get(node_id) {
+                Some(children) => {
+                    for id in children {
+                        show_tree_inner(tree, id, level + 1)
+                    }
+                }
+                None => (),
+            }
+        }
+        let root = match &self.root {
+            Some(root) => root,
+            None => return (),
+        };
+        for x in root {
+            show_tree_inner(self, x, 0)
         }
     }
 }
@@ -226,12 +255,13 @@ impl<'a> HoPDR<'a> {
             Some(c) => c.to_candidates(),
             None => panic!("program error"),
         };
-        //println!("candidates");
-        //for c in candidates.iter() {
-        //    println!("- {}", c);
-        //}
+        println!("candidates");
+        for c in candidates.iter() {
+            println!("- {}", c);
+        }
 
-        self.models.add_root_children(&candidates);
+        self.models
+            .add_root_children(&candidates, self.envs.len() as u64);
     }
 
     fn get_clause_by_id(&'a self, id: &Ident) -> &'a hes::Clause {
@@ -307,6 +337,7 @@ impl<'a> HoPDR<'a> {
     fn invalid(&mut self) -> PDRResult {
         debug!("PDR invalid");
         dprintln!(self.verbose, DEBUG, "[PDR]invalid");
+        self.models.show_tree();
         PDRResult::Invalid
     }
 
@@ -317,6 +348,7 @@ impl<'a> HoPDR<'a> {
                 Some(c) => match self.is_refutable(&c.label) {
                     RefuteOrCex::Refutable(t) => {
                         self.conflict(c, t);
+                        println!("conflict");
                         if self.models.is_epsilon() {
                             return false;
                         }
