@@ -655,6 +655,10 @@ pub(crate) fn type_check_atom_wrapper<P: fmt::Debug>(
             _ => panic!("program error. The result type of atom must be prop."),
         }
     }
+    let fvs = ret_constr.integer_fv();
+    for x in fvs {
+        ret_constr = fofml::Atom::mk_quantifier(QuantifierKind::Universal, x, ret_constr);
+    }
     Ok(ret_constr)
 }
 
