@@ -133,9 +133,14 @@ impl Sty {
         match fml.check_satisfiability(&check_env.imap.iter().collect(), &new_idents) {
             Some(model) => {
                 let mut result_env = rtype::TypeEnvironment::new();
+
+                let fvs = clause.fv();
                 for (i, v) in template_env.map {
-                    for x in v {
-                        result_env.add(i, x.assign(&model));
+                    // we don't care irrelevant predicates
+                    if fvs.contains(&i) {
+                        for x in v {
+                            result_env.add(i, x.assign(&model));
+                        }
                     }
                 }
                 Some(result_env)

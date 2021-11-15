@@ -6,6 +6,7 @@ use crate::formula::hes::Problem;
 use crate::formula::{hes, Ident};
 use crate::formula::{Constraint, Top};
 use crate::util::dprintln;
+use colored::Colorize;
 use std::collections::HashMap;
 
 use std::fmt::Display;
@@ -33,7 +34,7 @@ pub enum PDRResult {
 pub const NOLOG: u64 = 0;
 pub const DEBUG: u64 = 1;
 
-type NodeID = u64;
+type NodeID = usize;
 
 #[derive(Debug, Clone)]
 struct Candidate {
@@ -50,18 +51,16 @@ impl Display for Candidate {
 struct CandidateTree {
     root: Option<Vec<NodeID>>,
     labels: HashMap<NodeID, Candidate>,
-    levels: HashMap<NodeID, u64>,
+    levels: HashMap<NodeID, usize>,
     parents: HashMap<NodeID, Option<NodeID>>,
     children: HashMap<NodeID, Vec<NodeID>>,
-    current_id: u64,
-    maximum_level: u64,
+    current_id: usize,
 }
 
 impl CandidateTree {
     fn empty() -> CandidateTree {
         CandidateTree {
             current_id: 0,
-            maximum_level: 0,
             root: None,
             labels: HashMap::new(),
             levels: HashMap::new(),
@@ -86,11 +85,11 @@ impl CandidateTree {
 
     fn get_unprocessed_leaf(&self) -> Option<CandidateNode> {
         for (key, _) in self.labels.iter() {
-            if !self.children.contains_key(key) && self.levels[key] < self.maximum_level {
+            if !self.children.contains_key(key) && self.levels[key] > 0 {
                 let c = self.labels[key].clone();
                 let lv = self.levels[key];
                 println!("level: {}", lv);
-                println!("label: {}", c);
+                //println!("label: {}", c);
                 return Some(CandidateNode {
                     id: *key,
                     level: lv,
@@ -101,14 +100,14 @@ impl CandidateTree {
         None
     }
 
-    fn add_new_candidate(&mut self, candidate: Candidate, level: u64) -> NodeID {
+    fn add_new_candidate(&mut self, candidate: Candidate, level: usize) -> NodeID {
         let id = self.get_new_id();
         self.labels.insert(id, candidate);
         self.levels.insert(id, level);
         id
     }
 
-    pub fn add_root_children(&mut self, candidates: &[Candidate], maximum_level: u64) {
+    pub fn add_root_children(&mut self, candidates: &[Candidate], maximum_level: usize) {
         assert!(self.is_epsilon());
         debug!("add_root_children");
         //for c in candidates {
@@ -116,18 +115,17 @@ impl CandidateTree {
         //}
         let mut v = Vec::new();
         for c in candidates {
-            let node_id = self.add_new_candidate(c.clone(), 0);
+            let node_id = self.add_new_candidate(c.clone(), maximum_level);
             v.push(node_id);
             self.parents.insert(node_id, None);
         }
         self.root = Some(v);
-        self.maximum_level = maximum_level;
     }
 
     pub fn add_children(&mut self, node: CandidateNode, candidates: &[Candidate]) {
         self.children.entry(node.id).or_insert_with(Vec::new);
         for c in candidates {
-            let node_id = self.add_new_candidate(c.clone(), node.level + 1);
+            let node_id = self.add_new_candidate(c.clone(), node.level - 1);
             self.children.get_mut(&node.id).unwrap().push(node_id);
             self.parents.insert(node_id, Some(node.id));
         }
@@ -174,8 +172,8 @@ impl CandidateTree {
 
 #[derive(Clone, Debug)]
 struct CandidateNode {
-    level: u64,
-    id: u64,
+    level: usize,
+    id: usize,
     label: Candidate,
 }
 
@@ -223,7 +221,7 @@ fn handle_type_check(result: Result<(), rtype::Error>) -> bool {
 impl<'a> HoPDR<'a> {
     #[allow(dead_code)]
     fn dump_state(&self) {
-        println!("[PDR STATE]");
+        println!("{}", "[PDR STATE]".green().bold());
         println!("- current loop: {}", self.loop_cnt);
         println!("- size of env: {}", self.envs.len());
         println!("- size of model: {}", self.models.size());
@@ -234,34 +232,39 @@ impl<'a> HoPDR<'a> {
     }
     // generates a candidate
     // Assumption: self.check_valid() == false
-    fn is_refutable(&self, candidate: &Candidate) -> RefuteOrCex<rtype::Ty, Vec<Candidate>> {
+    fn is_refutable(
+        &self,
+        candidate_node: &CandidateNode,
+    ) -> RefuteOrCex<rtype::Ty, Vec<Candidate>> {
         debug!("[Candidate] is_refutable");
         // 1. generate constraints: calculate t s.t. c.sty ~ t and check if Env |- formula[c.ident] : t.
         // 2. if not typable, calculate cex
         // 3. if typable, returns the type
-        match candidate
-            .sty
-            .is_refutable(self.get_clause_by_id(&candidate.ident), self.top_env())
-        {
+        let candidate = &candidate_node.label;
+        match candidate.sty.is_refutable(
+            self.get_clause_by_id(&candidate.ident),
+            &self.envs[candidate_node.level - 1],
+        ) {
             Ok(t) => RefuteOrCex::Refutable(t),
             Err(c) => RefuteOrCex::Cex(c.to_candidates()),
         }
     }
 
     fn candidate(&mut self) {
-        debug!("candidate");
+        debug!("{}", "candidate".purple());
         let top_false = Sty::mk_prop_ty(Constraint::mk_true());
         let candidates = match top_false.is_cex_available_top(&self.problem.top, self.top_env()) {
             Some(c) => c.to_candidates(),
             None => panic!("program error"),
         };
         println!("candidates");
+        println!("toplevel: {}", &self.problem.top);
         for c in candidates.iter() {
             println!("- {}", c);
         }
 
         self.models
-            .add_root_children(&candidates, self.envs.len() as u64);
+            .add_root_children(&candidates, self.envs.len() - 1);
     }
 
     fn get_clause_by_id(&'a self, id: &Ident) -> &'a hes::Clause {
@@ -345,16 +348,23 @@ impl<'a> HoPDR<'a> {
         debug!("[PDR]check feasible");
         loop {
             match self.models.get_unprocessed_leaf() {
-                Some(c) => match self.is_refutable(&c.label) {
+                Some(c) => match self.is_refutable(&c) {
                     RefuteOrCex::Refutable(t) => {
                         self.conflict(c, t);
-                        println!("conflict");
+                        println!("{}", "conflict".blue());
                         if self.models.is_epsilon() {
                             return false;
                         }
                     }
                     RefuteOrCex::Cex(c2) => {
-                        println!("decide");
+                        println!("{} {}", "decide".red(), c2.len());
+                        println!("envs");
+                        println!("{}", &self.envs[c.level - 1]);
+                        println!("clause: {}", self.get_clause_by_id(&c.label.ident));
+                        println!("stype: {}", &c.label.sty);
+                        for c in c2.iter() {
+                            println!("- {}", c);
+                        }
                         self.decide(c, c2);
                     }
                 },
@@ -365,7 +375,7 @@ impl<'a> HoPDR<'a> {
 
     fn conflict(&mut self, c: CandidateNode, refute_ty: rtype::Ty) {
         debug!("[PDR]conflict: {} <-> {}", &c.label, &refute_ty);
-        for i in 0..(self.envs.len() as u64 - c.level) {
+        for i in 0..(c.level) {
             self.envs[i as usize].add(c.label.ident, refute_ty.clone());
         }
         self.models.refute(c);

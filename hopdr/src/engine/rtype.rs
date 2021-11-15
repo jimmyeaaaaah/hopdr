@@ -265,6 +265,11 @@ fn infer_subtype<P: fmt::Debug, C>(
     //let (t, c) = infer_greatest_type_inner(ret_t, Constraint::mk_true(), true);
     // check environment; c |- arg_t < arg_t2
 
+    debug!("infer subtype constraint");
+    for c in constraints.iter() {
+        debug!("{}", c);
+    }
+
     let chc_constraints = match pcsps2chcs(&constraints) {
         Some(x) => x,
         None => return Err(Error::TypeError),
@@ -610,8 +615,11 @@ where
             .collect(),
     };
     debug!("type_check_atom cont: {}", atom);
-    for (v, _) in r.iter() {
+    for (v, constraints) in r.iter() {
         debug!("type_check_atom cont ty: {}", v);
+        for c in constraints.iter() {
+            debug!("-- constraint: {}", c)
+        }
     }
     Ok(r)
 }
@@ -621,12 +629,14 @@ pub(crate) fn type_check_atom_wrapper<P: fmt::Debug>(
     tenv: &mut Environment<Tau<P, pcsp::Atom>>,
 ) -> Result<fofml::Atom, Error> {
     let ts = type_check_atom(atom, tenv)?;
-    // for (t, constraints) in ts.iter() {
-    //     debug!("- type: {}", t);
-    //     for c in constraints.iter() {
-    //         debug!("-- constraint: {}", c)
-    //     }
-    // }
+
+    debug!("constraints~~");
+    for (t, constraints) in ts.iter() {
+        debug!("- type: {}", t);
+        for c in constraints.iter() {
+            debug!("-- constraint: {}", c)
+        }
+    }
 
     // TODO: here calculate greatest type
     let mut ret_constr = fofml::Atom::mk_false();

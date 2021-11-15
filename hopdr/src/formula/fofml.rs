@@ -114,7 +114,6 @@ impl TemplateKind for Linear {
 /// P(x1, x2) -> a1 x1 + a2 x2 + b >= 0
 pub struct Template<'a> {
     // information of the original predicate
-    id: Ident,
     nargs: usize,
     template_kinds: Vec<Box<dyn TemplateKind + 'a>>,
 }
@@ -136,15 +135,14 @@ fn gen_linear_sum(coefs: impl IntoIterator<Item = Op>, args: &[Ident]) -> Op {
 }
 
 impl<'a> Template<'a> {
-    fn new(id: Ident, nargs: usize) -> Template<'a> {
+    fn new(nargs: usize) -> Template<'a> {
         let mut template_kinds: Vec<Box<dyn TemplateKind>> = Vec::new();
         // Here, the list of templates
-        // 1. ax + by + c = d
-        template_kinds.push(Box::new(new_eq_template(nargs)));
+        //// 1. ax + by + c = d
+        //template_kinds.push(Box::new(new_eq_template(nargs)));
         // 1. ax + by + c > d
         template_kinds.push(Box::new(new_gt_template(nargs)));
         Template {
-            id,
             nargs,
             template_kinds,
         }
@@ -202,7 +200,7 @@ impl Atom {
         let mut templates = HashMap::new();
         let mut fvs = HashSet::new();
         for predicate in map.values() {
-            let t = Template::new(predicate.id, predicate.args.len());
+            let t = Template::new(predicate.args.len());
             for i in t.coef_iter() {
                 fvs.insert(*i);
             }
@@ -371,11 +369,7 @@ impl Top for Atom {
 impl Conjunctive for Atom {
     fn mk_conj(x: Self, y: Self) -> Atom {
         use AtomKind::*;
-        match (&*x, &*y) {
-            (True, _) => y.clone(),
-            (_, True) => x.clone(),
-            _ => Atom::new(Conj(x.clone(), y.clone())),
-        }
+        Atom::new(Conj(x.clone(), y.clone()))
     }
 }
 

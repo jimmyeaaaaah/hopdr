@@ -1,4 +1,4 @@
-use crate::formula::{Constraint, Ident, Variable};
+use crate::formula::{Constraint, Fv, Ident, Variable};
 use crate::util::P;
 use std::fmt;
 
@@ -134,6 +134,52 @@ pub struct Clause {
     pub body: Goal,
     pub head: Variable,
     pub args: Vec<Ident>, // Vec<Ident> ??
+}
+
+impl Fv for Atom {
+    type Id = Ident;
+
+    fn fv_with_vec(&self, fvs: &mut std::collections::HashSet<Self::Id>) {
+        match self.kind() {
+            AtomKind::Var(x) => {
+                fvs.insert(*x);
+            }
+            AtomKind::App(x, y) => {
+                x.fv_with_vec(fvs);
+                y.fv_with_vec(fvs);
+            }
+        }
+    }
+}
+
+impl Fv for Goal {
+    type Id = Ident;
+
+    fn fv_with_vec(&self, fvs: &mut std::collections::HashSet<Self::Id>) {
+        match self.kind() {
+            GoalKind::Atom(x) => x.fv_with_vec(fvs),
+            GoalKind::Constr(c) => c.fv_with_vec(fvs),
+            GoalKind::Conj(x, y) | GoalKind::Disj(x, y) => {
+                x.fv_with_vec(fvs);
+                y.fv_with_vec(fvs);
+            }
+            GoalKind::Univ(x, c) => {
+                c.fv_with_vec(fvs);
+                fvs.remove(&x.id);
+            }
+        }
+    }
+}
+
+impl Fv for Clause {
+    type Id = Ident;
+
+    fn fv_with_vec(&self, fvs: &mut std::collections::HashSet<Self::Id>) {
+        self.body.fv_with_vec(fvs);
+        for x in self.args.iter() {
+            fvs.remove(x);
+        }
+    }
 }
 
 impl fmt::Display for Clause {
