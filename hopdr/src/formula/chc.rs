@@ -134,11 +134,8 @@ impl CHC<pcsp::Atom> {
         // 1. to dnf
         let bodies = to_dnf(&self.body);
         let head = match &self.head {
-            CHCHead::Constraint(c) => c.clone(),
-            CHCHead::Predicate(_, _) => {
-                error!("head was illeagal");
-                return Err(ResolutionError::IllegalConstraint);
-            }
+            CHCHead::Constraint(c) => fofml::Atom::mk_constraint(c.clone()),
+            CHCHead::Predicate(p, l) => fofml::Atom::mk_pred(*p, l.clone()),
         };
 
         let mut result = fofml::Atom::mk_true();
@@ -362,7 +359,8 @@ pub fn simplify(
     c: &[CHC<pcsp::Atom>],
     c1: &[CHC<pcsp::Atom>],
     c2: &[CHC<pcsp::Atom>],
-    l: &HashMap<Ident, pcsp::Predicate>,
+    l: &HashMap<Ident, pcsp::Predicate>, // not to be removed
+    template_variables: &HashSet<Ident>, // to be removed
 ) -> Result<Vec<CHC<pcsp::Atom>>, ResolutionError> {
     let mut defs = HashMap::new();
     let mut defs_l = HashMap::new();
@@ -371,13 +369,13 @@ pub fn simplify(
         for clause in clauses.iter() {
             match &clause.head {
                 CHCHead::Constraint(_) => goals.push(clause.clone()),
-                CHCHead::Predicate(p, _) if l.contains_key(p) => {
-                    if defs_l.insert(*p, clause.clone()).is_some() {
+                CHCHead::Predicate(p, _) if template_variables.contains(p) => {
+                    if defs.insert(*p, clause.clone()).is_some() {
                         return Err(ResolutionError::CHCNotDeterministic);
                     }
                 }
                 CHCHead::Predicate(p, _) => {
-                    if defs.insert(*p, clause.clone()).is_some() {
+                    if defs_l.insert(*p, clause.clone()).is_some() {
                         return Err(ResolutionError::CHCNotDeterministic);
                     }
                 }

@@ -237,7 +237,15 @@ fn infer_subtype<P: fmt::Debug, C>(
     arg_t: Tau<P, pcsp::Atom>,
     lhs_c: &[chc::CHC<pcsp::Atom>],
     rhs_c: &[chc::CHC<pcsp::Atom>],
-) -> Result<(Tau<P, pcsp::Atom>, Vec<chc::CHC<pcsp::Atom>>), Error> {
+    template_variables: &HashSet<Ident>,
+) -> Result<
+    (
+        Tau<P, pcsp::Atom>,
+        Vec<chc::CHC<pcsp::Atom>>,
+        HashSet<Ident>,
+    ),
+    Error,
+> {
     // debug!("infer_greatest_type: {} <: {} -> ?", arrow_type, arg_t);
     let mut new_idents = HashMap::new();
     let (rhs_c_renamed, arg_t, ret_t) = match &*arrow_type {
@@ -274,9 +282,15 @@ fn infer_subtype<P: fmt::Debug, C>(
         Some(x) => x,
         None => return Err(Error::TypeError),
     };
-    let c = chc::simplify(&chc_constraints, lhs_c, &rhs_c_renamed, &new_idents)?;
+    let c = chc::simplify(
+        &chc_constraints,
+        lhs_c,
+        &rhs_c_renamed,
+        &new_idents,
+        template_variables,
+    )?;
 
-    Ok((ret_t, c))
+    Ok((ret_t, c, new_idents.keys().into_iter().cloned().collect()))
 }
 
 fn generate_constraint_inner<
@@ -572,7 +586,14 @@ fn int_expr<'a, P, C: Top + Bot + Subst + Rename>(
 pub fn type_check_atom<'a, P: fmt::Debug, C: Top + Bot + Rename + Subst>(
     atom: &Atom,
     env: &Environment<Tau<P, C>>,
-) -> Result<Vec<(Tau<P, pcsp::Atom>, Vec<chc::CHC<pcsp::Atom>>)>, Error>
+) -> Result<
+    Vec<(
+        Tau<P, pcsp::Atom>,
+        Vec<chc::CHC<pcsp::Atom>>,
+        HashSet<Ident>,
+    )>,
+    Error,
+>
 where
     Tau<P, C>: Into<Tau<P, pcsp::Atom>>,
 {
@@ -585,10 +606,11 @@ where
             match ie {
                 Some(y) => ts
                     .into_iter()
-                    .map(|(t, cs)| match t.kind() {
+                    .map(|(t, cs, template_vars)| match t.kind() {
                         TauKind::IArrow(x, t) => (
                             t.rename(x, &y),
                             cs.into_iter().map(|c| c.rename(x, &y)).collect(),
+                            template_vars,
                         ),
                         TauKind::Proposition(_) | TauKind::Arrow(_, _) => panic!("program error"),
                     })
@@ -596,9 +618,12 @@ where
                 None => {
                     let ss = type_check_atom(arg, env)?;
                     let mut result_ts = Vec::new();
-                    for (t, cs1) in ts.iter() {
-                        for (s, cs2) in ss.iter() {
-                            let result_t = infer_subtype(env, t.clone(), s.clone(), cs1, cs2)?;
+                    for (t, cs1, template_vars1) in ts.iter() {
+                        for (s, cs2, template_vars2) in ss.iter() {
+                            let template_vars =
+                                template_vars1.union(template_vars2).cloned().collect();
+                            let result_t =
+                                infer_subtype(env, t.clone(), s.clone(), cs1, cs2, &template_vars)?;
                             result_ts.push(result_t);
                         }
                     }
@@ -611,11 +636,11 @@ where
             .unwrap()
             .clone()
             .into_iter()
-            .map(|x| (x.into(), Vec::new()))
+            .map(|x| (x.into(), Vec::new(), HashSet::new()))
             .collect(),
     };
     debug!("type_check_atom cont: {}", atom);
-    for (v, constraints) in r.iter() {
+    for (v, constraints, _) in r.iter() {
         debug!("type_check_atom cont ty: {}", v);
         for c in constraints.iter() {
             debug!("-- constraint: {}", c)
@@ -631,32 +656,24 @@ pub(crate) fn type_check_atom_wrapper<P: fmt::Debug>(
     let ts = type_check_atom(atom, tenv)?;
 
     debug!("constraints~~");
-    for (t, constraints) in ts.iter() {
+    for (t, constraints, targets) in ts.iter() {
         debug!("- type: {}", t);
         for c in constraints.iter() {
             debug!("-- constraint: {}", c)
+        }
+        for target in targets.iter() {
+            debug!("-- target: {}", target)
         }
     }
 
     // TODO: here calculate greatest type
     let mut ret_constr = fofml::Atom::mk_false();
-    for (t, constraints) in ts {
+    for (t, constraints, targets) in ts {
         match t.kind() {
             TauKind::Proposition(c) => {
-                let mut constraint_preds = HashSet::new();
-                c.fv_with_vec(&mut constraint_preds);
-                let mut tenv_preds = HashSet::new();
-                for ts in tenv.map.map.values() {
-                    for t in ts {
-                        t.fv_with_vec(&mut tenv_preds);
-                    }
-                }
-
-                let mut fvs = constraint_preds.difference(&tenv_preds);
-                for x in constraint_preds.difference(&tenv_preds) {
-                    debug!("> {}", x);
-                }
-                let c = match fvs.next() {
+                // ?? c is also requied to check something?
+                assert!(targets.len() <= 1);
+                let c = match targets.iter().next() {
                     Some(target) => chc::resolve_target(constraints, target).unwrap(),
                     None => c.clone().into(),
                 };
