@@ -257,7 +257,7 @@ impl<'a> HoPDR<'a> {
             Some(c) => c.to_candidates(),
             None => panic!("program error"),
         };
-        println!("candidates");
+        println!("{}", "candidates".purple());
         println!("toplevel: {}", &self.problem.top);
         for c in candidates.iter() {
             println!("- {}", c);
@@ -324,10 +324,12 @@ impl<'a> HoPDR<'a> {
     }
 
     fn initialize(&mut self) {
+        println!("{}", "initialize".purple());
         self.envs.push(PosEnvironment::new_top_env(self.problem));
     }
 
     fn unfold(&mut self) {
+        println!("{}", "unfold".purple());
         self.envs.push(PosEnvironment::new_bot_env(self.problem));
     }
 
@@ -374,6 +376,7 @@ impl<'a> HoPDR<'a> {
     }
 
     fn conflict(&mut self, c: CandidateNode, refute_ty: rtype::Ty) {
+        println!("{}", "conflict".blue());
         debug!("[PDR]conflict: {} <-> {}", &c.label, &refute_ty);
         for i in 0..(c.level) {
             self.envs[i as usize].add(c.label.ident, refute_ty.clone());
@@ -382,6 +385,7 @@ impl<'a> HoPDR<'a> {
     }
 
     fn decide(&mut self, parent: CandidateNode, children: Vec<Candidate>) {
+        println!("{}", "decide".blue());
         debug!("[PDR]decide");
         self.models.add_children(parent, &children);
     }
