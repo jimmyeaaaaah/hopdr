@@ -156,7 +156,7 @@ impl Sty {
         // check_sat
         let (template_env, model) = match self.is_cex_available_inner(clause, env, true) {
             (template_env, Some(model)) => (template_env, model),
-            (_, None) => match self.is_cex_available_inner(clause, env, true) {
+            (_, None) => match self.is_cex_available_inner(clause, env, false) {
                 (template_env, Some(model)) => (template_env, model),
                 (_, None) => {
                     return None;
@@ -188,6 +188,32 @@ impl Sty {
         let dummy_clause = hes::Clause::new_top_clause(g.clone());
         self.is_refutable(&dummy_clause, env)
     }
+
+    fn is_refutable_inner(
+        &self,
+        clause: &hes::Clause,
+        env: &rtype::PosEnvironment,
+        result_only: bool,
+    ) -> (
+        Option<HashMap<Ident, (Vec<Ident>, Constraint)>>,
+        rtype::Tau<rtype::Positive, pcsp::Atom>,
+    ) {
+        println!("is_refutable_inner: result_only={}", result_only);
+        let mut new_idents = HashMap::new();
+        let mut check_env = Environment::from_type_environment(env.into());
+
+        let ty = self.clone_with_template(IntegerEnvironment::new(), &mut new_idents);
+        let fml = conflict(&self.clone().into(), &ty, result_only);
+        println!("is_refutable fml {}", &fml);
+        let fml2 = types(&mut check_env, clause, ty.clone());
+        println!("is_refutable fml2 {}", &fml2);
+        let fml = fofml::Atom::mk_conj(fml, fml2);
+        println!("is_refutable fml3 {}", &fml);
+        (
+            fml.check_satisfiability(&check_env.imap.iter().collect(), &new_idents),
+            ty,
+        )
+    }
     /// returns Ok(positive type) when this candidate is refutable
     /// otherwise, Err(NegEnvironmet) where NegEnvironment is a negative type environment Δ
     /// such that Δ |- clause: self
@@ -196,16 +222,12 @@ impl Sty {
         clause: &hes::Clause,
         env: &rtype::PosEnvironment,
     ) -> Result<rtype::Ty, NegEnvironment> {
-        let mut new_idents = HashMap::new();
-        let mut check_env = Environment::from_type_environment(env.into());
-
-        let ty = self.clone_with_template(IntegerEnvironment::new(), &mut new_idents);
-        let fml = conflict(&self.clone().into(), &ty, false);
-        let fml2 = types(&mut check_env, clause, ty.clone());
-        let fml = fofml::Atom::mk_conj(fml, fml2);
-        match fml.check_satisfiability(&check_env.imap.iter().collect(), &new_idents) {
-            Some(model) => Ok(ty.assign(&model)),
-            None => Err(self.is_cex_available(clause, env).unwrap()),
+        match self.is_refutable_inner(clause, env, true) {
+            (Some(model), ty) => Ok(ty.assign(&model)),
+            (None, _) => match self.is_refutable_inner(clause, env, false) {
+                (Some(model), ty) => Ok(ty.assign(&model)),
+                (None, _) => Err(self.is_cex_available(clause, env).unwrap()),
+            },
         }
     }
 }

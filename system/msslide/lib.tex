@@ -1,0 +1,203 @@
+\usepackage{amsmath, amssymb}
+\usepackage{mathtools}
+\usepackage{braket}
+\usepackage{stmaryrd}
+\usepackage{tikz}
+\usepackage{mathpartir}
+\usepackage{pifont}
+\usepackage{multirow}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{color}
+\usepackage{amsthm}
+\usepackage{bcprules}
+\usepackage{listings}
+
+
+
+%\usepackage{xcolor}
+%\pagecolor[rgb]{0,0,0} %black
+%\color[rgb]{0.5,0.5,0.5} %grey
+
+\newcommand\todo[1]{\textcolor{green}{[TODO: #1]}}
+
+
+% names
+\newcommand \nhz{\(\nu\text{HFL}_\mathbb{Z}\)}
+\newcommand \hflz {\(\text{HFL}_\mathbb{Z}\)}
+\newcommand \pahfl{\textsc{PaHFL}}
+\newcommand \rethfl{{\sc ReTHFL}}
+\newcommand \horus{Horus}
+\newcommand \hopdr {{\sc HoPDR}}
+
+
+
+\newcommand\COL{\mathbin{:}}
+
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}
+\newtheorem{example}{Example}
+\newtheorem{lemma}{Lemma}
+\newtheorem{conjecture}{Conjecture}
+\newtheorem{theorem}{Theorem}
+
+% general math
+\DeclareMathOperator{\dom}{dom}
+\DeclareMathOperator{\fv}{fv}
+\newcommand \gfp {\textbf{gfp}}
+
+% nhz syntax
+\newcommand \formula {\varphi}
+\newcommand \goal {\psi}
+\newcommand \true {\textbf{tt}}
+\newcommand \false {\textbf{ff}}
+\newcommand \predicate {\textbf{p}}
+\newcommand \arith {\textbf{a}}
+\newcommand \operator {\mathbin{\textbf{op}}}
+\newcommand \term {M}
+\newcommand \atom {A}
+\newcommand \definite {D}
+
+% nu HFLz semantics
+%\newcommand {\val}[1]{[\![#1]\!]}
+\newcommand {\val}[1]{ \llbracket #1 \rrbracket }
+\newcommand {\vwt}[3][]{\val{\wt{#2}{#3}}(\alpha\ifthenelse{\isempty{#1}}{}{[#1]})}
+\newcommand {\wta}[3]{\Gamma, #1 \vdash_H #2 : #3}
+\newcommand {\vwta}[3]{\val{\wta{#1}{#2}{#3}}(\alpha)}
+
+\newcommand {\valfun}{\alpha}
+\newcommand {\domain}[1]{\mathcal{D}_{#1}}
+\newcommand {\order}[1]{\sqsubseteq_{#1}}
+\newcommand {\join}[1]{\sqcap_#1}
+\newcommand {\meet}[1]{\sqcup_#1}
+\newcommand {\tohfl}{\mathit{toHFL}}
+% nu hflz operator
+\newcommand {\fE} {\Gamma^f}
+\newcommand {\clauses} {\mathcal{C}}
+\newcommand {\system} {\mathcal{S}}
+\newcommand {\fEo} {\sqsubseteq}
+
+% simple type
+\newcommand \stypeint {\textbf{Int}}
+\newcommand \stypebool {\bullet}
+\newcommand \stypeboolf {\circ}
+\newcommand \srtype {\rho} % simple result type
+\newcommand \satype {\eta} % simple argument type
+\newcommand \senv {\Delta}
+\newcommand \stE {\senv}
+\newcommand \stypes {\vdash_H}
+\newcommand \wt[3][]{\ifthenelse{\isempty{#1}}{\senv}{\senv, #1} \vdash_H #2: #3}
+
+% refinement type syntax
+\newcommand \constraint {\theta}
+\newcommand \refty {\tau}
+\newcommand \ty {\refty}
+\newcommand \typeint[1]{{#1} : \stypeint}
+\newcommand \typebool[1]{\stypebool \langle #1 \rangle}
+\newcommand \typeboolf[1]{\stypeboolf \langle #1 \rangle}
+\newcommand \ti[1]{\typeint{#1}}
+\newcommand \tb[1]{\typebool{#1}}
+\newcommand \taus{\{\, \tau_1, \dots, \tau_n \,\}}
+
+% refinement type judgement
+\newcommand \refines[2]{#1:: #2}
+\newcommand \tenv {\Gamma}
+\newcommand \rtE {\tenv}
+\newcommand \wf[2]{\tenv \vdash \refines{#1}{#2}}
+\newcommand \minimalize[1] {#1_{\Downarrow}}
+\newcommand \intE {\mathcal{I}}
+
+% refinement type semantics
+%\newcommand {\semt}[1]{(\!|#1|\!)}
+\newcommand {\semt}[1]{\llparenthesis #1 \rrparenthesis}
+\newcommand {\mjudge}[2]{\tenv \models #1 \COL #2}
+\newcommand {\semsbt}[3][]{\tenv; \ifthenelse{\isempty{#1}}{\dcnstr}{#1} \models #2 \subtypeRelation #3}
+\newcommand {\wsemsbt}[4][]{\tenv; \ifthenelse{\isempty{#1}}{\dcnstr}{#1} \models #2 \subtypeRelation_{#4} #3}
+\newcommand {\srt}[2]{\semt{\wf{#1}{#2}}(\alpha)}
+\newcommand {\srtg}[3][]{\semt{\wf{#2}{#3}}(\alpha[#1])}
+\newcommand {\vc}[1]{[\!|#1|\!]}
+\newcommand {\vtenv}[2][]{\val{#2}({\ifthenelse{\isempty{#1}}{\valfun}{#1}})}
+%\newcommand {\semttaus}[1][] { \bigcap_i \semt{\tau_i}({\ifthenelse{\isempty{#1}}{\valfun}{#1}})}
+\newcommand {\semttaus} {\bigcap_i \semt{\tau_i}(\valfun)}
+
+
+% PDR rules
+\newcommand {\rdecide} {\emph{Decide}}
+\newcommand {\rconflict} {\emph{Conflict}}
+\newcommand {\rvalid} {\emph{Valid}}
+\newcommand {\rinvalid} {\emph{Invalid}}
+\newcommand {\rcandidate} {\emph{Candidate}}
+\newcommand {\runfold} {\emph{Unfold}}
+\newcommand {\rinitialize} {\emph{Initialize}}
+\newcommand {\rinduction} {\emph{Induction}}
+\newcommand {\runknown} {\emph{Unknown}}
+
+\newcommand {\invalid} {\textbf{Invalid}}
+\newcommand {\valid} {\textbf{Valid}}
+\newcommand {\unknown} {\textbf{Unknown}}
+
+\newcommand {\pdrmid} {\parallel}
+\newcommand {\pdrapp} {\Longrightarrow }
+\newcommand {\Tr} {\pdrapp}
+\newcommand {\pdrtop} {\psi_{\mathcal{G}}}
+\newcommand {\pdrtransform} {\mathcal{F}}
+\newcommand {\pdrF} {\pdrtransform}
+\newcommand {\floor}[1] {\lfloor #1 \rfloor }
+\newcommand {\pdrtypes} {\uparrow}
+\newcommand {\T} {\top_{\stE}}
+\newcommand {\F} {\bot_{\stE}}
+\newcommand {\E} {\rtE}
+\newcommand {\PT} {\pdrtop}
+
+\newcommand {\cex} {\mathcal{C}}
+\newcommand {\aprx} {\mathcal{A}}
+
+% negative types
+\newcommand {\fenv} {\Delta} % negative type environment
+\newcommand {\semtf}[1]{(\!|#1|\!)_\circ}
+\newcommand {\srtf}[2]{\semtf{\wf{#1}{#2}}(\alpha)}
+
+% conflict relation
+\newcommand {\conflict}{\not \sim}
+\newcommand {\consistent}{\sim}
+
+\newcommand {\intersect} {\land}
+\newcommand {\interpolation} {\textbf{Interp}}
+
+% dual
+\newcommand {\dual}[1]{\overline{#1}}
+
+% non-idempotent intersection types
+\newcommand \itypes {\vdash_I}
+\newcommand \isBE {\mathit{isBaseEnv}} % isBaseEnv
+\newcommand \sty {\mathit{sty}} % sty
+\newcommand \iE {\tilde{\Delta}}
+\newcommand \ity {\tilde{\srtype}}
+\newcommand \tmpgen {\mathit{TempGen}}
+\newcommand \newpred {\mathit{NewPred}}
+\newcommand \ertE {\tilde{\rtE}}
+\newcommand \erty {\tilde{\refty}}
+\newcommand \econstr {\Theta}
+
+
+% Program
+\lstdefinestyle{mystyle}{
+ language=caml,
+ basicstyle={\footnotesize\ttfamily},
+ identifierstyle={\small},
+commentstyle={\small\ttfamily \color[rgb]{0,0,0.5}},
+keywordstyle={\small\bfseries \color[rgb]{0.8,0,0}},
+keywordstyle = [2]{\color{orange}},
+ndkeywordstyle={\small},
+stringstyle={\small\ttfamily \color[rgb]{0,0,1}},
+frame={tb},
+breaklines=true,
+columns=[l]{fullflexible},
+%xrightmargin=0zw,
+%xleftmargin=3zw,
+numberstyle={\scriptsize},
+stepnumber=1,
+%numbersep=1zw,
+morecomment=[l]{//},
+morekeywords={assert}
+}
