@@ -2,7 +2,7 @@
 %%%                                                                   %%%
 %%%        BCP's latex tricks for typesetting inference rules         %%%
 %%%                                                                   %%%
-%%%                         Version 1.4                               %%%
+%%%                         Version 1.3                               %%%
 %%%                                                                   %%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -183,22 +183,7 @@
        \hbox to 0pt{\hss\box\@labelbox}%
      }%
    \else
-   %
-   % Will it all fit _UN_comfortably on one line?
-   \@tempdima 0pt
-   \advance \@tempdima by \ruledim
-   \advance \@tempdima by \labelminsep
-   \advance \@tempdima by \labeldim
-   \ifdim \@tempdima < \linewidth
-     % Yes, everything fits, but not centered
-     \hbox to \linewidth{%
-         \hfil
-         \box\rulebox
-         \hskip \labelminsep
-         \box\@labelbox}%
-   \else
-   %
-   % Better put the label on the next line
+     % No, better put the label on the next line
      \@tempdima \linewidth
      \advance \@tempdima -\labelcolwidth
      \hbox to \linewidth{%
@@ -211,7 +196,7 @@
      \hbox to \linewidth{%
          \hfil
          \box\@labelbox}%
-   \fi\fi
+   \fi
 
    \addvspace{\afterruleskip}%
    \@doendpe  % use LaTeX's trick of inhibiting paragraph indent for
@@ -274,13 +259,13 @@
 }
 
 %%% Commands for setting axioms and rules
-\newcommand{\typesetax}[1]{%
+\newcommand{\typesetax}[1]{
    \setrulebody{%
      \begin{array}{@{}c@{}}#1\end{array}}}
-\newcommand{\typesetrule}[2]{%
+\newcommand{\typesetrule}[2]{
    \setrulebody{%
-      \frac{\begin{array}{@{}c@{}}#1\end{array}}%
-           {\begin{array}{@{}c@{}}#2\end{array}}}}
+      \frac{\begin{array}{@{}c@{}}#1\end{array}}
+           {\begin{array}{@{}c@{}}#2\end{array}} }}
 
 %%% Indexing
 \newcommand{\ruleindexprefix}[1]{%
@@ -314,3 +299,5 @@
 
 % Abbreviations
 \newcommand{\infabbrev}[2]{\infax{#1 \quad\eqdef\quad #2}}
+
+

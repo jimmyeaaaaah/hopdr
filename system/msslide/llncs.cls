@@ -1,4 +1,4 @@
-llncs.cls % LLNCS DOCUMENT CLASS -- version 2.20 (10-Mar-2018)
+% LLNCS DOCUMENT CLASS -- version 2.20 (10-Mar-2018)
 % Springer Verlag LaTeX2e support for Lecture Notes in Computer Science
 %
 %%
