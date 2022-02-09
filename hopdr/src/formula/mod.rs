@@ -203,10 +203,12 @@ impl Rename for Op {
 
 pub trait Top {
     fn mk_true() -> Self;
+    fn is_true(&self) -> bool;
 }
 
 pub trait Bot {
     fn mk_false() -> Self;
+    fn is_false(&self) -> bool;
 }
 
 pub trait Conjunctive {
@@ -305,10 +307,22 @@ impl Top for Constraint {
     fn mk_true() -> Constraint {
         Constraint::new(ConstraintExpr::True)
     }
+    fn is_true(&self) -> bool {
+        match self.kind() {
+            ConstraintExpr::True => true,
+            _ => false,
+        }
+    }
 }
 impl Bot for Constraint {
     fn mk_false() -> Constraint {
         Constraint::new(ConstraintExpr::False)
+    }
+    fn is_false(&self) -> bool {
+        match self.kind() {
+            ConstraintExpr::False => true,
+            _ => false,
+        }
     }
 }
 
@@ -372,19 +386,6 @@ impl Rename for Constraint {
 }
 
 impl Constraint {
-    pub fn is_true(&self) -> bool {
-        match self.kind() {
-            ConstraintExpr::True => true,
-            _ => false,
-        }
-    }
-    pub fn is_false(&self) -> bool {
-        match self.kind() {
-            ConstraintExpr::False => true,
-            _ => false,
-        }
-    }
-
     pub fn mk_quantifier(q: QuantifierKind, v: Variable, c: Constraint) -> Constraint {
         Constraint::new(ConstraintExpr::Quantifier(q, v, c))
     }

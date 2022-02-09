@@ -1,4 +1,4 @@
-use crate::formula::{Constraint, Fv, Ident, Variable};
+use crate::formula::{Bot, Constraint, Fv, Ident, Op, Top, Variable};
 use crate::util::P;
 use std::fmt;
 
@@ -37,76 +37,46 @@ impl Const {
 }
 
 #[derive(Debug)]
-pub enum AtomKind {
+pub enum GoalKind<C> {
+    Constr(C),
+    Op(Op),
     Var(Ident),
-    //Const(Const),
-    App(Atom, Atom),
-    //Abs(Variable, Atom)
+    Abs(Variable, Goal<C>),
+    App(Goal<C>, Goal<C>),
+    Conj(Goal<C>, Goal<C>),
+    Disj(Goal<C>, Goal<C>),
+    Univ(Variable, Goal<C>),
 }
 
-pub type Atom = P<AtomKind>;
+pub type Goal<C> = P<GoalKind<C>>;
 
-impl fmt::Display for Atom {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use AtomKind::*;
-        match self.kind() {
-            Var(i) => write!(f, "{}", i),
-            //Const(c) => write!(f, "{}", c),
-            App(x, y) => write!(f, "({} {})", x, y),
-        }
-    }
-}
-
-impl Atom {
-    pub fn mk_var(ident: Ident) -> Atom {
-        Atom::new(AtomKind::Var(ident))
-    }
-    //pub fn mk_const(ct: Const) -> Atom {
-    //    Atom::new(AtomKind::Const(ct))
-    //}
-    pub fn mk_app(lhs: Atom, rhs: Atom) -> Atom {
-        Atom::new(AtomKind::App(lhs, rhs))
-    }
-}
-
-#[derive(Debug)]
-pub enum GoalKind {
-    Atom(Atom),
-    Constr(Constraint),
-    Conj(Goal, Goal),
-    Disj(Goal, Goal),
-    Univ(Variable, Goal),
-}
-
-pub type Goal = P<GoalKind>;
-
-impl fmt::Display for Goal {
+impl<C: fmt::Display> fmt::Display for Goal<C> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use GoalKind::*;
         match self.kind() {
-            Atom(a) => write!(f, "{}", a),
             Constr(c) => write!(f, "{}", c),
+            Op(o) => write!(f, "{}", o),
+            Var(x) => write!(f, "{}", x),
+            App(x, y) => write!(f, "{} {}", x, y),
             Conj(x, y) => write!(f, "({} & {})", x, y),
             Disj(x, y) => write!(f, "({} | {})", x, y),
             Univ(x, y) => write!(f, "∀{}.{}", x, y),
+            Abs(x, y) => write!(f, "\\{}.{}", x, y),
         }
     }
 }
 
-impl Goal {
+impl<C: Top + Bot> Goal<C> {
     pub fn is_true(&self) -> bool {
         match self.kind() {
             GoalKind::Constr(c) if c.is_true() => true,
             _ => false,
         }
     }
-    pub fn mk_atom(x: Atom) -> Goal {
-        Goal::new(GoalKind::Atom(x))
-    }
-    pub fn mk_constr(x: Constraint) -> Goal {
+    pub fn mk_constr(x: C) -> Goal<C> {
         Goal::new(GoalKind::Constr(x))
     }
-    pub fn mk_conj(lhs: Goal, rhs: Goal) -> Goal {
+    pub fn mk_conj(lhs: Goal<C>, rhs: Goal<C>) -> Goal<C> {
         if lhs.is_true() {
             rhs
         } else if rhs.is_true() {
@@ -115,7 +85,13 @@ impl Goal {
             Goal::new(GoalKind::Conj(lhs, rhs))
         }
     }
-    pub fn mk_disj(lhs: Goal, rhs: Goal) -> Goal {
+    pub fn mk_app(lhs: Goal<C>, rhs: Goal<C>) -> Goal<C> {
+        Goal::new(GoalKind::App(lhs, rhs))
+    }
+    pub fn mk_var(ident: Ident) -> Goal<C> {
+        Goal::new(GoalKind::Var(ident))
+    }
+    pub fn mk_disj(lhs: Goal<C>, rhs: Goal<C>) -> Goal<C> {
         if lhs.is_true() {
             lhs
         } else if rhs.is_true() {
@@ -124,46 +100,43 @@ impl Goal {
             Goal::new(GoalKind::Disj(lhs, rhs))
         }
     }
-    pub fn mk_univ(x: Variable, g: Goal) -> Goal {
+    pub fn mk_univ(x: Variable, g: Goal<C>) -> Goal<C> {
         Goal::new(GoalKind::Univ(x, g))
+    }
+    pub fn mk_abs(x: Variable, g: Goal<C>) -> Goal<C> {
+        Goal::new(GoalKind::Abs(x, g))
+    }
+    pub fn mk_op(op: Op) -> Goal<C> {
+        Goal::new(GoalKind::Op(op))
     }
 }
 
 #[derive(Debug)]
-pub struct Clause {
-    pub body: Goal,
+pub struct Clause<C> {
+    pub body: Goal<C>,
     pub head: Variable,
-    pub args: Vec<Ident>, // Vec<Ident> ??
+    // pub fixpoint: Fixpoint
 }
 
-impl Fv for Atom {
+impl<C: Fv<Id = Ident>> Fv for Goal<C> {
     type Id = Ident;
 
     fn fv_with_vec(&self, fvs: &mut std::collections::HashSet<Self::Id>) {
         match self.kind() {
-            AtomKind::Var(x) => {
+            GoalKind::Var(x) => {
                 fvs.insert(*x);
             }
-            AtomKind::App(x, y) => {
+            GoalKind::App(x, y) => {
                 x.fv_with_vec(fvs);
                 y.fv_with_vec(fvs);
             }
-        }
-    }
-}
-
-impl Fv for Goal {
-    type Id = Ident;
-
-    fn fv_with_vec(&self, fvs: &mut std::collections::HashSet<Self::Id>) {
-        match self.kind() {
-            GoalKind::Atom(x) => x.fv_with_vec(fvs),
             GoalKind::Constr(c) => c.fv_with_vec(fvs),
+            GoalKind::Op(o) => o.fv_with_vec(fvs),
             GoalKind::Conj(x, y) | GoalKind::Disj(x, y) => {
                 x.fv_with_vec(fvs);
                 y.fv_with_vec(fvs);
             }
-            GoalKind::Univ(x, c) => {
+            GoalKind::Univ(x, c) | GoalKind::Abs(x, c) => {
                 c.fv_with_vec(fvs);
                 fvs.remove(&x.id);
             }
@@ -171,34 +144,28 @@ impl Fv for Goal {
     }
 }
 
-impl Fv for Clause {
+impl<C: Fv<Id = Ident>> Fv for Clause<C> {
     type Id = Ident;
 
     fn fv_with_vec(&self, fvs: &mut std::collections::HashSet<Self::Id>) {
         self.body.fv_with_vec(fvs);
-        for x in self.args.iter() {
-            fvs.remove(x);
-        }
     }
 }
 
-impl fmt::Display for Clause {
+impl<C: fmt::Display> fmt::Display for Clause<C> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} ", self.head)?;
-        for arg in self.args.iter() {
-            write!(f, "{} ", arg)?;
-        }
         write!(f, "= {}", self.body)
     }
 }
 
 #[derive(Debug)]
-pub struct Problem {
-    pub clauses: Vec<Clause>,
-    pub top: Goal,
+pub struct Problem<C> {
+    pub clauses: Vec<Clause<C>>,
+    pub top: Goal<C>,
 }
 
-impl fmt::Display for Problem {
+impl<C: fmt::Display> fmt::Display for Problem<C> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         writeln!(f, "toplevel: {}", &self.top)?;
         for c in self.clauses.iter() {
@@ -208,13 +175,12 @@ impl fmt::Display for Problem {
     }
 }
 
-impl Clause {
-    pub fn new(body: Goal, head: Variable, args: Vec<Ident>) -> Clause {
-        Clause { body, head, args }
+impl<C> Clause<C> {
+    pub fn new(body: Goal<C>, head: Variable) -> Clause<C> {
+        Clause { body, head }
     }
-    pub fn new_top_clause(body: Goal) -> Clause {
+    pub fn new_top_clause(body: Goal<C>) -> Clause<C> {
         let head = Variable::fresh_prop();
-        let args = Vec::new();
-        Clause { body, head, args }
+        Clause { body, head }
     }
 }

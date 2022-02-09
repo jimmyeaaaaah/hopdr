@@ -222,11 +222,20 @@ impl Top for Atom {
     fn mk_true() -> Self {
         Atom::new(AtomKind::True)
     }
+    fn is_true(&self) -> bool {
+        match self.kind() {
+            AtomKind::True => true,
+            _ => false,
+        }
+    }
 }
 
 impl Bot for Atom {
     fn mk_false() -> Atom {
         Atom::mk_constraint(Constraint::mk_false())
+    }
+    fn is_false(&self) -> bool {
+        false
     }
 }
 

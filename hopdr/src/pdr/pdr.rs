@@ -1,6 +1,5 @@
 use super::candidate::NegEnvironment;
 use super::rtype;
-use super::rtype::PosEnvironment;
 use super::VerificationResult;
 use crate::formula::hes::Problem;
 use crate::formula::{hes, Ident};
@@ -12,19 +11,6 @@ use std::collections::HashMap;
 use std::fmt::Display;
 use std::unimplemented;
 
-use super::candidate::Sty;
-impl NegEnvironment {
-    fn to_candidates(self) -> Vec<Candidate> {
-        let mut v = Vec::new();
-        for (ident, stys) in self.map.into_iter() {
-            for sty in stys {
-                v.push(Candidate { ident, sty });
-            }
-        }
-        v
-    }
-}
-
 pub enum PDRResult {
     Valid,
     Invalid,
@@ -35,12 +21,6 @@ pub const NOLOG: u64 = 0;
 pub const DEBUG: u64 = 1;
 
 type NodeID = usize;
-
-#[derive(Debug, Clone)]
-struct Candidate {
-    pub ident: Ident,
-    pub sty: Sty,
-}
 
 impl Display for Candidate {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

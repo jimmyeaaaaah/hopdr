@@ -136,7 +136,13 @@ impl ExprTmp {
                 let id = VariableS::from_ident(x);
                 Expr::mk_univ(id, ExprTmp::from(e))
             }
-            _ => panic!("not implemented"),
+            parse::ExprKind::Abs(x, e) => {
+                let id = VariableS::from_ident(x);
+                Expr::mk_abs(id, ExprTmp::from(e))
+            }
+            parse::ExprKind::Exist(_, _) | parse::ExprKind::Fix(_, _, _) => {
+                panic!("not implemented")
+            }
         }
     }
     fn append_constraints<'a>(
@@ -183,6 +189,12 @@ impl ExprTmp {
                 constraints.add(t, env.mk_prop());
                 env.mk_prop()
             }
+            ExprKind::Abs(x, e) => {
+                env.add(&x.id, x.ty.clone());
+                let t = e.append_constraints(env, constraints);
+                env.del(&x.id);
+                TmpType::mk_arrow(x.ty.clone(), t)
+            }
         }
     }
     fn ty_subst(self, subst: &TySubst) -> ExprSimpleType {
@@ -221,6 +233,12 @@ impl ExprTmp {
                 let ty = subst.subst(v.ty);
                 let v = VariableS::new(v.id, ty);
                 ExprSimpleType::mk_univ(v, x)
+            }
+            ExprKind::Abs(v, x) => {
+                let x = x.ty_subst(subst);
+                let ty = subst.subst(v.ty);
+                let v = VariableS::new(v.id, ty);
+                ExprSimpleType::mk_abs(v, x)
             }
         }
     }
@@ -277,6 +295,9 @@ impl<'a> Environment<'a> {
     }
     fn add(&mut self, id: &'a str, ty: TmpType) {
         self.map = self.map.insert(id, ty);
+    }
+    fn del(&mut self, id: &'a str) {
+        self.map.remove(id);
     }
     fn get(&self, id: &'a str) -> Option<TmpType> {
         self.map.get(id).cloned()

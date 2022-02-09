@@ -21,6 +21,7 @@ pub enum ExprKind<Id, Ty> {
     App(Expr<Id, Ty>, Expr<Id, Ty>),
     And(Expr<Id, Ty>, Expr<Id, Ty>),
     Or(Expr<Id, Ty>, Expr<Id, Ty>),
+    Abs(VariableS<Id, Ty>, Expr<Id, Ty>),
     Univ(VariableS<Id, Ty>, Expr<Id, Ty>),
 }
 pub type Expr<Id, Ty> = Unique<ExprKind<Id, Ty>>;
@@ -38,6 +39,7 @@ impl<Ty: fmt::Display, Id: fmt::Display> fmt::Display for Expr<Id, Ty> {
             ExprKind::True => write!(f, "true"),
             ExprKind::False => write!(f, "false"),
             ExprKind::Univ(id, e) => write!(f, "∀{}. {}", id, e),
+            ExprKind::Abs(x, y) => write!(f, "\\{}. {}", x, y),
         }
     }
 }
@@ -72,6 +74,9 @@ impl<Id, Ty> Expr<Id, Ty> {
     }
     pub fn mk_univ(v: VariableS<Id, Ty>, e: Expr<Id, Ty>) -> Expr<Id, Ty> {
         Expr::new(ExprKind::Univ(v, e))
+    }
+    pub fn mk_abs(v: VariableS<Id, Ty>, e: Expr<Id, Ty>) -> Expr<Id, Ty> {
+        Expr::new(ExprKind::Abs(v, e))
     }
 }
 
@@ -121,7 +126,7 @@ impl<Id: fmt::Display, Ty: fmt::Display> fmt::Display for Clause<Id, Ty> {
     }
 }
 
-pub fn preprocess<'a>(vc: parse::Problem) -> (hes::Problem, Context) {
+pub fn preprocess<'a>(vc: parse::Problem) -> (hes::Problem<formula::Constraint>, Context) {
     match vc {
         parse::Problem::NuHFLZValidityChecking(vc) => {
             let problem = typing(vc.formulas, vc.toplevel);

@@ -364,6 +364,13 @@ impl Top for Atom {
     fn mk_true() -> Self {
         Atom::new(AtomKind::True)
     }
+
+    fn is_true(&self) -> bool {
+        match self.kind() {
+            AtomKind::True => true,
+            _ => false,
+        }
+    }
 }
 
 impl Conjunctive for Atom {

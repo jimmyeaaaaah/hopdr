@@ -48,6 +48,15 @@ fn alpha_rename_expr(
             };
             Expr::mk_univ(v, f(env, e))
         }
+        Abs(x, e) => {
+            let id = formula::Ident::fresh();
+            let env = env.insert(x.id.clone(), id);
+            let v = VariableS {
+                id,
+                ty: x.ty.clone(),
+            };
+            Expr::mk_abs(v, f(env, e))
+        }
     }
 }
 

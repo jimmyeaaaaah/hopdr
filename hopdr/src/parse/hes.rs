@@ -136,7 +136,7 @@ pub enum Problem {
     NuHFLZValidityChecking(NuHFLzValidityChecking),
 }
 
-// techniqual reason in parse
+// technical reason in parse
 // nom 5.0: https://github.com/Geal/nom/issues/1132
 impl Clone for Expr {
     fn clone(&self) -> Expr {

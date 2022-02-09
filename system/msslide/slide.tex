@@ -1,8 +1,527 @@
-\documentclass[runningheads]{llncs}
-\include{lib.tex}
+\documentclass{jarticle}
+
+\usepackage{amsmath, amssymb}
+\usepackage{mathtools}
+\usepackage{braket}
+\usepackage{stmaryrd}
+\usepackage{tikz}
+\usepackage{mathpartir}
+\usepackage{pifont}
+\usepackage{multirow}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{color}
+%\usepackage{xcolor}
+\usepackage{amsthm}
+%\usepackage{bcprules}
+
+\usepackage{algorithm,algorithmic}
+
+\newcommand\todo[1]{\textcolor{green}{[TODO: #1]}}
+
+\definecolor{mygray}{gray}{0.45}
+
+% names
+\newcommand \nhz{\(\nu\text{HFL}_\mathbb{Z}\)}
+\newcommand \hflz {\(\text{HFL}_\mathbb{Z}\)}
+\newcommand \pahfl{\textsc{PaHFL}}
+\newcommand \rethfl{{\sc ReTHFL}}
+\newcommand \horus{Horus}
+\newcommand \hopdr {{\sc HoPDR}}
+
+
+
+\newcommand\COL{\mathbin{:}}
+
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}
+\newtheorem{example}{Example}
+\newtheorem{lemma}{Lemma}
+\newtheorem{conjecture}{Conjecture}
+\newtheorem{theorem}{Theorem}
+
+% general math
+\DeclareMathOperator{\dom}{dom}
+\DeclareMathOperator{\fv}{fv}
+\newcommand \gfp {\textbf{gfp}}
+
+% nhz syntax
+\newcommand \formula {\varphi}
+\newcommand \goal {\psi}
+\newcommand \true {\textbf{tt}}
+\newcommand \false {\textbf{ff}}
+\newcommand \predicate {\textbf{p}}
+\newcommand \arith {\textbf{a}}
+\newcommand \operator {\mathbin{\textbf{op}}}
+\newcommand \term {M}
+\newcommand \atom {A}
+\newcommand \definite {D}
+
+% nu HFLz semantics
+%\newcommand {\val}[1]{[\![#1]\!]}
+\newcommand {\val}[1]{ \llbracket #1 \rrbracket }
+\newcommand {\vwt}[3][]{\val{\wt{#2}{#3}}(\alpha\ifthenelse{\isempty{#1}}{}{[#1]})}
+\newcommand {\wta}[3]{\Gamma, #1 \vdash_H #2 : #3}
+\newcommand {\vwta}[3]{\val{\wta{#1}{#2}{#3}}(\alpha)}
+
+\newcommand {\valfun}{\alpha}
+\newcommand {\domain}[1]{\mathcal{D}_{#1}}
+\newcommand {\order}[1]{\sqsubseteq_{#1}}
+\newcommand {\join}[1]{\sqcap_#1}
+\newcommand {\meet}[1]{\sqcup_#1}
+\newcommand {\tohfl}{\mathit{toHFL}}
+% nu hflz operator
+\newcommand {\fE} {\Gamma^f}
+\newcommand {\clauses} {\mathcal{C}}
+\newcommand {\system} {\mathcal{S}}
+\newcommand {\fEo} {\sqsubseteq}
+
+% simple type
+\newcommand \stypeint {\textbf{Int}}
+\newcommand \stypebool {\bullet}
+\newcommand \stypeboolf {\circ}
+\newcommand \srtype {\rho} % simple result type
+\newcommand \satype {\eta} % simple argument type
+\newcommand \senv {\Delta}
+\newcommand \stE {\senv}
+\newcommand \stypes {\vdash_H}
+\newcommand \wt[3][]{\ifthenelse{\isempty{#1}}{\senv}{\senv, #1} \vdash_H #2: #3}
+
+% refinement type syntax
+\newcommand \constraint {\theta}
+\newcommand \refty {\tau}
+\newcommand \ty {\refty}
+\newcommand \typeint[1]{{#1} : \stypeint}
+\newcommand \typebool[1]{\stypebool \langle #1 \rangle}
+\newcommand \typeboolf[1]{\stypeboolf \langle #1 \rangle}
+\newcommand \ti[1]{\typeint{#1}}
+\newcommand \tb[1]{\typebool{#1}}
+\newcommand \taus{\{\, \tau_1, \dots, \tau_n \,\}}
+
+% refinement type judgement
+\newcommand \refines[2]{#1:: #2}
+\newcommand \tenv {\Gamma}
+\newcommand \rtE {\tenv}
+\newcommand \wf[2]{\tenv \vdash \refines{#1}{#2}}
+\newcommand \minimalize[1] {#1_{\Downarrow}}
+\newcommand \intE {\mathcal{I}}
+
+% refinement type semantics
+%\newcommand {\semt}[1]{(\!|#1|\!)}
+\newcommand {\semt}[1]{\llparenthesis #1 \rrparenthesis}
+\newcommand {\mjudge}[2]{\tenv \models #1 \COL #2}
+\newcommand {\semsbt}[3][]{\tenv; \ifthenelse{\isempty{#1}}{\dcnstr}{#1} \models #2 \subtypeRelation #3}
+\newcommand {\wsemsbt}[4][]{\tenv; \ifthenelse{\isempty{#1}}{\dcnstr}{#1} \models #2 \subtypeRelation_{#4} #3}
+\newcommand {\srt}[2]{\semt{\wf{#1}{#2}}(\alpha)}
+\newcommand {\srtg}[3][]{\semt{\wf{#2}{#3}}(\alpha[#1])}
+\newcommand {\vc}[1]{[\!|#1|\!]}
+\newcommand {\vtenv}[2][]{\val{#2}({\ifthenelse{\isempty{#1}}{\valfun}{#1}})}
+%\newcommand {\semttaus}[1][] { \bigcap_i \semt{\tau_i}({\ifthenelse{\isempty{#1}}{\valfun}{#1}})}
+\newcommand {\semttaus} {\bigcap_i \semt{\tau_i}(\valfun)}
+
+
+% PDR rules
+\newcommand {\rdecide} {\emph{Decide}}
+\newcommand {\rconflict} {\emph{Conflict}}
+\newcommand {\rvalid} {\emph{Valid}}
+\newcommand {\rinvalid} {\emph{Invalid}}
+\newcommand {\rcandidate} {\emph{Candidate}}
+\newcommand {\runfold} {\emph{Unfold}}
+\newcommand {\rinitialize} {\emph{Initialize}}
+\newcommand {\rinduction} {\emph{Induction}}
+\newcommand {\runknown} {\emph{Unknown}}
+
+\newcommand {\invalid} {\textbf{Invalid}}
+\newcommand {\valid} {\textbf{Valid}}
+\newcommand {\unknown} {\textbf{Unknown}}
+
+\newcommand {\pdrmid} {\parallel}
+\newcommand {\pdrapp} {\Longrightarrow }
+\newcommand {\Tr} {\pdrapp}
+\newcommand {\pdrtop} {\psi_{\mathcal{G}}}
+\newcommand {\pdrtransform} {\mathcal{F}}
+\newcommand {\pdrF} {\pdrtransform}
+\newcommand {\floor}[1] {\lfloor #1 \rfloor }
+\newcommand {\pdrtypes} {\uparrow}
+\newcommand {\T} {\top_{\stE}}
+\newcommand {\F} {\bot_{\stE}}
+\newcommand {\E} {\rtE}
+\newcommand {\PT} {\pdrtop}
+
+\newcommand {\cex} {\mathcal{C}}
+\newcommand {\aprx} {\mathcal{A}}
+
+% negative types
+\newcommand {\fenv} {\Delta} % negative type environment
+\newcommand {\semtf}[1]{(\!|#1|\!)_\circ}
+\newcommand {\srtf}[2]{\semtf{\wf{#1}{#2}}(\alpha)}
+
+% conflict relation
+\newcommand {\conflict}{\not \sim}
+\newcommand {\consistent}{\sim}
+
+\newcommand {\intersect} {\land}
+\newcommand {\interpolation} {\textbf{Interp}}
+
+% dual
+\newcommand {\dual}[1]{\overline{#1}}
+
+% non-idempotent intersection types
+\newcommand \itypes {\vdash_I}
+\newcommand \isBE {\mathit{isBaseEnv}} % isBaseEnv
+\newcommand \sty {\mathit{sty}} % sty
+\newcommand \iE {\tilde{\Delta}}
+\newcommand \ity {\tilde{\srtype}}
+\newcommand \tmpgen {\mathit{TempGen}}
+\newcommand \newpred {\mathit{NewPred}}
+\newcommand \ertE {\tilde{\rtE}}
+\newcommand \erty {\tilde{\refty}}
+\newcommand \econstr {\Theta}
+
 
 \begin{document}
 
-hello
+\begin{align*}
+    &\forall m.\: m \leq 0 \vee
+    (\nu X.\: \lambda x.\: x \neq 0
+        \wedge X\ (x + 1))\ m \\
+    &\Leftrightarrow \nu X.\: \lambda x.\: x \neq 0 \wedge X\ (x + 1)
+\end{align*}
+
+\begin{align*}
+    \Rightarrow
+\end{align*}
+
+\begin{align*}
+    \begin{cases}
+        \forall m.\: m > 0 \Rightarrow R(m) \\
+        R(x) \Leftrightarrow x \neq 0 \wedge R(x+1)
+    \end{cases}
+\end{align*}
+
+\begin{align*}
+  (\nu X.\: \lambda x.\: x \neq 0 \wedge X\ (x + 1))\ m
+  &= m \neq 0 \wedge (\nu X.\: \lambda x.\: x \neq 0 \wedge X\ (x + 1))\ (m + 1)
+    \\
+  &= m \neq 0 \wedge m +1 \neq 0 \wedge (\nu X.\: \lambda x.\: x \neq 0 \wedge
+          X\ (x + 1))\ (m + 2) \\
+  &\quad \vdots \\
+  &= m \neq 0 \wedge m +1 \neq 0 \wedge \dots \wedge m + k \neq 0 \cdots \\
+  &\quad \vdots \\
+\end{align*}
+
+\begin{align*}
+    X(x) \Leftrightarrow x \neq 0 \wedge X(x+1)
+\end{align*}
+\begin{align*}
+  &(\nu X.\: \lambda x.\: x \neq 0 \wedge X\ (x + 1))\ m &&\\
+  &= m \neq 0 \wedge (\nu X.\: \lambda x.\: x \neq 0 \wedge X\ (x + 1))\ (m + 1)
+    &&m \neq 0 \\
+  &= m \neq 0 \wedge m +1 \neq 0 \wedge (\nu X.\: \lambda x.\: x \neq 0 \wedge
+          X\ (x + 1))\ (m + 2)  && m \neq 0 \wedge m + 1 \neq 0 \\
+  &\quad \vdots &&\\
+  &= m \neq 0 \wedge m +1 \neq 0 \wedge \dots \wedge m + k \neq 0 &&  \\
+  &\quad (\nu X.\: \lambda x.\: x \neq 0 \wedge X\ (x + 1))\ (m + k + 1) &&
+  m \not \in \{\, 0, \dots, -k \,\} \\
+  &\quad \vdots &&\\
+\end{align*}
+
+\begin{align*}
+  &(\nu X.\: \lambda x.\: x \neq 0 \wedge X\ (x + 1))\ m &&\\
+  &= m \neq 0 \wedge (\nu X.\: \lambda x.\: x \neq 0 \wedge X\ (x + 1))\ (m + 1)
+    &&m \neq 0 \\
+  &= m \neq 0 \wedge m +1 \neq 0 \wedge (\nu X.\: \lambda x.\: x \neq 0 \wedge
+          X\ (x + 1))\ (m + 2)  && m \neq 0 \wedge m + 1 \neq 0 \\
+  &\quad \vdots &&\\
+  &= m \neq 0 \wedge m +1 \neq 0 \wedge \dots \wedge m + k \neq 0 &&  \\
+  &\quad (\nu X.\: \lambda x.\: x \neq 0 \wedge X\ (x + 1))\ (m + k + 1) &&
+  m \not \in \{\, 0, \dots, -k \,\} \\
+  &\quad \vdots &&\\
+\end{align*}
+
+\begin{align*}
+    \goal \pdrtypes \refty
+\end{align*}
+\begin{align*}
+    \floor{\refty}
+\end{align*}
+
+\begin{align*}
+    \lambda x.\: x \neq 0 \pdrtypes \ti{x} \to \tb{x > 0}
+    &= \forall x.\: x > 0 \Rightarrow x \neq 0
+\end{align*}
+\begin{align*}
+    \lambda p.\: p\ 0 \pdrtypes (\ti{x} \to \tb{x \geq 0}) \to \tb{\true}
+    &= \true \Rightarrow (\lambda x\:. x \geq 0)\ 0
+\end{align*}
+
+\begin{align*}
+    \floor{\ti{x} \to \tb{x \geq 0}} = \lambda x\:. x \geq 0
+\end{align*}
+
+\begin{align*}
+    \floor{(\ti{x} \to \tb{x \geq 0}) \to \tb{\true}}
+        &= \lambda p.\: (p \pdrtypes \ti{x} \to \tb{x \geq 0}) \wedge \true \\
+        &= \lambda p.\: \forall x.\: x \geq 0 \Rightarrow p\ x
+\end{align*}
+
+\begin{align*}
+  &(\nu X.\: \lambda x.\: x \neq 0 \wedge X\ (x + 1))\ m \\
+  &= m \neq 0 \wedge (\nu X.\: \lambda x.\: x \neq 0 \wedge X\ (x + 1))\ (m + 1)
+    \\
+  &= m \neq 0 \wedge m +1 \neq 0 \wedge (\nu X.\: \lambda x.\: x \neq 0 \wedge
+          X\ (x + 1))\ (m + 2) \\
+  &\quad \vdots \\
+\end{align*}
+
+\begin{align*}
+  &{ \color{red} (\nu X.\: \lambda x.\: x \neq 0 \wedge X\ (x + 1))} \ m \\
+  &= m \neq 0 \wedge { \color{red} (\nu X.\: \lambda x.\: x \neq 0 \wedge X\
+          (x + 1))}\ (m + 1)
+    \\
+  &= m \neq 0 \wedge m +1 \neq 0 \wedge {\color{red}(\nu X.\: \lambda x.\: x \neq 0 \wedge
+          X\ (x + 1))}\ (m + 2) \\
+  &\quad \vdots \\
+\end{align*}
+
+\begin{align*}
+  &0.\: \true \\
+  &1.\: m \neq 0 \wedge \true \\
+  &2.\: m \neq 0 \wedge m +1 \neq 0 \wedge \true \\
+  &\quad \vdots \\
+\end{align*}
+
+\begin{align*}
+    \pdrF(R)(x) = x \neq 0 \wedge R(x+1)
+\end{align*}
+
+\begin{align*}
+    &\pdrF(\true)(x) = x \neq 0 \\
+    &\pdrF^2(\true)(x) = \pdrF(x\neq0)(x) = x \neq 0 \wedge x + 1 \neq 0
+\end{align*}
+
+\begin{align*}
+    \bigwedge_{i > 0} \pdrF(\true)
+\end{align*}
+
+\begin{align*}
+    \pdrF(R) \Leftrightarrow R
+\end{align*}
+
+\begin{align*}
+    \begin{cases}
+        \forall m.\: m > 0 \Rightarrow R(m) \\
+        \pdrF(R) \Leftrightarrow R
+    \end{cases}
+\end{align*}
+
+\begin{align*}
+    \forall m.\: m > 0 \Rightarrow R(m) \\
+\end{align*}
+
+\begin{align*}
+    &\pdrF^0(\true)(x) = \true \\
+    &\pdrF(\true)(x) = x \neq 0 \\
+    &\pdrF^2(\true)(x) = x \neq 0 \wedge x + 1 \neq 0
+\end{align*}
+
+\begin{align*}
+    \begin{cases}
+        { \color{red} \forall m.\: m > 0 \Rightarrow R(m) }\\
+        \pdrF(R) \Leftrightarrow R
+    \end{cases}
+\end{align*}
+
+\begin{align*}
+    \forall m.\: m > 0 \Rightarrow \false  \quad \Leftrightarrow \quad \false
+\end{align*}
+
+\begin{align*}
+    \pdrF(R_1) = \pdrF(x \neq 0) = x \neq 0 \wedge x + 1 \neq 0
+\end{align*}
+
+\begin{align*}
+    \begin{cases}
+        \pdrF(R_1) \Leftarrow \varphi \\
+        \forall m.\: m > 0 \Rightarrow \varphi(m)
+    \end{cases}
+\end{align*}
+
+\begin{align*}
+x > 0
+\end{align*}
+
+\begin{align*}
+    \pdrF(\varphi) &= [\varphi/\text{Sum}]\goal_{\text{sum}}
+\end{align*}
+\begin{align*}
+    \begin{cases}
+        [\floor{\tau}/\text{Sum}]\pdrtop \\
+        \floor{\tau} \pdrtypes \tau
+    \end{cases}
+\end{align*}
+
+\begin{align*}
+    \goal_{\text{sum}} &::= \lambda x.\: \lambda k.\: (x > 0 \lor k\ x) \land \\
+                     &\quad\quad  (x \leq 0 \lor \text{Sum}\ (x - 1)\ (\lambda r. k\ (x + r)).\\
+    \pdrtop &::= \forall n. \text{Sum}\ n\ (\lambda r. r \geq n).
+\end{align*}
+
+\begin{align*}
+    &\pdrF(\floor{\ti{x} \to (\ti{y} \to \tb{\false}) \to \tb{\true}}) \\
+    &=\pdrF(\lambda x.\: \lambda k.\: \true) \\
+    &= \lambda x.\: \lambda k.\: (x > 0 \lor k\ x)
+\end{align*}
+
+\begin{align*}
+    \forall n.\: (\nu \text{Sum}.\: \psi_{\text{sum}})\ n\ (\lambda r. r \geq n)
+\end{align*}
+
+\begin{align*}
+    \ti{x} \to (\ti{y} \to \tb{\false}) \to \tb{\true}
+\end{align*}
+
+\begin{align*}
+    \ti{x} \to (\ti{y} \to \tb{\true}) \to \tb{\false}
+\end{align*}
+
+\begin{align*}
+{\color{red} \ti{x} \to (\ti{y} \to \tb{\true}) \to \tb{\false}}
+\end{align*}
+\begin{align*}
+    \begin{cases}
+{\color{red} [\floor{\tau}/\text{Sum}]\pdrtop} \\
+        \pdrF(\floor{\tau}) \pdrtypes \tau
+    \end{cases}
+\end{align*}
+\begin{align*}
+        [\floor{\tau_1}/\text{Sum}]\pdrtop = \forall n.\: \false\\
+\end{align*}
+
+\begin{align*}
+    [\pdrF(\floor{\tau_0})/\text{Sum}]\pdrtop = \forall n.\: \true
+\end{align*}
+
+\begin{align*}
+    \begin{cases}
+        [\floor{\tau}/\text{Sum}]\pdrtop \\
+        \pdrF(\floor{\tau_0}) \pdrtypes \tau
+    \end{cases}
+\end{align*}
+
+\begin{align*}
+    \forall m.\: m > 0 \Rightarrow (\nu X.\: x\neq 0 \wedge X(x + 1))\ m
+\end{align*}
+
+\begin{align*}
+    \begin{cases}
+        [\floor{\tau}/\text{Sum}]\pdrtop \\
+        \pdrF(\floor{\tau}) \pdrtypes \tau
+    \end{cases}
+\end{align*}
+
+\begin{align*}
+&{ \color{red} (\nu X.\: \lambda x.\: x \neq 0 \wedge X\ (x + 1)) \ m} \\
+  &= m \neq 0 \wedge { \color{red} (\nu X.\: \lambda x.\: x \neq 0 \wedge X\
+          (x + 1))\ (m + 1)}
+    \\
+  &= m \neq 0 \wedge m +1 \neq 0 \wedge {\color{red}(\nu X.\: \lambda x.\: x \neq 0 \wedge
+          X\ (x + 1))\ (m + 2)} \\
+  &\quad \vdots \\
+\end{align*}
+
+\begin{align*}
+    &{\color{red} (\nu X.\: \lambda x.\: x \neq 0 \wedge X\ (x + 1))}\ m \\
+    &= m \neq 0 \wedge {\color{red} (\nu X.\: \lambda x.\: x \neq 0 \wedge X\ (x
+    + 1))}\ (m + 1)
+    \\
+    &= m \neq 0 \wedge m +1 \neq 0 \wedge {\color{red} (\nu X.\: \lambda x.\: x
+    \neq 0 \wedge
+          X\ (x + 1))}\ (m + 2) \\
+  &\quad \vdots \\
+  &= m \neq 0 \wedge m +1 \neq 0 \wedge \dots \wedge m + k \neq 0 \cdots \\
+  &\quad \vdots \\
+\end{align*}
+
+\begin{align*}
+    &{\color{blue}\forall n.\:} (\nu \text{Sum}.\: {\color{red} \lambda x.\:
+    \lambda k.\: } \\
+                     &\quad\quad\quad {\color{red}(x > 0 \lor k\ x) \land} \\
+                     &\quad\quad\quad  {\color{red}(x \leq 0 \lor \text{Sum}\ (x - 1)\ (\lambda
+                     r. k\ (x + r)))}\\
+    &\quad )\ {\color{blue}n\ (\lambda r.\: r \geq n)}
+\end{align*}
+\begin{align*}
+    \goal_{\text{sum}} &::= {\color{red}\lambda x.\: \lambda k.\:} \\
+    &\quad\quad\quad{\color{red}(x > 0 \lor k\ x) \land} \\
+                     &\quad\quad\quad  {\color{red} (x \leq 0 \lor \text{Sum}\ (x - 1)\ (\lambda
+                     r. k\ (x + r)))}.\\
+    \pdrtop &::= {\color{blue}\forall n. \text{Sum}\ n\ (\lambda r. r \geq n)}.
+\end{align*}
+
+\begin{align*}
+    P(m) \equiv (\nu X. \lambda x.\: x \neq 0 \wedge X(x + 1))\ m
+\end{align*}
+\begin{align*}
+    { \color{red} P(m) } &\quad \equiv \quad m \neq 0 \wedge {\color{red} P(m+1)}
+    \\
+    &\quad \equiv \quad m \neq 0 \wedge m +1 \neq 0 \wedge {\color{red} P(m+2)} \\
+  &\quad \quad \vdots \\
+        &\quad \equiv \quad m \neq 0 \wedge m +1 \neq 0 \wedge \dots \wedge m + k \neq 0  \wedge
+        {\color{red} P(m+k+1) }\\
+  &\quad \quad \vdots \\
+\end{align*}
+
+
+%\begin{algorithm}[tb]
+%\begin{algorithmic}[1]
+%    \STATE{\( \tau_1, \dots, \tau_n\) are approximations}
+%    \LOOP
+%        \IF{\( \tau_n \) is safe and inductive\\ ( \([\floor{\tau_n}/Sum]\pdrtop\)
+%        and \( \pdrF(\floor{\tau_n}) \pdrtypes \tau_n\))}
+%            \STATE {return \textit{Valid}}
+%        \ELSIF{\( \tau_n \) is not safe}
+%            \STATE {refine approx by \( \pdrF(\tau_i) \) and \( \pdrtop \)}
+%        \ELSE
+%            \STATE{expand fixpoint once}
+%        \ENDIF
+%
+%    \ENDLOOP
+%\end{algorithmic}
+%\end{algorithm}
+
+\begin{algorithm}[tb]
+\begin{algorithmic}[1]
+    \STATE{\( R_1, \dots, R_n\)が近似列}
+    \LOOP
+        \IF{\( R_n \) が帰納的不変条件}
+            \STATE {問題が\textit{Valid}}
+        \ELSIF{\( R_n \) が安全でない}
+            \STATE {\( \pdrF(R_i) \)と反例のはさみうちで精緻化}
+        \ELSE
+            \STATE{不動点を1回展開, 近似列を拡張}
+        \ENDIF
+
+    \ENDLOOP
+\end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}[tb]
+\begin{algorithmic}[1]
+    \STATE{\( \tau_1, \dots, \tau_n\) が近似列}
+    \LOOP
+        \IF{\( \tau_n \) 帰納的不変条件\\ ( \([\floor{\tau_n}/Sum]\pdrtop\)
+        and \( \pdrF(\floor{\tau_n}) \pdrtypes \tau_n\))}
+            \STATE {問題が\textit{Valid}}
+        \ELSIF{\( \tau_n \) が安全でない}
+            \STATE {\( \pdrF(\tau_i) \)と反例のはさみうちで精緻化した型を推論}
+        \ELSE
+            \STATE{不動点を1回展開, 近似列を拡張}
+        \ENDIF
+
+    \ENDLOOP
+\end{algorithmic}
+\end{algorithm}
 
 \end{document}
+
