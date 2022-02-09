@@ -99,6 +99,9 @@ impl VariableS<parse::Ident, TmpType> {
         let t = TmpType::fresh_type_variable();
         VariableS::new(Ident::new(id), t)
     }
+    fn mk(id: String, ty: TmpType) -> VariableS<parse::Ident, TmpType> {
+        VariableS::new(Ident::new(id), ty)
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -133,7 +136,8 @@ impl ExprTmp {
             parse::ExprKind::And(e1, e2) => Expr::mk_and(ExprTmp::from(e1), ExprTmp::from(e2)),
             parse::ExprKind::Or(e1, e2) => Expr::mk_or(ExprTmp::from(e1), ExprTmp::from(e2)),
             parse::ExprKind::Univ(x, e) => {
-                let id = VariableS::from_ident(x);
+                let t = TmpType::mk_int();
+                let id = VariableS::mk(x, t);
                 Expr::mk_univ(id, ExprTmp::from(e))
             }
             parse::ExprKind::Abs(x, e) => {
@@ -184,8 +188,10 @@ impl ExprTmp {
                 constraints.add(t2, env.mk_prop());
                 env.mk_prop()
             }
-            ExprKind::Univ(_, e) => {
+            ExprKind::Univ(x, e) => {
+                env.add(&x.id, env.mk_int());
                 let t = e.append_constraints(env, constraints);
+                env.del(&x.id);
                 constraints.add(t, env.mk_prop());
                 env.mk_prop()
             }

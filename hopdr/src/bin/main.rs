@@ -19,7 +19,7 @@ fn main() {
         S n k = (n > 0 | k 0) & (n <= 0 | S (n - 1) (L n k));
         K m n = m <= n;
         L n k m = k (n + m);
-        M = S 1 (K 1);
+        M = ∀ x. S x (K x);
          ",
     )
     .unwrap();
@@ -29,6 +29,7 @@ fn main() {
             for fml in vc.formulas.iter() {
                 println!("{}", fml);
             }
+            println!("TOP={}", vc.toplevel);
         }
     }
 

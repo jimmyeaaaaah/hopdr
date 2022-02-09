@@ -7,6 +7,7 @@ use nom::{
     combinator::{map, map_res},
     error::ParseError,
     multi::{fold_many0, separated_list},
+    preceded,
     sequence::{pair, preceded},
     IResult,
 };
@@ -127,8 +128,24 @@ fn parse_or<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Expr
     )(input)
 }
 
+fn parse_lambda<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Expr, E> {
+    let (input, _) = preceded(sp, alt((char('\\'), char('λ'))))(input)?;
+    let (input, id) = preceded(sp, map(ident, String::from))(input)?;
+    let (input, _) = preceded(sp, char('.'))(input)?;
+    let (input, e) = preceded(sp, parse_expr)(input)?;
+    Ok((input, Expr::mk_abs(id, e)))
+}
+
+fn parse_forall<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Expr, E> {
+    let (input, _) = preceded(sp, char('∀'))(input)?;
+    let (input, id) = preceded(sp, map(ident, String::from))(input)?;
+    let (input, _) = preceded(sp, char('.'))(input)?;
+    let (input, e) = preceded(sp, parse_expr)(input)?;
+    Ok((input, Expr::mk_univ(id, e)))
+}
+
 fn parse_expr<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Expr, E> {
-    alt((parse_or, parse_var))(input)
+    alt((parse_lambda, parse_forall, parse_or, parse_var))(input)
 }
 
 fn parse_hes<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Clause, E> {
