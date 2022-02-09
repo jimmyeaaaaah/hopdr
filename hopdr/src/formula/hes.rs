@@ -65,40 +65,40 @@ impl<C: fmt::Display> fmt::Display for Goal<C> {
         }
     }
 }
+impl<C: Top> Top for Goal<C> {
+    fn mk_true() -> Self {
+        Goal::mk_constr(C::mk_true())
+    }
 
-impl<C: Top + Bot> Goal<C> {
-    pub fn is_true(&self) -> bool {
+    fn is_true(&self) -> bool {
         match self.kind() {
             GoalKind::Constr(c) if c.is_true() => true,
             _ => false,
         }
     }
+}
+impl<C: Bot> Bot for Goal<C> {
+    fn mk_false() -> Self {
+        Goal::mk_constr(C::mk_false())
+    }
+
+    fn is_false(&self) -> bool {
+        match self.kind() {
+            GoalKind::Constr(c) if c.is_false() => true,
+            _ => false,
+        }
+    }
+}
+
+impl<C> Goal<C> {
     pub fn mk_constr(x: C) -> Goal<C> {
         Goal::new(GoalKind::Constr(x))
-    }
-    pub fn mk_conj(lhs: Goal<C>, rhs: Goal<C>) -> Goal<C> {
-        if lhs.is_true() {
-            rhs
-        } else if rhs.is_true() {
-            lhs
-        } else {
-            Goal::new(GoalKind::Conj(lhs, rhs))
-        }
     }
     pub fn mk_app(lhs: Goal<C>, rhs: Goal<C>) -> Goal<C> {
         Goal::new(GoalKind::App(lhs, rhs))
     }
     pub fn mk_var(ident: Ident) -> Goal<C> {
         Goal::new(GoalKind::Var(ident))
-    }
-    pub fn mk_disj(lhs: Goal<C>, rhs: Goal<C>) -> Goal<C> {
-        if lhs.is_true() {
-            lhs
-        } else if rhs.is_true() {
-            rhs
-        } else {
-            Goal::new(GoalKind::Disj(lhs, rhs))
-        }
     }
     pub fn mk_univ(x: Variable, g: Goal<C>) -> Goal<C> {
         Goal::new(GoalKind::Univ(x, g))
@@ -108,6 +108,26 @@ impl<C: Top + Bot> Goal<C> {
     }
     pub fn mk_op(op: Op) -> Goal<C> {
         Goal::new(GoalKind::Op(op))
+    }
+}
+impl<C: Top> Goal<C> {
+    pub fn mk_conj(lhs: Goal<C>, rhs: Goal<C>) -> Goal<C> {
+        if lhs.is_true() {
+            rhs
+        } else if rhs.is_true() {
+            lhs
+        } else {
+            Goal::new(GoalKind::Conj(lhs, rhs))
+        }
+    }
+    pub fn mk_disj(lhs: Goal<C>, rhs: Goal<C>) -> Goal<C> {
+        if lhs.is_true() {
+            lhs
+        } else if rhs.is_true() {
+            rhs
+        } else {
+            Goal::new(GoalKind::Disj(lhs, rhs))
+        }
     }
 }
 

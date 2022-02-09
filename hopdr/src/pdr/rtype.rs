@@ -192,3 +192,7 @@ fn to_fml(c: Constraint, t: Ty) -> Constraint {
 fn types(fml: Formula, t: Ty) -> Constraint {
     unimplemented!()
 }
+
+pub fn type_check(env: TyEnv, fml: Goal<Constraint>, t: Ty) -> Result<(), Error> {
+    unimplemented!()
+}
