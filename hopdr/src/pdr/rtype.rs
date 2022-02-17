@@ -113,6 +113,16 @@ impl<C: Top + Bot> TyKind<C> {
     }
 }
 
+impl<C> Tau<C> {
+    pub fn to_sty(&self) -> SType {
+        match self.kind() {
+            TauKind::Proposition(_) => SType::mk_type_prop(),
+            TauKind::IArrow(_, t) => SType::mk_type_arrow(SType::mk_type_int(), t.to_sty()),
+            TauKind::Arrow(t1, t2) => SType::mk_type_arrow(t1[0].to_sty(), t2.to_sty()),
+        }
+    }
+}
+
 // Type environment
 pub struct TypeEnvironment<Type> {
     pub map: HashMap<Ident, Vec<Type>>,
@@ -184,15 +194,52 @@ impl<C: Top + Bot> TypeEnvironment<Tau<C>> {
 }
 
 // ⌊τ⌋_c
-fn to_fml(c: Constraint, t: Ty) -> Constraint {
-    unimplemented!()
+pub fn to_fml(c: Formula, t: Ty) -> Formula {
+    match t.kind() {
+        TauKind::Proposition(c2) => Formula::mk_conj(c, c2.clone().into()),
+        TauKind::IArrow(x, y) => {
+            Formula::mk_abs(Variable::mk(*x, SType::mk_type_int()), to_fml(c, y.clone()))
+        }
+        TauKind::Arrow(ts, y) => {
+            let ident = Ident::fresh();
+            let g = Goal::mk_var(ident);
+            let mut cs = c.into();
+            for t in ts.iter() {
+                cs = Formula::mk_conj(types(g.clone(), t.clone()), cs);
+            }
+            let fml = to_fml(cs, y.clone());
+            Goal::mk_abs(Variable::mk(ident, y.to_sty()), fml)
+        }
+    }
+}
+
+// ⌊τ⌋_tt
+pub fn least_fml(t: Ty) -> Formula {
+    to_fml(Formula::mk_true(), t)
 }
 
 // ψ↑τ
-fn types(fml: Formula, t: Ty) -> Constraint {
-    unimplemented!()
+fn types(fml: Formula, t: Ty) -> Formula {
+    match t.kind() {
+        TauKind::Proposition(c) => {
+            let c = c.clone().negate().unwrap().into();
+            Formula::mk_disj(c, fml)
+        }
+        TauKind::IArrow(x, t) => {
+            let v = Variable::mk(*x, SType::mk_type_int());
+            let p = Formula::mk_app(fml, Formula::mk_var(*x));
+            let fml = Formula::mk_univ(v, p);
+            types(fml, t.clone())
+        }
+        TauKind::Arrow(x, y) => {
+            let arg = Formula::mk_ho_disj(x.iter().map(|t| least_fml(t.clone())), x[0].to_sty());
+            let fml = Formula::mk_app(fml, arg);
+            types(fml, y.clone())
+        }
+    }
 }
 
-pub fn type_check(env: TyEnv, fml: Goal<Constraint>, t: Ty) -> Result<(), Error> {
-    unimplemented!()
-}
+// pub fn type_check(env: TyEnv, fml: Formula, t: Ty) -> Result<(), Error> {
+//
+//     unimplemented!()
+// }

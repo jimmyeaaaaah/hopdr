@@ -1,3 +1,4 @@
+use crate::formula::ty::Type;
 use crate::formula::{Bot, Constraint, Fv, Ident, Op, Top, Variable};
 use crate::util::P;
 use std::fmt;
@@ -89,6 +90,11 @@ impl<C: Bot> Bot for Goal<C> {
         }
     }
 }
+impl From<Constraint> for Goal<Constraint> {
+    fn from(c: Constraint) -> Self {
+        Goal::mk_constr(c)
+    }
+}
 
 impl<C> Goal<C> {
     pub fn mk_constr(x: C) -> Goal<C> {
@@ -128,6 +134,33 @@ impl<C: Top> Goal<C> {
         } else {
             Goal::new(GoalKind::Disj(lhs, rhs))
         }
+    }
+}
+impl<C: Bot + Top> Goal<C> {
+    pub fn mk_ho_disj(fmls: impl IntoIterator<Item = Goal<C>>, mut sty: Type) -> Goal<C> {
+        let mut vs = Vec::new();
+        loop {
+            sty = match sty.kind() {
+                super::TypeKind::Proposition => break,
+                super::TypeKind::Arrow(t, s) => {
+                    vs.push(Variable::mk(Ident::fresh(), t.clone()));
+                    s.clone()
+                }
+                super::TypeKind::Integer => panic!("program error"),
+            };
+        }
+        let mut x = Goal::mk_false();
+        for f in fmls {
+            let mut fml = f;
+            for v in vs.iter() {
+                fml = Goal::mk_app(fml, Goal::mk_var(v.id));
+            }
+            x = Goal::mk_disj(x, fml);
+        }
+        for v in vs.iter().rev() {
+            x = Goal::mk_abs(v.clone(), x);
+        }
+        x
     }
 }
 

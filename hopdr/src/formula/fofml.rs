@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
+use super::hes;
 use super::pcsp;
 use super::{
     Bot, Conjunctive, Constraint, Fv, Ident, Op, OpKind, PredKind, QuantifierKind, Subst, Top,
@@ -139,6 +140,19 @@ impl Subst for Atom {
         let eq = vec![Op::mk_var(*x), v.clone()];
         let c = Atom::mk_constraint(Constraint::mk_pred(PredKind::Eq, eq));
         Atom::mk_conj(c, self.clone())
+    }
+}
+
+impl From<Atom> for hes::Goal<Atom> {
+    fn from(c: Atom) -> Self {
+        hes::Goal::mk_constr(c)
+    }
+}
+
+impl From<Constraint> for hes::Goal<Atom> {
+    fn from(c: Constraint) -> Self {
+        let a: Atom = c.into();
+        a.into()
     }
 }
 
