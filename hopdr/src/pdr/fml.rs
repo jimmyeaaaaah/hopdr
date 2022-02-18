@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::fmt::Display;
 
 use crate::formula::fofml;
 use crate::formula::hes::{Clause, Goal, GoalKind};
@@ -96,6 +97,15 @@ pub struct Env {
     map: HashMap<Ident, Formula>,
 }
 
+impl Display for Env {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for (k, fml) in self.map.iter() {
+            writeln!(f, "{}: {}\n", k, fml)?;
+        }
+        Ok(())
+    }
+}
+
 impl Env {
     // ⌊Γ⌋
     pub fn from_type_environment(tenv: &TyEnv) -> Env {
@@ -117,16 +127,17 @@ impl Env {
     }
 
     pub fn eval(&self, g: Formula) -> Formula {
+        println!("eval: {}", g);
         match g.kind() {
             GoalKind::Var(x) => match self.map.get(x) {
                 Some(f) => f.clone(),
                 None => Formula::mk_var(*x),
             },
-            GoalKind::Abs(x, y) => Formula::mk_abs(x.clone(), y.clone()),
-            GoalKind::App(x, y) => Formula::mk_app(x.clone(), y.clone()),
-            GoalKind::Conj(x, y) => Formula::mk_conj(x.clone(), y.clone()),
-            GoalKind::Disj(x, y) => Formula::mk_disj(x.clone(), y.clone()),
-            GoalKind::Univ(x, y) => Formula::mk_univ(x.clone(), y.clone()),
+            GoalKind::Abs(x, y) => Formula::mk_abs(x.clone(), self.eval(y.clone())),
+            GoalKind::App(x, y) => Formula::mk_app(self.eval(x.clone()), self.eval(y.clone())),
+            GoalKind::Conj(x, y) => Formula::mk_conj(self.eval(x.clone()), self.eval(y.clone())),
+            GoalKind::Disj(x, y) => Formula::mk_disj(self.eval(x.clone()), self.eval(y.clone())),
+            GoalKind::Univ(x, y) => Formula::mk_univ(x.clone(), self.eval(y.clone())),
             GoalKind::Constr(_) | GoalKind::Op(_) => g.clone(),
         }
     }
@@ -134,7 +145,9 @@ impl Env {
 
 // Γ ⊧ g ⇔ ⊧ θ where Γ(g) → θ
 pub fn env_models(env: &Env, g: &Formula) -> bool {
+    println!("env_models env: {}", env);
     let f = env.eval(g.clone());
+    println!("env_models g: {}", f);
     let cnstr: fofml::Atom = f.reduce().into();
     let cnstr = cnstr.into();
     match smt::default_solver().solve(&cnstr, &HashSet::new()) {

@@ -60,7 +60,7 @@ impl<C: fmt::Display> fmt::Display for Goal<C> {
             Constr(c) => write!(f, "{}", c),
             Op(o) => write!(f, "{}", o),
             Var(x) => write!(f, "{}", x),
-            App(x, y) => write!(f, "{} {}", x, y),
+            App(x, y) => write!(f, "({} {})", x, y),
             Conj(x, y) => write!(f, "({} & {})", x, y),
             Disj(x, y) => write!(f, "({} | {})", x, y),
             Univ(x, y) => write!(f, "∀{}.{}", x, y),
