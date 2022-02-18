@@ -180,6 +180,7 @@ impl Op {
 }
 
 impl Subst for Op {
+    type Item = Op;
     fn subst(&self, id: &Ident, v: &Op) -> Op {
         match self.kind() {
             OpExpr::Op(k, x, y) => Op::mk_bin_op(*k, x.subst(id, v), y.subst(id, v)),
@@ -216,7 +217,8 @@ pub trait Conjunctive {
 }
 
 pub trait Subst: Sized {
-    fn subst_multi(&self, substs: &[(Ident, Op)]) -> Self {
+    type Item;
+    fn subst_multi(&self, substs: &[(Ident, Self::Item)]) -> Self {
         assert!(!substs.is_empty());
         let mut ret = self.subst(&substs[0].0, &substs[0].1);
         for (ident, val) in &substs[1..] {
@@ -224,11 +226,7 @@ pub trait Subst: Sized {
         }
         ret
     }
-    fn subst(&self, x: &Ident, v: &Op) -> Self;
-    fn rename_variable(&self, x: &Ident, y: &Ident) -> Self {
-        let op = Op::mk_var(*y);
-        self.subst(x, &op)
-    }
+    fn subst(&self, x: &Ident, v: &Self::Item) -> Self;
 }
 
 pub trait Rename: Sized {
@@ -339,6 +337,7 @@ impl Conjunctive for Constraint {
 }
 
 impl Subst for Constraint {
+    type Item = Op;
     // \theta[v/x]
     fn subst(&self, x: &Ident, v: &Op) -> Constraint {
         use ConstraintExpr::*;

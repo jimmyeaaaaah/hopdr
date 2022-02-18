@@ -2,9 +2,11 @@ use super::fml;
 use super::rtype;
 use super::rtype::TyEnv;
 use super::VerificationResult;
+use crate::formula::fofml;
 use crate::formula::hes::Problem as ProblemBase;
 use crate::formula::{hes, Ident};
 use crate::formula::{Constraint, Top};
+use crate::solver::smt;
 use crate::util::dprintln;
 use colored::Colorize;
 use std::collections::HashMap;
@@ -12,7 +14,7 @@ use std::collections::HashMap;
 use std::fmt::Display;
 use std::unimplemented;
 
-type Problem = ProblemBase<fml::Formula>;
+type Problem = ProblemBase<fofml::Atom>;
 
 pub enum PDRResult {
     Valid,
@@ -55,16 +57,6 @@ impl TyEnv {
             new_env.add_bot(c.head.id, &c.head.ty)
         }
         new_env
-    }
-}
-
-fn handle_type_check(result: Result<(), rtype::Error>) -> bool {
-    match result {
-        Ok(()) => true,
-        Err(e) => match e {
-            rtype::Error::TypeError => false,
-            rtype::Error::SMTTimeout | rtype::Error::SMTUnknown => panic!("smt check fail.."),
-        },
     }
 }
 
@@ -133,14 +125,8 @@ impl HoPDR {
         debug!("check_valid");
         // rtype::type_check_clause(fml, ty.clone(), &mut env);
         // println!("{}:{}\n -> {:?}", fml, ty.clone(), );
-        unimplemented!()
-        //let result = rtype::type_check(
-        //    self.top_env().into(),
-        //    self.problem.top.into(),
-        //    rtype::Ty::mk_top(),
-        //);
-        //debug!("check_valid: {:?}", result);
-        //handle_type_check(result)
+        let env = fml::Env::from_type_environment(self.top_env());
+        fml::env_models(&env, &self.problem.top)
     }
 
     fn check_inductive(&self) -> bool {
@@ -222,6 +208,7 @@ impl HoPDR {
 }
 
 pub fn infer(problem: Problem) -> VerificationResult {
+    let problem = problem.into();
     let mut pdr = HoPDR::new(&problem);
     pdr.set_verbosity_level(DEBUG);
     pdr.run();

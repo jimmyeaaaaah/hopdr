@@ -70,6 +70,33 @@ impl From<Constraint> for Atom {
         Atom::mk_constraint(from)
     }
 }
+impl From<Atom> for Constraint {
+    fn from(from: Atom) -> Constraint {
+        match from.kind() {
+            AtomKind::True => Constraint::mk_true(),
+            AtomKind::Constraint(c) => c.clone(),
+            AtomKind::Conj(a1, a2) => {
+                let c1 = a1.clone().into();
+                let c2 = a2.clone().into();
+                Constraint::mk_conj(c1, c2)
+            }
+            AtomKind::Disj(a1, a2) => {
+                let c1 = a1.clone().into();
+                let c2 = a2.clone().into();
+                Constraint::mk_disj(c1, c2)
+            }
+            AtomKind::Not(a) => {
+                let c: Constraint = a.clone().into();
+                c.negate().unwrap()
+            }
+            AtomKind::Quantifier(q, x, a) => {
+                let c: Constraint = a.clone().into();
+                Constraint::mk_quantifier_int(*q, *x, c)
+            }
+            AtomKind::Predicate(_, _) => panic!("program error"),
+        }
+    }
+}
 
 impl From<pcsp::Atom> for Atom {
     fn from(from: pcsp::Atom) -> Atom {
@@ -136,6 +163,7 @@ impl Conjunctive for Atom {
 }
 
 impl Subst for Atom {
+    type Item = super::Op;
     fn subst(&self, x: &Ident, v: &super::Op) -> Self {
         let eq = vec![Op::mk_var(*x), v.clone()];
         let c = Atom::mk_constraint(Constraint::mk_pred(PredKind::Eq, eq));
@@ -216,6 +244,9 @@ impl Atom {
     pub fn mk_not(x: Self) -> Atom {
         Atom::new(AtomKind::Not(x))
     }
+    //pub fn mk_var(x: Ident) -> Atom {
+    //    Atom::new(AtomKind::)
+    //}
     // auxiliary function for generating constraint
     pub fn mk_constraint(c: Constraint) -> Atom {
         Atom::new(AtomKind::Constraint(c))

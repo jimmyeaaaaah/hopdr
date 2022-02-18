@@ -3,6 +3,8 @@ use crate::formula::{Bot, Constraint, Fv, Ident, Op, Top, Variable};
 use crate::util::P;
 use std::fmt;
 
+use super::Subst;
+
 #[derive(Debug)]
 pub enum ConstKind {
     Int(i64),
@@ -116,24 +118,12 @@ impl<C> Goal<C> {
         Goal::new(GoalKind::Op(op))
     }
 }
-impl<C: Top> Goal<C> {
+impl<C> Goal<C> {
     pub fn mk_conj(lhs: Goal<C>, rhs: Goal<C>) -> Goal<C> {
-        if lhs.is_true() {
-            rhs
-        } else if rhs.is_true() {
-            lhs
-        } else {
-            Goal::new(GoalKind::Conj(lhs, rhs))
-        }
+        Goal::new(GoalKind::Conj(lhs, rhs))
     }
     pub fn mk_disj(lhs: Goal<C>, rhs: Goal<C>) -> Goal<C> {
-        if lhs.is_true() {
-            lhs
-        } else if rhs.is_true() {
-            rhs
-        } else {
-            Goal::new(GoalKind::Disj(lhs, rhs))
-        }
+        Goal::new(GoalKind::Disj(lhs, rhs))
     }
 }
 impl<C: Bot + Top> Goal<C> {
@@ -161,6 +151,34 @@ impl<C: Bot + Top> Goal<C> {
             x = Goal::mk_abs(v.clone(), x);
         }
         x
+    }
+}
+
+impl<C: Subst> Subst for Goal<C> {
+    type Item = Goal<C>;
+    // we assume formula has already been alpha-renamed
+    fn subst(&self, x: &Ident, v: &Goal<C>) -> Self {
+        match self.kind() {
+            GoalKind::Var(x) => v.clone(),
+            GoalKind::Constr(_) | GoalKind::Op(_) => self.clone(),
+            GoalKind::Abs(y, g) => Goal::mk_abs(y.clone(), g.subst(x, v)),
+            GoalKind::App(g1, g2) => {
+                let g1 = g1.subst(x, v);
+                let g2 = g2.subst(x, v);
+                Goal::mk_app(g1, g2)
+            }
+            GoalKind::Conj(g1, g2) => {
+                let g1 = g1.subst(x, v);
+                let g2 = g2.subst(x, v);
+                Goal::mk_conj(g1, g2)
+            }
+            GoalKind::Disj(g1, g2) => {
+                let g1 = g1.subst(x, v);
+                let g2 = g2.subst(x, v);
+                Goal::mk_disj(g1, g2)
+            }
+            GoalKind::Univ(y, g) => Goal::mk_univ(y.clone(), g.subst(x, v)),
+        }
     }
 }
 
