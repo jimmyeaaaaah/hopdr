@@ -38,5 +38,5 @@ fn main() {
         println!("{}", fml);
     }
 
-    //engine::infer(vc);
+    pdr::infer(vc);
 }

@@ -104,17 +104,16 @@ impl HoPDR {
         self.envs.last().unwrap()
     }
 
-    fn new(problem: &Problem) -> HoPDR {
-        unimplemented!()
-        //let mut hopdr = HoPDR {
-        //    models: Vec::new(),
-        //    envs: Vec::new(),
-        //    problem,
-        //    loop_cnt: 0,
-        //    verbose: 0,
-        //};
-        //hopdr.initialize();
-        //hopdr
+    fn new(problem: Problem) -> HoPDR {
+        let mut hopdr = HoPDR {
+            models: Vec::new(),
+            envs: Vec::new(),
+            problem,
+            loop_cnt: 0,
+            verbose: 0,
+        };
+        hopdr.initialize();
+        hopdr
     }
 
     pub fn set_verbosity_level(&mut self, v: u64) {
@@ -147,7 +146,7 @@ impl HoPDR {
 
     fn initialize(&mut self) {
         println!("{}", "initialize".purple());
-        //self.envs.push(TyEnv::new_top_env(self.problem));
+        self.envs.push(TyEnv::new_top_env(&self.problem));
     }
 
     fn unfold(&mut self) {
@@ -207,9 +206,9 @@ impl HoPDR {
     }
 }
 
-pub fn infer(problem: Problem) -> VerificationResult {
+pub fn infer(problem: ProblemBase<Constraint>) -> VerificationResult {
     let problem = problem.into();
-    let mut pdr = HoPDR::new(&problem);
+    let mut pdr = HoPDR::new(problem);
     pdr.set_verbosity_level(DEBUG);
     pdr.run();
 

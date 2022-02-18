@@ -3,7 +3,7 @@ use crate::formula::{Bot, Constraint, Fv, Ident, Op, Top, Variable};
 use crate::util::P;
 use std::fmt;
 
-use super::Subst;
+use super::{fofml, Subst};
 
 #[derive(Debug)]
 pub enum ConstKind {
@@ -189,6 +189,15 @@ pub struct Clause<C> {
     // pub fixpoint: Fixpoint
 }
 
+impl From<Clause<Constraint>> for Clause<fofml::Atom> {
+    fn from(c: Clause<Constraint>) -> Self {
+        Clause {
+            body: c.body.into(),
+            head: c.head,
+        }
+    }
+}
+
 impl<C: Fv<Id = Ident>> Fv for Goal<C> {
     type Id = Ident;
 
@@ -234,6 +243,14 @@ impl<C: fmt::Display> fmt::Display for Clause<C> {
 pub struct Problem<C> {
     pub clauses: Vec<Clause<C>>,
     pub top: Goal<C>,
+}
+
+impl From<Problem<Constraint>> for Problem<fofml::Atom> {
+    fn from(p: Problem<Constraint>) -> Self {
+        let clauses = p.clauses.into_iter().map(|x| x.into()).collect();
+        let top = p.top.into();
+        Problem { clauses, top }
+    }
 }
 
 impl<C: fmt::Display> fmt::Display for Problem<C> {

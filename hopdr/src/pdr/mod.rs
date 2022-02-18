@@ -2,6 +2,7 @@ pub mod fml;
 pub mod pdr;
 pub mod rtype;
 
+pub use pdr::infer;
 use std::fmt;
 
 #[derive(Debug)]
