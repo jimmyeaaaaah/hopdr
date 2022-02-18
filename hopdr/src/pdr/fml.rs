@@ -44,7 +44,7 @@ impl From<Formula> for fofml::Atom {
             GoalKind::Univ(x, g) => fofml::Atom::mk_univq(x.id, g.clone().into()),
             // the following must not happen
             GoalKind::Abs(_, _) | GoalKind::App(_, _) | GoalKind::Var(_) | GoalKind::Op(_) => {
-                panic!("impossible to transform")
+                panic!("impossible to transform: {}", frm)
             }
         }
     }
@@ -52,43 +52,47 @@ impl From<Formula> for fofml::Atom {
 
 impl Formula {
     fn reduce_inner(&self) -> Formula {
+        println!("reduce_inner: {}", self);
         match self.kind() {
             GoalKind::Constr(_) => self.clone(),
             GoalKind::App(g, arg) => {
                 // g must be have form \x. phi
+                let g = g.reduce_inner();
+                let arg = arg.reduce_inner();
+                println!("app\n- {}\n- {}", g, arg);
                 match g.kind() {
-                    GoalKind::Abs(x, g) => {
-                        g.subst(&x.id, arg)
-                    },
-                    _ => panic!("program error")
+                    GoalKind::Abs(x, g) => g.clone().subst(&x.id, &arg),
+                    _ => Goal::mk_app(g, arg),
                 }
-            },
+            }
             GoalKind::Conj(g1, g2) => {
                 let g1 = g1.reduce_inner();
                 let g2 = g2.reduce_inner();
                 Goal::mk_conj(g1, g2)
-            },
+            }
             GoalKind::Disj(g1, g2) => {
                 let g1 = g1.reduce_inner();
                 let g2 = g2.reduce_inner();
                 Goal::mk_disj(g1, g2)
-            },
+            }
             GoalKind::Univ(x, g) => {
                 let g = g.reduce_inner();
                 Goal::mk_univ(x.clone(), g)
-            },
-            // This should be processed in App(g1, g2)
-            GoalKind::Abs(_, _) |
-            // Var(x) should not occur since variables of type int are processed in App(x, g) clause
-            // others(boolean, functions) are replaced when App(g1, g2) is processed
-            GoalKind::Var(_) |
-            GoalKind::Op(_) => panic!("program error"),
+            }
+            GoalKind::Abs(x, g) => {
+                let g = g.reduce_inner();
+                Goal::mk_abs(x.clone(), g)
+            }
+            GoalKind::Var(_) | GoalKind::Op(_) => self.clone(),
         }
     }
     pub fn reduce(&self) -> fofml::Atom {
         // first reduces the formula to a formula of type *
         // then traslates it to a fofml::Atom constraint.
-        self.reduce_inner().into()
+        println!("to be reduced: {}", &self);
+        let g = self.reduce_inner();
+        println!("reduced: {}", &g);
+        g.into()
     }
 }
 

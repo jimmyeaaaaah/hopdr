@@ -1,7 +1,9 @@
 use crate::formula::ty::Type;
-use crate::formula::{Bot, Constraint, Fv, Ident, Op, Top, Variable};
+use crate::formula::{Bot, Constraint, Fv, Ident, Op, Rename, Top, Variable};
 use crate::util::P;
+use std::collections::HashSet;
 use std::fmt;
+use std::ops::RangeBounds;
 
 use super::{fofml, Subst};
 
@@ -154,31 +156,99 @@ impl<C: Bot + Top> Goal<C> {
     }
 }
 
-impl<C: Subst> Subst for Goal<C> {
+impl<C: Fv<Id = Ident>> Fv for Goal<C> {
+    type Id = Ident;
+
+    fn fv_with_vec(&self, fvs: &mut HashSet<Self::Id>) {
+        match self.kind() {
+            GoalKind::Var(x) => {
+                fvs.insert(*x);
+            }
+            GoalKind::Univ(x, g) | GoalKind::Abs(x, g) => {
+                g.fv_with_vec(fvs);
+                fvs.remove(&x.id);
+            }
+            GoalKind::App(g1, g2) | GoalKind::Conj(g1, g2) | GoalKind::Disj(g1, g2) => {
+                g1.fv_with_vec(fvs);
+                g2.fv_with_vec(fvs);
+            }
+            GoalKind::Constr(c) => c.fv_with_vec(fvs),
+            GoalKind::Op(op) => op.fv_with_vec(fvs),
+        }
+    }
+}
+impl<C: Rename> Rename for Goal<C> {
+    fn rename(&self, x: &Ident, y: &Ident) -> Self {
+        match self.kind() {
+            GoalKind::Constr(c) => Goal::mk_constr(c.rename(x, y)),
+            GoalKind::Op(op) => Goal::mk_op(op.rename(x, y)),
+            GoalKind::Var(id) => Goal::mk_var(if id == x { *y } else { *x }),
+            GoalKind::Abs(id, g) => {
+                let g = if &id.id != x {
+                    g.rename(x, y)
+                } else {
+                    g.clone()
+                };
+                Goal::mk_abs(id.clone(), g)
+            }
+            GoalKind::Univ(id, g) => {
+                let g = if &id.id != x {
+                    g.rename(x, y)
+                } else {
+                    g.clone()
+                };
+                Goal::mk_univ(id.clone(), g)
+            }
+            GoalKind::App(g1, g2) => Goal::mk_app(g1.rename(x, y), g2.rename(x, y)),
+            GoalKind::Conj(g1, g2) => Goal::mk_conj(g1.rename(x, y), g2.rename(x, y)),
+            GoalKind::Disj(g1, g2) => Goal::mk_disj(g1.rename(x, y), g2.rename(x, y)),
+        }
+    }
+}
+
+impl<C: Subst + Rename + Fv<Id = Ident>> Subst for Goal<C> {
     type Item = Goal<C>;
     // we assume formula has already been alpha-renamed
     fn subst(&self, x: &Ident, v: &Goal<C>) -> Self {
-        match self.kind() {
-            GoalKind::Var(x) => v.clone(),
-            GoalKind::Constr(_) | GoalKind::Op(_) => self.clone(),
-            GoalKind::Abs(y, g) => Goal::mk_abs(y.clone(), g.subst(x, v)),
-            GoalKind::App(g1, g2) => {
-                let g1 = g1.subst(x, v);
-                let g2 = g2.subst(x, v);
-                Goal::mk_app(g1, g2)
+        fn subst_inner<C: Subst + Rename>(
+            target: &Goal<C>,
+            x: Ident,
+            v: Goal<C>,
+            fv: HashSet<Ident>,
+        ) -> Goal<C> {
+            match target.kind() {
+                GoalKind::Var(x) => v.clone(),
+                GoalKind::Constr(_) | GoalKind::Op(_) => target.clone(),
+                GoalKind::App(g1, g2) => {
+                    let g1 = subst_inner(g1, x, v, fv);
+                    let g2 = subst_inner(g2, x, v, fv);
+                    Goal::mk_app(g1, g2)
+                }
+                GoalKind::Conj(g1, g2) => {
+                    let g1 = subst_inner(g1, x, v, fv);
+                    let g2 = subst_inner(g2, x, v, fv);
+                    Goal::mk_conj(g1, g2)
+                }
+                GoalKind::Disj(g1, g2) => {
+                    let g1 = subst_inner(g1, x, v, fv);
+                    let g2 = subst_inner(g2, x, v, fv);
+                    Goal::mk_disj(g1, g2)
+                }
+                GoalKind::Abs(y, g) => {
+                    if fv.contains(&y.id) {
+                        let y2_ident = Ident::fresh();
+                        let y2 = Variable::mk(y2_ident, y.ty.clone());
+                        let g = g.rename(&y.id, &y2_ident);
+                        Goal::mk_abs(y2, subst_inner(&g, x, v, fv))
+                    } else {
+                        Goal::mk_abs(y.clone(), subst_inner(g, x, v, fv))
+                    }
+                }
+                GoalKind::Univ(y, g) => Goal::mk_univ(y.clone(), subst_inner(g, x, v, fv)),
             }
-            GoalKind::Conj(g1, g2) => {
-                let g1 = g1.subst(x, v);
-                let g2 = g2.subst(x, v);
-                Goal::mk_conj(g1, g2)
-            }
-            GoalKind::Disj(g1, g2) => {
-                let g1 = g1.subst(x, v);
-                let g2 = g2.subst(x, v);
-                Goal::mk_disj(g1, g2)
-            }
-            GoalKind::Univ(y, g) => Goal::mk_univ(y.clone(), g.subst(x, v)),
         }
+        let fv = v.clone().fv();
+        subst_inner(self, *x, v.clone(), fv)
     }
 }
 
@@ -194,32 +264,6 @@ impl From<Clause<Constraint>> for Clause<fofml::Atom> {
         Clause {
             body: c.body.into(),
             head: c.head,
-        }
-    }
-}
-
-impl<C: Fv<Id = Ident>> Fv for Goal<C> {
-    type Id = Ident;
-
-    fn fv_with_vec(&self, fvs: &mut std::collections::HashSet<Self::Id>) {
-        match self.kind() {
-            GoalKind::Var(x) => {
-                fvs.insert(*x);
-            }
-            GoalKind::App(x, y) => {
-                x.fv_with_vec(fvs);
-                y.fv_with_vec(fvs);
-            }
-            GoalKind::Constr(c) => c.fv_with_vec(fvs),
-            GoalKind::Op(o) => o.fv_with_vec(fvs),
-            GoalKind::Conj(x, y) | GoalKind::Disj(x, y) => {
-                x.fv_with_vec(fvs);
-                y.fv_with_vec(fvs);
-            }
-            GoalKind::Univ(x, c) | GoalKind::Abs(x, c) => {
-                c.fv_with_vec(fvs);
-                fvs.remove(&x.id);
-            }
         }
     }
 }
