@@ -380,6 +380,7 @@ impl Linear {
     }
 }
 
+#[allow(dead_code)]
 fn new_eq_template(nargs: usize) -> Linear {
     Linear::new(nargs, PredKind::Eq)
 }

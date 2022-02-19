@@ -302,7 +302,7 @@ pub fn simplify(
     c1: &[CHC<pcsp::Atom>],
     c2: &[CHC<pcsp::Atom>],
     _l: &HashMap<Ident, pcsp::Predicate>, // not to be removed
-    template_variables: &HashSet<Ident>, // to be removed
+    template_variables: &HashSet<Ident>,  // to be removed
 ) -> Result<Vec<CHC<pcsp::Atom>>, ResolutionError> {
     let mut defs = HashMap::new();
     let mut defs_l = HashMap::new();

@@ -3,7 +3,6 @@ use crate::formula::{Bot, Constraint, Fv, Ident, Op, Rename, Top, Variable};
 use crate::util::P;
 use std::collections::HashSet;
 use std::fmt;
-use std::ops::RangeBounds;
 
 use super::{fofml, Subst};
 

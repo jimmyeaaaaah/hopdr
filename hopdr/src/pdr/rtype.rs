@@ -1,16 +1,11 @@
 use std::{
-    collections::{HashMap},
+    collections::HashMap,
     fmt::{self, Display},
 };
 
+use crate::formula::hes::Goal;
 use crate::formula::{chc, Variable};
-use crate::formula::{
-    hes::{Goal},
-};
-use crate::formula::{
-    Bot, Conjunctive, Constraint, Ident,
-    Top, Type as SType, TypeKind as STypeKind,
-};
+use crate::formula::{Bot, Constraint, Ident, Top, Type as SType, TypeKind as STypeKind};
 use crate::pdr::fml::Formula;
 
 use crate::util::P;
