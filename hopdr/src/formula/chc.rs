@@ -6,12 +6,12 @@ use std::vec;
 
 use super::fofml;
 use super::pcsp;
-use super::{Conjunctive, Constraint, Ident, Rename, Top};
+use super::{Conjunctive, Constraint, Ident, Op, Rename, Top};
 
 #[derive(Debug, Clone)]
 pub enum CHCHead {
     Constraint(Constraint),
-    Predicate(Ident, Vec<Ident>),
+    Predicate(Ident, Vec<Op>),
 }
 impl fmt::Display for CHCHead {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -37,7 +37,7 @@ impl CHCHead {
             _ => false,
         }
     }
-    fn predicate<'a>(&'a self) -> Option<(&'a Ident, &'a Vec<Ident>)> {
+    fn predicate<'a>(&'a self) -> Option<(&'a Ident, &'a Vec<Op>)> {
         match self {
             CHCHead::Predicate(i, args) => Some((i, args)),
             _ => None,
@@ -49,7 +49,7 @@ impl CHCHead {
     pub fn mk_constraint(c: Constraint) -> CHCHead {
         CHCHead::Constraint(c)
     }
-    pub fn mk_predicate(id: Ident, args: Vec<Ident>) -> CHCHead {
+    pub fn mk_predicate(id: Ident, args: Vec<Op>) -> CHCHead {
         CHCHead::Predicate(id, args)
     }
 }
@@ -58,8 +58,9 @@ impl Rename for CHCHead {
         match self {
             CHCHead::Constraint(c) => CHCHead::Constraint(c.rename(x, y)),
             CHCHead::Predicate(p, args) => {
-                let new_args = Ident::rename_idents(args, x, y);
-                CHCHead::Predicate(*p, new_args)
+                unimplemented!()
+                //let new_args = Ident::rename_idents(args, x, y);
+                //CHCHead::Predicate(*p, new_args)
             }
         }
     }
@@ -98,9 +99,10 @@ impl CHC<pcsp::Atom> {
             pcsp::AtomKind::Predicate(_, args) => {
                 assert!(args.len() == target_args.len());
                 for (x, y) in args.iter().zip(target_args.iter()) {
-                    if x != y {
-                        panic!("replace failure")
-                    }
+                    unimplemented!()
+                    //if x != y {
+                    //    panic!("replace failure")
+                    //}
                 }
                 target.body.clone()
             }
@@ -132,68 +134,8 @@ impl CHC<pcsp::Atom> {
         // 5. returns /\_[for each body in bodies] not(constraint) \/ constraint'
 
         // 1. to dnf
-        let bodies = to_dnf(&self.body);
-        let head = match &self.head {
-            CHCHead::Constraint(c) => fofml::Atom::mk_constraint(c.clone()),
-            CHCHead::Predicate(p, l) => fofml::Atom::mk_pred(*p, l.clone()),
-        };
-
-        let mut result = fofml::Atom::mk_true();
-        for body in bodies.iter() {
-            // 2. check
-            let mut target_arguments: Option<&Vec<Ident>> = None;
-            for b in body.iter() {
-                match b {
-                    CHCHead::Predicate(p, l) if p == target => {
-                        // check if the argument the same as the previous occurence
-                        // for checking whether the assumption holds
-                        match target_arguments {
-                            Some(l2) => {
-                                if l.len() != l2.len() {
-                                    debug!(
-                                        "[resolve target] l.len() != l2.len(): {} {}",
-                                        l.len(),
-                                        l2.len()
-                                    );
-                                    return Err(ResolutionError::IllegalConstraint);
-                                }
-                                for (x, y) in l.iter().zip(l2.iter()) {
-                                    if x != y {
-                                        debug!("[resolve target] x != y");
-                                        return Err(ResolutionError::IllegalConstraint);
-                                    }
-                                }
-                            }
-                            None => {
-                                target_arguments = Some(l);
-                            }
-                        }
-                    }
-                    _ => (),
-                }
-            }
-            if target_arguments.is_none() {
-                debug!("[resolve target] target_arguments.is_none()");
-                return Err(ResolutionError::IllegalConstraint);
-            }
-            // 3. simplify & negation
-            let constrs = body
-                .iter()
-                .filter_map(|x| match x {
-                    CHCHead::Constraint(c) => Some(c.clone().into()),
-                    CHCHead::Predicate(p, l) if p != target => {
-                        Some(fofml::Atom::mk_pred(*p, l.clone()))
-                    }
-                    CHCHead::Predicate(p, l) => None,
-                })
-                .collect::<Vec<fofml::Atom>>();
-            let mut h = head.clone().into();
-            for c in constrs {
-                h = fofml::Atom::mk_disj(h, c.clone().negate())
-            }
-            result = fofml::Atom::mk_conj(h, result);
-        }
-        Ok(result)
+        // removed: refer to 9890bba3a5230997a8a7a9219ee3605c7caea8e4
+        unimplemented!()
     }
 }
 

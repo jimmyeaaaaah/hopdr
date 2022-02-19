@@ -4,17 +4,17 @@ use std::fmt;
 use super::hes;
 use super::pcsp;
 use super::{
-    Bot, Conjunctive, Constraint, Fv, Ident, Op, OpKind, PredKind, QuantifierKind, Subst, Top,
-    Type, Variable,
+    Bot, Conjunctive, Constraint, Fv, Ident, Op, OpKind, PredKind, QuantifierKind, Rename, Subst,
+    Top, Type, Variable,
 };
 use crate::solver::smt;
 use crate::util::P;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum AtomKind {
     True, // equivalent to Constraint(True). just for optimization purpose
     Constraint(Constraint),
-    Predicate(Ident, Vec<Ident>),
+    Predicate(Ident, Vec<Op>),
     Conj(Atom, Atom),
     Disj(Atom, Atom),
     Not(Atom),
@@ -61,6 +61,23 @@ impl Fv for Atom {
                 c.fv_with_vec(fvs);
                 fvs.remove(x);
             }
+        }
+    }
+}
+
+impl Rename for Atom {
+    fn rename(&self, x: &Ident, y: &Ident) -> Self {
+        match self.kind() {
+            AtomKind::True => self.clone(),
+            AtomKind::Constraint(c) => Atom::mk_constraint(c.rename(x, y)),
+            AtomKind::Predicate(p, l) => {
+                let l2 = l.iter().map(|id| id.rename(x, y)).collect();
+                Atom::mk_pred(*p, l2)
+            }
+            AtomKind::Conj(a1, a2) => Atom::mk_conj(a1.rename(x, y), a2.rename(x, y)),
+            AtomKind::Disj(a1, a2) => Atom::mk_disj(a1.rename(x, y), a2.rename(x, y)),
+            AtomKind::Not(a) => Atom::mk_not(a.rename(x, y)),
+            AtomKind::Quantifier(q, x, a) => Atom::mk_quantifier(*q, *x, a.rename(x, y)),
         }
     }
 }
@@ -165,9 +182,18 @@ impl Conjunctive for Atom {
 impl Subst for Atom {
     type Item = super::Op;
     fn subst(&self, x: &Ident, v: &super::Op) -> Self {
-        let eq = vec![Op::mk_var(*x), v.clone()];
-        let c = Atom::mk_constraint(Constraint::mk_pred(PredKind::Eq, eq));
-        Atom::mk_conj(c, self.clone())
+        match self.kind() {
+            AtomKind::True => self.clone(),
+            AtomKind::Constraint(c) => Atom::mk_constraint(c.subst(x, v)),
+            AtomKind::Predicate(p, l) => {
+                let l2 = l.iter().map(|id| id.subst(x, v)).collect();
+                Atom::mk_pred(*p, l2)
+            }
+            AtomKind::Conj(_, _) => todo!(),
+            AtomKind::Disj(_, _) => todo!(),
+            AtomKind::Not(_) => todo!(),
+            AtomKind::Quantifier(_, _, _) => todo!(),
+        }
     }
 }
 
@@ -207,7 +233,7 @@ impl Atom {
         &self,
         vars: &HashSet<Ident>,
         map: &HashMap<Ident, pcsp::Predicate>,
-    ) -> Option<HashMap<Ident, (Vec<Ident>, Constraint)>> {
+    ) -> Option<HashMap<Ident, (Vec<Op>, Constraint)>> {
         let mut templates = HashMap::new();
         let mut fvs = HashSet::new();
         for predicate in map.values() {
@@ -251,7 +277,7 @@ impl Atom {
     pub fn mk_constraint(c: Constraint) -> Atom {
         Atom::new(AtomKind::Constraint(c))
     }
-    pub fn mk_pred(p: Ident, l: Vec<Ident>) -> Atom {
+    pub fn mk_pred(p: Ident, l: Vec<Op>) -> Atom {
         Atom::new(AtomKind::Predicate(p, l))
     }
     pub fn mk_quantifier(q: QuantifierKind, x: Ident, c: Atom) -> Atom {
@@ -275,7 +301,7 @@ impl Atom {
                 }
                 AtomKind::Predicate(_, args) => {
                     for a in args {
-                        fvs.insert(*a);
+                        a.fv_with_vec(fvs);
                     }
                 }
                 AtomKind::Conj(x, y) | AtomKind::Disj(x, y) => {
@@ -315,8 +341,8 @@ impl Atom {
 }
 
 trait TemplateKind {
-    fn apply(&self, args: &[Ident]) -> Constraint;
-    fn instantiate(&self, args: &[Ident], model: &smt::Model) -> Constraint;
+    fn apply(&self, args: &[Op]) -> Constraint;
+    fn instantiate(&self, args: &[Op], model: &smt::Model) -> Constraint;
     fn coefs<'a>(&'a self) -> Box<dyn Iterator<Item = &'a Ident> + 'a>;
 }
 
@@ -330,7 +356,7 @@ impl Linear {
     fn to_constraint(
         &self,
         coefs: impl Iterator<Item = Op>,
-        args: &[Ident],
+        args: &[Op],
         constant: Op,
     ) -> Constraint {
         let o = gen_linear_sum(coefs, args);
@@ -363,13 +389,13 @@ fn new_gt_template(nargs: usize) -> Linear {
 }
 
 impl TemplateKind for Linear {
-    fn apply(&self, args: &[Ident]) -> Constraint {
+    fn apply(&self, args: &[Op]) -> Constraint {
         let coefs = self.coefs.iter().map(|x| Op::mk_var(*x));
         let constant = Op::mk_var(self.constant);
         self.to_constraint(coefs, args, constant)
     }
 
-    fn instantiate(&self, args: &[Ident], model: &smt::Model) -> Constraint {
+    fn instantiate(&self, args: &[Op], model: &smt::Model) -> Constraint {
         let coefs = self.coefs.iter().map(|x| {
             let v = model.get(x).unwrap();
             Op::mk_const(v)
@@ -391,13 +417,13 @@ pub struct Template<'a> {
     template_kinds: Vec<Box<dyn TemplateKind + 'a>>,
 }
 
-fn gen_linear_sum(coefs: impl IntoIterator<Item = Op>, args: &[Ident]) -> Op {
+fn gen_linear_sum(coefs: impl IntoIterator<Item = Op>, args: &[Op]) -> Op {
     if !args.is_empty() {
         let mut coefs = coefs.into_iter();
         let c = coefs.next().unwrap();
-        let mut cur = Op::mk_bin_op(OpKind::Mul, c, Op::mk_var(args[0]));
+        let mut cur = Op::mk_bin_op(OpKind::Mul, c, args[0].clone());
         for (id, coef) in args[1..].iter().zip(coefs) {
-            let id = Op::mk_var(*id);
+            let id = id.clone();
             let term = Op::mk_bin_op(OpKind::Mul, coef, id);
             cur = Op::mk_bin_op(OpKind::Add, cur, term)
         }
@@ -421,7 +447,7 @@ impl<'a> Template<'a> {
         }
     }
 
-    fn apply(&self, args: &[Ident]) -> Constraint {
+    fn apply(&self, args: &[Op]) -> Constraint {
         let mut c = Constraint::mk_true();
         for t in self.template_kinds.iter() {
             c = Constraint::mk_conj(t.apply(args), c);
@@ -433,10 +459,10 @@ impl<'a> Template<'a> {
         self.template_kinds.iter().map(|x| x.coefs()).flatten()
     }
 
-    fn to_constraint(self, model: &smt::Model) -> (Vec<Ident>, Constraint) {
+    fn to_constraint(self, model: &smt::Model) -> (Vec<Op>, Constraint) {
         let args = (0..self.nargs)
             .into_iter()
-            .map(|_| Ident::fresh())
+            .map(|_| Op::mk_var(Ident::fresh()))
             .collect::<Vec<_>>();
         let mut c = Constraint::mk_true();
         for t in self.template_kinds.iter() {

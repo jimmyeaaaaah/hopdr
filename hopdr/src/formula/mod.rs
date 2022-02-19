@@ -13,7 +13,7 @@ pub use crate::formula::ty::*;
 use crate::util::global_counter;
 pub use crate::util::P;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum PredKind {
     Eq,
     Neq,
@@ -46,7 +46,7 @@ impl PredKind {
         }
     }
 }
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum OpKind {
     Add,
     Sub,
@@ -99,7 +99,7 @@ impl QuantifierKind {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum OpExpr {
     Op(OpKind, Op, Op),
     Var(Ident),
@@ -178,6 +178,16 @@ impl Op {
         Op::new(OpExpr::Var(x))
     }
 }
+//impl PartialEq for Op {
+//    fn eq(&self, other: &Self) -> bool {
+//        match (self.kind(), other.kind()) {
+//            (OpExpr::Op(o1, x1, y1), OpExpr::Op(o2, x2, y2)) => o1 == o2 && x1 == x2 && y1 == y2,
+//            (OpExpr::Var(x1), OpExpr::Var(x2)) => x1 == x2,
+//            (OpExpr::Const(c1), OpExpr::Const(c2)) => c1 == c2,
+//            (_, _) => false,
+//        }
+//    }
+//}
 
 impl Subst for Op {
     type Item = Op;
@@ -263,7 +273,7 @@ pub trait Fv {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum ConstraintExpr {
     True,
     False,
@@ -523,7 +533,7 @@ impl From<u64> for Ident {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct VariableS {
     pub id: Ident,
     pub ty: Type,

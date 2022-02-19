@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 use super::{
-    Bot, Conjunctive, Constraint, Fv, Ident, QuantifierKind, Rename, Subst, Top, Type, Variable,
+    Bot, Conjunctive, Constraint, Fv, Ident, Op, QuantifierKind, Rename, Subst, Top, Type, Variable,
 };
 use crate::util::P;
 
@@ -10,7 +10,7 @@ use crate::util::P;
 pub enum AtomKind {
     True, // equivalent to Constraint(True). just for optimization purpose
     Constraint(Constraint),
-    Predicate(Ident, Vec<Ident>),
+    Predicate(Ident, Vec<Op>),
     Conj(Atom, Atom),
     Disj(Atom, Atom),
     Quantifier(QuantifierKind, Ident, Atom),
@@ -50,7 +50,7 @@ impl fmt::Display for Atom {
 }
 
 impl Atom {
-    pub fn mk_pred(ident: Ident, args: Vec<Ident>) -> Atom {
+    pub fn mk_pred(ident: Ident, args: Vec<Op>) -> Atom {
         Atom::new(AtomKind::Predicate(ident, args))
     }
     pub fn contains_predicate(&self) -> bool {
@@ -170,7 +170,8 @@ impl Atom {
             AtomKind::Predicate(p, l) => match model.get(p) {
                 Some((r, c)) => {
                     debug!("assign: {:?}, {:?}", r, l);
-                    c.rename_idents_with_slices(r, l)
+                    unimplemented!()
+                    //c.rename_idents_with_slices(r, l)
                 }
                 None => panic!("not found: {}", p),
             },
@@ -193,7 +194,7 @@ impl Atom {
                 }
                 AtomKind::Predicate(_, args) => {
                     for a in args {
-                        fvs.insert(*a);
+                        a.fv_with_vec(fvs);
                     }
                 }
                 AtomKind::Conj(x, y) | AtomKind::Disj(x, y) => {
@@ -261,14 +262,7 @@ impl Subst for Atom {
                     super::OpExpr::Var(v) => *v,
                     _ => unimplemented!("not implemented"),
                 };
-                let mut new_ops = Vec::new();
-                for id in args.iter() {
-                    if id == x {
-                        new_ops.push(target);
-                    } else {
-                        new_ops.push(*id);
-                    }
-                }
+                let mut new_ops = args.iter().map(|op| op.subst(x, v)).collect();
                 Atom::mk_pred(*k, new_ops)
             }
             AtomKind::Conj(r, l) => Atom::mk_conj(r.subst(x, v), l.subst(x, v)),
@@ -285,8 +279,9 @@ impl Rename for Atom {
             AtomKind::True => self.clone(),
             AtomKind::Constraint(c) => Atom::mk_constraint(c.rename(x, y)),
             AtomKind::Predicate(p, args) => {
-                let new_args = Ident::rename_idents(args, x, y);
-                Atom::mk_pred(*p, new_args)
+                unimplemented!()
+                //let new_args = Ident::rename_idents(args, x, y);
+                //Atom::mk_pred(*p, new_args)
             }
             AtomKind::Conj(a, b) => Atom::mk_conj(a.rename(x, y), b.rename(x, y)),
             AtomKind::Disj(a, b) => Atom::mk_disj(a.rename(x, y), b.rename(x, y)),

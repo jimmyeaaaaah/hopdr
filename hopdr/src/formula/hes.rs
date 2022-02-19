@@ -213,11 +213,17 @@ impl<C: Subst + Rename + Fv<Id = Ident>> Subst for Goal<C> {
         fn subst_inner<C: Subst + Rename>(
             target: &Goal<C>,
             x: Ident,
-            v: Goal<C>,
-            fv: HashSet<Ident>,
+            v: &Goal<C>,
+            fv: &HashSet<Ident>,
         ) -> Goal<C> {
             match target.kind() {
-                GoalKind::Var(x) => v.clone(),
+                GoalKind::Var(y) => {
+                    if x == *y {
+                        v.clone()
+                    } else {
+                        target.clone()
+                    }
+                }
                 GoalKind::Constr(_) | GoalKind::Op(_) => target.clone(),
                 GoalKind::App(g1, g2) => {
                     let g1 = subst_inner(g1, x, v, fv);
@@ -248,7 +254,7 @@ impl<C: Subst + Rename + Fv<Id = Ident>> Subst for Goal<C> {
             }
         }
         let fv = v.clone().fv();
-        subst_inner(self, *x, v.clone(), fv)
+        subst_inner(self, *x, v, &fv)
     }
 }
 
