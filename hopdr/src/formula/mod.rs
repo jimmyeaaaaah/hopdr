@@ -408,10 +408,8 @@ impl Constraint {
     }
 
     pub fn mk_disj(x: Constraint, y: Constraint) -> Constraint {
-        if x.is_true() {
-            x
-        } else if y.is_true() {
-            y
+        if x.is_true() || y.is_true() {
+            Constraint::mk_true()
         } else if x.is_false() {
             y
         } else if y.is_false() {
