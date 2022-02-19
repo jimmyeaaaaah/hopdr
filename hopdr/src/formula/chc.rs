@@ -57,7 +57,7 @@ impl Rename for CHCHead {
     fn rename(&self, x: &Ident, y: &Ident) -> Self {
         match self {
             CHCHead::Constraint(c) => CHCHead::Constraint(c.rename(x, y)),
-            CHCHead::Predicate(p, args) => {
+            CHCHead::Predicate(_p, _args) => {
                 unimplemented!()
                 //let new_args = Ident::rename_idents(args, x, y);
                 //CHCHead::Predicate(*p, new_args)
@@ -98,7 +98,7 @@ impl CHC<pcsp::Atom> {
             pcsp::AtomKind::Predicate(p, _) if p != target_p => expr.clone(),
             pcsp::AtomKind::Predicate(_, args) => {
                 assert!(args.len() == target_args.len());
-                for (x, y) in args.iter().zip(target_args.iter()) {
+                for (_x, _y) in args.iter().zip(target_args.iter()) {
                     unimplemented!()
                     //if x != y {
                     //    panic!("replace failure")
@@ -126,7 +126,7 @@ impl CHC<pcsp::Atom> {
         CHC { body, ..self }
     }
 
-    fn resolve_target(&self, target: &Ident) -> Result<fofml::Atom, ResolutionError> {
+    fn resolve_target(&self, _target: &Ident) -> Result<fofml::Atom, ResolutionError> {
         // 1. transform body of chc to disjunction normal form: bodies
         // 2. check when P(x, y, z) /\ P'(x', y', z') then x = x' and y = y' and z = z' and P = P' = target
         // 3. transform each body in bodies to P(x, y, z) /\ constraint => constraint'
@@ -301,7 +301,7 @@ pub fn simplify(
     c: &[CHC<pcsp::Atom>],
     c1: &[CHC<pcsp::Atom>],
     c2: &[CHC<pcsp::Atom>],
-    l: &HashMap<Ident, pcsp::Predicate>, // not to be removed
+    _l: &HashMap<Ident, pcsp::Predicate>, // not to be removed
     template_variables: &HashSet<Ident>, // to be removed
 ) -> Result<Vec<CHC<pcsp::Atom>>, ResolutionError> {
     let mut defs = HashMap::new();

@@ -168,7 +168,7 @@ impl Atom {
             AtomKind::True => Constraint::mk_true(),
             AtomKind::Constraint(c) => c.clone(),
             AtomKind::Predicate(p, l) => match model.get(p) {
-                Some((r, c)) => {
+                Some((r, _c)) => {
                     debug!("assign: {:?}, {:?}", r, l);
                     unimplemented!()
                     //c.rename_idents_with_slices(r, l)
@@ -258,11 +258,11 @@ impl Subst for Atom {
             AtomKind::True => self.clone(),
             AtomKind::Constraint(c) => Atom::mk_constraint(c.subst(x, v)),
             AtomKind::Predicate(k, args) => {
-                let target = match v.kind() {
+                let _target = match v.kind() {
                     super::OpExpr::Var(v) => *v,
                     _ => unimplemented!("not implemented"),
                 };
-                let mut new_ops = args.iter().map(|op| op.subst(x, v)).collect();
+                let new_ops = args.iter().map(|op| op.subst(x, v)).collect();
                 Atom::mk_pred(*k, new_ops)
             }
             AtomKind::Conj(r, l) => Atom::mk_conj(r.subst(x, v), l.subst(x, v)),
@@ -278,7 +278,7 @@ impl Rename for Atom {
         match self.kind() {
             AtomKind::True => self.clone(),
             AtomKind::Constraint(c) => Atom::mk_constraint(c.rename(x, y)),
-            AtomKind::Predicate(p, args) => {
+            AtomKind::Predicate(_p, _args) => {
                 unimplemented!()
                 //let new_args = Ident::rename_idents(args, x, y);
                 //Atom::mk_pred(*p, new_args)

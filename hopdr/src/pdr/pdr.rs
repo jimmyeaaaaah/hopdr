@@ -5,13 +5,13 @@ use super::VerificationResult;
 use crate::formula::fofml;
 use crate::formula::hes::Problem as ProblemBase;
 use crate::formula::{hes, Ident};
-use crate::formula::{Constraint, Top};
-use crate::solver::smt;
+use crate::formula::{Constraint};
+
 use crate::util::dprintln;
 use colored::Colorize;
-use std::collections::HashMap;
 
-use std::fmt::Display;
+
+
 use std::unimplemented;
 
 type Problem = ProblemBase<fofml::Atom>;
@@ -74,7 +74,7 @@ impl HoPDR {
     }
     // generates a candidate
     // Assumption: self.check_valid() == false
-    fn is_refutable(&self, candidate_node: &Candidate) -> RefuteOrCex<rtype::Ty, Candidate> {
+    fn is_refutable(&self, _candidate_node: &Candidate) -> RefuteOrCex<rtype::Ty, Candidate> {
         debug!("[Candidate] is_refutable");
         // 1. generate constraints: calculate t s.t. c.sty ~ t and check if Env |- formula[c.ident] : t.
         // 2. if not typable, calculate cex
@@ -95,7 +95,7 @@ impl HoPDR {
         unimplemented!()
     }
 
-    fn get_clause_by_id(&self, id: &Ident) -> &hes::Clause<Constraint> {
+    fn get_clause_by_id(&self, _id: &Ident) -> &hes::Clause<Constraint> {
         unimplemented!();
         //panic!("no such clause with id = {}", id);
     }

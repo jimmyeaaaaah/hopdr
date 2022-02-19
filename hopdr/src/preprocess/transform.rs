@@ -1,7 +1,7 @@
 use super::hes::ValidityChecking;
 use crate::formula;
 use crate::formula::hes;
-use crate::formula::{Bot, Conjunctive, Fv, Ident, Subst, Type as SimpleType, Variable};
+use crate::formula::{Bot, Conjunctive, Ident, Type as SimpleType, Variable};
 
 type In = ValidityChecking<formula::Ident, SimpleType>;
 type Out = hes::Problem<formula::Constraint>;
@@ -86,7 +86,7 @@ impl EitherExpr {
 fn transform_expr_inner(input: &InExpr) -> EitherExpr {
     let f = transform_expr_inner;
     use super::hes::ExprKind::*;
-    use formula::hes::{Const, Goal};
+    use formula::hes::{Goal};
     use formula::Top;
     match input.kind() {
         Var(x) => EitherExpr::mk_var(*x),
@@ -131,7 +131,7 @@ fn transform_expr_inner(input: &InExpr) -> EitherExpr {
 
 fn transform_expr(
     expr: &InExpr,
-    clauses: &mut Vec<OutClause>,
+    _clauses: &mut Vec<OutClause>,
 ) -> formula::hes::Goal<formula::Constraint> {
     transform_expr_inner(expr).goal()
 }

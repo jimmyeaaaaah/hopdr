@@ -175,7 +175,7 @@ impl Bot for Atom {
 impl Conjunctive for Atom {
     fn mk_conj(x: Self, y: Self) -> Atom {
         use AtomKind::*;
-        Atom::new(Conj(x.clone(), y.clone()))
+        Atom::new(Conj(x, y))
     }
 }
 

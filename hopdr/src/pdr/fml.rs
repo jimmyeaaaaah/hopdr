@@ -2,10 +2,10 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
 
 use crate::formula::fofml;
-use crate::formula::hes::{Clause, Goal, GoalKind};
+use crate::formula::hes::{Goal, GoalKind};
 use crate::formula::Constraint;
 use crate::formula::Ident;
-use crate::formula::{Bot, Conjunctive, Subst, Top};
+use crate::formula::{Conjunctive, Subst};
 use crate::pdr::rtype::{least_fml, TyEnv};
 use crate::solver::smt;
 
@@ -177,7 +177,7 @@ pub fn env_models(env: &Env, g: &Formula) -> bool {
     println!("env_models env: {}", env);
     let f = env.eval(g.clone());
     println!("env_models g: {}", f);
-    let cnstr: fofml::Atom = f.reduce().into();
+    let cnstr: fofml::Atom = f.reduce();
     let cnstr = cnstr.into();
     match smt::default_solver().solve(&cnstr, &HashSet::new()) {
         smt::SMTResult::Sat => true,

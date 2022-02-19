@@ -1,20 +1,18 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{HashMap},
     fmt::{self, Display},
-    unimplemented,
 };
 
-use crate::formula::{chc, fofml, pcsp, Variable};
+use crate::formula::{chc, Variable};
 use crate::formula::{
-    chc::pcsps2chcs,
-    hes::{Clause, Goal, GoalKind},
+    hes::{Goal},
 };
 use crate::formula::{
-    Bot, Conjunctive, Constraint, Fv, Ident, IntegerEnvironment, Op, QuantifierKind, Rename, Subst,
+    Bot, Conjunctive, Constraint, Ident,
     Top, Type as SType, TypeKind as STypeKind,
 };
 use crate::pdr::fml::Formula;
-use crate::solver::smt;
+
 use crate::util::P;
 
 #[derive(Debug)]
@@ -58,7 +56,7 @@ impl<C: fmt::Display> fmt::Display for Tau<C> {
         match self.kind() {
             TauKind::Proposition(c) => write!(f, "bool[{}]", c),
             TauKind::IArrow(i, t) => write!(f, "({}: int -> {})", i, t),
-            TauKind::Arrow(t1, t2) => write!(f, "({} -> {})", "arg", t2),
+            TauKind::Arrow(_t1, t2) => write!(f, "(arg -> {})", t2),
         }
     }
 }
@@ -203,7 +201,7 @@ pub fn to_fml(c: Formula, t: Ty) -> Formula {
         TauKind::Arrow(ts, y) => {
             let ident = Ident::fresh();
             let g = Goal::mk_var(ident);
-            let mut cs = c.into();
+            let mut cs = c;
             for t in ts.iter() {
                 cs = Formula::mk_conj(types(g.clone(), t.clone()), cs);
             }
