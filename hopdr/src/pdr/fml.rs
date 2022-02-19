@@ -61,7 +61,7 @@ impl Formula {
                 let arg = arg.reduce_inner();
                 println!("app\n- {}\n- {}", g, arg);
                 match g.kind() {
-                    GoalKind::Abs(x, g) => g.clone().subst(&x.id, &arg),
+                    GoalKind::Abs(x, g) => g.subst(&x.id, &arg),
                     _ => Goal::mk_app(g, arg),
                 }
             }
