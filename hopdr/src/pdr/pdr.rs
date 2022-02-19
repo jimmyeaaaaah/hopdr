@@ -97,7 +97,7 @@ impl HoPDR {
 
     fn get_clause_by_id(&self, id: &Ident) -> &hes::Clause<Constraint> {
         unimplemented!();
-        panic!("no such clause with id = {}", id);
+        //panic!("no such clause with id = {}", id);
     }
 
     fn top_env(&self) -> &TyEnv {
