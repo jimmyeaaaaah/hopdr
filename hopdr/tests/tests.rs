@@ -113,8 +113,6 @@ fn gen_tyenv_for_test(
     let mut types = Vec::new();
     {
         use formula::{Constraint, Ident, Op, PredKind};
-        use hopdr::pdr::*;
-        use rtype::Tau;
         // X
         let n = Ident::fresh();
         let m = Ident::fresh();
@@ -214,6 +212,7 @@ fn type_check_2() {
     assert!(pdr::fml::check_inductive(&env, &vc))
 }
 
+#[test]
 fn type_check_e() {
     let (_, f) = parse::parse::<VerboseError<&str>>(
         "
