@@ -4,13 +4,11 @@ use super::rtype::TyEnv;
 use super::VerificationResult;
 use crate::formula::fofml;
 use crate::formula::hes::Problem as ProblemBase;
+use crate::formula::Constraint;
 use crate::formula::{hes, Ident};
-use crate::formula::{Constraint};
 
 use crate::util::dprintln;
 use colored::Colorize;
-
-
 
 use std::unimplemented;
 
@@ -129,19 +127,16 @@ impl HoPDR {
     }
 
     fn check_inductive(&self) -> bool {
-        unimplemented!()
-        //let env = self.top_env();
-        //for clause in self.problem.clauses.iter() {
-        //    let tys = env.get(&clause.head.id).unwrap();
-        //    for ty in tys {
-        //        let result = rtype::type_check_clause(clause, ty.clone(), env.into());
-        //        if !handle_type_check(result) {
-        //            debug!("not inductive");
-        //            return false;
-        //        }
-        //    }
-        //}
-        //true
+        debug!("check_inductive");
+        let env = self.top_env();
+        let fenv = fml::Env::from_type_environment(env);
+        for clause in self.problem.clauses.iter() {
+            let tys = env.get(&clause.head.id).unwrap().iter().map(|x| x.clone());
+            if !rtype::types_check(&fenv, &clause.body, tys) {
+                return false;
+            }
+        }
+        true
     }
 
     fn initialize(&mut self) {

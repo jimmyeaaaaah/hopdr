@@ -61,11 +61,11 @@ impl<C: fmt::Display> fmt::Display for Goal<C> {
             Constr(c) => write!(f, "{}", c),
             Op(o) => write!(f, "{}", o),
             Var(x) => write!(f, "{}", x),
-            App(x, y) => write!(f, "({} {})", x, y),
+            App(x, y) => write!(f, "[{} {}]", x, y),
             Conj(x, y) => write!(f, "({} & {})", x, y),
             Disj(x, y) => write!(f, "({} | {})", x, y),
-            Univ(x, y) => write!(f, "∀{}.{}", x, y),
-            Abs(x, y) => write!(f, "\\{}.{}", x, y),
+            Univ(x, y) => write!(f, "(∀{}.{})", x, y),
+            Abs(x, y) => write!(f, "(\\{}.{})", x, y),
         }
     }
 }
@@ -205,16 +205,18 @@ impl<C: Rename> Rename for Goal<C> {
     }
 }
 
-impl<C: Subst + Rename + Fv<Id = Ident>> Subst for Goal<C> {
+impl<C: Subst + Rename + Fv<Id = Ident> + fmt::Display> Subst for Goal<C> {
     type Item = Goal<C>;
     // we assume formula has already been alpha-renamed
     fn subst(&self, x: &Ident, v: &Goal<C>) -> Self {
-        fn subst_inner<C: Subst + Rename>(
+        fn subst_inner<C: Subst + Rename + fmt::Display>(
             target: &Goal<C>,
             x: Ident,
             v: &Goal<C>,
             fv: &HashSet<Ident>,
         ) -> Goal<C> {
+            // tmp debug
+            println!("subst_inner: [{}/{}]{}", v, x, target);
             match target.kind() {
                 GoalKind::Var(y) => {
                     if x == *y {
@@ -253,6 +255,11 @@ impl<C: Subst + Rename + Fv<Id = Ident>> Subst for Goal<C> {
             }
         }
         let fv = v.clone().fv();
+        // debug
+        // println!("fvs:");
+        // for f in fv.iter() {
+        //     println!("- {}", f)
+        // }
         subst_inner(self, *x, v, &fv)
     }
 }

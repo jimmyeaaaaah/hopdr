@@ -6,7 +6,7 @@ use crate::formula::hes::{Goal, GoalKind};
 use crate::formula::Constraint;
 use crate::formula::Ident;
 use crate::formula::{Conjunctive, Subst};
-use crate::pdr::rtype::{least_fml, TyEnv};
+use crate::pdr::rtype::{least_fml, Ty, TyEnv};
 use crate::solver::smt;
 
 pub type Formula = Goal<fofml::Atom>;
@@ -39,7 +39,7 @@ impl From<Formula> for fofml::Atom {
             GoalKind::Disj(g1, g2) => {
                 let c1 = g1.clone().into();
                 let c2 = g2.clone().into();
-                fofml::Atom::mk_conj(c1, c2)
+                fofml::Atom::mk_disj(c1, c2)
             }
             GoalKind::Univ(x, g) => fofml::Atom::mk_univq(x.id, g.clone().into()),
             // the following must not happen
@@ -70,16 +70,19 @@ impl PartialEq for Formula {
 
 impl Formula {
     fn reduce_inner(&self) -> Formula {
-        println!("reduce_inner: {}", self);
         match self.kind() {
             GoalKind::Constr(_) => self.clone(),
             GoalKind::App(g, arg) => {
                 // g must be have form \x. phi
                 let g = g.reduce_inner();
                 let arg = arg.reduce_inner();
-                println!("app\n- {}\n- {}", g, arg);
                 match g.kind() {
-                    GoalKind::Abs(x, g) => g.subst(&x.id, &arg),
+                    GoalKind::Abs(x, g) => {
+                        // ここで型を渡してsubstするようにしないといけない
+                        let g2 = g.subst(&x.id, &arg);
+                        println!("app: [{}/{}]{} ---> {}", arg, x.id, g, g2);
+                        g2
+                    }
                     _ => Goal::mk_app(g, arg),
                 }
             }
@@ -156,7 +159,6 @@ impl Env {
     }
 
     pub fn eval(&self, g: Formula) -> Formula {
-        println!("eval: {}", g);
         match g.kind() {
             GoalKind::Var(x) => match self.map.get(x) {
                 Some(f) => f.clone(),

@@ -1,12 +1,14 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fmt::{self, Display},
 };
 
-use crate::formula::hes::Goal;
+use super::fml::{Env, Formula};
 use crate::formula::{chc, Variable};
-use crate::formula::{Bot, Constraint, Ident, Top, Type as SType, TypeKind as STypeKind};
-use crate::pdr::fml::Formula;
+use crate::formula::{
+    Bot, Conjunctive, Constraint, Ident, Top, Type as SType, TypeKind as STypeKind,
+};
+use crate::{formula::hes::Goal, solver::smt};
 
 use crate::util::P;
 
@@ -51,7 +53,24 @@ impl<C: fmt::Display> fmt::Display for Tau<C> {
         match self.kind() {
             TauKind::Proposition(c) => write!(f, "bool[{}]", c),
             TauKind::IArrow(i, t) => write!(f, "({}: int -> {})", i, t),
-            TauKind::Arrow(_t1, t2) => write!(f, "(arg -> {})", t2),
+            TauKind::Arrow(t1, t2) => {
+                write!(f, "(")?;
+                if t1.len() == 0 {
+                    write!(f, "T")?;
+                } else {
+                    if t1.len() > 1 {
+                        write!(f, "(")?;
+                    }
+                    write!(f, "{}", &t1[0])?;
+                    for t in t1[1..].iter() {
+                        write!(f, " /\\ {}", t)?;
+                    }
+                    if t1.len() > 1 {
+                        write!(f, ")")?;
+                    }
+                }
+                write!(f, "-> {})", t2)
+            }
         }
     }
 }
@@ -201,14 +220,16 @@ pub fn to_fml(c: Formula, t: Ty) -> Formula {
                 cs = Formula::mk_conj(types(g.clone(), t.clone()), cs);
             }
             let fml = to_fml(cs, y.clone());
-            Goal::mk_abs(Variable::mk(ident, y.to_sty()), fml)
+            Goal::mk_abs(Variable::mk(ident, ts[0].to_sty()), fml)
         }
     }
 }
 
 // ⌊τ⌋_tt
 pub fn least_fml(t: Ty) -> Formula {
-    to_fml(Formula::mk_true(), t)
+    let f = to_fml(Formula::mk_true(), t.clone());
+    println!("least_fml: {} ---> {}", t, f);
+    f
 }
 
 // ψ↑τ
@@ -221,14 +242,37 @@ fn types(fml: Formula, t: Ty) -> Formula {
         TauKind::IArrow(x, t) => {
             let v = Variable::mk(*x, SType::mk_type_int());
             let p = Formula::mk_app(fml, Formula::mk_var(*x));
-            let fml = Formula::mk_univ(v, p);
-            types(fml, t.clone())
+            let fml = types(p, t.clone());
+            Formula::mk_univ(v, fml)
         }
         TauKind::Arrow(x, y) => {
             let arg = Formula::mk_ho_disj(x.iter().map(|t| least_fml(t.clone())), x[0].to_sty());
             let fml = Formula::mk_app(fml, arg);
             types(fml, y.clone())
         }
+    }
+}
+
+pub fn type_check(env: &Env, g: &Formula, t: &Ty) -> bool {
+    types_check(env, g, vec![t.clone()])
+}
+
+// allow inter section types
+pub fn types_check(env: &Env, g: &Formula, ts: impl IntoIterator<Item = Ty>) -> bool {
+    let f = env.eval(g.clone());
+    let cnstr = ts
+        .into_iter()
+        .map(|t| {
+            println!("type_check: {} : {}", g, t);
+            let cnstr = types(f.clone(), t.clone()).reduce();
+            let cnstr: Constraint = cnstr.into();
+            cnstr
+        })
+        .fold(Constraint::mk_true(), |x, y| Constraint::mk_conj(x, y));
+    match smt::default_solver().solve(&cnstr, &HashSet::new()) {
+        smt::SMTResult::Sat => true,
+        smt::SMTResult::Unsat => false,
+        smt::SMTResult::Timeout | smt::SMTResult::Unknown => panic!("smt check fail.."),
     }
 }
 
