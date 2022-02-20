@@ -16,10 +16,10 @@ fn main() {
     println!("starting PDR...");
     let (_, f) = parse::parse::<VerboseError<&str>>(
         "
-        S n k = (n > 0 | k 0) & (n <= 0 | S (n - 1) (L n k));
-        K m n = m <= n;
-        L n k m = k (n + m);
-        M = ∀ x. S x (K x);
+        S n k =v (n > 0 || k 0) && (n <= 0 || S (n - 1) (L n k)).
+        K m n =v m <= n.
+        L n k m =v k (n + m).
+        M =v ∀ x. S x (K x).
          ",
     )
     .unwrap();

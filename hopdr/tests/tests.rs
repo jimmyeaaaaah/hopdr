@@ -7,10 +7,10 @@ use nom::error::VerboseError;
 fn type_check_1() {
     let (_, f) = parse::parse::<VerboseError<&str>>(
         "
-		S n k = (n > 0 | k 0) & (n <= 0 | S (n - 1) (L n k));
-		K m n = m <= n;
-		L n k m = k (n + m);
-		M = ∀x. S x (K x);
+		S n k =v (n > 0 || k 0) && (n <= 0 || S (n - 1) (L n k)).
+		K m n =v m <= n.
+		L n k m =v k (n + m).
+		M =v ∀x. S x (K x).
 		 ",
     )
     .unwrap();
@@ -102,11 +102,11 @@ fn type_check_1() {
 fn type_check_2() {
     let (_, f) = parse::parse::<VerboseError<&str>>(
         "
-	    X n f = f n & X (n + 1) f;
-	    Y n f = f n & X (n - 1) f;
-	    E n = n != 0;
-	    Z x = X x E | Y (0 - x) E;
-	    M = Z 1;
+	    X n f =v f n && X (n + 1) f.
+	    Y n f =v f n && X (n - 1) f.
+	    E n =v n != 0.
+	    Z x =v X x E || Y (0 - x) E.
+	    M =v ∀x. x = 0 || Z x.
 	     ",
     )
     .unwrap();
@@ -170,7 +170,7 @@ fn type_check_2() {
         println!("{}", &t);
         types.push(t);
 
-        // K
+        // E
         let n = Ident::fresh();
         let m = Ident::fresh();
         let t = Tau::mk_iarrow(
@@ -184,7 +184,7 @@ fn type_check_2() {
         println!("{}", &t);
         types.push(t);
 
-        // L
+        // Z
         let n = Ident::fresh();
         let m = Ident::fresh();
         let p = Ident::fresh();
@@ -214,6 +214,7 @@ fn type_check_2() {
     let mut env = TyEnv::new();
 
     for (fml, ty) in vc.clauses.iter().zip(types.iter()) {
+        println!("{}: {}", fml.head.id, ty.clone());
         env.add(fml.head.id, ty.clone());
     }
 

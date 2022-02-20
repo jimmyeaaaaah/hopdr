@@ -57,6 +57,8 @@ fn pred<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, PredKind
         map(tag("="), |_| PredKind::Eq),
         map(tag("!="), |_| PredKind::Neq),
         map(tag("<>"), |_| PredKind::Neq),
+        map(tag(">="), |_| PredKind::Geq),
+        map(tag("<"), |_| PredKind::Lt),
     ))(input)
 }
 
@@ -64,6 +66,9 @@ fn op1<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, OpKind, E
     alt((
         map(tag("+"), |_| OpKind::Add),
         map(tag("-"), |_| OpKind::Sub),
+        map(tag("*"), |_| OpKind::Mul),
+        map(tag("/"), |_| OpKind::Div),
+        map(tag("%"), |_| OpKind::Mod),
     ))(input)
 }
 

@@ -124,8 +124,10 @@ fn pred_to_smt2(p: &PredKind, args: &[String]) -> String {
     match p {
         PredKind::Eq => format!("(= {})", args),
         PredKind::Neq => format!("(not (= {}))", args),
+        PredKind::Lt => format!("(< {})", args),
         PredKind::Leq => format!("(<= {})", args),
         PredKind::Gt => format!("(> {})", args),
+        PredKind::Geq => format!("(>= {})", args),
     }
 }
 

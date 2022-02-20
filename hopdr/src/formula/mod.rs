@@ -17,8 +17,10 @@ pub use crate::util::P;
 pub enum PredKind {
     Eq,
     Neq,
+    Lt,
     Leq,
     Gt,
+    Geq,
 }
 
 impl fmt::Display for PredKind {
@@ -27,10 +29,12 @@ impl fmt::Display for PredKind {
             f,
             "{}",
             match self {
-                PredKind::Leq => "<=",
-                PredKind::Gt => ">",
                 PredKind::Eq => "=",
                 PredKind::Neq => "!=",
+                PredKind::Lt => "<",
+                PredKind::Leq => "<=",
+                PredKind::Gt => ">",
+                PredKind::Geq => ">=",
             }
         )
     }
@@ -41,8 +45,10 @@ impl PredKind {
         match self {
             PredKind::Eq => PredKind::Neq,
             PredKind::Neq => PredKind::Eq,
+            PredKind::Lt => PredKind::Geq,
             PredKind::Leq => PredKind::Gt,
             PredKind::Gt => PredKind::Leq,
+            PredKind::Geq => PredKind::Lt,
         }
     }
 }
