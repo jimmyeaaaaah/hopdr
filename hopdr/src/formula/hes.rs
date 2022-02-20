@@ -1,5 +1,5 @@
 use crate::formula::ty::Type;
-use crate::formula::{Bot, Constraint, Fv, Ident, Op, Rename, Top, Variable};
+use crate::formula::{Bot, Conjunctive, Constraint, Fv, Ident, Op, Rename, Top, Variable};
 use crate::util::P;
 use std::collections::HashSet;
 use std::fmt;
@@ -96,6 +96,47 @@ impl<C: Bot> Bot for Goal<C> {
 impl From<Constraint> for Goal<Constraint> {
     fn from(c: Constraint) -> Self {
         Goal::mk_constr(c)
+    }
+}
+impl From<Goal<Constraint>> for Constraint {
+    // even though g has type *, and it can be beta-reduced to a constraint,
+    // we cannot convert g to the constraint.
+    // This is a naive way of translating Goal to Constraint.
+    fn from(g: Goal<Constraint>) -> Self {
+        match g.kind() {
+            GoalKind::Constr(c) => c.clone(),
+            GoalKind::Conj(g1, g2) => {
+                let c1 = g1.clone().into();
+                let c2 = g2.clone().into();
+                Constraint::mk_conj(c1, c2)
+            }
+            GoalKind::Disj(g1, g2) => {
+                let c1 = g1.clone().into();
+                let c2 = g2.clone().into();
+                Constraint::mk_disj(c1, c2)
+            }
+            GoalKind::Univ(x, g) => {
+                let c = g.clone().into();
+                Constraint::mk_quantifier_int(super::QuantifierKind::Universal, x.id, c)
+            }
+            GoalKind::Op(_) | GoalKind::Var(_) | GoalKind::Abs(_, _) | GoalKind::App(_, _) => {
+                panic!("program error")
+            }
+        }
+    }
+}
+impl<C> From<Goal<C>> for Op {
+    fn from(g: Goal<C>) -> Self {
+        match g.kind() {
+            GoalKind::Op(o) => o.clone(),
+            GoalKind::Var(x) => Op::mk_var(*x),
+            GoalKind::Constr(_)
+            | GoalKind::Abs(_, _)
+            | GoalKind::App(_, _)
+            | GoalKind::Conj(_, _)
+            | GoalKind::Disj(_, _)
+            | GoalKind::Univ(_, _) => panic!("program error"),
+        }
     }
 }
 
@@ -205,13 +246,14 @@ impl<C: Rename> Rename for Goal<C> {
     }
 }
 
-impl<C: Subst + Rename + Fv<Id = Ident> + fmt::Display> Subst for Goal<C> {
+impl<C: Subst<Item = Op, Id = Ident> + Rename + Fv<Id = Ident> + fmt::Display> Subst for Goal<C> {
     type Item = Goal<C>;
+    type Id = Variable;
     // we assume formula has already been alpha-renamed
-    fn subst(&self, x: &Ident, v: &Goal<C>) -> Self {
-        fn subst_inner<C: Subst + Rename + fmt::Display>(
+    fn subst(&self, x: &Variable, v: &Goal<C>) -> Self {
+        fn subst_inner<C: Subst<Item = Op, Id = Ident> + Rename + fmt::Display>(
             target: &Goal<C>,
-            x: Ident,
+            x: &Variable,
             v: &Goal<C>,
             fv: &HashSet<Ident>,
         ) -> Goal<C> {
@@ -219,11 +261,22 @@ impl<C: Subst + Rename + Fv<Id = Ident> + fmt::Display> Subst for Goal<C> {
             println!("subst_inner: [{}/{}]{}", v, x, target);
             match target.kind() {
                 GoalKind::Var(y) => {
-                    if x == *y {
+                    if x.id == *y {
                         v.clone()
                     } else {
                         target.clone()
                     }
+                }
+                GoalKind::Constr(c) if x.ty.is_int() => {
+                    // when x has type int, v can be reduced to Op
+                    let op = v.clone().into();
+                    let c = c.subst(&x.id, &op);
+                    Goal::mk_constr(c)
+                }
+                GoalKind::Op(o) if x.ty.is_int() => {
+                    let op = v.clone().into();
+                    let o = o.subst(&x.id, &op);
+                    Goal::mk_op(o)
                 }
                 GoalKind::Constr(_) | GoalKind::Op(_) => target.clone(),
                 GoalKind::App(g1, g2) => {
@@ -260,7 +313,7 @@ impl<C: Subst + Rename + Fv<Id = Ident> + fmt::Display> Subst for Goal<C> {
         // for f in fv.iter() {
         //     println!("- {}", f)
         // }
-        subst_inner(self, *x, v, &fv)
+        subst_inner(self, x, v, &fv)
     }
 }
 

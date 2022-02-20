@@ -6,7 +6,7 @@ use crate::formula::hes::{Goal, GoalKind};
 use crate::formula::Constraint;
 use crate::formula::Ident;
 use crate::formula::{Conjunctive, Subst};
-use crate::pdr::rtype::{least_fml, Ty, TyEnv};
+use crate::pdr::rtype::{least_fml, TyEnv};
 use crate::solver::smt;
 
 pub type Formula = Goal<fofml::Atom>;
@@ -79,7 +79,7 @@ impl Formula {
                 match g.kind() {
                     GoalKind::Abs(x, g) => {
                         // ここで型を渡してsubstするようにしないといけない
-                        let g2 = g.subst(&x.id, &arg);
+                        let g2 = g.subst(x, &arg);
                         println!("app: [{}/{}]{} ---> {}", arg, x.id, g, g2);
                         g2
                     }

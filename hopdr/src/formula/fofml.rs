@@ -181,6 +181,7 @@ impl Conjunctive for Atom {
 
 impl Subst for Atom {
     type Item = super::Op;
+    type Id = Ident;
     fn subst(&self, x: &Ident, v: &super::Op) -> Self {
         match self.kind() {
             AtomKind::True => self.clone(),

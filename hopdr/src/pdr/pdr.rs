@@ -23,10 +23,9 @@ pub enum PDRResult {
 pub const NOLOG: u64 = 0;
 pub const DEBUG: u64 = 1;
 
-type NodeID = usize;
-
 type Candidate = fml::Formula;
 
+#[allow(dead_code)]
 pub struct HoPDR {
     models: Vec<Candidate>,
     envs: Vec<TyEnv>,
@@ -35,6 +34,7 @@ pub struct HoPDR {
     verbose: u64,
 }
 
+#[allow(dead_code)]
 enum RefuteOrCex<A, B> {
     Refutable(A),
     Cex(B),
@@ -49,6 +49,7 @@ impl TyEnv {
         new_env
     }
 
+    #[allow(dead_code)]
     fn new_bot_env(problem: &Problem) -> TyEnv {
         let mut new_env = TyEnv::new();
         for c in problem.clauses.iter() {
@@ -72,6 +73,7 @@ impl HoPDR {
     }
     // generates a candidate
     // Assumption: self.check_valid() == false
+    #[allow(dead_code)]
     fn is_refutable(&self, _candidate_node: &Candidate) -> RefuteOrCex<rtype::Ty, Candidate> {
         debug!("[Candidate] is_refutable");
         // 1. generate constraints: calculate t s.t. c.sty ~ t and check if Env |- formula[c.ident] : t.
@@ -93,6 +95,7 @@ impl HoPDR {
         unimplemented!()
     }
 
+    #[allow(dead_code)]
     fn get_clause_by_id(&self, _id: &Ident) -> &hes::Clause<Constraint> {
         unimplemented!();
         //panic!("no such clause with id = {}", id);
@@ -159,7 +162,7 @@ impl HoPDR {
         debug!("PDR invalid");
         dprintln!(self.verbose, DEBUG, "[PDR]invalid");
         unimplemented!();
-        PDRResult::Invalid
+        //PDRResult::Invalid
     }
 
     fn check_feasible(&mut self) -> bool {
@@ -167,12 +170,14 @@ impl HoPDR {
         unimplemented!()
     }
 
+    #[allow(dead_code)]
     fn conflict(&mut self) {
         println!("{}", "conflict".blue());
         //debug!("[PDR]conflict: {} <-> {}", &c.label, &refute_ty);
         unimplemented!()
     }
 
+    #[allow(dead_code)]
     fn decide(&mut self) {
         println!("{}", "decide".blue());
         debug!("[PDR]decide");
