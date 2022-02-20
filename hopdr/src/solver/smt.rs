@@ -238,7 +238,8 @@ pub fn default_solver() -> Box<dyn SMTSolver> {
 fn z3_solver(smt_string: String) -> String {
     let f = save_smt2(smt_string);
     let args = vec![f.path().to_str().unwrap()];
-    println!("filename: {}", &args[0]);
+    // debug
+    // println!("filename: {}", &args[0]);
     let out = util::exec_with_timeout("z3", &args, Duration::from_secs(1));
     String::from_utf8(out).unwrap()
 }

@@ -103,9 +103,9 @@ fn type_check_2() {
     let (_, f) = parse::parse::<VerboseError<&str>>(
         "
 	    X n f =v f n && X (n + 1) f.
-	    Y n f =v f n && X (n - 1) f.
+	    Y n f =v f n && Y (n - 1) f.
 	    E n =v n != 0.
-	    Z x =v X x E || Y (0 - x) E.
+	    Z x =v X x E || Y x E.
 	    M =v ∀x. x = 0 || Z x.
 	     ",
     )
@@ -162,7 +162,7 @@ fn type_check_2() {
         let t = Tau::mk_arrow_single(
             t,
             Tau::mk_prop_ty(Constraint::mk_pred(
-                PredKind::Gt,
+                PredKind::Lt,
                 vec![Op::mk_var(n), Op::mk_const(0)],
             )),
         );
@@ -172,40 +172,17 @@ fn type_check_2() {
 
         // E
         let n = Ident::fresh();
-        let m = Ident::fresh();
         let t = Tau::mk_iarrow(
-            m,
+            n,
             Tau::mk_prop_ty(Constraint::mk_pred(
-                PredKind::Leq,
-                vec![Op::mk_var(n), Op::mk_var(m)],
+                PredKind::Neq,
+                vec![Op::mk_var(n), Op::mk_const(0)],
             )),
         );
-        let t = Tau::mk_iarrow(n, t);
         println!("{}", &t);
-        types.push(t);
+        types.push(t.clone());
 
         // Z
-        let n = Ident::fresh();
-        let m = Ident::fresh();
-        let p = Ident::fresh();
-        let t = Tau::mk_iarrow(
-            p,
-            Tau::mk_prop_ty(Constraint::mk_pred(
-                PredKind::Leq,
-                vec![Op::mk_const(0), Op::mk_var(p)],
-            )),
-        );
-        //let t = Tau::mk_iarrow(p, Tau::mk_prop_ty(Constraint::mk_true()));
-        let s = Tau::mk_iarrow(
-            m,
-            Tau::mk_prop_ty(Constraint::mk_pred(
-                PredKind::Leq,
-                vec![Op::mk_var(n), Op::mk_var(m)],
-            )),
-        );
-        let t = Tau::mk_arrow_single(s, t);
-        let t = Tau::mk_iarrow(n, t);
-        println!("{}", &t);
         types.push(t);
     }
 

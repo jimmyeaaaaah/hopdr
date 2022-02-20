@@ -243,7 +243,8 @@ pub fn to_fml(c: Formula, t: Ty) -> Formula {
 // ⌊τ⌋_tt
 pub fn least_fml(t: Ty) -> Formula {
     let f = to_fml(Formula::mk_true(), t.clone());
-    println!("least_fml: {} ---> {}", t, f);
+    // debug
+    // println!("least_fml: {} ---> {}", t, f);
     f
 }
 
@@ -278,9 +279,10 @@ pub fn types_check(env: &Env, g: &Formula, ts: impl IntoIterator<Item = Ty>) -> 
     let cnstr = ts
         .into_iter()
         .map(|t| {
-            println!("type_check: {} : {}", g, t);
+            debug!("type_check: {} : {}", g, t);
             let cnstr = types(f.clone(), t.clone()).reduce();
             let cnstr: Constraint = cnstr.into();
+            //println!("constr: {}", cnstr);
             cnstr
         })
         .fold(Constraint::mk_true(), |x, y| Constraint::mk_conj(x, y));
