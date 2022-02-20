@@ -86,7 +86,7 @@ impl EitherExpr {
 fn transform_expr_inner(input: &InExpr) -> EitherExpr {
     let f = transform_expr_inner;
     use super::hes::ExprKind::*;
-    use formula::hes::{Goal};
+    use formula::hes::Goal;
     use formula::Top;
     match input.kind() {
         Var(x) => EitherExpr::mk_var(*x),
