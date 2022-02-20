@@ -37,7 +37,7 @@ fn parse_declare_fun(v: lexpr::Value) -> (Ident, i64) {
     const ERRMSG: &str = "smt model parse fail";
     fn cons_value_to_iter<'a>(v: &'a lexpr::Value) -> impl Iterator<Item = &'a lexpr::Value> {
         v.as_cons()
-            .unwrap_or_else(|| panic!("{}", ERRMSG))
+            .unwrap_or_else(|| panic!("{}({})", ERRMSG, v))
             .iter()
             .map(|x| x.car())
     }
@@ -70,7 +70,11 @@ impl Model {
     fn from_z3_model_str(s: &str) -> Result<Model, lexpr::parse::Error> {
         let x = lexpr::from_str(s)?;
         let model: HashMap<Ident, i64> = match x {
-            Value::Cons(x) => x.into_iter().map(|(v, _)| parse_declare_fun(v)).collect(),
+            Value::Cons(x) => x
+                .into_iter()
+                .skip(1)
+                .map(|(v, _)| parse_declare_fun(v))
+                .collect(),
             _ => panic!("parse error: smt2 model: {}", s),
         };
         Ok(Model { model })
@@ -83,7 +87,7 @@ impl Model {
 
 #[test]
 fn z3_parse_model() {
-    let model = "(
+    let model = "(model
         (define-fun x_x1 () Int
         (- 1))
         (define-fun x_x2 () Int
@@ -277,14 +281,15 @@ impl SMTSolver for Z3Solver {
 
 #[test]
 fn z3_sat_model() {
-    let s = "(declare-const x1 Int)
-    (declare-const x2 Int)
-    (assert (>= x1 189))
-    (assert (<= (+ x1 x2) 290))
+    let s = "(declare-const x_x1 Int)
+    (declare-const x_x2 Int)
+    (assert (>= x_x1 189))
+    (assert (<= (+ x_x1 x_x2) 290))
     (check-sat)
     (get-model)"
         .to_string();
     let r = z3_solver(s);
+    println!("{}", r);
     assert!(r.starts_with("sat"));
     let pos = r.find('\n').unwrap();
     assert!(Model::from_z3_model_str(&r[pos..]).is_ok())

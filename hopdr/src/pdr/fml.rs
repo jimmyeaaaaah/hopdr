@@ -2,11 +2,12 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
 
 use crate::formula::fofml;
+use crate::formula::hes::Problem;
 use crate::formula::hes::{Goal, GoalKind};
 use crate::formula::Constraint;
 use crate::formula::Ident;
 use crate::formula::{Conjunctive, Subst};
-use crate::pdr::rtype::{least_fml, TyEnv};
+use crate::pdr::rtype::{least_fml, types_check, TyEnv};
 use crate::solver::smt;
 
 pub type Formula = Goal<fofml::Atom>;
@@ -78,9 +79,9 @@ impl Formula {
                 let arg = arg.reduce_inner();
                 match g.kind() {
                     GoalKind::Abs(x, g) => {
-                        // ここで型を渡してsubstするようにしないといけない
                         let g2 = g.subst(x, &arg);
-                        println!("app: [{}/{}]{} ---> {}", arg, x.id, g, g2);
+                        // debug
+                        // println!("app: [{}/{}]{} ---> {}", arg, x.id, g, g2);
                         g2
                     }
                     _ => Goal::mk_app(g, arg),
@@ -111,12 +112,13 @@ impl Formula {
     pub fn reduce(&self) -> fofml::Atom {
         // first reduces the formula to a formula of type *
         // then traslates it to a fofml::Atom constraint.
-        println!("to be reduced: {}", &self);
+        // println!("to be reduced: {}", &self);
         let mut g_old = self.clone();
         loop {
             let g = g_old.reduce_inner();
             if g == g_old {
-                println!("reduced: {}", &g);
+                // debug
+                // println!("reduced: {}", &g);
                 return g.into();
             }
             g_old = g;
@@ -176,9 +178,10 @@ impl Env {
 
 // Γ ⊧ g ⇔ ⊧ θ where Γ(g) → θ
 pub fn env_models(env: &Env, g: &Formula) -> bool {
-    println!("env_models env: {}", env);
+    // debug
+    // println!("env_models env: {}", env);
     let f = env.eval(g.clone());
-    println!("env_models g: {}", f);
+    // println!("env_models g: {}", f);
     let cnstr: fofml::Atom = f.reduce();
     let cnstr = cnstr.into();
     match smt::default_solver().solve(&cnstr, &HashSet::new()) {
@@ -186,4 +189,15 @@ pub fn env_models(env: &Env, g: &Formula) -> bool {
         smt::SMTResult::Unsat => false,
         smt::SMTResult::Timeout | smt::SMTResult::Unknown => panic!("smt check fail.."),
     }
+}
+
+pub fn check_inductive(env: &TyEnv, problem: &Problem<fofml::Atom>) -> bool {
+    let fenv = Env::from_type_environment(env);
+    for clause in problem.clauses.iter() {
+        let tys = env.get(&clause.head.id).unwrap().iter().map(|x| x.clone());
+        if !types_check(&fenv, &clause.body, tys) {
+            return false;
+        }
+    }
+    true
 }

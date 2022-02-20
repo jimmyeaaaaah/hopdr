@@ -258,7 +258,7 @@ impl<C: Subst<Item = Op, Id = Ident> + Rename + Fv<Id = Ident> + fmt::Display> S
             fv: &HashSet<Ident>,
         ) -> Goal<C> {
             // tmp debug
-            println!("subst_inner: [{}/{}]{}", v, x, target);
+            // println!("subst_inner: [{}/{}]{}", v, x, target);
             match target.kind() {
                 GoalKind::Var(y) => {
                     if x.id == *y {

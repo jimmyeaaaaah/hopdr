@@ -131,15 +131,7 @@ impl HoPDR {
 
     fn check_inductive(&self) -> bool {
         debug!("check_inductive");
-        let env = self.top_env();
-        let fenv = fml::Env::from_type_environment(env);
-        for clause in self.problem.clauses.iter() {
-            let tys = env.get(&clause.head.id).unwrap().iter().map(|x| x.clone());
-            if !rtype::types_check(&fenv, &clause.body, tys) {
-                return false;
-            }
-        }
-        true
+        fml::check_inductive(self.top_env(), &self.problem)
     }
 
     fn initialize(&mut self) {

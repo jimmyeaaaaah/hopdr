@@ -133,6 +133,21 @@ impl<C> Tau<C> {
             TauKind::Arrow(t1, t2) => SType::mk_type_arrow(t1[0].to_sty(), t2.to_sty()),
         }
     }
+    pub fn mk_prop_ty(c: C) -> Tau<C> {
+        Tau::new(TauKind::Proposition(c))
+    }
+
+    pub fn mk_iarrow(id: Ident, t: Tau<C>) -> Tau<C> {
+        Tau::new(TauKind::IArrow(id, t))
+    }
+
+    pub fn mk_arrow(t: Vec<Tau<C>>, s: Tau<C>) -> Tau<C> {
+        Tau::new(TauKind::Arrow(t, s))
+    }
+
+    pub fn mk_arrow_single(t: Tau<C>, s: Tau<C>) -> Tau<C> {
+        Tau::new(TauKind::Arrow(vec![t], s))
+    }
 }
 
 // Type environment
