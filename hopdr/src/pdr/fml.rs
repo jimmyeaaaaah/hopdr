@@ -124,6 +124,37 @@ impl Formula {
             g_old = g;
         }
     }
+
+    pub fn to_cnf(&self) -> Vec<Formula> {
+        fn cross_or(v1: &[Formula], v2: &[Formula]) -> Vec<Formula> {
+            let mut v = Vec::new();
+            for x in v1 {
+                for y in v2 {
+                    v.push(Goal::mk_conj(x.clone(), y.clone()));
+                }
+            }
+            v
+        }
+        match self.kind() {
+            GoalKind::Conj(x, y) => {
+                let mut v1 = x.to_cnf();
+                let mut v2 = y.to_cnf();
+                v1.append(&mut v2);
+                v1
+            }
+            GoalKind::Disj(x, y) => {
+                let v1 = x.to_cnf();
+                let v2 = y.to_cnf();
+                cross_or(&v1, &v2)
+            }
+            GoalKind::Constr(_)
+            | GoalKind::Op(_)
+            | GoalKind::Var(_)
+            | GoalKind::Abs(_, _)
+            | GoalKind::App(_, _)
+            | GoalKind::Univ(_, _) => vec![self.clone()],
+        }
+    }
 }
 
 // Formula Environment Σ

@@ -92,7 +92,15 @@ impl HoPDR {
 
     fn candidate(&mut self) {
         debug!("{}", "candidate".purple());
-        unimplemented!()
+        let cnf = self.problem.top.to_cnf();
+        let env = fml::Env::from_type_environment(self.top_env());
+        for x in cnf {
+            if !fml::env_models(&env, &x) {
+                debug!("candidate: {}", x);
+                self.models.push(x);
+            }
+        }
+        panic!("program error")
     }
 
     #[allow(dead_code)]
@@ -141,7 +149,7 @@ impl HoPDR {
 
     fn unfold(&mut self) {
         println!("{}", "unfold".purple());
-        //self.envs.push(TyEnv::new_bot_env(self.problem));
+        self.envs.push(TyEnv::new_bot_env(&self.problem));
     }
 
     fn valid(&mut self) -> PDRResult {
