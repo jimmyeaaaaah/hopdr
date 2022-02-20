@@ -5,7 +5,7 @@ use std::fmt;
 
 type Ident = String;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Fixpoint {
     Greatest,
     Least,
@@ -24,7 +24,7 @@ impl fmt::Display for Fixpoint {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum ExprKind {
     Var(Ident),
     Num(i64),

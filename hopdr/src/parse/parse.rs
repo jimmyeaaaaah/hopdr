@@ -56,6 +56,7 @@ fn pred<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, PredKind
         map(tag("<="), |_| PredKind::Leq),
         map(tag("="), |_| PredKind::Eq),
         map(tag("!="), |_| PredKind::Neq),
+        map(tag("<>"), |_| PredKind::Neq),
     ))(input)
 }
 
@@ -72,7 +73,7 @@ fn op2<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, OpKind, E
 }
 
 fn parse_atom<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Expr, E> {
-    alt((parse_var, parse_par, parse_num, parse_bool))(input)
+    alt((parse_par, parse_num, parse_bool, parse_var))(input)
 }
 
 fn parse_arith2<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Expr, E> {
@@ -112,7 +113,10 @@ fn parse_app<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Exp
 fn parse_and<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Expr, E> {
     let (input, e1) = preceded(sp, parse_app)(input)?;
     fold_many0(
-        pair(preceded(sp, char('&')), preceded(sp, parse_app)),
+        pair(
+            preceded(sp, alt((tag("&&"), tag("/\\")))),
+            preceded(sp, parse_app),
+        ),
         e1,
         |e1, (_, e2)| Expr::mk_and(e1, e2),
     )(input)
@@ -121,7 +125,10 @@ fn parse_and<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Exp
 fn parse_or<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Expr, E> {
     let (input, e1) = preceded(sp, parse_and)(input)?;
     fold_many0(
-        pair(preceded(sp, char('|')), preceded(sp, parse_and)),
+        pair(
+            preceded(sp, alt((tag("||"), tag("\\/")))),
+            preceded(sp, parse_and),
+        ),
         e1,
         |e1, (_, e2)| Expr::mk_or(e1, e2),
     )(input)
@@ -150,9 +157,9 @@ fn parse_expr<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Ex
 fn parse_hes<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Clause, E> {
     let (input, id) = preceded(sp, map(ident, String::from))(input)?;
     let (input, args) = separated_list(sp1, preceded(sp, map(ident, String::from)))(input)?;
-    let (input, _) = preceded(sp, char('='))(input)?;
+    let (input, _) = preceded(sp, tag("=v"))(input)?;
     let (input, expr) = preceded(sp, parse_expr)(input)?;
-    let (input, _) = preceded(sp, char(';'))(input)?;
+    let (input, _) = preceded(sp, char('.'))(input)?;
     let fixpoint = Fixpoint::Greatest;
     Ok((
         input,
@@ -163,6 +170,36 @@ fn parse_hes<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Cla
             expr,
         },
     ))
+}
+
+#[test]
+fn test_parse_hes_1() {
+    use nom::error::VerboseError;
+    let s = "S n k =v (n > 0 || k 0) && (n <= 0 || S (n - 1) (\\r. k (r + n))).";
+    let (s, c) = parse_hes::<VerboseError<&str>>(s).unwrap();
+    assert_eq!(s, "");
+    assert_eq!(c.args.len(), 2);
+    assert_eq!(c.fixpoint, Fixpoint::Greatest);
+}
+#[test]
+fn test_parse_expr() {
+    use nom::error::VerboseError;
+    let table = vec![
+        ("∀x.true", Expr::mk_univ("x".to_string(), Expr::mk_true())),
+        ("\\x.true", Expr::mk_abs("x".to_string(), Expr::mk_true())),
+        (
+            "true || false && false",
+            Expr::mk_or(
+                Expr::mk_true(),
+                Expr::mk_and(Expr::mk_false(), Expr::mk_false()),
+            ),
+        ),
+    ];
+    for (s, r) in table.into_iter() {
+        let (s, c) = parse_expr::<VerboseError<&str>>(s).unwrap();
+        assert_eq!(s, "");
+        assert_eq!(r, c);
+    }
 }
 
 pub fn parse<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Problem, E> {
@@ -178,4 +215,30 @@ pub fn parse<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Pro
         input,
         Problem::NuHFLZValidityChecking(NuHFLzValidityChecking { formulas, toplevel }),
     ))
+}
+#[test]
+fn test_parse() {
+    use nom::error::VerboseError;
+    let (_, f) = parse::<VerboseError<&str>>(
+        "
+        S n k =v (n > 0 || k 0) && (n <= 0 || S (n - 1) (L n k)).
+        K m n =v m <= n.
+        L n k m =v k (n + m).
+        M =v ∀ x. S x (K x).
+         ",
+    )
+    .unwrap();
+    match f {
+        Problem::NuHFLZValidityChecking(vc) => {
+            assert_eq!(vc.formulas.len(), 3);
+            let toplevel = Expr::mk_univ(
+                "x".to_string(),
+                Expr::mk_app(
+                    Expr::mk_app(Expr::mk_var("S".to_string()), Expr::mk_var("x".to_string())),
+                    Expr::mk_app(Expr::mk_var("K".to_string()), Expr::mk_var("x".to_string())),
+                ),
+            );
+            assert_eq!(toplevel, vc.toplevel);
+        }
+    }
 }
