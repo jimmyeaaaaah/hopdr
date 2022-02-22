@@ -10,7 +10,6 @@ use crate::formula::hes::Problem;
 use crate::formula::Constraint;
 use crate::formula::{hes, Ident};
 
-use crate::util::dprintln;
 use colored::Colorize;
 
 use std::unimplemented;
@@ -93,13 +92,14 @@ impl HoPDR {
     }
 
     fn candidate(&mut self) {
-        debug!("{}", "candidate".purple());
+        info!("{}", "candidate".purple());
         let cnf = self.problem.top.to_cnf();
         let env = fml::Env::from_type_environment(self.top_env());
         for x in cnf {
             if !fml::env_models(&env, &x) {
                 debug!("candidate: {}", x);
                 self.models.push(x);
+                return;
             }
         }
         panic!("program error")
@@ -147,24 +147,22 @@ impl HoPDR {
     }
 
     fn initialize(&mut self) {
-        println!("{}", "initialize".purple());
+        info!("{}", "initialize".purple());
         self.envs.push(TyEnv::new_top_env(&self.problem));
     }
 
     fn unfold(&mut self) {
-        println!("{}", "unfold".purple());
+        info!("{}", "unfold".purple());
         self.envs.push(TyEnv::new_bot_env(&self.problem));
     }
 
     fn valid(&mut self) -> PDRResult {
-        debug!("PDR valid");
-        dprintln!(self.verbose, DEBUG, "[PDR]valid");
+        info!("PDR valid");
         PDRResult::Valid
     }
 
     fn invalid(&mut self) -> PDRResult {
         debug!("PDR invalid");
-        dprintln!(self.verbose, DEBUG, "[PDR]invalid");
         PDRResult::Invalid
     }
 
@@ -183,7 +181,7 @@ impl HoPDR {
                 }
             };
             //
-            assert!(self.envs.len() > self.models.len() + 1);
+            assert!(self.envs.len() >= self.models.len() + 1);
             let level = self.envs.len() - self.models.len() - 1;
             let env_i_ty = &self.envs[level];
             // ⌊Γ⌋
@@ -215,8 +213,8 @@ impl HoPDR {
     }
 
     fn run(&mut self) -> PDRResult {
-        dprintln!(self.verbose, DEBUG, "[PDR] target formula");
-        dprintln!(self.verbose, DEBUG, "{}", self.problem);
+        info!("[PDR] target formula");
+        info!("{}", self.problem);
         loop {
             self.dump_state();
             if !self.check_valid() {

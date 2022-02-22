@@ -2,31 +2,6 @@ use std::marker::PhantomData;
 use std::ops::Deref;
 use std::{fmt, rc::Rc};
 
-#[macro_export]
-macro_rules! dprint {
-    ($dlevel:tt, $reqlevel:tt, $($arg:tt)*) => (
-	if ($dlevel >= $reqlevel) {
-		print!($($arg)*);
-	}
-    )
-}
-
-/// argv0 is the current debug level.
-/// argv1 is the requested level.
-/// if argv0 >= argv1 {println!(...)}
-#[macro_export]
-macro_rules! dprintln {
-    ($dlevel:expr, $reqlevel:expr, $($arg:tt)*) => (
-	if ($dlevel >= $reqlevel) {
-		println!($($arg)*);
-	}
-    )
-}
-
-#[allow(unused_imports)]
-pub(crate) use dprint;
-pub(crate) use dprintln;
-
 //pub trait Kind {
 //    type Ty;
 //    fn kind<'a>(&'a self) -> &'a Self::Ty;
