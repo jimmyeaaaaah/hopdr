@@ -1,27 +1,32 @@
 use super::fml;
-use super::rtype;
-use super::rtype::Refinement;
-use super::rtype::Tau;
-use super::rtype::TyEnv;
-use super::rtype::TypeEnvironment;
+use super::rtype::{Refinement, Tau, TyEnv, TypeEnvironment};
 use super::VerificationResult;
-use crate::formula::fofml;
 use crate::formula::hes::Problem;
-use crate::formula::Constraint;
-use crate::formula::{hes, Ident};
+use crate::formula::{fofml, hes, Constraint};
+use crate::pdr::infer::{self, infer};
 
 use colored::Colorize;
 
+use std::fmt;
 use std::unimplemented;
+
+#[derive(Debug, Copy, Clone)]
+pub enum Error {
+    TypeInference,
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Error::TypeInference => write!(f, "Type Inference from cex failed"),
+        }
+    }
+}
 
 pub enum PDRResult {
     Valid,
     Invalid,
 }
-
-#[allow(dead_code)]
-pub const NOLOG: u64 = 0;
-pub const DEBUG: u64 = 1;
 
 type Candidate = hes::Goal<Constraint>;
 
@@ -32,13 +37,6 @@ pub struct HoPDR {
     problem: Problem<Constraint>,
     problem_atom_cache: Problem<fofml::Atom>,
     loop_cnt: u64,
-    verbose: u64,
-}
-
-#[allow(dead_code)]
-enum RefuteOrCex<A, B> {
-    Refutable(A),
-    Cex(B),
 }
 
 impl<C: Refinement> TypeEnvironment<Tau<C>> {
@@ -50,7 +48,6 @@ impl<C: Refinement> TypeEnvironment<Tau<C>> {
         new_env
     }
 
-    #[allow(dead_code)]
     fn new_bot_env(problem: &Problem<C>) -> TypeEnvironment<Tau<C>> {
         let mut new_env = TypeEnvironment::new();
         for c in problem.clauses.iter() {
@@ -61,7 +58,6 @@ impl<C: Refinement> TypeEnvironment<Tau<C>> {
 }
 
 impl HoPDR {
-    #[allow(dead_code)]
     fn dump_state(&self) {
         println!("{}", "[PDR STATE]".green().bold());
         println!("- current loop: {}", self.loop_cnt);
@@ -71,24 +67,6 @@ impl HoPDR {
             println!("Level {}", level);
             println!("{}", e);
         }
-    }
-    // generates a candidate
-    // Assumption: self.check_valid() == false
-    #[allow(dead_code)]
-    fn is_refutable(&self, _candidate_node: &Candidate) -> RefuteOrCex<rtype::Ty, Candidate> {
-        debug!("[Candidate] is_refutable");
-        // 1. generate constraints: calculate t s.t. c.sty ~ t and check if Env |- formula[c.ident] : t.
-        // 2. if not typable, calculate cex
-        // 3. if typable, returns the type
-        unimplemented!()
-        //let candidate = &candidate_node.label;
-        //match candidate.sty.is_refutable(
-        //    self.get_clause_by_id(&candidate.ident),
-        //    &self.envs[candidate_node.level - 1],
-        //) {
-        //    Ok(t) => RefuteOrCex::Refutable(t),
-        //    Err(c) => RefuteOrCex::Cex(c.to_candidates()),
-        //}
     }
 
     fn candidate(&mut self) {
@@ -105,12 +83,6 @@ impl HoPDR {
         panic!("program error")
     }
 
-    #[allow(dead_code)]
-    fn get_clause_by_id(&self, _id: &Ident) -> &hes::Clause<Constraint> {
-        unimplemented!();
-        //panic!("no such clause with id = {}", id);
-    }
-
     fn top_env(&self) -> &TyEnv {
         self.envs.last().unwrap()
     }
@@ -123,14 +95,9 @@ impl HoPDR {
             problem_atom_cache,
             problem,
             loop_cnt: 0,
-            verbose: 0,
         };
         hopdr.initialize();
         hopdr
-    }
-
-    pub fn set_verbosity_level(&mut self, v: u64) {
-        self.verbose = v;
     }
 
     fn check_valid(&mut self) -> bool {
@@ -166,64 +133,76 @@ impl HoPDR {
         PDRResult::Invalid
     }
 
-    fn check_feasible(&mut self) -> bool {
+    fn get_current_target_approx<'a>(&'a self) -> &'a TyEnv {
+        assert!(self.envs.len() >= self.models.len() + 1);
+        let level = self.envs.len() - self.models.len() - 1;
+        &self.envs[level]
+    }
+
+    fn check_feasible(&mut self) -> Result<bool, Error> {
         debug!("[PDR]check feasible");
         loop {
             if self.models.len() == self.envs.len() {
                 // the trace of cex is feasible
-                return true;
+                return Ok(true);
             }
             let cand = match self.models.last() {
                 Some(c) => c.clone(),
                 None => {
                     // all the candidates have been refuted
-                    return false;
+                    return Ok(false);
                 }
             };
-            //
-            assert!(self.envs.len() >= self.models.len() + 1);
-            let level = self.envs.len() - self.models.len() - 1;
-            let env_i_ty = &self.envs[level];
+            let env_i_ty = self.get_current_target_approx();
             // ⌊Γ⌋
             let env_i = fml::Env::from_type_environment(env_i_ty);
             // ℱ(⌊Γ⌋)
             let f_env_i = self.problem.transform(&env_i);
             if fml::env_models(&f_env_i, &cand) {
-                self.conflict();
+                self.conflict()?;
             } else {
                 self.decide();
             }
         }
     }
 
-    #[allow(dead_code)]
-    // Assumption: ℱ(⌊Γ⌋) ⊧ ψ
-    fn conflict(&mut self) {
-        println!("{}", "conflict".blue());
+    // Assumption 1: self.models.len() > 0
+    // Assumption 2: ℱ(⌊Γ⌋) ⊧ ψ
+    fn conflict(&mut self) -> Result<(), Error> {
+        debug!("{}", "conflict".blue());
         //debug!("[PDR]conflict: {} <-> {}", &c.label, &refute_ty);
-        unimplemented!()
+        match infer::infer(
+            self.get_current_target_approx(),
+            self.models.last().unwrap(),
+        ) {
+            Some(tyenv_new) => {
+                // conjoin
+                unimplemented!()
+            }
+            None => Err(Error::TypeInference),
+        }
     }
 
-    #[allow(dead_code)]
     // Assumption: ℱ(⌊Γ⌋) not⊧ ψ
     fn decide(&mut self) {
-        println!("{}", "decide".blue());
+        debug!("{}", "decide".blue());
         debug!("[PDR]decide");
+
         unimplemented!()
     }
 
-    fn run(&mut self) -> PDRResult {
+    fn run(&mut self) -> Result<PDRResult, Error> {
         info!("[PDR] target formula");
         info!("{}", self.problem);
         loop {
             self.dump_state();
             if !self.check_valid() {
                 self.candidate();
-                if self.check_feasible() {
-                    break self.invalid();
+                if self.check_feasible()? {
+                    break Ok(self.invalid());
                 }
             } else if self.check_inductive() {
-                break self.valid();
+                break Ok(self.valid());
             } else {
                 self.unfold()
             }
@@ -234,10 +213,15 @@ impl HoPDR {
     }
 }
 
-pub fn infer(problem: Problem<Constraint>) -> VerificationResult {
+pub fn run(problem: Problem<Constraint>) -> VerificationResult {
     let mut pdr = HoPDR::new(problem);
-    pdr.set_verbosity_level(DEBUG);
-    pdr.run();
-
-    unimplemented!()
+    match pdr.run() {
+        Ok(PDRResult::Valid) => VerificationResult::Valid,
+        Ok(PDRResult::Invalid) => VerificationResult::Invalid,
+        Err(x) => {
+            warn!("{}", "Failed to complete PDR".red());
+            warn!("Reason: {}", x);
+            VerificationResult::Unknown
+        }
+    }
 }

@@ -1,8 +1,9 @@
 pub mod fml;
+mod infer;
 pub mod pdr;
 pub mod rtype;
 
-pub use pdr::infer;
+pub use pdr::run;
 use std::fmt;
 
 #[derive(Debug)]
