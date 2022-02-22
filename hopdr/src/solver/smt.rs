@@ -239,7 +239,7 @@ fn z3_solver(smt_string: String) -> String {
     let f = save_smt2(smt_string);
     let args = vec![f.path().to_str().unwrap()];
     // debug
-    // println!("filename: {}", &args[0]);
+    debug!("filename: {}", &args[0]);
     let out = util::exec_with_timeout("z3", &args, Duration::from_secs(1));
     String::from_utf8(out).unwrap()
 }
@@ -249,7 +249,6 @@ impl SMTSolver for Z3Solver {
         debug!("smt_solve: {}", c);
         let smt2 = constraint_to_smt2(c, SMT2Style::Z3, vars, None);
         debug!("smt2: {}", &smt2);
-        println!("smt2: {}", &smt2);
         let s = z3_solver(smt2);
         debug!("smt_solve result: {:?}", &s);
         if s.starts_with("sat") {
@@ -292,7 +291,7 @@ fn z3_sat_model() {
     (get-model)"
         .to_string();
     let r = z3_solver(s);
-    println!("{}", r);
+    debug!("{}", r);
     assert!(r.starts_with("sat"));
     let pos = r.find('\n').unwrap();
     assert!(Model::from_z3_model_str(&r[pos..]).is_ok())

@@ -110,13 +110,13 @@ impl<C: Refinement> Goal<C> {
     pub fn reduce(&self) -> C {
         // first reduces the formula to a formula of type *
         // then traslates it to a fofml::Atom constraint.
-        // println!("to be reduced: {}", &self);
+        // debug!("to be reduced: {}", &self);
         let mut g_old = self.clone();
         loop {
             let g = g_old.reduce_inner();
             if g == g_old {
                 // debug
-                // println!("reduced: {}", &g);
+                // debug!("reduced: {}", &g);
                 return g.into();
             }
             g_old = g;
@@ -198,7 +198,6 @@ impl<C: Refinement> Env<C> {
 
 impl<C: Refinement> Problem<C> {
     // ℱ(Σ)
-    // TODO Env -> Problem?
     pub fn transform(&self, env: &Env<C>) -> Env<C> {
         let mut map = HashMap::new();
         for c in self.clauses.iter() {
@@ -211,9 +210,9 @@ impl<C: Refinement> Problem<C> {
 // Γ ⊧ g ⇔ ⊧ θ where Γ(g) → θ
 pub fn env_models(env: &Env<Constraint>, g: &Goal<Constraint>) -> bool {
     // debug
-    // println!("env_models env: {}", env);
+    debug!("env_models env: {}", env);
     let f = env.eval(g.clone());
-    // println!("env_models g: {}", f);
+    debug!("env_models g: {}", f);
     let cnstr = f.reduce();
     match smt::default_solver().solve(&cnstr, &HashSet::new()) {
         smt::SMTResult::Sat => true,

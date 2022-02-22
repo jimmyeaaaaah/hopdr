@@ -175,7 +175,7 @@ impl HoPDR {
                 // the trace of cex is feasible
                 return true;
             }
-            let _cand = match self.models.last() {
+            let cand = match self.models.last() {
                 Some(c) => c.clone(),
                 None => {
                     // all the candidates have been refuted
@@ -187,14 +187,19 @@ impl HoPDR {
             let level = self.envs.len() - self.models.len() - 1;
             let env_i_ty = &self.envs[level];
             // ⌊Γ⌋
-            let _env_i = fml::Env::from_type_environment(env_i_ty);
+            let env_i = fml::Env::from_type_environment(env_i_ty);
             // ℱ(⌊Γ⌋)
-            unimplemented!()
-            //let f_env_i =
+            let f_env_i = self.problem.transform(&env_i);
+            if fml::env_models(&f_env_i, &cand) {
+                self.conflict();
+            } else {
+                self.decide();
+            }
         }
     }
 
     #[allow(dead_code)]
+    // Assumption: ℱ(⌊Γ⌋) ⊧ ψ
     fn conflict(&mut self) {
         println!("{}", "conflict".blue());
         //debug!("[PDR]conflict: {} <-> {}", &c.label, &refute_ty);
@@ -202,6 +207,7 @@ impl HoPDR {
     }
 
     #[allow(dead_code)]
+    // Assumption: ℱ(⌊Γ⌋) not⊧ ψ
     fn decide(&mut self) {
         println!("{}", "decide".blue());
         debug!("[PDR]decide");
