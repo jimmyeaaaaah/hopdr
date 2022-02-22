@@ -4,13 +4,11 @@ use std::fmt::Display;
 use crate::formula::fofml;
 use crate::formula::hes::Problem;
 use crate::formula::hes::{Goal, GoalKind};
-use crate::formula::Constraint;
-use crate::formula::Ident;
-use crate::formula::{Conjunctive, Subst};
-use crate::pdr::rtype::{least_fml, types_check, TyEnv};
+use crate::formula::{Constraint, Ident, Logic, Subst};
+use crate::pdr::rtype::{least_fml, types_check, Tau, TyEnv};
 use crate::solver::smt;
 
-pub type Formula = Goal<fofml::Atom>;
+use super::rtype::{Refinement, TypeEnvironment};
 
 impl From<Goal<Constraint>> for Goal<fofml::Atom> {
     fn from(g: Goal<Constraint>) -> Self {
@@ -27,9 +25,9 @@ impl From<Goal<Constraint>> for Goal<fofml::Atom> {
     }
 }
 
-impl From<Formula> for fofml::Atom {
+impl From<Goal<fofml::Atom>> for fofml::Atom {
     // Assumption: the frm formula has type *
-    fn from(frm: Formula) -> Self {
+    fn from(frm: Goal<fofml::Atom>) -> Self {
         match frm.kind() {
             GoalKind::Constr(c) => c.clone(),
             GoalKind::Conj(g1, g2) => {
@@ -53,7 +51,7 @@ impl From<Formula> for fofml::Atom {
 // check if it is completely the same form
 // in other words, even if f1 and f2 are alpha-equivalent,
 // they are the different formulas.
-impl PartialEq for Formula {
+impl<C: PartialEq> PartialEq for Goal<C> {
     fn eq(&self, other: &Self) -> bool {
         match (self.kind(), other.kind()) {
             (GoalKind::Constr(c1), GoalKind::Constr(c2)) => c1 == c2,
@@ -69,8 +67,8 @@ impl PartialEq for Formula {
     }
 }
 
-impl Formula {
-    fn reduce_inner(&self) -> Formula {
+impl<C: Refinement> Goal<C> {
+    fn reduce_inner(&self) -> Goal<C> {
         match self.kind() {
             GoalKind::Constr(_) => self.clone(),
             GoalKind::App(g, arg) => {
@@ -109,7 +107,7 @@ impl Formula {
         }
     }
     // until it reaches the beta normal form
-    pub fn reduce(&self) -> fofml::Atom {
+    pub fn reduce(&self) -> C {
         // first reduces the formula to a formula of type *
         // then traslates it to a fofml::Atom constraint.
         // println!("to be reduced: {}", &self);
@@ -125,8 +123,8 @@ impl Formula {
         }
     }
 
-    pub fn to_cnf(&self) -> Vec<Formula> {
-        fn cross_or(v1: &[Formula], v2: &[Formula]) -> Vec<Formula> {
+    pub fn to_cnf(&self) -> Vec<Goal<C>> {
+        fn cross_or<C: Refinement>(v1: &[Goal<C>], v2: &[Goal<C>]) -> Vec<Goal<C>> {
             let mut v = Vec::new();
             for x in v1 {
                 for y in v2 {
@@ -158,11 +156,11 @@ impl Formula {
 }
 
 // Formula Environment Σ
-pub struct Env {
-    map: HashMap<Ident, Formula>,
+pub struct Env<C> {
+    map: HashMap<Ident, Goal<C>>,
 }
 
-impl Display for Env {
+impl<C: Display> Display for Env<C> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for (k, fml) in self.map.iter() {
             writeln!(f, "{}: {}\n", k, fml)?;
@@ -171,50 +169,52 @@ impl Display for Env {
     }
 }
 
-impl Env {
+impl<C: Refinement> Env<C> {
     // ⌊Γ⌋
-    pub fn from_type_environment(tenv: &TyEnv) -> Env {
+    pub fn from_type_environment(tenv: &TypeEnvironment<Tau<C>>) -> Env<C> {
         let mut map = HashMap::new();
         for (key, ts) in tenv.map.iter() {
             let fmls = ts.iter().map(|t| least_fml(t.clone()));
-            map.insert(*key, Formula::mk_ho_disj(fmls, ts[0].to_sty()));
+            map.insert(*key, Goal::mk_ho_disj(fmls, ts[0].to_sty()));
         }
         Env { map }
     }
 
-    // ℱ(Σ)
-    pub fn transform(&self, env: &Env) -> Env {
-        let mut map = HashMap::new();
-        for (key, goal) in env.map.iter() {
-            map.insert(*key, env.eval(goal.clone()));
-        }
-        Env { map }
-    }
-
-    pub fn eval(&self, g: Formula) -> Formula {
+    pub fn eval(&self, g: Goal<C>) -> Goal<C> {
         match g.kind() {
             GoalKind::Var(x) => match self.map.get(x) {
                 Some(f) => f.clone(),
-                None => Formula::mk_var(*x),
+                None => Goal::mk_var(*x),
             },
-            GoalKind::Abs(x, y) => Formula::mk_abs(x.clone(), self.eval(y.clone())),
-            GoalKind::App(x, y) => Formula::mk_app(self.eval(x.clone()), self.eval(y.clone())),
-            GoalKind::Conj(x, y) => Formula::mk_conj(self.eval(x.clone()), self.eval(y.clone())),
-            GoalKind::Disj(x, y) => Formula::mk_disj(self.eval(x.clone()), self.eval(y.clone())),
-            GoalKind::Univ(x, y) => Formula::mk_univ(x.clone(), self.eval(y.clone())),
+            GoalKind::Abs(x, y) => Goal::mk_abs(x.clone(), self.eval(y.clone())),
+            GoalKind::App(x, y) => Goal::mk_app(self.eval(x.clone()), self.eval(y.clone())),
+            GoalKind::Conj(x, y) => Goal::mk_conj(self.eval(x.clone()), self.eval(y.clone())),
+            GoalKind::Disj(x, y) => Goal::mk_disj(self.eval(x.clone()), self.eval(y.clone())),
+            GoalKind::Univ(x, y) => Goal::mk_univ(x.clone(), self.eval(y.clone())),
             GoalKind::Constr(_) | GoalKind::Op(_) => g.clone(),
         }
     }
 }
 
+impl<C: Refinement> Problem<C> {
+    // ℱ(Σ)
+    // TODO Env -> Problem?
+    pub fn transform(&self, env: &Env<C>) -> Env<C> {
+        let mut map = HashMap::new();
+        for c in self.clauses.iter() {
+            map.insert(c.head.id, env.eval(c.body.clone()));
+        }
+        Env { map }
+    }
+}
+
 // Γ ⊧ g ⇔ ⊧ θ where Γ(g) → θ
-pub fn env_models(env: &Env, g: &Formula) -> bool {
+pub fn env_models(env: &Env<Constraint>, g: &Goal<Constraint>) -> bool {
     // debug
     // println!("env_models env: {}", env);
     let f = env.eval(g.clone());
     // println!("env_models g: {}", f);
-    let cnstr: fofml::Atom = f.reduce();
-    let cnstr = cnstr.into();
+    let cnstr = f.reduce();
     match smt::default_solver().solve(&cnstr, &HashSet::new()) {
         smt::SMTResult::Sat => true,
         smt::SMTResult::Unsat => false,
@@ -222,8 +222,11 @@ pub fn env_models(env: &Env, g: &Formula) -> bool {
     }
 }
 
-pub fn check_inductive(env: &TyEnv, problem: &Problem<fofml::Atom>) -> bool {
+pub fn check_inductive(env: &TyEnv, problem: &Problem<Constraint>) -> bool {
     let fenv = Env::from_type_environment(env);
+
+    // transform fenv
+    // currently just checking ⌊Γ⌋ ↑ Γ
     for clause in problem.clauses.iter() {
         let tys = env.get(&clause.head.id).unwrap().iter().map(|x| x.clone());
         if !types_check(&fenv, &clause.body, tys) {

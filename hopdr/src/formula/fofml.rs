@@ -1,11 +1,10 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
-use super::hes;
 use super::pcsp;
 use super::{
-    Bot, Conjunctive, Constraint, Fv, Ident, Op, OpKind, PredKind, QuantifierKind, Rename, Subst,
-    Top, Type, Variable,
+    hes, Bot, Constraint, Fv, Ident, Logic, Negation, Op, OpKind, PredKind, QuantifierKind, Rename,
+    Subst, Top, Type, Variable,
 };
 use crate::solver::smt;
 use crate::util::P;
@@ -172,10 +171,37 @@ impl Bot for Atom {
     }
 }
 
-impl Conjunctive for Atom {
+impl Logic for Atom {
     fn mk_conj(x: Self, y: Self) -> Atom {
         use AtomKind::*;
         Atom::new(Conj(x, y))
+    }
+    fn mk_disj(x: Self, y: Self) -> Atom {
+        Atom::new(AtomKind::Disj(x, y))
+    }
+}
+
+// For Atom, negation always succeeds
+impl Negation for Atom {
+    fn negate(&self) -> Option<Atom> {
+        match self.kind() {
+            AtomKind::True => Some(Atom::mk_false()),
+            AtomKind::Constraint(c) => c.negate().map(|c| Atom::mk_constraint(c)),
+            AtomKind::Predicate(_, _) => Some(Atom::mk_not(self.clone())),
+            AtomKind::Conj(c1, c2) => c1
+                .negate()
+                .map(|c1| c2.negate().map(|c2| Atom::mk_disj(c1, c2)))
+                .flatten(),
+            AtomKind::Disj(c1, c2) => c1
+                .negate()
+                .map(|c1| c2.negate().map(|c2| Atom::mk_conj(c1, c2)))
+                .flatten(),
+            AtomKind::Not(a) => Some(a.clone()),
+            AtomKind::Quantifier(q, x, a) => {
+                let q = q.negate();
+                a.negate().map(|a| Atom::mk_quantifier(q, *x, a))
+            }
+        }
     }
 }
 
@@ -195,12 +221,6 @@ impl Subst for Atom {
             AtomKind::Not(_) => todo!(),
             AtomKind::Quantifier(_, _, _) => todo!(),
         }
-    }
-}
-
-impl From<Atom> for hes::Goal<Atom> {
-    fn from(c: Atom) -> Self {
-        hes::Goal::mk_constr(c)
     }
 }
 
@@ -261,9 +281,6 @@ impl Atom {
             .map(|(p, t)| (p, t.to_constraint(&model)))
             .collect();
         Some(h)
-    }
-    pub fn mk_disj(x: Self, y: Self) -> Atom {
-        Atom::new(AtomKind::Disj(x, y))
     }
     pub fn mk_false() -> Atom {
         Atom::mk_constraint(Constraint::mk_false())

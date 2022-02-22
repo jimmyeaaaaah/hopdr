@@ -6,7 +6,7 @@ use std::vec;
 
 use super::fofml;
 use super::pcsp;
-use super::{Conjunctive, Constraint, Ident, Op, Rename, Top};
+use super::{Constraint, Ident, Logic, Op, Rename, Top};
 
 #[derive(Debug, Clone)]
 pub enum CHCHead {

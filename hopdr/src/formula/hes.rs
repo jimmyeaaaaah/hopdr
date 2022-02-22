@@ -1,5 +1,5 @@
 use crate::formula::ty::Type;
-use crate::formula::{Bot, Conjunctive, Constraint, Fv, Ident, Op, Rename, Top, Variable};
+use crate::formula::{Bot, Constraint, Fv, Ident, Logic, Op, Rename, Top, Variable};
 use crate::util::P;
 use std::collections::HashSet;
 use std::fmt;
@@ -93,11 +93,12 @@ impl<C: Bot> Bot for Goal<C> {
         }
     }
 }
-impl From<Constraint> for Goal<Constraint> {
-    fn from(c: Constraint) -> Self {
+impl<C> From<C> for Goal<C> {
+    fn from(c: C) -> Self {
         Goal::mk_constr(c)
     }
 }
+
 impl From<Goal<Constraint>> for Constraint {
     // even though g has type *, and it can be beta-reduced to a constraint,
     // we cannot convert g to the constraint.
@@ -317,7 +318,7 @@ impl<C: Subst<Item = Op, Id = Ident> + Rename + Fv<Id = Ident> + fmt::Display> S
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Clause<C> {
     pub body: Goal<C>,
     pub head: Variable,
@@ -348,7 +349,7 @@ impl<C: fmt::Display> fmt::Display for Clause<C> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Problem<C> {
     pub clauses: Vec<Clause<C>>,
     pub top: Goal<C>,

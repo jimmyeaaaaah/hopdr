@@ -3,10 +3,11 @@ use std::{
     fmt::{self, Display},
 };
 
-use super::fml::{Env, Formula};
+use super::fml::Env;
 use crate::formula::{chc, Variable};
 use crate::formula::{
-    Bot, Conjunctive, Constraint, Ident, Top, Type as SType, TypeKind as STypeKind,
+    Bot, Constraint, Fv, Ident, Logic, Negation, Op, Rename, Subst, Top, Type as SType,
+    TypeKind as STypeKind,
 };
 use crate::{formula::hes::Goal, solver::smt};
 
@@ -22,6 +23,35 @@ pub enum TauKind<C> {
 pub type Tau<C> = P<TauKind<C>>;
 pub type TyKind<C> = TauKind<C>;
 pub type Ty = Tau<Constraint>;
+
+pub trait Refinement:
+    Clone
+    + Top
+    + Bot
+    + Negation
+    + Logic
+    + Subst<Id = Ident, Item = Op>
+    + Fv<Id = Ident>
+    + PartialEq
+    + Rename
+    + From<Goal<Self>>
+    + fmt::Display
+{
+}
+impl<T> Refinement for T where
+    T: Clone
+        + Top
+        + Bot
+        + Negation
+        + Logic
+        + Subst<Id = Ident, Item = Op>
+        + Fv<Id = Ident>
+        + PartialEq
+        + Rename
+        + From<Goal<Self>>
+        + fmt::Display
+{
+}
 
 pub struct Positive {}
 
@@ -83,18 +113,18 @@ pub trait TBot {
     fn mk_bot(st: &SType) -> Self;
 }
 
-impl<C: Top + Bot> TTop for Tau<C> {
+impl<C: Refinement> TTop for Tau<C> {
     fn mk_top(st: &SType) -> Self {
         Tau::new(TyKind::new_top(st))
     }
 }
 
-impl<C: Top + Bot> TBot for Tau<C> {
+impl<C: Refinement> TBot for Tau<C> {
     fn mk_bot(st: &SType) -> Self {
         Tau::new(TyKind::new_bot(st))
     }
 }
-impl<C: Top + Bot> TyKind<C> {
+impl<C: Refinement> TyKind<C> {
     fn new_top(st: &SType) -> TyKind<C> {
         use STypeKind::*;
         match st.kind() {
@@ -174,7 +204,7 @@ impl<T: Display> Display for TypeEnvironment<T> {
         writeln!(f)
     }
 }
-impl<C: Top + Bot> TypeEnvironment<Tau<C>> {
+impl<C: Refinement> TypeEnvironment<Tau<C>> {
     pub fn new() -> TypeEnvironment<Tau<C>> {
         TypeEnvironment {
             map: HashMap::new(),
@@ -221,18 +251,18 @@ impl<C: Top + Bot> TypeEnvironment<Tau<C>> {
 }
 
 // ⌊τ⌋_c
-pub fn to_fml(c: Formula, t: Ty) -> Formula {
+pub fn to_fml<C: Refinement>(c: Goal<C>, t: Tau<C>) -> Goal<C> {
     match t.kind() {
-        TauKind::Proposition(c2) => Formula::mk_conj(c, c2.clone().into()),
+        TauKind::Proposition(c2) => Goal::mk_conj(c, c2.clone().into()),
         TauKind::IArrow(x, y) => {
-            Formula::mk_abs(Variable::mk(*x, SType::mk_type_int()), to_fml(c, y.clone()))
+            Goal::mk_abs(Variable::mk(*x, SType::mk_type_int()), to_fml(c, y.clone()))
         }
         TauKind::Arrow(ts, y) => {
             let ident = Ident::fresh();
             let g = Goal::mk_var(ident);
             let mut cs = c;
             for t in ts.iter() {
-                cs = Formula::mk_conj(types(g.clone(), t.clone()), cs);
+                cs = Goal::mk_conj(types(g.clone(), t.clone()), cs);
             }
             let fml = to_fml(cs, y.clone());
             Goal::mk_abs(Variable::mk(ident, ts[0].to_sty()), fml)
@@ -241,47 +271,51 @@ pub fn to_fml(c: Formula, t: Ty) -> Formula {
 }
 
 // ⌊τ⌋_tt
-pub fn least_fml(t: Ty) -> Formula {
-    let f = to_fml(Formula::mk_true(), t.clone());
+pub fn least_fml<C: Refinement>(t: Tau<C>) -> Goal<C> {
+    let f = to_fml(Goal::mk_true(), t.clone());
     // debug
     // println!("least_fml: {} ---> {}", t, f);
     f
 }
 
 // ψ↑τ
-fn types(fml: Formula, t: Ty) -> Formula {
+fn types<C: Refinement>(fml: Goal<C>, t: Tau<C>) -> Goal<C> {
     match t.kind() {
         TauKind::Proposition(c) => {
             let c = c.clone().negate().unwrap().into();
-            Formula::mk_disj(c, fml)
+            Goal::mk_disj(c, fml)
         }
         TauKind::IArrow(x, t) => {
             let v = Variable::mk(*x, SType::mk_type_int());
-            let p = Formula::mk_app(fml, Formula::mk_var(*x));
+            let p = Goal::mk_app(fml, Goal::mk_var(*x));
             let fml = types(p, t.clone());
-            Formula::mk_univ(v, fml)
+            Goal::mk_univ(v, fml)
         }
         TauKind::Arrow(x, y) => {
-            let arg = Formula::mk_ho_disj(x.iter().map(|t| least_fml(t.clone())), x[0].to_sty());
-            let fml = Formula::mk_app(fml, arg);
+            let arg = Goal::mk_ho_disj(x.iter().map(|t| least_fml(t.clone())), x[0].to_sty());
+            let fml = Goal::mk_app(fml, arg);
             types(fml, y.clone())
         }
     }
 }
 
-pub fn type_check(env: &Env, g: &Formula, t: &Ty) -> bool {
+// TODO: Reconsider whether it is restricted to fofml::Atom
+pub fn type_check(env: &Env<Constraint>, g: &Goal<Constraint>, t: &Tau<Constraint>) -> bool {
     types_check(env, g, vec![t.clone()])
 }
 
 // allow inter section types
-pub fn types_check(env: &Env, g: &Formula, ts: impl IntoIterator<Item = Ty>) -> bool {
+pub fn types_check(
+    env: &Env<Constraint>,
+    g: &Goal<Constraint>,
+    ts: impl IntoIterator<Item = Ty>,
+) -> bool {
     let f = env.eval(g.clone());
     let cnstr = ts
         .into_iter()
         .map(|t| {
             debug!("type_check: {} : {}", g, t);
             let cnstr = types(f.clone(), t.clone()).reduce();
-            let cnstr: Constraint = cnstr.into();
             //println!("constr: {}", cnstr);
             cnstr
         })

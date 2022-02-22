@@ -2,7 +2,8 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 use super::{
-    Bot, Conjunctive, Constraint, Fv, Ident, Op, QuantifierKind, Rename, Subst, Top, Type, Variable,
+    Bot, Constraint, Fv, Ident, Logic, Negation, Op, QuantifierKind, Rename, Subst, Top, Type,
+    Variable,
 };
 use crate::util::P;
 
@@ -49,6 +50,31 @@ impl fmt::Display for Atom {
     }
 }
 
+impl Negation for Atom {
+    fn negate(&self) -> Option<Self> {
+        match self.kind() {
+            AtomKind::True => Some(Atom::mk_false()),
+            AtomKind::Constraint(c) => c.clone().negate().map(|x| x.into()),
+            AtomKind::Conj(l, r) => {
+                let l = l.negate();
+                let r = r.negate();
+                match (l, r) {
+                    (_, None) | (None, _) => None,
+                    (Some(x), Some(y)) => Some(Atom::mk_disj(x, y)),
+                }
+            }
+            AtomKind::Disj(l, r) => {
+                let l = l.negate();
+                let r = r.negate();
+                match (l, r) {
+                    (_, None) | (None, _) => None,
+                    (Some(x), Some(y)) => Some(Atom::mk_conj(x, y)),
+                }
+            }
+            AtomKind::Predicate(_, _) | AtomKind::Quantifier(_, _, _) => None,
+        }
+    }
+}
 impl Atom {
     pub fn mk_pred(ident: Ident, args: Vec<Op>) -> Atom {
         Atom::new(AtomKind::Predicate(ident, args))
@@ -77,29 +103,6 @@ impl Atom {
             _ => None,
         }
     }
-    pub fn negate(&self) -> Option<Self> {
-        match self.kind() {
-            AtomKind::True => Some(Atom::mk_false()),
-            AtomKind::Constraint(c) => c.clone().negate().map(|x| x.into()),
-            AtomKind::Conj(l, r) => {
-                let l = l.negate();
-                let r = r.negate();
-                match (l, r) {
-                    (_, None) | (None, _) => None,
-                    (Some(x), Some(y)) => Some(Atom::mk_disj(x, y)),
-                }
-            }
-            AtomKind::Disj(l, r) => {
-                let l = l.negate();
-                let r = r.negate();
-                match (l, r) {
-                    (_, None) | (None, _) => None,
-                    (Some(x), Some(y)) => Some(Atom::mk_conj(x, y)),
-                }
-            }
-            AtomKind::Predicate(_, _) | AtomKind::Quantifier(_, _, _) => None,
-        }
-    }
     pub fn mk_conj(x: Self, y: Self) -> Atom {
         use AtomKind::*;
         match (&*x, &*y) {
@@ -107,11 +110,6 @@ impl Atom {
             (_, True) => x.clone(),
             _ => Atom::new(Conj(x.clone(), y.clone())),
         }
-    }
-    pub fn mk_disj(x: Self, y: Self) -> Atom {
-        use AtomKind::*;
-        // TODO: trivial optimization
-        Atom::new(Disj(x, y))
     }
 
     pub fn mk_quantifier(q: QuantifierKind, x: Ident, c: Self) -> Atom {
@@ -240,7 +238,7 @@ impl Bot for Atom {
     }
 }
 
-impl Conjunctive for Atom {
+impl Logic for Atom {
     fn mk_conj(x: Self, y: Self) -> Atom {
         use AtomKind::*;
         match (&*x, &*y) {
@@ -248,6 +246,11 @@ impl Conjunctive for Atom {
             (_, True) => x.clone(),
             _ => Atom::new(Conj(x.clone(), y.clone())),
         }
+    }
+    fn mk_disj(x: Self, y: Self) -> Atom {
+        use AtomKind::*;
+        // TODO: trivial optimization
+        Atom::new(Disj(x, y))
     }
 }
 

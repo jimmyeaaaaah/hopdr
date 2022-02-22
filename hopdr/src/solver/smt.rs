@@ -300,7 +300,7 @@ fn z3_sat_model() {
 
 #[test]
 fn z3_sat_model_from_constraint() {
-    use crate::formula::{Conjunctive, PredKind};
+    use crate::formula::{Logic, PredKind};
     let i1 = Ident::fresh();
     let i2 = Ident::fresh();
     let fvs = HashSet::from([i1, i2]);

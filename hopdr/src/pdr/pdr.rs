@@ -1,9 +1,12 @@
 use super::fml;
 use super::rtype;
+use super::rtype::Refinement;
+use super::rtype::Tau;
 use super::rtype::TyEnv;
+use super::rtype::TypeEnvironment;
 use super::VerificationResult;
 use crate::formula::fofml;
-use crate::formula::hes::Problem as ProblemBase;
+use crate::formula::hes::Problem;
 use crate::formula::Constraint;
 use crate::formula::{hes, Ident};
 
@@ -11,8 +14,6 @@ use crate::util::dprintln;
 use colored::Colorize;
 
 use std::unimplemented;
-
-type Problem = ProblemBase<fofml::Atom>;
 
 pub enum PDRResult {
     Valid,
@@ -23,13 +24,14 @@ pub enum PDRResult {
 pub const NOLOG: u64 = 0;
 pub const DEBUG: u64 = 1;
 
-type Candidate = fml::Formula;
+type Candidate = hes::Goal<Constraint>;
 
 #[allow(dead_code)]
 pub struct HoPDR {
     models: Vec<Candidate>,
     envs: Vec<TyEnv>,
-    problem: Problem,
+    problem: Problem<Constraint>,
+    problem_atom_cache: Problem<fofml::Atom>,
     loop_cnt: u64,
     verbose: u64,
 }
@@ -40,9 +42,9 @@ enum RefuteOrCex<A, B> {
     Cex(B),
 }
 
-impl TyEnv {
-    fn new_top_env(problem: &Problem) -> TyEnv {
-        let mut new_env = TyEnv::new();
+impl<C: Refinement> TypeEnvironment<Tau<C>> {
+    fn new_top_env(problem: &Problem<C>) -> TypeEnvironment<Tau<C>> {
+        let mut new_env = TypeEnvironment::new();
         for c in problem.clauses.iter() {
             new_env.add_top(c.head.id, &c.head.ty)
         }
@@ -50,8 +52,8 @@ impl TyEnv {
     }
 
     #[allow(dead_code)]
-    fn new_bot_env(problem: &Problem) -> TyEnv {
-        let mut new_env = TyEnv::new();
+    fn new_bot_env(problem: &Problem<C>) -> TypeEnvironment<Tau<C>> {
+        let mut new_env = TypeEnvironment::new();
         for c in problem.clauses.iter() {
             new_env.add_bot(c.head.id, &c.head.ty)
         }
@@ -113,10 +115,12 @@ impl HoPDR {
         self.envs.last().unwrap()
     }
 
-    fn new(problem: Problem) -> HoPDR {
+    fn new(problem: Problem<Constraint>) -> HoPDR {
+        let problem_atom_cache = problem.clone().into();
         let mut hopdr = HoPDR {
             models: Vec::new(),
             envs: Vec::new(),
+            problem_atom_cache,
             problem,
             loop_cnt: 0,
             verbose: 0,
@@ -161,13 +165,33 @@ impl HoPDR {
     fn invalid(&mut self) -> PDRResult {
         debug!("PDR invalid");
         dprintln!(self.verbose, DEBUG, "[PDR]invalid");
-        unimplemented!();
-        //PDRResult::Invalid
+        PDRResult::Invalid
     }
 
     fn check_feasible(&mut self) -> bool {
         debug!("[PDR]check feasible");
-        unimplemented!()
+        loop {
+            if self.models.len() == self.envs.len() {
+                // the trace of cex is feasible
+                return true;
+            }
+            let _cand = match self.models.last() {
+                Some(c) => c.clone(),
+                None => {
+                    // all the candidates have been refuted
+                    return false;
+                }
+            };
+            //
+            assert!(self.envs.len() > self.models.len() + 1);
+            let level = self.envs.len() - self.models.len() - 1;
+            let env_i_ty = &self.envs[level];
+            // ⌊Γ⌋
+            let _env_i = fml::Env::from_type_environment(env_i_ty);
+            // ℱ(⌊Γ⌋)
+            unimplemented!()
+            //let f_env_i =
+        }
     }
 
     #[allow(dead_code)]
@@ -206,8 +230,7 @@ impl HoPDR {
     }
 }
 
-pub fn infer(problem: ProblemBase<Constraint>) -> VerificationResult {
-    let problem = problem.into();
+pub fn infer(problem: Problem<Constraint>) -> VerificationResult {
     let mut pdr = HoPDR::new(problem);
     pdr.set_verbosity_level(DEBUG);
     pdr.run();

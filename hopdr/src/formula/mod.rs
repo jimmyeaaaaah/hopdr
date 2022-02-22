@@ -229,8 +229,9 @@ pub trait Bot {
     fn is_false(&self) -> bool;
 }
 
-pub trait Conjunctive {
+pub trait Logic {
     fn mk_conj(x: Self, y: Self) -> Self;
+    fn mk_disj(x: Self, y: Self) -> Self;
 }
 
 pub trait Subst: Sized {
@@ -342,7 +343,7 @@ impl Bot for Constraint {
     }
 }
 
-impl Conjunctive for Constraint {
+impl Logic for Constraint {
     fn mk_conj(x: Constraint, y: Constraint) -> Constraint {
         if x.is_true() {
             y
@@ -350,6 +351,17 @@ impl Conjunctive for Constraint {
             x
         } else {
             Constraint::new(ConstraintExpr::Conj(x, y))
+        }
+    }
+    fn mk_disj(x: Constraint, y: Constraint) -> Constraint {
+        if x.is_true() || y.is_true() {
+            Constraint::mk_true()
+        } else if x.is_false() {
+            y
+        } else if y.is_false() {
+            x
+        } else {
+            Constraint::new(ConstraintExpr::Disj(x, y))
         }
     }
 }
@@ -403,33 +415,14 @@ impl Rename for Constraint {
     }
 }
 
-impl Constraint {
-    pub fn mk_quantifier(q: QuantifierKind, v: Variable, c: Constraint) -> Constraint {
-        Constraint::new(ConstraintExpr::Quantifier(q, v, c))
-    }
-
-    pub fn mk_quantifier_int(q: QuantifierKind, v: Ident, c: Constraint) -> Constraint {
-        Constraint::new(ConstraintExpr::Quantifier(
-            q,
-            Variable::mk(v, Type::mk_type_int()),
-            c,
-        ))
-    }
-
-    pub fn mk_disj(x: Constraint, y: Constraint) -> Constraint {
-        if x.is_true() || y.is_true() {
-            Constraint::mk_true()
-        } else if x.is_false() {
-            y
-        } else if y.is_false() {
-            x
-        } else {
-            Constraint::new(ConstraintExpr::Disj(x, y))
-        }
-    }
-
+pub trait Negation {
+    fn negate(&self) -> Option<Self>
+    where
+        Self: Sized;
+}
+impl Negation for Constraint {
     // negation sometimes cannot be performed (e.g. \not x)
-    pub fn negate(self) -> Option<Constraint> {
+    fn negate(&self) -> Option<Constraint> {
         match self.kind() {
             ConstraintExpr::False => Some(Constraint::mk_true()),
             ConstraintExpr::True => Some(Constraint::mk_false()),
@@ -449,6 +442,20 @@ impl Constraint {
                     .map(|c| Constraint::mk_quantifier(q, v.clone(), c))
             }
         }
+    }
+}
+
+impl Constraint {
+    pub fn mk_quantifier(q: QuantifierKind, v: Variable, c: Constraint) -> Constraint {
+        Constraint::new(ConstraintExpr::Quantifier(q, v, c))
+    }
+
+    pub fn mk_quantifier_int(q: QuantifierKind, v: Ident, c: Constraint) -> Constraint {
+        Constraint::new(ConstraintExpr::Quantifier(
+            q,
+            Variable::mk(v, Type::mk_type_int()),
+            c,
+        ))
     }
 
     pub fn mk_arrow(x: Constraint, y: Constraint) -> Option<Constraint> {
