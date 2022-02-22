@@ -3,7 +3,7 @@ use super::rtype::{Refinement, Tau, TyEnv, TypeEnvironment};
 use super::VerificationResult;
 use crate::formula::hes::Problem;
 use crate::formula::{fofml, hes, Constraint};
-use crate::pdr::infer::{self, infer};
+use crate::pdr::infer;
 
 use colored::Colorize;
 
@@ -133,9 +133,13 @@ impl HoPDR {
         PDRResult::Invalid
     }
 
-    fn get_current_target_approx<'a>(&'a self) -> &'a TyEnv {
+    fn get_current_cex_level(&self) -> usize {
         assert!(self.envs.len() >= self.models.len() + 1);
-        let level = self.envs.len() - self.models.len() - 1;
+        self.envs.len() - self.models.len() - 1
+    }
+
+    fn get_current_target_approx<'a>(&'a self) -> &'a TyEnv {
+        let level = self.get_current_cex_level();
         &self.envs[level]
     }
 
@@ -177,7 +181,10 @@ impl HoPDR {
         ) {
             Some(tyenv_new) => {
                 // conjoin
-                unimplemented!()
+                for i in 0..(self.get_current_cex_level() + 1) {
+                    self.envs[i].append(&tyenv_new);
+                }
+                Ok(())
             }
             None => Err(Error::TypeInference),
         }

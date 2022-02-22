@@ -248,6 +248,21 @@ impl<C: Refinement> TypeEnvironment<Tau<C>> {
         }
         r
     }
+
+    pub fn append(&mut self, x: &TypeEnvironment<Tau<C>>) {
+        for (k, v) in x.map.iter() {
+            match self.map.get_mut(k) {
+                Some(w) => {
+                    for t in v {
+                        w.push(t.clone());
+                    }
+                }
+                None => {
+                    self.map.insert(*k, v.iter().cloned().collect());
+                }
+            }
+        }
+    }
 }
 
 // ⌊τ⌋_c
