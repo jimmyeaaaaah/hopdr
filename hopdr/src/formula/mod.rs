@@ -578,6 +578,9 @@ impl Variable {
     pub fn fresh_prop() -> Variable {
         Variable::fresh(Type::mk_type_prop())
     }
+    pub fn order(&self) -> usize {
+        self.ty.order()
+    }
 }
 
 #[derive(Clone, Debug)]

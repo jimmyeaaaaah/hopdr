@@ -204,13 +204,13 @@ impl<T: Display> Display for TypeEnvironment<T> {
         writeln!(f)
     }
 }
-impl<C: Refinement> TypeEnvironment<Tau<C>> {
-    pub fn new() -> TypeEnvironment<Tau<C>> {
+impl<T> TypeEnvironment<T> {
+    pub fn new() -> TypeEnvironment<T> {
         TypeEnvironment {
             map: HashMap::new(),
         }
     }
-    fn add_(&mut self, v: Ident, t: Tau<C>) {
+    fn add_(&mut self, v: Ident, t: T) {
         match self.map.get_mut(&v) {
             Some(s) => {
                 s.push(t);
@@ -220,21 +220,13 @@ impl<C: Refinement> TypeEnvironment<Tau<C>> {
             }
         }
     }
-    pub fn add(&mut self, v: Ident, t: Tau<C>) {
+    pub fn add(&mut self, v: Ident, t: T) {
         self.add_(v, t);
     }
     pub fn exists(&self, v: &Ident) -> bool {
         self.map.get(v).is_some()
     }
-    pub fn add_top(&mut self, v: Ident, st: &SType) {
-        self.add(v, Tau::mk_top(st));
-    }
-
-    pub fn add_bot(&mut self, v: Ident, st: &SType) {
-        self.add(v, Tau::mk_bot(st));
-    }
-
-    pub fn get<'a>(&'a self, v: &Ident) -> Option<&'a Vec<Tau<C>>> {
+    pub fn get<'a>(&'a self, v: &Ident) -> Option<&'a Vec<T>> {
         let r = self.map.get(v);
         match r {
             Some(v) => {
@@ -248,8 +240,10 @@ impl<C: Refinement> TypeEnvironment<Tau<C>> {
         }
         r
     }
+}
 
-    pub fn append(&mut self, x: &TypeEnvironment<Tau<C>>) {
+impl<T: Clone> TypeEnvironment<T> {
+    pub fn append(&mut self, x: &TypeEnvironment<T>) {
         for (k, v) in x.map.iter() {
             match self.map.get_mut(k) {
                 Some(w) => {
@@ -262,6 +256,16 @@ impl<C: Refinement> TypeEnvironment<Tau<C>> {
                 }
             }
         }
+    }
+}
+
+impl<C: Refinement> TypeEnvironment<Tau<C>> {
+    pub fn add_top(&mut self, v: Ident, st: &SType) {
+        self.add(v, Tau::mk_top(st));
+    }
+
+    pub fn add_bot(&mut self, v: Ident, st: &SType) {
+        self.add(v, Tau::mk_bot(st));
     }
 }
 

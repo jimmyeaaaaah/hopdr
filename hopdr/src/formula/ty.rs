@@ -42,4 +42,11 @@ impl Type {
             _ => false,
         }
     }
+    pub fn order(&self) -> usize {
+        match self.kind() {
+            TypeKind::Proposition => 0,
+            TypeKind::Integer => 0,
+            TypeKind::Arrow(x, y) => std::cmp::max(x.order() + 1, y.order()),
+        }
+    }
 }

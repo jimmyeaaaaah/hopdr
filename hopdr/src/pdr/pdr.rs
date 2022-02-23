@@ -176,6 +176,7 @@ impl HoPDR {
         debug!("{}", "conflict".blue());
         //debug!("[PDR]conflict: {} <-> {}", &c.label, &refute_ty);
         match infer::infer(
+            &self.problem,
             self.get_current_target_approx(),
             self.models.last().unwrap(),
         ) {

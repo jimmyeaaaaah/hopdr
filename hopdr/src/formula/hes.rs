@@ -318,6 +318,20 @@ impl<C: Subst<Item = Op, Id = Ident> + Rename + Fv<Id = Ident> + fmt::Display> S
     }
 }
 
+impl<C> Goal<C> {
+    pub fn order(&self) -> usize {
+        match self.kind() {
+            // if order(Var(_)) > 0, then \x. ... has bigger order than that.
+            GoalKind::Constr(_) | GoalKind::Op(_) | GoalKind::Var(_) => 0,
+            GoalKind::Abs(x, y) => std::cmp::max(x.order() + 1, y.order()),
+            GoalKind::App(x, y) | GoalKind::Conj(x, y) | GoalKind::Disj(x, y) => {
+                std::cmp::max(x.order(), y.order())
+            }
+            GoalKind::Univ(_, y) => y.order(),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Clause<C> {
     pub body: Goal<C>,
@@ -349,6 +363,19 @@ impl<C: fmt::Display> fmt::Display for Clause<C> {
     }
 }
 
+impl<C> Clause<C> {
+    pub fn new(body: Goal<C>, head: Variable) -> Clause<C> {
+        Clause { body, head }
+    }
+    pub fn new_top_clause(body: Goal<C>) -> Clause<C> {
+        let head = Variable::fresh_prop();
+        Clause { body, head }
+    }
+    pub fn order(&self) -> usize {
+        self.body.order()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Problem<C> {
     pub clauses: Vec<Clause<C>>,
@@ -373,12 +400,12 @@ impl<C: fmt::Display> fmt::Display for Problem<C> {
     }
 }
 
-impl<C> Clause<C> {
-    pub fn new(body: Goal<C>, head: Variable) -> Clause<C> {
-        Clause { body, head }
-    }
-    pub fn new_top_clause(body: Goal<C>) -> Clause<C> {
-        let head = Variable::fresh_prop();
-        Clause { body, head }
+impl<C> Problem<C> {
+    pub fn order(&self) -> usize {
+        let mut ord = 0;
+        for c in self.clauses.iter() {
+            ord = std::cmp::max(ord, c.order())
+        }
+        ord
     }
 }
