@@ -4,7 +4,7 @@ use std::{
 };
 
 use super::fml::Env;
-use crate::formula::{chc, Variable};
+use crate::formula::{chc, fofml, Variable};
 use crate::formula::{
     Bot, Constraint, Fv, Ident, Logic, Negation, Op, Rename, Subst, Top, Type as SType,
     TypeKind as STypeKind,
@@ -155,6 +155,19 @@ impl<C: Refinement> TyKind<C> {
     }
 }
 
+impl From<Tau<Constraint>> for Tau<fofml::Atom> {
+    fn from(t: Tau<Constraint>) -> Self {
+        match t.kind() {
+            TauKind::Proposition(c) => Tau::mk_prop_ty(c.clone().into()),
+            TauKind::IArrow(x, t) => Tau::mk_iarrow(*x, t.clone().into()),
+            TauKind::Arrow(ts, t2) => {
+                let ts = ts.iter().map(|t| t.clone().into()).collect();
+                Tau::mk_arrow(ts, t2.clone().into())
+            }
+        }
+    }
+}
+
 impl<C> Tau<C> {
     pub fn to_sty(&self) -> SType {
         match self.kind() {
@@ -204,12 +217,24 @@ impl<T: Display> Display for TypeEnvironment<T> {
         writeln!(f)
     }
 }
+
+impl From<&TypeEnvironment<Tau<Constraint>>> for TypeEnvironment<Tau<fofml::Atom>> {
+    fn from(env: &TypeEnvironment<Tau<Constraint>>) -> TypeEnvironment<Tau<fofml::Atom>> {
+        let mut map = HashMap::new();
+        for (k, ts) in env.map.iter() {
+            map.insert(*k, ts.iter().map(|x| x.clone().into()).collect());
+        }
+        TypeEnvironment { map }
+    }
+}
+
 impl<T> TypeEnvironment<T> {
     pub fn new() -> TypeEnvironment<T> {
         TypeEnvironment {
             map: HashMap::new(),
         }
     }
+
     fn add_(&mut self, v: Ident, t: T) {
         match self.map.get_mut(&v) {
             Some(s) => {
@@ -256,6 +281,25 @@ impl<T: Clone> TypeEnvironment<T> {
                 }
             }
         }
+    }
+    pub fn merge(env1: &TypeEnvironment<T>, env2: &TypeEnvironment<T>) -> TypeEnvironment<T> {
+        let mut map: HashMap<Ident, Vec<T>> = HashMap::new();
+        for (k, v) in env1.map.iter() {
+            map.insert(*k, v.iter().cloned().collect());
+        }
+        for (k, ts) in env2.map.iter() {
+            match map.get_mut(k) {
+                Some(vs) => {
+                    for t in ts {
+                        vs.push(t.clone())
+                    }
+                }
+                None => {
+                    map.insert(*k, ts.iter().cloned().collect());
+                }
+            }
+        }
+        TypeEnvironment { map }
     }
 }
 
@@ -318,18 +362,14 @@ fn types<C: Refinement>(fml: Goal<C>, t: Tau<C>) -> Goal<C> {
     }
 }
 
-// TODO: Reconsider whether it is restricted to fofml::Atom
-pub fn type_check(env: &Env<Constraint>, g: &Goal<Constraint>, t: &Tau<Constraint>) -> bool {
-    types_check(env, g, vec![t.clone()])
+// g ↑ t
+pub fn type_check<C: Refinement>(g: &Goal<C>, t: &Tau<C>) -> C {
+    types_check(g, vec![t.clone()])
 }
 
-// allow inter section types
-pub fn types_check(
-    env: &Env<Constraint>,
-    g: &Goal<Constraint>,
-    ts: impl IntoIterator<Item = Ty>,
-) -> bool {
-    let f = env.eval(g.clone());
+// g ↑ ti where t = t1 ∧ ⋯ ∧ t2
+pub fn types_check<C: Refinement>(g: &Goal<C>, ts: impl IntoIterator<Item = Tau<C>>) -> C {
+    let f = g;
     let cnstr = ts
         .into_iter()
         .map(|t| {
@@ -338,15 +378,26 @@ pub fn types_check(
             //println!("constr: {}", cnstr);
             cnstr
         })
-        .fold(Constraint::mk_true(), |x, y| Constraint::mk_conj(x, y));
+        .fold(C::mk_true(), |x, y| C::mk_conj(x, y));
+    cnstr
+}
+
+// TODO: Reconsider whether it is restricted to fofml::Atom
+pub fn ty_check(g: &Goal<Constraint>, t: &Tau<Constraint>) -> bool {
+    tys_check(g, vec![t.clone()])
+}
+
+// allow inter section types
+pub fn tys_check(
+    //env: &Env<Constraint>,
+    g: &Goal<Constraint>,
+    ts: impl IntoIterator<Item = Ty>,
+) -> bool {
+    //let f = env.eval(g.clone());
+    let cnstr = types_check(g, ts);
     match smt::default_solver().solve(&cnstr, &HashSet::new()) {
         smt::SMTResult::Sat => true,
         smt::SMTResult::Unsat => false,
         smt::SMTResult::Timeout | smt::SMTResult::Unknown => panic!("smt check fail.."),
     }
 }
-
-// pub fn type_check(env: TyEnv, fml: Formula, t: Ty) -> Result<(), Error> {
-//
-//     unimplemented!()
-// }

@@ -140,6 +140,12 @@ impl Fv for Op {
     }
 }
 
+impl From<Ident> for Op {
+    fn from(x: Ident) -> Self {
+        Op::mk_var(x)
+    }
+}
+
 #[derive(Clone)]
 pub struct IntegerEnvironment {
     imap: Stack<Ident>,
@@ -184,16 +190,6 @@ impl Op {
         Op::new(OpExpr::Var(x))
     }
 }
-//impl PartialEq for Op {
-//    fn eq(&self, other: &Self) -> bool {
-//        match (self.kind(), other.kind()) {
-//            (OpExpr::Op(o1, x1, y1), OpExpr::Op(o2, x2, y2)) => o1 == o2 && x1 == x2 && y1 == y2,
-//            (OpExpr::Var(x1), OpExpr::Var(x2)) => x1 == x2,
-//            (OpExpr::Const(c1), OpExpr::Const(c2)) => c1 == c2,
-//            (_, _) => false,
-//        }
-//    }
-//}
 
 impl Subst for Op {
     type Item = Op;

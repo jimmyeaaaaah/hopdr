@@ -70,7 +70,7 @@ impl Rename for Atom {
             AtomKind::True => self.clone(),
             AtomKind::Constraint(c) => Atom::mk_constraint(c.rename(x, y)),
             AtomKind::Predicate(p, l) => {
-                let l2 = l.iter().map(|id| id.rename(x, y)).collect();
+                let l2: Vec<Op> = l.iter().map(|id| id.rename(x, y)).collect();
                 Atom::mk_pred(*p, l2)
             }
             AtomKind::Conj(a1, a2) => Atom::mk_conj(a1.rename(x, y), a2.rename(x, y)),
@@ -213,7 +213,7 @@ impl Subst for Atom {
             AtomKind::True => self.clone(),
             AtomKind::Constraint(c) => Atom::mk_constraint(c.subst(x, v)),
             AtomKind::Predicate(p, l) => {
-                let l2 = l.iter().map(|id| id.subst(x, v)).collect();
+                let l2: Vec<Op> = l.iter().map(|id| id.subst(x, v)).collect();
                 Atom::mk_pred(*p, l2)
             }
             AtomKind::Conj(_, _) => todo!(),
@@ -295,8 +295,12 @@ impl Atom {
     pub fn mk_constraint(c: Constraint) -> Atom {
         Atom::new(AtomKind::Constraint(c))
     }
-    pub fn mk_pred(p: Ident, l: Vec<Op>) -> Atom {
-        Atom::new(AtomKind::Predicate(p, l))
+    pub fn mk_pred(p: Ident, l: impl Into<Vec<Op>>) -> Atom {
+        Atom::new(AtomKind::Predicate(p, l.into()))
+    }
+    pub fn mk_fresh_pred(l: Vec<Op>) -> Atom {
+        let p = Ident::fresh();
+        Atom::mk_pred(p, l)
     }
     pub fn mk_quantifier(q: QuantifierKind, x: Ident, c: Atom) -> Atom {
         Atom::new(AtomKind::Quantifier(q, x, c))

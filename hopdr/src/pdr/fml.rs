@@ -5,10 +5,10 @@ use crate::formula::fofml;
 use crate::formula::hes::Problem;
 use crate::formula::hes::{Goal, GoalKind};
 use crate::formula::{Constraint, Ident, Logic, Subst};
-use crate::pdr::rtype::{least_fml, types_check, Tau, TyEnv};
+use crate::pdr::rtype::{
+    least_fml, types_check, tys_check, Refinement, Tau, TyEnv, TypeEnvironment,
+};
 use crate::solver::smt;
-
-use super::rtype::{Refinement, TypeEnvironment};
 
 impl From<Goal<Constraint>> for Goal<fofml::Atom> {
     fn from(g: Goal<Constraint>) -> Self {
@@ -196,6 +196,17 @@ impl<C: Refinement> Env<C> {
     }
 }
 
+impl Env<fofml::Atom> {
+    pub fn from_tyenv(tenv: &TyEnv) -> Env<fofml::Atom> {
+        let mut map = HashMap::new();
+        for (key, ts) in tenv.map.iter() {
+            let fmls = ts.iter().map(|t| least_fml(t.clone().into()));
+            map.insert(*key, Goal::mk_ho_disj(fmls, ts[0].to_sty()));
+        }
+        Env { map }
+    }
+}
+
 impl<C: Refinement> Problem<C> {
     // ℱ(Σ)
     pub fn transform(&self, env: &Env<C>) -> Env<C> {
@@ -207,13 +218,17 @@ impl<C: Refinement> Problem<C> {
     }
 }
 
-// Γ ⊧ g ⇔ ⊧ θ where Γ(g) → θ
-pub fn env_models(env: &Env<Constraint>, g: &Goal<Constraint>) -> bool {
+pub fn env_models_constraint<C: Refinement>(env: &Env<C>, g: &Goal<C>) -> C {
     // debug
     debug!("env_models env: {}", env);
     let f = env.eval(g.clone());
     debug!("env_models g: {}", f);
-    let cnstr = f.reduce();
+    f.reduce()
+}
+
+// Γ ⊧ g ⇔ ⊧ θ where Γ(g) → θ
+pub fn env_models(env: &Env<Constraint>, g: &Goal<Constraint>) -> bool {
+    let cnstr = env_models_constraint(env, g);
     match smt::default_solver().solve(&cnstr, &HashSet::new()) {
         smt::SMTResult::Sat => true,
         smt::SMTResult::Unsat => false,
@@ -221,14 +236,24 @@ pub fn env_models(env: &Env<Constraint>, g: &Goal<Constraint>) -> bool {
     }
 }
 
+pub fn env_types<C: Refinement>(env: &Env<C>, tenv: &TypeEnvironment<Tau<C>>) -> C {
+    let mut result_constraint = C::mk_true();
+    for (x, g) in env.map.iter() {
+        let ts = tenv.get(x).unwrap();
+        let c = types_check(g, ts.iter().map(|x| x.clone()));
+        result_constraint = C::mk_conj(result_constraint, c);
+    }
+    result_constraint
+}
+
 pub fn check_inductive(env: &TyEnv, problem: &Problem<Constraint>) -> bool {
-    let fenv = Env::from_type_environment(env);
+    let fenv = problem.transform(&Env::from_type_environment(env));
 
     // transform fenv
     // currently just checking ⌊Γ⌋ ↑ Γ
-    for clause in problem.clauses.iter() {
-        let tys = env.get(&clause.head.id).unwrap().iter().map(|x| x.clone());
-        if !types_check(&fenv, &clause.body, tys) {
+    for (id, g) in fenv.map.into_iter() {
+        let tys = env.get(&id).unwrap().iter().map(|x| x.clone());
+        if !tys_check(&g, tys) {
             return false;
         }
     }

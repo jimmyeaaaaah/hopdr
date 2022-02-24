@@ -172,13 +172,18 @@ impl HoPDR {
 
     // Assumption 1: self.models.len() > 0
     // Assumption 2: ℱ(⌊Γ⌋) ⊧ ψ
+    // Assumption 3: self.get_current_cex_level() < N
     fn conflict(&mut self) -> Result<(), Error> {
         debug!("{}", "conflict".blue());
         //debug!("[PDR]conflict: {} <-> {}", &c.label, &refute_ty);
+        let level = self.get_current_cex_level();
+        let env_i = (&self.envs[level]).into();
+        let env_i1 = (&self.envs[level + 1]).into();
         match infer::infer(
-            &self.problem,
-            self.get_current_target_approx(),
-            self.models.last().unwrap(),
+            &self.problem_atom_cache,
+            &env_i,
+            &env_i1,
+            &self.models.last().unwrap().clone().into(),
         ) {
             Some(tyenv_new) => {
                 // conjoin
