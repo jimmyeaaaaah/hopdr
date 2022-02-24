@@ -14,15 +14,14 @@ fn main() {
         .init();
     // RUST_LOG=info (trace, debug, etc..)
     println!("starting PDR...");
-    let (_, f) = parse::parse::<VerboseError<&str>>(
+    let (s, f) = parse::parse::<VerboseError<&str>>(
         "
-        S n k =v (n > 0 || k 0) && (n <= 0 || S (n - 1) (L n k)).
-        K m n =v m <= n.
-        L n k m =v k (n + m).
-        M =v ∀ x. S x (K x).
+        S n k =v (n > 0 || k 0) && (n <= 0 || S (n - 1) (\\r. k (r + n))).
+        M =v ∀ x. S x (\\r. r >= x).
          ",
     )
     .unwrap();
+    println!("{}", s);
 
     match &f {
         parse::Problem::NuHFLZValidityChecking(vc) => {

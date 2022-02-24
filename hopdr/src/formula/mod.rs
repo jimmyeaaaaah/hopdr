@@ -225,7 +225,7 @@ pub trait Bot {
     fn is_false(&self) -> bool;
 }
 
-pub trait Logic {
+pub trait Logic: Top + Bot {
     fn mk_conj(x: Self, y: Self) -> Self;
     fn mk_disj(x: Self, y: Self) -> Self;
 }
@@ -324,6 +324,9 @@ impl Top for Constraint {
     fn is_true(&self) -> bool {
         match self.kind() {
             ConstraintExpr::True => true,
+            ConstraintExpr::Quantifier(QuantifierKind::Universal, _, c) => c.is_true(),
+            ConstraintExpr::Conj(c1, c2) => c1.is_true() && c2.is_true(),
+            ConstraintExpr::Disj(c1, c2) => c1.is_true() || c2.is_true(),
             _ => false,
         }
     }
@@ -335,6 +338,9 @@ impl Bot for Constraint {
     fn is_false(&self) -> bool {
         match self.kind() {
             ConstraintExpr::False => true,
+            ConstraintExpr::Quantifier(QuantifierKind::Universal, _, c) => c.is_false(),
+            ConstraintExpr::Conj(c1, c2) => c1.is_false() || c2.is_false(),
+            ConstraintExpr::Disj(c1, c2) => c1.is_false() && c2.is_false(),
             _ => false,
         }
     }

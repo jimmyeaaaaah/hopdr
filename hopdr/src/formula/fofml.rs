@@ -153,6 +153,10 @@ impl Top for Atom {
     fn is_true(&self) -> bool {
         match self.kind() {
             AtomKind::True => true,
+            AtomKind::Constraint(x) => x.is_true(),
+            AtomKind::Quantifier(QuantifierKind::Universal, _, a) => a.is_true(),
+            AtomKind::Conj(a1, a2) => a1.is_true() && a2.is_true(),
+            AtomKind::Disj(a1, a2) => a1.is_true() || a2.is_true(),
             _ => false,
         }
     }
@@ -166,6 +170,9 @@ impl Bot for Atom {
     fn is_false(&self) -> bool {
         match self.kind() {
             AtomKind::Constraint(x) => x.is_false(),
+            AtomKind::Quantifier(QuantifierKind::Universal, _, a) => a.is_false(),
+            AtomKind::Conj(a1, a2) => a1.is_false() || a2.is_false(),
+            AtomKind::Disj(a1, a2) => a1.is_false() && a2.is_false(),
             _ => false,
         }
     }
@@ -174,10 +181,26 @@ impl Bot for Atom {
 impl Logic for Atom {
     fn mk_conj(x: Self, y: Self) -> Atom {
         use AtomKind::*;
-        Atom::new(Conj(x, y))
+        if x.is_false() || y.is_false() {
+            Atom::mk_false()
+        } else if x.is_true() {
+            y
+        } else if y.is_true() {
+            x
+        } else {
+            Atom::new(Conj(x, y))
+        }
     }
     fn mk_disj(x: Self, y: Self) -> Atom {
-        Atom::new(AtomKind::Disj(x, y))
+        if x.is_true() || y.is_true() {
+            Atom::mk_true()
+        } else if x.is_false() {
+            y
+        } else if y.is_false() {
+            x
+        } else {
+            Atom::new(AtomKind::Disj(x, y))
+        }
     }
 }
 
@@ -216,10 +239,27 @@ impl Subst for Atom {
                 let l2: Vec<Op> = l.iter().map(|id| id.subst(x, v)).collect();
                 Atom::mk_pred(*p, l2)
             }
-            AtomKind::Conj(_, _) => todo!(),
-            AtomKind::Disj(_, _) => todo!(),
-            AtomKind::Not(_) => todo!(),
-            AtomKind::Quantifier(_, _, _) => todo!(),
+            AtomKind::Conj(a1, a2) => {
+                let a1 = a1.subst(x, v);
+                let a2 = a2.subst(x, v);
+                Atom::mk_conj(a1, a2)
+            }
+            AtomKind::Disj(a1, a2) => {
+                let a1 = a1.subst(x, v);
+                let a2 = a2.subst(x, v);
+                Atom::mk_disj(a1, a2)
+            }
+            AtomKind::Not(a) => {
+                let a = a.subst(x, v);
+                Atom::mk_not(a)
+            }
+            AtomKind::Quantifier(q, y, a) => {
+                if x == y {
+                    Atom::mk_quantifier(*q, *y, a.clone())
+                } else {
+                    Atom::mk_quantifier(*q, *y, a.subst(x, v))
+                }
+            }
         }
     }
 }
@@ -250,7 +290,7 @@ impl Atom {
         }
     }
     /// check the satisfiability of the given fofml formula
-    pub fn check_satisfiability(&self) -> Option<HashMap<Ident, (Vec<Op>, Constraint)>> {
+    pub fn check_satisfiability(&self) -> Option<HashMap<Ident, (Vec<Ident>, Constraint)>> {
         fn collect_templates(
             a: &Atom,
             map: &mut HashMap<Ident, Template>,
@@ -412,7 +452,7 @@ impl Linear {
     fn to_constraint(
         &self,
         coefs: impl Iterator<Item = Op>,
-        args: &[Op],
+        args: &[Ident],
         constant: Op,
     ) -> Constraint {
         let o = gen_linear_sum(coefs, args);
@@ -446,19 +486,31 @@ fn new_gt_template(nargs: usize) -> Linear {
 }
 
 impl TemplateKind for Linear {
-    fn apply(&self, args: &[Op]) -> Constraint {
+    fn apply(&self, arg_ops: &[Op]) -> Constraint {
         let coefs = self.coefs.iter().map(|x| Op::mk_var(*x));
+        let args: Vec<Ident> = arg_ops.iter().map(|_| Ident::fresh()).collect();
         let constant = Op::mk_var(self.constant);
-        self.to_constraint(coefs, args, constant)
+        let c = self.to_constraint(coefs, &args, constant);
+        c.subst_multi(
+            args.iter()
+                .zip(arg_ops.iter())
+                .map(|(x, y)| (x.clone(), y.clone())),
+        )
     }
 
-    fn instantiate(&self, args: &[Op], model: &smt::Model) -> Constraint {
+    fn instantiate(&self, arg_ops: &[Op], model: &smt::Model) -> Constraint {
         let coefs = self.coefs.iter().map(|x| {
             let v = model.get(x).unwrap();
             Op::mk_const(v)
         });
+        let args: Vec<Ident> = arg_ops.iter().map(|_| Ident::fresh()).collect();
         let constant = Op::mk_const(model.get(&self.constant).unwrap());
-        self.to_constraint(coefs, args, constant)
+        let c = self.to_constraint(coefs, &args, constant);
+        c.subst_multi(
+            args.iter()
+                .zip(arg_ops.iter())
+                .map(|(x, y)| (x.clone(), y.clone())),
+        )
     }
 
     fn coefs<'a>(&'a self) -> Box<dyn Iterator<Item = &'a Ident> + 'a> {
@@ -474,14 +526,14 @@ pub struct Template<'a> {
     template_kinds: Vec<Box<dyn TemplateKind + 'a>>,
 }
 
-fn gen_linear_sum(coefs: impl IntoIterator<Item = Op>, args: &[Op]) -> Op {
+fn gen_linear_sum(coefs: impl IntoIterator<Item = Op>, args: &[Ident]) -> Op {
     if !args.is_empty() {
         let mut coefs = coefs.into_iter();
         let c = coefs.next().unwrap();
-        let mut cur = Op::mk_bin_op(OpKind::Mul, c, args[0].clone());
+        let mut cur = Op::mk_bin_op(OpKind::Mul, c, args[0].clone().into());
         for (id, coef) in args[1..].iter().zip(coefs) {
             let id = id.clone();
-            let term = Op::mk_bin_op(OpKind::Mul, coef, id);
+            let term = Op::mk_bin_op(OpKind::Mul, coef, id.into());
             cur = Op::mk_bin_op(OpKind::Add, cur, term)
         }
         cur
@@ -516,14 +568,15 @@ impl<'a> Template<'a> {
         self.template_kinds.iter().map(|x| x.coefs()).flatten()
     }
 
-    fn to_constraint(self, model: &smt::Model) -> (Vec<Op>, Constraint) {
+    fn to_constraint(self, model: &smt::Model) -> (Vec<Ident>, Constraint) {
         let args = (0..self.nargs)
             .into_iter()
-            .map(|_| Op::mk_var(Ident::fresh()))
+            .map(|_| Ident::fresh())
             .collect::<Vec<_>>();
+        let op_args: Vec<Op> = args.iter().map(|x| x.clone().into()).collect();
         let mut c = Constraint::mk_true();
         for t in self.template_kinds.iter() {
-            c = Constraint::mk_conj(t.instantiate(&args, model), c);
+            c = Constraint::mk_conj(t.instantiate(&op_args, model), c);
         }
         (args, c)
     }

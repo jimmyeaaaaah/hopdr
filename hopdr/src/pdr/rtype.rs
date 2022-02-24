@@ -3,7 +3,6 @@ use std::{
     fmt::{self, Display},
 };
 
-use super::fml::Env;
 use crate::formula::{chc, fofml, Variable};
 use crate::formula::{
     Bot, Constraint, Fv, Ident, Logic, Negation, Op, Rename, Subst, Top, Type as SType,
@@ -173,7 +172,10 @@ impl Tau<fofml::Atom> {
         match self.kind() {
             TauKind::Proposition(p) => Tau::mk_prop_ty(p.assign(model)),
             TauKind::IArrow(v, x) => Tau::mk_iarrow(*v, x.assign(model)),
-            TauKind::Arrow(x, y) => Tau::mk_arrow(x.assign(model), y.assign(model)),
+            TauKind::Arrow(x, y) => {
+                let ts = x.iter().map(|t| t.assign(model)).collect();
+                Tau::mk_arrow(ts, y.assign(model))
+            }
         }
     }
 }

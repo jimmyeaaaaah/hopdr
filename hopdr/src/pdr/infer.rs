@@ -1,12 +1,9 @@
-use super::fml::{env_models, env_models_constraint, Env};
+use super::fml;
+use super::fml::{env_models_constraint, Env};
 use super::rtype::{Tau, TyEnv, TypeEnvironment};
-#[allow(unused_imports)]
-use super::{fml, rtype};
 use crate::formula;
-#[allow(unused_imports)]
 use crate::formula::hes::{Goal, Problem as ProblemBase};
-#[allow(unused_imports)]
-use crate::formula::{fofml, hes, Constraint, Ident, Logic, Op};
+use crate::formula::{fofml, Ident, Logic, Op};
 use crate::util::P;
 
 use std::collections::HashSet;
@@ -67,8 +64,8 @@ impl Type {
             }
             TypeKind::IArrow(t) => {
                 let arg = Ident::fresh();
-                let already_exists = env.insert(arg);
-                debug_assert!(!already_exists);
+                let not_already_exists = env.insert(arg);
+                debug_assert!(not_already_exists);
                 let t = t.generate_template(env);
                 let exists = env.remove(&arg);
                 debug_assert!(exists);
@@ -103,7 +100,14 @@ impl From<formula::Type> for Type {
 
 impl ITEnv {
     fn generate_template(&self) -> TemplateEnv {
-        unimplemented!()
+        let mut env = TemplateEnv::new();
+        for (k, ts) in self.map.iter() {
+            for t in ts {
+                let mut set = HashSet::new();
+                env.add(*k, t.generate_template(&mut set));
+            }
+        }
+        env
     }
 }
 
@@ -156,21 +160,28 @@ pub(super) fn infer(
     let translated = problem.transform(&env_i); // ℱ(⌊Γᵢ⌋)
     let c = fml::env_types(&translated, &tenv);
 
+    debug!("ℱ(⌊Γᵢ⌋) ↑ Γ");
+    debug!("{}", c);
+
     // 3.2 calculate constraint `c2` from Γ ⋃ Γᵢ₊₁ ⊨ ψ
 
     let tenv_merged = TypeEnvironment::merge(&tenv, env_i1); // Γᵢ₊₁ ∪ Γ
 
     let tenv_merged_floored = Env::from_type_environment(&tenv_merged); // ⌊Γᵢ₊₁ ∪ Γ⌋
     let c2 = env_models_constraint(&tenv_merged_floored, cex);
+    debug!("Γ ⋃ Γᵢ₊₁ ⊨ ψ");
+    debug!("{}", c2);
 
     let constraint = fofml::Atom::mk_conj(c, c2);
+    debug!("generated constraint: {}", constraint);
     // 4. solve constraints by CHC (or a template-based method)
     constraint.check_satisfiability().map(|model| {
         let mut result_env = TypeEnvironment::new();
         for (k, ts) in tenv.map.iter() {
-            let ts = ts.iter().map(|t| t.assign(&model)).collect();
-            result_env.add(*k, ts);
+            for t in ts {
+                result_env.add(*k, t.assign(&model));
+            }
         }
-        unimplemented!()
+        result_env
     })
 }

@@ -52,12 +52,12 @@ fn parse_num<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Exp
 
 fn pred<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, PredKind, E> {
     alt((
-        map(tag(">"), |_| PredKind::Gt),
         map(tag("<="), |_| PredKind::Leq),
-        map(tag("="), |_| PredKind::Eq),
+        map(tag(">="), |_| PredKind::Geq),
         map(tag("!="), |_| PredKind::Neq),
         map(tag("<>"), |_| PredKind::Neq),
-        map(tag(">="), |_| PredKind::Geq),
+        map(tag(">"), |_| PredKind::Gt),
+        map(tag("="), |_| PredKind::Eq),
         map(tag("<"), |_| PredKind::Lt),
     ))(input)
 }
@@ -184,6 +184,15 @@ fn test_parse_hes_1() {
     let (s, c) = parse_hes::<VerboseError<&str>>(s).unwrap();
     assert_eq!(s, "");
     assert_eq!(c.args.len(), 2);
+    assert_eq!(c.fixpoint, Fixpoint::Greatest);
+}
+#[test]
+fn test_parse_hes_2() {
+    use nom::error::VerboseError;
+    let s = "M =v ∀ x. S x (\\r. r >= x).";
+    let (s, c) = parse_hes::<VerboseError<&str>>(s).unwrap();
+    assert_eq!(s, "");
+    assert_eq!(c.args.len(), 0);
     assert_eq!(c.fixpoint, Fixpoint::Greatest);
 }
 #[test]
