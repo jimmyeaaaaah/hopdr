@@ -250,24 +250,38 @@ impl Atom {
         }
     }
     /// check the satisfiability of the given fofml formula
-    pub fn check_satisfiability(
-        &self,
-        vars: &HashSet<Ident>,
-        map: &HashMap<Ident, pcsp::Predicate>,
-    ) -> Option<HashMap<Ident, (Vec<Op>, Constraint)>> {
+    pub fn check_satisfiability(&self) -> Option<HashMap<Ident, (Vec<Op>, Constraint)>> {
+        fn collect_templates(
+            a: &Atom,
+            map: &mut HashMap<Ident, Template>,
+            fvs: &mut HashSet<Ident>,
+        ) {
+            match a.kind() {
+                AtomKind::True | AtomKind::Constraint(_) => (),
+                AtomKind::Predicate(p, l) => match map.get(p) {
+                    Some(_) => (),
+                    None => {
+                        let t = Template::new(l.len());
+                        for i in t.coef_iter() {
+                            fvs.insert(*i);
+                        }
+                        map.insert(*p, t);
+                    }
+                },
+                AtomKind::Conj(a1, a2) | AtomKind::Disj(a1, a2) => {
+                    collect_templates(a1, map, fvs);
+                    collect_templates(a2, map, fvs);
+                }
+                AtomKind::Not(a) | AtomKind::Quantifier(_, _, a) => collect_templates(a, map, fvs),
+            }
+        }
         let mut templates = HashMap::new();
         let mut fvs = HashSet::new();
-        for predicate in map.values() {
-            let t = Template::new(predicate.args.len());
-            for i in t.coef_iter() {
-                fvs.insert(*i);
-            }
-            templates.insert(predicate.id, t);
-        }
+        collect_templates(self, &mut templates, &mut fvs);
         let c = self.replace_by_template(&templates);
         // check satisfiability of c and get model
         let mut solver = smt::default_solver();
-        let model = match solver.solve_with_model(&c, vars, &fvs) {
+        let model = match solver.solve_with_model(&c, &HashSet::new(), &fvs) {
             Ok(model) => model,
             Err(smt::SMTResult::Unsat) => {
                 // when c is unsat, returns None
@@ -358,6 +372,26 @@ impl Atom {
                 .to_constraint()
                 .map(|c| Constraint::mk_quantifier(*q, Variable::mk(*x, Type::mk_type_int()), c)),
             AtomKind::Not(x) => x.to_constraint().map(|x| x.negate()).flatten(),
+        }
+    }
+    pub fn assign(&self, model: &HashMap<Ident, (Vec<Ident>, Constraint)>) -> Constraint {
+        match self.kind() {
+            AtomKind::True => Constraint::mk_true(),
+            AtomKind::Constraint(c) => c.clone(),
+            AtomKind::Predicate(p, l) => match model.get(p) {
+                Some((r, c)) => {
+                    c.subst_multi(r.iter().zip(l.iter()).map(|(x, y)| (x.clone(), y.clone())))
+                }
+                None => panic!("not found: {}", p),
+            },
+            AtomKind::Conj(x, y) => Constraint::mk_conj(x.assign(model), y.assign(model)),
+            AtomKind::Disj(x, y) => Constraint::mk_disj(x.assign(model), y.assign(model)),
+            AtomKind::Quantifier(q, x, c) => Constraint::mk_quantifier(
+                *q,
+                Variable::mk(*x, Type::mk_type_int()),
+                c.assign(model),
+            ),
+            AtomKind::Not(x) => x.assign(&model).negate().unwrap(),
         }
     }
 }

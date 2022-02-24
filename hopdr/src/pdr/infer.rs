@@ -149,17 +149,28 @@ pub(super) fn infer(
     // 2. prepare template
     let tenv = ienv.generate_template();
     // 3. calculate constraints
-    // 3.1 ℱ(⌊Γᵢ⌋) ↑ Γ
+
+    // 3.1 calculate constraint `c` ℱ(⌊Γᵢ⌋) ↑ Γ
     let env_i = fml::Env::from_type_environment(env_i);
-    let translated = problem.transform(&env_i);
+
+    let translated = problem.transform(&env_i); // ℱ(⌊Γᵢ⌋)
     let c = fml::env_types(&translated, &tenv);
-    // Γᵢ₊₁ ∪ Γ
-    let tenv_merged = TypeEnvironment::merge(&tenv, env_i1);
-    // ⌊Γᵢ₊₁ ∪ Γ⌋
-    let tenv_merged_floored = Env::from_type_environment(&tenv_merged);
+
+    // 3.2 calculate constraint `c2` from Γ ⋃ Γᵢ₊₁ ⊨ ψ
+
+    let tenv_merged = TypeEnvironment::merge(&tenv, env_i1); // Γᵢ₊₁ ∪ Γ
+
+    let tenv_merged_floored = Env::from_type_environment(&tenv_merged); // ⌊Γᵢ₊₁ ∪ Γ⌋
     let c2 = env_models_constraint(&tenv_merged_floored, cex);
+
     let constraint = fofml::Atom::mk_conj(c, c2);
     // 4. solve constraints by CHC (or a template-based method)
-    // 5. return type environment
-    None
+    constraint.check_satisfiability().map(|model| {
+        let mut result_env = TypeEnvironment::new();
+        for (k, ts) in tenv.map.iter() {
+            let ts = ts.iter().map(|t| t.assign(&model)).collect();
+            result_env.add(*k, ts);
+        }
+        unimplemented!()
+    })
 }

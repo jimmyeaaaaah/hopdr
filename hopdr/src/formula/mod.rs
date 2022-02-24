@@ -233,11 +233,12 @@ pub trait Logic {
 pub trait Subst: Sized {
     type Item;
     type Id;
-    fn subst_multi(&self, substs: &[(Self::Id, Self::Item)]) -> Self {
-        assert!(!substs.is_empty());
-        let mut ret = self.subst(&substs[0].0, &substs[0].1);
-        for (ident, val) in &substs[1..] {
-            ret = ret.subst(ident, val);
+    fn subst_multi(&self, substs: impl IntoIterator<Item = (Self::Id, Self::Item)>) -> Self {
+        let mut itr = substs.into_iter();
+        let (id, item) = itr.next().unwrap();
+        let mut ret = self.subst(&id, &item);
+        for (ident, val) in itr {
+            ret = ret.subst(&ident, &val);
         }
         ret
     }

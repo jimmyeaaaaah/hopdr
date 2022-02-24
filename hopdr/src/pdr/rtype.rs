@@ -168,6 +168,16 @@ impl From<Tau<Constraint>> for Tau<fofml::Atom> {
     }
 }
 
+impl Tau<fofml::Atom> {
+    pub fn assign(&self, model: &HashMap<Ident, (Vec<Ident>, Constraint)>) -> Tau<Constraint> {
+        match self.kind() {
+            TauKind::Proposition(p) => Tau::mk_prop_ty(p.assign(model)),
+            TauKind::IArrow(v, x) => Tau::mk_iarrow(*v, x.assign(model)),
+            TauKind::Arrow(x, y) => Tau::mk_arrow(x.assign(model), y.assign(model)),
+        }
+    }
+}
+
 impl<C> Tau<C> {
     pub fn to_sty(&self) -> SType {
         match self.kind() {
