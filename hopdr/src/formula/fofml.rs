@@ -132,6 +132,33 @@ impl From<pcsp::Atom> for Atom {
         }
     }
 }
+impl From<Atom> for pcsp::Atom {
+    fn from(from: Atom) -> pcsp::Atom {
+        match from.kind() {
+            AtomKind::True => pcsp::Atom::mk_true(),
+            AtomKind::Constraint(c) => pcsp::Atom::mk_constraint(c.clone()),
+            AtomKind::Conj(a1, a2) => {
+                let c1 = a1.clone().into();
+                let c2 = a2.clone().into();
+                pcsp::Atom::mk_conj(c1, c2)
+            }
+            AtomKind::Disj(a1, a2) => {
+                let c1 = a1.clone().into();
+                let c2 = a2.clone().into();
+                pcsp::Atom::mk_disj(c1, c2)
+            }
+            AtomKind::Not(a) => {
+                let c: pcsp::Atom = a.clone().into();
+                c.negate().unwrap()
+            }
+            AtomKind::Quantifier(q, x, a) => {
+                let c: pcsp::Atom = a.clone().into();
+                pcsp::Atom::mk_quantifier(*q, *x, c)
+            }
+            AtomKind::Predicate(p, l) => pcsp::Atom::mk_pred(p.clone(), l.clone()),
+        }
+    }
+}
 
 impl From<pcsp::PCSP<pcsp::Atom>> for Atom {
     fn from(from: pcsp::PCSP<pcsp::Atom>) -> Atom {
@@ -484,42 +511,42 @@ impl Atom {
             AtomKind::Not(x) => negate(x),
         }
     }
-    // Assumption: Not is already reduced by `reduce_not`
-    pub fn prenex_normal_form(&self) -> Atom {
-        fn pnf_inner(x: &Atom) -> (Vec<(QuantifierKind, Ident)>, Atom) {
-            match x.kind() {
-                AtomKind::True | AtomKind::Constraint(_) | AtomKind::Predicate(_, _) => {
-                    (Vec::new(), x.clone())
-                }
-                AtomKind::Conj(a1, a2) => {
-                    let (mut v1, a1) = pnf_inner(a1);
-                    let (mut v2, a2) = pnf_inner(a2);
-                    v1.append(&mut v2);
-                    (v1, Atom::mk_conj(a1, a2))
-                }
-                AtomKind::Disj(a1, a2) => {
-                    let (mut v1, a1) = pnf_inner(a1);
-                    let (mut v2, a2) = pnf_inner(a2);
-                    v1.append(&mut v2);
-                    (v1, Atom::mk_disj(a1, a2))
-                }
-                AtomKind::Quantifier(q, x, a) => {
-                    let (mut v, a) = pnf_inner(a);
-                    debug_assert!(v.iter().find(|(_, y)| { x == y }).is_some());
-                    v.push((*q, *x));
-                    (v, a)
-                }
-                AtomKind::Not(x) => {
-                    // Not is already reduced, so x must be Predicate
-                    // this match is just to make sure this.
-                    match x.kind() {
-                        AtomKind::Predicate(_, _) => todo!(),
-                        _ => panic!("program error"),
-                    }
+    pub fn prenex_normal_form_raw(self: &Atom) -> (Vec<(QuantifierKind, Ident)>, Atom) {
+        match self.kind() {
+            AtomKind::True | AtomKind::Constraint(_) | AtomKind::Predicate(_, _) => {
+                (Vec::new(), self.clone())
+            }
+            AtomKind::Conj(a1, a2) => {
+                let (mut v1, a1) = a1.prenex_normal_form_raw();
+                let (mut v2, a2) = a2.prenex_normal_form_raw();
+                v1.append(&mut v2);
+                (v1, Atom::mk_conj(a1, a2))
+            }
+            AtomKind::Disj(a1, a2) => {
+                let (mut v1, a1) = a1.prenex_normal_form_raw();
+                let (mut v2, a2) = a2.prenex_normal_form_raw();
+                v1.append(&mut v2);
+                (v1, Atom::mk_disj(a1, a2))
+            }
+            AtomKind::Quantifier(q, x, a) => {
+                let (mut v, a) = a.prenex_normal_form_raw();
+                debug_assert!(v.iter().find(|(_, y)| { x == y }).is_none());
+                v.push((*q, *x));
+                (v, a)
+            }
+            AtomKind::Not(x) => {
+                // Not is already reduced, so x must be Predicate
+                // this match is just to make sure this.
+                match x.kind() {
+                    AtomKind::Predicate(_, _) => (Vec::new(), self.clone()),
+                    _ => panic!("program error"),
                 }
             }
         }
-        let (v, mut a) = pnf_inner(self);
+    }
+    // Assumption: Not is already reduced by `reduce_not`
+    pub fn prenex_normal_form(&self) -> Atom {
+        let (v, mut a) = self.prenex_normal_form_raw();
         for (q, x) in v.into_iter().rev() {
             a = Atom::mk_quantifier(q, x, a);
         }

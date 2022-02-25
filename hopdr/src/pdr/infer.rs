@@ -3,7 +3,7 @@ use super::fml::{env_models_constraint, Env};
 use super::rtype::{Tau, TyEnv, TypeEnvironment};
 use crate::formula;
 use crate::formula::hes::{Goal, Problem as ProblemBase};
-use crate::formula::{fofml, pcsp, Ident, Logic, Op};
+use crate::formula::{fofml, pcsp, Bot, Ident, Logic, Op, Top};
 use crate::util::P;
 
 use std::collections::HashSet;
@@ -177,9 +177,59 @@ pub(super) fn infer(
 
     // 4. solve constraints by CHC (or a template-based method)
     // 4.1 translate constraint to CHC or extended chc
-    let cnf = constraint.to_cnf();
+    let constraint = constraint.reduce_not();
+    let (quantifiers, pnf) = constraint.prenex_normal_form_raw();
+    let mut ienv = HashSet::new();
+    for (q, x) in quantifiers {
+        match q {
+            formula::QuantifierKind::Universal => {
+                ienv.insert(x);
+            }
+            formula::QuantifierKind::Existential => panic!("program error"),
+        }
+    }
+    let cnf = pnf.to_cnf();
+    let mut is_chc = true;
+    let mut clauses = Vec::new();
     for c in cnf {
         let dnf = c.to_dnf();
+        let mut body = pcsp::Atom::mk_true();
+        let mut head = pcsp::Atom::mk_false();
+        for atom in dnf {
+            debug!("{}", atom);
+            match atom.kind() {
+                fofml::AtomKind::True | fofml::AtomKind::Constraint(_) => {
+                    body = pcsp::Atom::mk_conj(atom.negate().into(), body);
+                }
+                fofml::AtomKind::Predicate(p, l) => {
+                    if !head.is_false() {
+                        is_chc = false;
+                    }
+                    head = pcsp::Atom::mk_disj(atom.clone().into(), head);
+                }
+                fofml::AtomKind::Not(a) => {
+                    match a.kind() {
+                        fofml::AtomKind::Predicate(_, _) => {
+                            body = pcsp::Atom::mk_conj(a.clone().into(), body)
+                        }
+                        _ => debug_assert!(false),
+                    };
+                }
+                fofml::AtomKind::Quantifier(_, _, _)
+                | fofml::AtomKind::Conj(_, _)
+                | fofml::AtomKind::Disj(_, _) => {
+                    panic!("program error")
+                }
+            }
+        }
+        clauses.push(pcsp::PCSP::new(body, head));
+    }
+    if is_chc {
+        for c in clauses.iter() {
+            debug!("{}", c);
+        }
+    } else {
+        unimplemented!()
     }
 
     constraint.check_satisfiability().map(|model| {

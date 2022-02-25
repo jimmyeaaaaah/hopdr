@@ -103,14 +103,6 @@ impl Atom {
             _ => None,
         }
     }
-    pub fn mk_conj(x: Self, y: Self) -> Atom {
-        use AtomKind::*;
-        match (&*x, &*y) {
-            (True, _) => y.clone(),
-            (_, True) => x.clone(),
-            _ => Atom::new(Conj(x.clone(), y.clone())),
-        }
-    }
 
     pub fn mk_quantifier(q: QuantifierKind, x: Ident, c: Self) -> Atom {
         Atom::new(AtomKind::Quantifier(q, x, c))
@@ -221,20 +213,32 @@ impl Top for Atom {
     fn mk_true() -> Self {
         Atom::new(AtomKind::True)
     }
+
     fn is_true(&self) -> bool {
         match self.kind() {
             AtomKind::True => true,
+            AtomKind::Constraint(x) => x.is_true(),
+            AtomKind::Quantifier(QuantifierKind::Universal, _, a) => a.is_true(),
+            AtomKind::Conj(a1, a2) => a1.is_true() && a2.is_true(),
+            AtomKind::Disj(a1, a2) => a1.is_true() || a2.is_true(),
             _ => false,
         }
     }
 }
 
 impl Bot for Atom {
-    fn mk_false() -> Atom {
-        Atom::mk_constraint(Constraint::mk_false())
+    fn mk_false() -> Self {
+        Atom::new(AtomKind::Constraint(Constraint::mk_false()))
     }
+
     fn is_false(&self) -> bool {
-        false
+        match self.kind() {
+            AtomKind::Constraint(x) => x.is_false(),
+            AtomKind::Quantifier(QuantifierKind::Universal, _, a) => a.is_false(),
+            AtomKind::Conj(a1, a2) => a1.is_false() || a2.is_false(),
+            AtomKind::Disj(a1, a2) => a1.is_false() && a2.is_false(),
+            _ => false,
+        }
     }
 }
 
@@ -247,10 +251,14 @@ impl Logic for Atom {
     }
     fn mk_conj(x: Self, y: Self) -> Atom {
         use AtomKind::*;
-        match (&*x, &*y) {
-            (True, _) => y.clone(),
-            (_, True) => x.clone(),
-            _ => Atom::new(Conj(x.clone(), y.clone())),
+        if x.is_false() || y.is_false() {
+            Atom::mk_false()
+        } else if x.is_true() {
+            y
+        } else if y.is_true() {
+            x
+        } else {
+            Atom::new(Conj(x, y))
         }
     }
     fn is_disj<'a>(&'a self) -> Option<(&'a Atom, &'a Atom)> {
@@ -260,9 +268,15 @@ impl Logic for Atom {
         }
     }
     fn mk_disj(x: Self, y: Self) -> Atom {
-        use AtomKind::*;
-        // TODO: trivial optimization
-        Atom::new(Disj(x, y))
+        if x.is_true() || y.is_true() {
+            Atom::mk_true()
+        } else if x.is_false() {
+            y
+        } else if y.is_false() {
+            x
+        } else {
+            Atom::new(AtomKind::Disj(x, y))
+        }
     }
 }
 

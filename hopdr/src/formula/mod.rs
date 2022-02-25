@@ -230,12 +230,13 @@ pub trait Logic: Top + Bot + Clone {
     fn is_conj<'a>(&'a self) -> Option<(&'a Self, &'a Self)>;
     fn mk_disj(x: Self, y: Self) -> Self;
     fn is_disj<'a>(&'a self) -> Option<(&'a Self, &'a Self)>;
+
     fn to_cnf(&self) -> Vec<Self> {
         fn cross_or<C: Clone + Logic>(v1: &[C], v2: &[C]) -> Vec<C> {
             let mut v = Vec::new();
             for x in v1 {
                 for y in v2 {
-                    v.push(C::mk_conj(x.clone(), y.clone()));
+                    v.push(C::mk_disj(x.clone(), y.clone()));
                 }
             }
             v
@@ -263,7 +264,7 @@ pub trait Logic: Top + Bot + Clone {
             let mut v = Vec::new();
             for x in v1 {
                 for y in v2 {
-                    v.push(C::mk_disj(x.clone(), y.clone()));
+                    v.push(C::mk_conj(x.clone(), y.clone()));
                 }
             }
             v
