@@ -4,6 +4,7 @@ use super::rtype::{Tau, TyEnv, TypeEnvironment};
 use crate::formula;
 use crate::formula::hes::{Goal, Problem as ProblemBase};
 use crate::formula::{chc, fofml, pcsp, Bot, Constraint, Ident, Logic, Op, Top};
+use crate::solver;
 use crate::util::P;
 
 use std::collections::HashSet;
@@ -239,6 +240,7 @@ pub(super) fn infer(
         for c in clauses.iter() {
             debug!("{}", c);
         }
+        solver::chc::default_solver().solve(&clauses);
         unimplemented!()
     } else {
         constraint.check_satisfiability().map(|model| {

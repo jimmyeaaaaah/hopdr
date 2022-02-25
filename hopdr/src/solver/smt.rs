@@ -207,7 +207,7 @@ fn constraint_to_smt2(
     format!("{}\n(assert {})\n(check-sat)\n{}\n", decls, c_s, model)
 }
 
-fn save_smt2(smt_string: String) -> NamedTempFile {
+pub(super) fn save_smt2(smt_string: String) -> NamedTempFile {
     util::save_to_file(smt_string)
 }
 

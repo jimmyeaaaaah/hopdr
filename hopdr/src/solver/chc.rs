@@ -1,12 +1,19 @@
 use super::smt;
 use super::smt::constraint_to_smt2_inner;
 use super::smt::ident_2_smt2;
+use super::util;
 use super::{SMT2Style, SolverResult};
 use crate::formula::chc;
+use crate::formula::fofml;
 use crate::formula::pcsp;
-use crate::formula::{Fv, Ident, Op};
+use crate::formula::OpKind;
+use crate::formula::{Bot, Constraint, Fv, Ident, Logic, Op, PredKind, Top};
+
+use lexpr;
+use lexpr::Value;
 
 use std::collections::HashMap;
+use std::time::Duration;
 
 #[derive(Copy, Clone)]
 pub enum CHCStyle {
@@ -17,10 +24,6 @@ pub enum CHCStyle {
 type CHC = chc::CHC<pcsp::Atom>;
 
 const PROLOGUE: &'static str = "(set-logic HORN)\n";
-
-pub trait SMTSolver {
-    fn solve(&mut self, clauses: &Vec<CHC>) -> SolverResult;
-}
 
 fn get_epilogue(style: CHCStyle) -> &'static str {
     match style {
@@ -105,7 +108,7 @@ fn gen_def(id: &Ident, nargs: usize) -> String {
     format!("(declare-fun {} ({}) Bool)", ident_2_smt2(id), arg)
 }
 
-pub fn chcs_to_smt2(chcs: &[CHC], style: CHCStyle) -> String {
+fn chcs_to_smt2(chcs: &[CHC], style: CHCStyle) -> String {
     let mut preds = HashMap::new();
     for c in chcs {
         c.collect_predicates(&mut preds);
@@ -120,5 +123,288 @@ pub fn chcs_to_smt2(chcs: &[CHC], style: CHCStyle) -> String {
         .map(|c| chc_to_smt2(c, style))
         .collect::<Vec<_>>()
         .join("\n");
-    format!("{}{}{}{}", PROLOGUE, defs, body, get_epilogue(style))
+    format!("{}{}\n{}\n{}", PROLOGUE, defs, body, get_epilogue(style))
+}
+
+pub trait CHCSolver {
+    fn solve(&mut self, clauses: &Vec<CHC>) -> SolverResult;
+}
+struct HoiceSolver {}
+
+pub fn smt_solver(s: CHCStyle) -> Box<dyn CHCSolver> {
+    match s {
+        CHCStyle::Hoice => Box::new(HoiceSolver {}),
+        CHCStyle::Spacer => todo!(),
+    }
+}
+
+pub fn default_solver() -> Box<dyn CHCSolver> {
+    smt_solver(CHCStyle::Hoice)
+}
+
+fn hoice_solver(smt_string: String) -> String {
+    let f = smt::save_smt2(smt_string);
+    let args = vec![f.path().to_str().unwrap()];
+    // debug
+    debug!("filename: {}", &args[0]);
+    let out = util::exec_with_timeout(
+        "../../../hopv/hoice/target/release/hoice",
+        &args,
+        Duration::from_secs(1),
+    );
+    String::from_utf8(out).unwrap()
+}
+
+pub struct Model {
+    pub model: HashMap<Ident, (Vec<Ident>, fofml::Atom)>,
+}
+
+fn parse_predicate_variable(v: &str) -> Ident {
+    assert!(v.starts_with('x'));
+    Ident::from_str(&v[1..]).unwrap_or_else(|| panic!("parse fail"))
+}
+
+/*
+(define-fun xx_43
+    ( (v_0 Int) ) Bool
+    true
+  )
+*/
+const ERRMSG: &str = "smt model parse fail";
+
+fn cons_value_to_iter<'a>(v: &'a lexpr::Value) -> impl Iterator<Item = &'a lexpr::Value> {
+    v.as_cons()
+        .unwrap_or_else(|| panic!("{}({})", ERRMSG, v))
+        .iter()
+        .map(|x| x.car())
+}
+fn parse_arg<'a>(v: &'a lexpr::Value) -> &'a str {
+    let mut itr = cons_value_to_iter(v);
+    let v = itr.next().unwrap_or_else(|| panic!("{}", ERRMSG));
+    v.as_symbol().unwrap()
+}
+
+fn parse_args<'a>(v: &'a lexpr::Value) -> (Vec<Ident>, HashMap<&'a str, Ident>) {
+    println!("{}", v);
+    let itr = cons_value_to_iter(v);
+    let mut env = HashMap::new();
+    let mut args = Vec::new();
+    for v in itr {
+        println!("{}", v);
+        let val_name = parse_arg(v);
+        let ident = Ident::fresh();
+        env.insert(val_name, ident);
+        args.push(ident);
+    }
+    (args, env)
+}
+fn parse_op_cons(v: &lexpr::Cons, env: &HashMap<&str, Ident>) -> Op {
+    let mut itr = v.iter().map(|x| x.car());
+    let p = itr.next().unwrap().as_symbol().unwrap();
+    let kind = match p {
+        "+" => OpKind::Add,
+        "-" => OpKind::Sub,
+        "*" => OpKind::Mul,
+        "/" => OpKind::Div,
+        "%" => OpKind::Mod,
+        _ => panic!("failed to handle: {}", p),
+    };
+    let v: Vec<Op> = itr.map(|x| parse_op(x, env)).collect();
+
+    if kind == OpKind::Sub && v.len() == 1 {
+        match v[0].kind() {
+            crate::formula::OpExpr::Const(c) => Op::mk_const(-c),
+            crate::formula::OpExpr::Var(_) | crate::formula::OpExpr::Op(_, _, _) => {
+                panic!("program error")
+            }
+        }
+    } else {
+        debug_assert!(v.len() > 1);
+        let mut result = v[0].clone();
+        for o in &v[1..] {
+            result = Op::mk_bin_op(kind, result, o.clone());
+        }
+        result
+    }
+}
+fn parse_op(v: &lexpr::Value, env: &HashMap<&str, Ident>) -> Op {
+    match v {
+        Value::Cons(x) => parse_op_cons(x, env),
+        Value::Number(n) => Op::mk_const(n.as_i64().unwrap()),
+        Value::Symbol(x) => match env.get(x.as_ref()) {
+            Some(i) => Op::mk_var(*i),
+            None => panic!("program error"),
+        },
+        Value::Bool(_)
+        | Value::Nil
+        | Value::Null
+        | Value::String(_)
+        | Value::Char(_)
+        | Value::Keyword(_)
+        | Value::Bytes(_)
+        | Value::Vector(_) => panic!("program error"),
+    }
+}
+fn parse_body_cons(v: &lexpr::Cons, env: &HashMap<&str, Ident>) -> fofml::Atom {
+    enum Tag {
+        Pred(PredKind),
+        And,
+        Or,
+        Not,
+        Var(Ident),
+    }
+
+    let mut itr = v.iter().map(|x| x.car());
+    let p = itr.next().unwrap().as_symbol().unwrap();
+    let t = match p {
+        "<" => Tag::Pred(PredKind::Lt),
+        "<=" => Tag::Pred(PredKind::Leq),
+        ">" => Tag::Pred(PredKind::Gt),
+        ">=" => Tag::Pred(PredKind::Geq),
+        "=" => Tag::Pred(PredKind::Eq),
+        "!=" => Tag::Pred(PredKind::Neq),
+        "and" => Tag::And,
+        "or" => Tag::Or,
+        "not" => Tag::Not,
+        x => match env.get(x) {
+            Some(id) => Tag::Var(*id),
+            None => {
+                // TODO: x_nn can happen since hoice sometimes abbreviate it
+                unimplemented!()
+            }
+        },
+    };
+    match t {
+        Tag::Pred(p) => {
+            let v: Vec<Op> = itr.map(|x| parse_op(x, env)).collect();
+            debug_assert!(v.len() == 2); // maybe?
+            let c = Constraint::mk_pred(p, v);
+            fofml::Atom::mk_constraint(c)
+        }
+        Tag::And => {
+            let mut r = fofml::Atom::mk_true();
+            for a in itr.map(|x| parse_body(x, env)) {
+                r = fofml::Atom::mk_conj(r, a);
+            }
+            r
+        }
+        Tag::Or => {
+            let mut r = fofml::Atom::mk_false();
+            for a in itr.map(|x| parse_body(x, env)) {
+                r = fofml::Atom::mk_disj(r, a);
+            }
+            r
+        }
+        Tag::Not => {
+            let r: Vec<fofml::Atom> = itr.map(|x| parse_body(x, env)).collect();
+            debug_assert!(r.len() == 1);
+            let a = r[0].clone();
+            fofml::Atom::mk_not(a)
+        }
+        Tag::Var(p) => {
+            let l: Vec<Op> = itr.map(|x| parse_op(x, env)).collect();
+            fofml::Atom::mk_pred(p, l)
+        }
+    }
+}
+fn parse_body(v: &lexpr::Value, env: &HashMap<&str, Ident>) -> fofml::Atom {
+    debug!("parse_body: {}", v);
+    match v {
+        Value::Bool(t) if *t => fofml::Atom::mk_true(),
+        Value::Bool(_) => fofml::Atom::mk_false(),
+        Value::Cons(v) => parse_body_cons(v, env),
+        // Value::Symbol(x) => {
+        //     match env.get(x) {
+        //         Some(ident) => pcsp::Atom::mk_
+        //     }
+        // },
+        Value::Symbol(s) => {
+            if s.as_ref() == "true" {
+                fofml::Atom::mk_true()
+            } else if s.as_ref() == "false" {
+                fofml::Atom::mk_false()
+            } else {
+                panic!("program error")
+            }
+        }
+        // this also should not happen in parsing constraint
+        Value::Number(_) => panic!("program error"),
+        Value::Nil
+        | Value::Null
+        | Value::String(_)
+        | Value::Char(_)
+        | Value::Keyword(_)
+        | Value::Bytes(_)
+        | Value::Vector(_) => panic!("program error"),
+    }
+}
+fn parse_define_fun(v: lexpr::Value) -> (Ident, (Vec<Ident>, fofml::Atom)) {
+    let mut itr = cons_value_to_iter(&v);
+    let v = itr.next().unwrap_or_else(|| panic!("{}", ERRMSG));
+    debug_assert_eq!(v.as_symbol().unwrap(), "define-fun");
+
+    let x = itr.next().unwrap_or_else(|| panic!("{}", ERRMSG));
+    let v = x.as_symbol().unwrap_or_else(|| panic!("{}", ERRMSG));
+    let ident = parse_predicate_variable(v);
+
+    // args
+    let v = itr.next().unwrap_or_else(|| panic!("{}", ERRMSG));
+    let (args, env) = parse_args(v);
+
+    // Bool
+    let v = itr.next().unwrap_or_else(|| panic!("{}", ERRMSG));
+    debug_assert_eq!(v.as_symbol().unwrap(), "Bool");
+
+    // body of the predicate
+    let v = itr.next().unwrap_or_else(|| panic!("{}", ERRMSG));
+    let body = parse_body(v, &env);
+
+    // ident(args) = body
+    (ident, (args, body))
+}
+impl Model {
+    fn parse_hoice_model(model_str: &str) -> Result<Model, lexpr::parse::Error> {
+        let x = lexpr::from_str(model_str)?;
+        let model: HashMap<Ident, (Vec<Ident>, fofml::Atom)> = match x {
+            Value::Cons(x) => x
+                .into_iter()
+                .skip(1)
+                .map(|(v, _)| parse_define_fun(v))
+                .collect(),
+            _ => panic!("parse error: smt2 model: {}", model_str),
+        };
+        Ok(Model { model })
+    }
+}
+#[test]
+fn test_parse_model() {
+    let model = "(model
+        (define-fun xx_43
+          ( (v_0 Int) ) Bool
+          true
+        )
+        (define-fun xx_42
+          ( (v_0 Int) (v_1 Int) ) Bool
+          (and (= (+ (* (- 1) v_0) v_1) 0) (>= (* (- 1) v_1) 0))
+        )
+      )";
+    match Model::parse_hoice_model(model) {
+        Ok(m) => {
+            assert!(m.model.len() == 2);
+        }
+        Err(_) => panic!("model is broken"),
+    }
+}
+
+impl CHCSolver for HoiceSolver {
+    fn solve(&mut self, clauses: &Vec<CHC>) -> SolverResult {
+        let smt2 = chcs_to_smt2(clauses, CHCStyle::Hoice);
+        debug!("smt2: {}", &smt2);
+        let s = hoice_solver(smt2);
+        debug!("smt_solve result: {:?}", &s);
+        if s.starts_with("sat") {
+            let m = Model::parse_hoice_model(&s[4..]).unwrap();
+        }
+        unimplemented!()
+    }
 }
