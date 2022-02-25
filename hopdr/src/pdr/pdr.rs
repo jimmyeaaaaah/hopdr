@@ -183,7 +183,7 @@ impl HoPDR {
             &self.problem_atom_cache,
             &env_i,
             &env_i1,
-            &self.models.last().unwrap().clone().into(),
+            &self.models.pop().unwrap().clone().into(),
         ) {
             Some(tyenv_new) => {
                 // conjoin

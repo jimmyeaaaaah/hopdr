@@ -142,7 +142,8 @@ pub(super) fn op_to_smt2(op: &Op) -> String {
             format!("({} {} {})", k, o1, o2)
         }
         OpExpr::Var(x) => ident_2_smt2(x),
-        OpExpr::Const(c) => format!("{}", c),
+        OpExpr::Const(c) if *c >= 0 => format!("{}", c),
+        OpExpr::Const(c) => format!("(- {})", -c),
     }
 }
 
