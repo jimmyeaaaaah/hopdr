@@ -8,7 +8,7 @@ use crate::formula::{
     Bot, Constraint, Fv, Ident, Logic, Negation, Op, Rename, Subst, Top, Type as SType,
     TypeKind as STypeKind,
 };
-use crate::{formula::hes::Goal, solver::smt};
+use crate::{formula::hes::Goal, solver, solver::smt};
 
 use crate::util::P;
 
@@ -408,8 +408,8 @@ pub fn tys_check(
     //let f = env.eval(g.clone());
     let cnstr = types_check(g, ts);
     match smt::default_solver().solve(&cnstr, &HashSet::new()) {
-        smt::SMTResult::Sat => true,
-        smt::SMTResult::Unsat => false,
-        smt::SMTResult::Timeout | smt::SMTResult::Unknown => panic!("smt check fail.."),
+        solver::SolverResult::Sat => true,
+        solver::SolverResult::Unsat => false,
+        solver::SolverResult::Timeout | solver::SolverResult::Unknown => panic!("smt check fail.."),
     }
 }

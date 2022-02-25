@@ -8,6 +8,7 @@ use crate::formula::{Constraint, Ident, Logic, Subst};
 use crate::pdr::rtype::{
     least_fml, types_check, tys_check, Refinement, Tau, TyEnv, TypeEnvironment,
 };
+use crate::solver;
 use crate::solver::smt;
 
 impl From<Goal<Constraint>> for Goal<fofml::Atom> {
@@ -230,9 +231,9 @@ pub fn env_models_constraint<C: Refinement>(env: &Env<C>, g: &Goal<C>) -> C {
 pub fn env_models(env: &Env<Constraint>, g: &Goal<Constraint>) -> bool {
     let cnstr = env_models_constraint(env, g);
     match smt::default_solver().solve(&cnstr, &HashSet::new()) {
-        smt::SMTResult::Sat => true,
-        smt::SMTResult::Unsat => false,
-        smt::SMTResult::Timeout | smt::SMTResult::Unknown => panic!("smt check fail.."),
+        solver::SolverResult::Sat => true,
+        solver::SolverResult::Unsat => false,
+        solver::SolverResult::Timeout | solver::SolverResult::Unknown => panic!("smt check fail.."),
     }
 }
 

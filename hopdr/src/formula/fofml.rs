@@ -6,6 +6,7 @@ use super::{
     hes, Bot, Constraint, Fv, Ident, Logic, Negation, Op, OpKind, PredKind, QuantifierKind, Rename,
     Subst, Top, Type, Variable,
 };
+use crate::solver;
 use crate::solver::smt;
 use crate::util::P;
 
@@ -362,7 +363,7 @@ impl Atom {
         let mut solver = smt::default_solver();
         let model = match solver.solve_with_model(&c, &HashSet::new(), &fvs) {
             Ok(model) => model,
-            Err(smt::SMTResult::Unsat) => {
+            Err(solver::SolverResult::Unsat) => {
                 // when c is unsat, returns None
                 return None;
             }

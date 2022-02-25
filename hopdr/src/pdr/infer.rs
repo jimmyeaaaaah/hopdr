@@ -3,7 +3,7 @@ use super::fml::{env_models_constraint, Env};
 use super::rtype::{Tau, TyEnv, TypeEnvironment};
 use crate::formula;
 use crate::formula::hes::{Goal, Problem as ProblemBase};
-use crate::formula::{fofml, pcsp, Bot, Ident, Logic, Op, Top};
+use crate::formula::{chc, fofml, pcsp, Bot, Constraint, Ident, Logic, Op, Top};
 use crate::util::P;
 
 use std::collections::HashSet;
@@ -225,20 +225,30 @@ pub(super) fn infer(
         clauses.push(pcsp::PCSP::new(body, head));
     }
     if is_chc {
+        let clauses: Vec<chc::CHC<pcsp::Atom>> = clauses
+            .into_iter()
+            .map(|c| {
+                let head = match c.head.kind() {
+                    pcsp::AtomKind::Predicate(p, l) => chc::CHCHead::Predicate(*p, l.clone()),
+                    _ if c.head.is_false() => chc::CHCHead::Constraint(Constraint::mk_false()),
+                    _ => panic!("program error"),
+                };
+                chc::CHC::new(head, c.body)
+            })
+            .collect();
         for c in clauses.iter() {
             debug!("{}", c);
         }
-    } else {
         unimplemented!()
-    }
-
-    constraint.check_satisfiability().map(|model| {
-        let mut result_env = TypeEnvironment::new();
-        for (k, ts) in tenv.map.iter() {
-            for t in ts {
-                result_env.add(*k, t.assign(&model));
+    } else {
+        constraint.check_satisfiability().map(|model| {
+            let mut result_env = TypeEnvironment::new();
+            for (k, ts) in tenv.map.iter() {
+                for t in ts {
+                    result_env.add(*k, t.assign(&model));
+                }
             }
-        }
-        result_env
-    })
+            result_env
+        })
+    }
 }

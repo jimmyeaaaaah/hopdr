@@ -6,7 +6,7 @@ use std::vec;
 
 use super::fofml;
 use super::pcsp;
-use super::{Constraint, Ident, Logic, Op, Rename, Top};
+use super::{Constraint, Fv, Ident, Logic, Op, Rename, Top};
 
 #[derive(Debug, Clone)]
 pub enum CHCHead {
@@ -78,8 +78,24 @@ impl<A: Rename> Rename for CHC<A> {
     }
 }
 
+impl<A: Fv<Id = Ident>> Fv for CHC<A> {
+    type Id = Ident;
+
+    fn fv_with_vec(&self, fvs: &mut HashSet<Self::Id>) {
+        self.body.fv_with_vec(fvs);
+        match &self.head {
+            CHCHead::Constraint(c) => c.fv_with_vec(fvs),
+            CHCHead::Predicate(_, l) => {
+                for i in l {
+                    i.fv_with_vec(fvs);
+                }
+            }
+        }
+    }
+}
+
 impl<A> CHC<A> {
-    fn new(head: CHCHead, body: A) -> CHC<A> {
+    pub fn new(head: CHCHead, body: A) -> CHC<A> {
         CHC { head, body }
     }
 }
@@ -136,6 +152,16 @@ impl CHC<pcsp::Atom> {
         // 1. to dnf
         // removed: refer to 9890bba3a5230997a8a7a9219ee3605c7caea8e4
         unimplemented!()
+    }
+    pub fn collect_predicates(&self, predicates: &mut HashMap<Ident, usize>) {
+        match &self.head {
+            CHCHead::Constraint(_) => (),
+            CHCHead::Predicate(p, l) => match predicates.insert(*p, l.len()) {
+                Some(n) => debug_assert!(n == l.len()),
+                None => (),
+            },
+        }
+        self.body.collect_predicates(predicates);
     }
 }
 

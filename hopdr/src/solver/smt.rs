@@ -4,19 +4,12 @@ use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
 use super::util;
+use super::{SMT2Style, SolverResult};
 use crate::formula::{
     Constraint, ConstraintExpr, Ident, Op, OpExpr, OpKind, PredKind, QuantifierKind,
 };
 use lexpr;
 use lexpr::Value;
-
-#[derive(Debug)]
-pub enum SMTResult {
-    Sat,
-    Unsat,
-    Unknown,
-    Timeout,
-}
 
 #[derive(Debug)]
 pub struct Model {
@@ -104,19 +97,14 @@ fn z3_parse_model() {
     }
 }
 
-#[derive(Copy, Clone)]
-pub enum SMT2Style {
-    Z3,
-}
-
 pub trait SMTSolver {
-    fn solve(&mut self, c: &Constraint, vars: &HashSet<Ident>) -> SMTResult;
+    fn solve(&mut self, c: &Constraint, vars: &HashSet<Ident>) -> SolverResult;
     fn solve_with_model(
         &mut self,
         c: &Constraint,
         vars: &HashSet<Ident>,
         fvs: &HashSet<Ident>,
-    ) -> Result<Model, SMTResult>;
+    ) -> Result<Model, SolverResult>;
 }
 
 fn pred_to_smt2(p: &PredKind, args: &[String]) -> String {
@@ -141,11 +129,11 @@ fn opkind_2_smt2(o: &OpKind) -> &'static str {
     }
 }
 
-fn ident_2_smt2(ident: &Ident) -> String {
+pub(super) fn ident_2_smt2(ident: &Ident) -> String {
     encode_ident(ident)
 }
 
-fn op_to_smt2(op: &Op) -> String {
+pub(super) fn op_to_smt2(op: &Op) -> String {
     match op.kind() {
         OpExpr::Op(opkind, o1, o2) => {
             let o1 = op_to_smt2(o1);
@@ -158,14 +146,14 @@ fn op_to_smt2(op: &Op) -> String {
     }
 }
 
-fn quantifier_to_smt2(q: &QuantifierKind) -> &'static str {
+pub(super) fn quantifier_to_smt2(q: &QuantifierKind) -> &'static str {
     match q {
         QuantifierKind::Existential => "exists",
         QuantifierKind::Universal => "forall",
     }
 }
 
-fn constraint_to_smt2_inner(c: &Constraint, style: SMT2Style) -> String {
+pub(super) fn constraint_to_smt2_inner(c: &Constraint, style: SMT2Style) -> String {
     let f = constraint_to_smt2_inner;
     match c.kind() {
         ConstraintExpr::True => "true".to_string(),
@@ -245,18 +233,18 @@ fn z3_solver(smt_string: String) -> String {
 }
 
 impl SMTSolver for Z3Solver {
-    fn solve(&mut self, c: &Constraint, vars: &HashSet<Ident>) -> SMTResult {
+    fn solve(&mut self, c: &Constraint, vars: &HashSet<Ident>) -> SolverResult {
         debug!("smt_solve: {}", c);
         let smt2 = constraint_to_smt2(c, SMT2Style::Z3, vars, None);
         debug!("smt2: {}", &smt2);
         let s = z3_solver(smt2);
         debug!("smt_solve result: {:?}", &s);
         if s.starts_with("sat") {
-            SMTResult::Sat
+            SolverResult::Sat
         } else if s.starts_with("unsat") {
-            SMTResult::Unsat
+            SolverResult::Unsat
         } else {
-            SMTResult::Unknown
+            SolverResult::Unknown
         }
     }
     fn solve_with_model(
@@ -264,7 +252,7 @@ impl SMTSolver for Z3Solver {
         c: &Constraint,
         vars: &HashSet<Ident>,
         fvs: &HashSet<Ident>,
-    ) -> Result<Model, SMTResult> {
+    ) -> Result<Model, SolverResult> {
         debug!("smt_solve_with_model: {} {}", c, fvs.len());
         let smt2 = constraint_to_smt2(c, SMT2Style::Z3, vars, Some(fvs));
         debug!("smt2: {}", &smt2);
@@ -274,9 +262,9 @@ impl SMTSolver for Z3Solver {
             let pos = s.find('\n').unwrap();
             Ok(Model::from_z3_model_str(&s[pos..]).unwrap())
         } else if s.starts_with("unsat") {
-            Err(SMTResult::Unsat)
+            Err(SolverResult::Unsat)
         } else {
-            Err(SMTResult::Unknown)
+            Err(SolverResult::Unknown)
         }
     }
 }

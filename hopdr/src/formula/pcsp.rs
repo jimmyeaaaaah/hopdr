@@ -132,9 +132,12 @@ impl Fv for Atom {
     type Id = Ident;
     fn fv_with_vec(&self, fvs: &mut HashSet<Self::Id>) {
         match self.kind() {
-            AtomKind::True | AtomKind::Constraint(_) => (),
-            AtomKind::Predicate(ident, _) => {
-                fvs.insert(*ident);
+            AtomKind::True => (),
+            AtomKind::Constraint(c) => c.fv_with_vec(fvs),
+            AtomKind::Predicate(_, l) => {
+                for i in l {
+                    i.fv_with_vec(fvs);
+                }
             }
             AtomKind::Conj(x, y) | AtomKind::Disj(x, y) => {
                 x.fv_with_vec(fvs);
@@ -174,32 +177,19 @@ impl Atom {
             ),
         }
     }
-
-    pub fn integer_fv(&self) -> HashSet<Ident> {
-        fn inner(atom: &Atom, fvs: &mut HashSet<Ident>) {
-            match atom.kind() {
-                AtomKind::True => (),
-                AtomKind::Constraint(c) => {
-                    c.fv_with_vec(fvs);
-                }
-                AtomKind::Predicate(_, args) => {
-                    for a in args {
-                        a.fv_with_vec(fvs);
-                    }
-                }
-                AtomKind::Conj(x, y) | AtomKind::Disj(x, y) => {
-                    inner(x, fvs);
-                    inner(y, fvs);
-                }
-                AtomKind::Quantifier(_, x, c) => {
-                    inner(c, fvs);
-                    fvs.remove(x);
-                }
+    pub fn collect_predicates(&self, predicates: &mut HashMap<Ident, usize>) {
+        match self.kind() {
+            AtomKind::True | AtomKind::Constraint(_) => (),
+            AtomKind::Predicate(p, l) => match predicates.insert(*p, l.len()) {
+                Some(n) => debug_assert!(n == l.len()),
+                None => (),
+            },
+            AtomKind::Conj(a1, a2) | AtomKind::Disj(a1, a2) => {
+                a1.collect_predicates(predicates);
+                a2.collect_predicates(predicates);
             }
+            AtomKind::Quantifier(_, _, a) => a.collect_predicates(predicates),
         }
-        let mut fvs = HashSet::new();
-        inner(self, &mut fvs);
-        fvs
     }
 }
 
