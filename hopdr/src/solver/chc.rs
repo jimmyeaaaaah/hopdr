@@ -21,6 +21,13 @@ pub enum CHCStyle {
     Spacer,
 }
 
+pub enum CHCResult {
+    Sat(Model),
+    Unsat,
+    Unknown,
+    Timeout,
+}
+
 type CHC = chc::CHC<pcsp::Atom>;
 
 const PROLOGUE: &'static str = "(set-logic HORN)\n";
@@ -127,7 +134,7 @@ fn chcs_to_smt2(chcs: &[CHC], style: CHCStyle) -> String {
 }
 
 pub trait CHCSolver {
-    fn solve(&mut self, clauses: &Vec<CHC>) -> SolverResult;
+    fn solve(&mut self, clauses: &Vec<CHC>) -> CHCResult;
 }
 struct HoiceSolver {}
 
@@ -156,7 +163,7 @@ fn hoice_solver(smt_string: String) -> String {
 }
 
 pub struct Model {
-    pub model: HashMap<Ident, (Vec<Ident>, fofml::Atom)>,
+    pub model: HashMap<Ident, (Vec<Ident>, Constraint)>,
 }
 
 fn parse_predicate_variable(v: &str) -> Ident {
@@ -362,6 +369,53 @@ fn parse_define_fun(v: lexpr::Value) -> (Ident, (Vec<Ident>, fofml::Atom)) {
     // ident(args) = body
     (ident, (args, body))
 }
+fn reduce_application(
+    mut model: HashMap<Ident, (Vec<Ident>, fofml::Atom)>,
+) -> HashMap<Ident, (Vec<Ident>, Constraint)> {
+    type E = HashMap<Ident, (Vec<Ident>, fofml::Atom)>;
+    use fofml::{Atom, AtomKind};
+    fn reduce(a: &Atom, env: &E) -> (bool, Atom) {
+        match a.kind() {
+            AtomKind::Predicate(p, l) => todo!(),
+            AtomKind::Conj(a1, a2) => {
+                let (flag1, a1) = reduce(a1, env);
+                let (flag2, a2) = reduce(a2, env);
+                (flag1 || flag2, Atom::mk_conj(a1, a2))
+            }
+            AtomKind::Disj(a1, a2) => {
+                let (flag1, a1) = reduce(a1, env);
+                let (flag2, a2) = reduce(a2, env);
+                (flag1 || flag2, Atom::mk_disj(a1, a2))
+            }
+            AtomKind::Not(a) => {
+                let (flag, a) = reduce(a, env);
+                (flag, Atom::mk_not(a))
+            }
+            AtomKind::Quantifier(q, x, a) => {
+                let (flag, a) = reduce(a, env);
+                (flag, Atom::mk_quantifier(*q, *x, a))
+            }
+            AtomKind::True | AtomKind::Constraint(_) => (false, a.clone()),
+        }
+    }
+    let mut continue_flag = false;
+    while continue_flag {
+        continue_flag = false;
+        let mut new_model = HashMap::new();
+        for (k, (l, a)) in model.iter() {
+            let (flag, a) = reduce(a, &model);
+            continue_flag |= flag;
+            new_model.insert(*k, (l.clone(), a));
+        }
+        model = new_model;
+    }
+    // Now models do not contain any predicate, so we can translate them to
+    // Constraint
+    model
+        .into_iter()
+        .map(|(k, (l, a))| (k, (l, a.into())))
+        .collect()
+}
 impl Model {
     fn parse_hoice_model(model_str: &str) -> Result<Model, lexpr::parse::Error> {
         let x = lexpr::from_str(model_str)?;
@@ -373,6 +427,8 @@ impl Model {
                 .collect(),
             _ => panic!("parse error: smt2 model: {}", model_str),
         };
+        let model = reduce_application(model);
+
         Ok(Model { model })
     }
 }
@@ -397,14 +453,18 @@ fn test_parse_model() {
 }
 
 impl CHCSolver for HoiceSolver {
-    fn solve(&mut self, clauses: &Vec<CHC>) -> SolverResult {
+    fn solve(&mut self, clauses: &Vec<CHC>) -> CHCResult {
         let smt2 = chcs_to_smt2(clauses, CHCStyle::Hoice);
         debug!("smt2: {}", &smt2);
         let s = hoice_solver(smt2);
         debug!("smt_solve result: {:?}", &s);
         if s.starts_with("sat") {
             let m = Model::parse_hoice_model(&s[4..]).unwrap();
+            CHCResult::Sat(m)
+        } else if s.starts_with("unsat") {
+            CHCResult::Unsat
+        } else {
+            CHCResult::Unknown
         }
-        unimplemented!()
     }
 }

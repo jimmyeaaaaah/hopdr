@@ -240,8 +240,24 @@ pub(super) fn infer(
         for c in clauses.iter() {
             debug!("{}", c);
         }
-        solver::chc::default_solver().solve(&clauses);
-        unimplemented!()
+        let m = match solver::chc::default_solver().solve(&clauses) {
+            solver::chc::CHCResult::Sat(m) => m,
+            solver::chc::CHCResult::Unsat => return None,
+            solver::chc::CHCResult::Unknown => panic!(
+                "PDR fails to infer a refinement type due to the background CHC solver's error"
+            ),
+            solver::chc::CHCResult::Timeout => panic!(
+                "PDR fails to infer a refinement type due to timeout of the background CHC solver"
+            ),
+        };
+        let model = m.model;
+        let mut result_env = TypeEnvironment::new();
+        for (k, ts) in tenv.map.iter() {
+            for t in ts {
+                result_env.add(*k, t.assign(&model));
+            }
+        }
+        Some(result_env)
     } else {
         constraint.check_satisfiability().map(|model| {
             let mut result_env = TypeEnvironment::new();
