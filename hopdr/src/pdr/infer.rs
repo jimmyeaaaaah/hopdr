@@ -3,7 +3,7 @@ use super::fml::{env_models_constraint, Env};
 use super::rtype::{Tau, TyEnv, TypeEnvironment};
 use crate::formula;
 use crate::formula::hes::{Goal, Problem as ProblemBase};
-use crate::formula::{fofml, Ident, Logic, Op};
+use crate::formula::{fofml, pcsp, Ident, Logic, Op};
 use crate::util::P;
 
 use std::collections::HashSet;
@@ -174,7 +174,14 @@ pub(super) fn infer(
 
     let constraint = fofml::Atom::mk_conj(c, c2);
     debug!("generated constraint: {}", constraint);
+
     // 4. solve constraints by CHC (or a template-based method)
+    // 4.1 translate constraint to CHC or extended chc
+    let cnf = constraint.to_cnf();
+    for c in cnf {
+        let dnf = c.to_dnf();
+    }
+
     constraint.check_satisfiability().map(|model| {
         let mut result_env = TypeEnvironment::new();
         for (k, ts) in tenv.map.iter() {

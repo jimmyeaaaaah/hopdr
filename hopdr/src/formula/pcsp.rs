@@ -239,12 +239,24 @@ impl Bot for Atom {
 }
 
 impl Logic for Atom {
+    fn is_conj<'a>(&'a self) -> Option<(&'a Atom, &'a Atom)> {
+        match self.kind() {
+            AtomKind::Conj(x, y) => Some((x, y)),
+            _ => None,
+        }
+    }
     fn mk_conj(x: Self, y: Self) -> Atom {
         use AtomKind::*;
         match (&*x, &*y) {
             (True, _) => y.clone(),
             (_, True) => x.clone(),
             _ => Atom::new(Conj(x.clone(), y.clone())),
+        }
+    }
+    fn is_disj<'a>(&'a self) -> Option<(&'a Atom, &'a Atom)> {
+        match self.kind() {
+            AtomKind::Disj(x, y) => Some((x, y)),
+            _ => None,
         }
     }
     fn mk_disj(x: Self, y: Self) -> Atom {

@@ -179,6 +179,12 @@ impl Bot for Atom {
 }
 
 impl Logic for Atom {
+    fn is_conj<'a>(&'a self) -> Option<(&'a Atom, &'a Atom)> {
+        match self.kind() {
+            AtomKind::Conj(x, y) => Some((x, y)),
+            _ => None,
+        }
+    }
     fn mk_conj(x: Self, y: Self) -> Atom {
         use AtomKind::*;
         if x.is_false() || y.is_false() {
@@ -189,6 +195,12 @@ impl Logic for Atom {
             x
         } else {
             Atom::new(Conj(x, y))
+        }
+    }
+    fn is_disj<'a>(&'a self) -> Option<(&'a Atom, &'a Atom)> {
+        match self.kind() {
+            AtomKind::Disj(x, y) => Some((x, y)),
+            _ => None,
         }
     }
     fn mk_disj(x: Self, y: Self) -> Atom {
@@ -433,6 +445,85 @@ impl Atom {
             ),
             AtomKind::Not(x) => x.assign(&model).negate().unwrap(),
         }
+    }
+    // reduces Atom a to a' where all the occurences of not
+    // are of the form `Not(Predicate(...))`.
+    pub fn reduce_not(&self) -> Atom {
+        fn negate(x: &Atom) -> Atom {
+            match x.kind() {
+                AtomKind::True => Atom::mk_false(),
+                AtomKind::Constraint(c) => Atom::mk_constraint(c.negate().unwrap()),
+                AtomKind::Predicate(_, _) => Atom::mk_not(x.clone()),
+                AtomKind::Conj(a1, a2) => {
+                    let a1 = negate(a1);
+                    let a2 = negate(a2);
+                    Atom::mk_disj(a1, a2)
+                }
+                AtomKind::Disj(a1, a2) => {
+                    let a1 = negate(a1);
+                    let a2 = negate(a2);
+                    Atom::mk_conj(a1, a2)
+                }
+                AtomKind::Quantifier(q, x, c) => Atom::mk_quantifier(q.negate(), *x, negate(c)),
+                AtomKind::Not(x) => x.clone(),
+            }
+        }
+        match self.kind() {
+            AtomKind::True | AtomKind::Constraint(_) | AtomKind::Predicate(_, _) => self.clone(),
+            AtomKind::Conj(a1, a2) => {
+                let a1 = a1.reduce_not();
+                let a2 = a2.reduce_not();
+                Atom::mk_conj(a1, a2)
+            }
+            AtomKind::Disj(a1, a2) => {
+                let a1 = a1.reduce_not();
+                let a2 = a2.reduce_not();
+                Atom::mk_disj(a1, a2)
+            }
+            AtomKind::Quantifier(q, x, c) => Atom::mk_quantifier(*q, *x, c.reduce_not()),
+            AtomKind::Not(x) => negate(x),
+        }
+    }
+    // Assumption: Not is already reduced by `reduce_not`
+    pub fn prenex_normal_form(&self) -> Atom {
+        fn pnf_inner(x: &Atom) -> (Vec<(QuantifierKind, Ident)>, Atom) {
+            match x.kind() {
+                AtomKind::True | AtomKind::Constraint(_) | AtomKind::Predicate(_, _) => {
+                    (Vec::new(), x.clone())
+                }
+                AtomKind::Conj(a1, a2) => {
+                    let (mut v1, a1) = pnf_inner(a1);
+                    let (mut v2, a2) = pnf_inner(a2);
+                    v1.append(&mut v2);
+                    (v1, Atom::mk_conj(a1, a2))
+                }
+                AtomKind::Disj(a1, a2) => {
+                    let (mut v1, a1) = pnf_inner(a1);
+                    let (mut v2, a2) = pnf_inner(a2);
+                    v1.append(&mut v2);
+                    (v1, Atom::mk_disj(a1, a2))
+                }
+                AtomKind::Quantifier(q, x, a) => {
+                    let (mut v, a) = pnf_inner(a);
+                    debug_assert!(v.iter().find(|(_, y)| { x == y }).is_some());
+                    v.push((*q, *x));
+                    (v, a)
+                }
+                AtomKind::Not(x) => {
+                    // Not is already reduced, so x must be Predicate
+                    // this match is just to make sure this.
+                    match x.kind() {
+                        AtomKind::Predicate(_, _) => todo!(),
+                        _ => panic!("program error"),
+                    }
+                }
+            }
+        }
+        let (v, mut a) = pnf_inner(self);
+        for (q, x) in v.into_iter().rev() {
+            a = Atom::mk_quantifier(q, x, a);
+        }
+        a
     }
 }
 

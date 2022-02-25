@@ -225,9 +225,67 @@ pub trait Bot {
     fn is_false(&self) -> bool;
 }
 
-pub trait Logic: Top + Bot {
+pub trait Logic: Top + Bot + Clone {
     fn mk_conj(x: Self, y: Self) -> Self;
+    fn is_conj<'a>(&'a self) -> Option<(&'a Self, &'a Self)>;
     fn mk_disj(x: Self, y: Self) -> Self;
+    fn is_disj<'a>(&'a self) -> Option<(&'a Self, &'a Self)>;
+    fn to_cnf(&self) -> Vec<Self> {
+        fn cross_or<C: Clone + Logic>(v1: &[C], v2: &[C]) -> Vec<C> {
+            let mut v = Vec::new();
+            for x in v1 {
+                for y in v2 {
+                    v.push(C::mk_conj(x.clone(), y.clone()));
+                }
+            }
+            v
+        }
+        match self.is_conj() {
+            Some((x, y)) => {
+                let mut v1 = x.to_cnf();
+                let mut v2 = y.to_cnf();
+                v1.append(&mut v2);
+                return v1;
+            }
+            None => (),
+        }
+        match self.is_disj() {
+            Some((x, y)) => {
+                let v1 = x.to_cnf();
+                let v2 = y.to_cnf();
+                return cross_or(&v1, &v2);
+            }
+            None => vec![self.clone()],
+        }
+    }
+    fn to_dnf(&self) -> Vec<Self> {
+        fn cross_and<C: Clone + Logic>(v1: &[C], v2: &[C]) -> Vec<C> {
+            let mut v = Vec::new();
+            for x in v1 {
+                for y in v2 {
+                    v.push(C::mk_disj(x.clone(), y.clone()));
+                }
+            }
+            v
+        }
+        match self.is_disj() {
+            Some((x, y)) => {
+                let mut v1 = x.to_dnf();
+                let mut v2 = y.to_dnf();
+                v1.append(&mut v2);
+                return v1;
+            }
+            None => (),
+        }
+        match self.is_conj() {
+            Some((x, y)) => {
+                let v1 = x.to_dnf();
+                let v2 = y.to_dnf();
+                return cross_and(&v1, &v2);
+            }
+            None => vec![self.clone()],
+        }
+    }
 }
 
 pub trait Subst: Sized {
@@ -356,6 +414,12 @@ impl Logic for Constraint {
             Constraint::new(ConstraintExpr::Conj(x, y))
         }
     }
+    fn is_conj<'a>(&'a self) -> Option<(&'a Constraint, &'a Constraint)> {
+        match self.kind() {
+            ConstraintExpr::Conj(x, y) => Some((x, y)),
+            _ => None,
+        }
+    }
     fn mk_disj(x: Constraint, y: Constraint) -> Constraint {
         if x.is_true() || y.is_true() {
             Constraint::mk_true()
@@ -365,6 +429,12 @@ impl Logic for Constraint {
             x
         } else {
             Constraint::new(ConstraintExpr::Disj(x, y))
+        }
+    }
+    fn is_disj<'a>(&'a self) -> Option<(&'a Constraint, &'a Constraint)> {
+        match self.kind() {
+            ConstraintExpr::Disj(x, y) => Some((x, y)),
+            _ => None,
         }
     }
 }
