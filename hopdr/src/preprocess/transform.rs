@@ -161,17 +161,3 @@ fn transform_clause(input: InClause, clauses: &mut Vec<OutClause>) -> OutClause 
     let body = append_args(body, &input.args, input.id.ty.clone());
     OutClause::new(body, input.id.into())
 }
-
-fn qunantify_toplevel(mut expr: OutExpr, clauses: &Vec<OutClause>) -> OutExpr {
-    let fvs = expr.fv();
-    let preds: HashSet<Ident> = clauses.iter().map(|x| x.head.id).collect();
-
-    let type_int = SimpleType::mk_type_int();
-
-    for fv in fvs.iter() {
-        if !preds.contains(fv) {
-            expr = OutExpr::mk_univ(Variable::mk(*fv, type_int.clone()), expr);
-        }
-    }
-    expr
-}

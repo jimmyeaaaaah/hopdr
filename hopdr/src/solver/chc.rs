@@ -192,12 +192,10 @@ fn parse_arg<'a>(v: &'a lexpr::Value) -> &'a str {
 }
 
 fn parse_args<'a>(v: &'a lexpr::Value) -> (Vec<Ident>, HashMap<&'a str, Ident>) {
-    println!("{}", v);
     let itr = cons_value_to_iter(v);
     let mut env = HashMap::new();
     let mut args = Vec::new();
     for v in itr {
-        println!("{}", v);
         let val_name = parse_arg(v);
         let ident = Ident::fresh();
         env.insert(val_name, ident);

@@ -608,7 +608,7 @@ impl Ident {
     }
     /// assumption: string expression is x_\d+
     pub fn from_str(s: &str) -> Option<Ident> {
-        println!("Ident::from_str: {}", s);
+        debug!("Ident::from_str: {}", s);
         match (&s[2..]).parse() {
             Ok(id) => Some(Ident { id }),
             Err(_) => None,

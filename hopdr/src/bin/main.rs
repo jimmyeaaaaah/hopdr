@@ -6,6 +6,7 @@ extern crate log;
 use hopdr::*;
 
 use clap::Parser;
+use colored::Colorize;
 use nom::error::VerboseError;
 
 use std::fs;
@@ -31,7 +32,6 @@ fn main() {
     let args = Args::parse();
 
     let contents = fs::read_to_string(&args.input).expect("Something went wrong reading the file");
-    println!("contents: {}", &contents);
 
     // RUST_LOG=info (trace, debug, etc..)
     println!("starting PDR...");
@@ -43,7 +43,7 @@ fn main() {
     //     ",
     //)
     //.unwrap();
-    println!("{}", s);
+    // println!("{}", s);
 
     match &f {
         parse::Problem::NuHFLZValidityChecking(vc) => {
@@ -55,9 +55,19 @@ fn main() {
     }
 
     let (vc, _ctx) = preprocess::hes::preprocess(f);
-    for fml in vc.clauses.iter() {
-        println!("{}", fml);
-    }
+    //for fml in vc.clauses.iter() {
+    //    println!("{}", fml);
+    //}
 
-    pdr::run(vc);
+    match pdr::run(vc) {
+        pdr::VerificationResult::Valid => {
+            println!("{}", "Valid".green());
+        }
+        pdr::VerificationResult::Invalid => {
+            println!("{}", "Invalid".red());
+        }
+        pdr::VerificationResult::Unknown => {
+            println!("{}", "Unknown".red());
+        }
+    }
 }

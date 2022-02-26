@@ -208,7 +208,7 @@ impl HoPDR {
         info!("[PDR] target formula");
         info!("{}", self.problem);
         loop {
-            self.dump_state();
+            //self.dump_state();
             if !self.check_valid() {
                 self.candidate();
                 if self.check_feasible()? {
