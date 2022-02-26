@@ -32,6 +32,8 @@ pub enum CHCResult {
 
 type CHC = chc::CHC<pcsp::Atom>;
 
+//const PROLOGUE: &'static str =
+//   "(set-option :no-simplify-clauses true)\n(set-option :no-inlining true)\n(set-logic HORN)\n";
 const PROLOGUE: &'static str = "(set-logic HORN)\n";
 
 fn get_epilogue(style: CHCStyle) -> &'static str {
@@ -158,6 +160,7 @@ fn hoice_solver(smt_string: String) -> String {
     debug!("filename: {}", &args[0]);
     let out = util::exec_with_timeout(
         "../../../hopv/hoice/target/release/hoice",
+        //"../../../Hogeyama/hoice/target/debug/hoice",
         &args,
         Duration::from_secs(1),
     );
@@ -330,7 +333,7 @@ fn parse_body_cons<'a>(v: &'a lexpr::Cons, env: &mut HashMap<&'a str, Ident>) ->
             let r: Vec<fofml::Atom> = itr.map(|x| parse_body(x, env)).collect();
             debug_assert!(r.len() == 1);
 
-            for (k, i) in env2.iter() {
+            for (k, _) in env2.iter() {
                 let r = env.remove(k);
                 debug_assert!(r.is_some());
             }

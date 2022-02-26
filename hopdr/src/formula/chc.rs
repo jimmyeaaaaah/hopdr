@@ -163,6 +163,20 @@ impl CHC<pcsp::Atom> {
         }
         self.body.collect_predicates(predicates);
     }
+    // translate
+    //   θ /\ Q(x) => P(x, y)
+    // to
+    //   θ /\ Q(x) /\ P(x, y) => P(x, y)
+    // for the purpose of hacking CHC solvers to avoid their preprocesses.
+    pub fn to_trivial_recursive(&self) -> CHC<pcsp::Atom> {
+        let body = match &self.head {
+            CHCHead::Constraint(_) => self.body.clone(),
+            CHCHead::Predicate(p, l) => {
+                pcsp::Atom::mk_conj(pcsp::Atom::mk_pred(*p, l.clone()), self.body.clone())
+            }
+        };
+        CHC::new(self.head.clone(), body)
+    }
 }
 
 fn cross_and(left: Vec<Vec<CHCHead>>, mut right: Vec<Vec<CHCHead>>) -> Vec<Vec<CHCHead>> {

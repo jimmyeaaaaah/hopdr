@@ -242,9 +242,16 @@ pub(super) fn infer(
                 chc::CHC::new(head, c.body)
             })
             .collect();
+        debug!("before recursion");
         for c in clauses.iter() {
             debug!("{}", c);
         }
+        //let clauses: Vec<chc::CHC<pcsp::Atom>> =
+        //    clauses.iter().map(|x| x.to_trivial_recursive()).collect();
+        //for c in clauses.iter() {
+        //    debug!("{}", c);
+        //}
+
         let m = match solver::chc::default_solver().solve(&clauses) {
             solver::chc::CHCResult::Sat(m) => m,
             solver::chc::CHCResult::Unsat => return None,

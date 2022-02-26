@@ -34,7 +34,7 @@ fn main() {
     let contents = fs::read_to_string(&args.input).expect("Something went wrong reading the file");
 
     // RUST_LOG=info (trace, debug, etc..)
-    println!("starting PDR...");
+    //println!("starting PDR...");
     let (_, f) = parse::parse::<VerboseError<&str>>(&contents).unwrap();
     //let (s, f) = parse::parse::<VerboseError<&str>>(
     //    "
@@ -45,19 +45,19 @@ fn main() {
     //.unwrap();
     // println!("{}", s);
 
-    match &f {
-        parse::Problem::NuHFLZValidityChecking(vc) => {
-            for fml in vc.formulas.iter() {
-                println!("{}", fml);
-            }
-            println!("TOP={}", vc.toplevel);
-        }
-    }
+    // match &f {
+    //     parse::Problem::NuHFLZValidityChecking(vc) => {
+    //         for fml in vc.formulas.iter() {
+    //             println!("{}", fml);
+    //         }
+    //         println!("TOP={}", vc.toplevel);
+    //     }
+    // }
 
     let (vc, _ctx) = preprocess::hes::preprocess(f);
-    for fml in vc.clauses.iter() {
-        println!("{}", fml);
-    }
+    // for fml in vc.clauses.iter() {
+    //     println!("{}", fml);
+    // }
 
     match pdr::run(vc) {
         pdr::VerificationResult::Valid => {
