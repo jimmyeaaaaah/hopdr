@@ -7,6 +7,7 @@ use nom::error::VerboseError;
 fn type_check_1() {
     let (_, f) = parse::parse::<VerboseError<&str>>(
         "
+        %HES
 		S n k =v (n > 0 || k 0) && (n <= 0 || S (n - 1) (L n k)).
 		K m n =v m <= n.
 		L n k m =v k (n + m).
@@ -186,6 +187,7 @@ fn gen_tyenv_for_test(
 fn type_check_2() {
     let (_, f) = parse::parse::<VerboseError<&str>>(
         "
+        %HES
 	    X n f =v f n && X (n + 1) f.
 	    Y n f =v f n && Y (n - 1) f.
 	    E n =v n != 0.
@@ -216,6 +218,7 @@ fn type_check_2() {
 fn type_check_e() {
     let (_, f) = parse::parse::<VerboseError<&str>>(
         "
+        %HES
 	    X n f =v f n && X (n + 1) f.
 	    Y n f =v f n && X (n - 1) f.
 	    E n =v n != 0.

@@ -218,6 +218,7 @@ fn test_parse_expr() {
 
 pub fn parse<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Problem, E> {
     let v = Vec::new();
+    let (input, _) = preceded(sp, tag("%HES"))(input)?;
     let (input, mut formulas) = fold_many0(parse_hes, v, |mut v, hes| {
         v.push(hes);
         v
@@ -235,6 +236,7 @@ fn test_parse() {
     use nom::error::VerboseError;
     let (_, f) = parse::<VerboseError<&str>>(
         "
+        %HES
         S n k =v (n > 0 || k 0) && (n <= 0 || S (n - 1) (L n k)).
         K m n =v m <= n.
         L n k m =v k (n + m).
