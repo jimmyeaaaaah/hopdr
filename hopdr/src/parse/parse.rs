@@ -66,19 +66,24 @@ fn op1<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, OpKind, E
     alt((
         map(tag("+"), |_| OpKind::Add),
         map(tag("-"), |_| OpKind::Sub),
+    ))(input)
+}
+
+fn op2<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, OpKind, E> {
+    alt((
         map(tag("*"), |_| OpKind::Mul),
         map(tag("/"), |_| OpKind::Div),
         map(tag("%"), |_| OpKind::Mod),
     ))(input)
 }
-
-fn op2<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, OpKind, E> {
-    let (i, _) = char('*')(input)?;
-    Ok((i, OpKind::Mul))
+fn parse_neg<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Expr, E> {
+    let (input, _) = preceded(sp, char('-'))(input)?;
+    let (input, e) = parse_arith(input)?;
+    Ok((input, Expr::mk_op(OpKind::Sub, Expr::mk_num(0), e)))
 }
 
 fn parse_atom<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Expr, E> {
-    alt((parse_par, parse_num, parse_bool, parse_var))(input)
+    alt((parse_par, parse_neg, parse_num, parse_bool, parse_var))(input)
 }
 
 fn parse_arith2<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Expr, E> {

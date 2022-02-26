@@ -470,7 +470,6 @@ impl<C> Problem<C> {
     }
 
     pub fn get_clause<'a>(&'a self, id: &Ident) -> Option<&'a Clause<C>> {
-        println!("get_clause: {}", id);
         for c in self.clauses.iter() {
             if c.head.id == *id {
                 return Some(c);
