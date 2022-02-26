@@ -59,10 +59,11 @@ impl Fv for Expr {
                 e1.fv_with_vec(fvs);
                 e2.fv_with_vec(fvs);
             }
-            ExprKind::Fix(_, x, _)
-            | ExprKind::Abs(x, _)
-            | ExprKind::Univ(x, _)
-            | ExprKind::Exist(x, _) => {
+            ExprKind::Fix(_, x, e)
+            | ExprKind::Abs(x, e)
+            | ExprKind::Univ(x, e)
+            | ExprKind::Exist(x, e) => {
+                e.fv_with_vec(fvs);
                 fvs.remove(x);
             }
             ExprKind::Num(_) | ExprKind::True | ExprKind::False => (),

@@ -3,10 +3,10 @@ use crate::formula::{OpKind, PredKind};
 use nom::{
     branch::alt,
     bytes::complete::{tag, take_while},
-    character::complete::{alpha1, char, digit1, one_of},
+    character::complete::{alpha1, alphanumeric1, char, digit1, one_of},
     combinator::{map, map_res},
     error::ParseError,
-    multi::{fold_many0, separated_list},
+    multi::{fold_many0, many0, separated_list},
     sequence::{pair, preceded},
     IResult,
 };
@@ -21,8 +21,16 @@ fn sp1<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, char, E> 
     one_of(" \t\r\n")(input)
 }
 
-fn ident<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, &'a str, E> {
-    alpha1(input)
+fn ident<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, String, E> {
+    let (input, (i1, i2)) = pair(
+        alt((alpha1, tag("_"))),
+        many0(alt((alphanumeric1, tag("_")))),
+    )(input)?;
+    let mut s = i1.to_string();
+    for s2 in i2 {
+        s += s2;
+    }
+    Ok((input, s))
 }
 
 fn parse_var<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Expr, E> {
