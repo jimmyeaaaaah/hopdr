@@ -4,7 +4,7 @@ use std::fmt::Display;
 use crate::formula::fofml;
 use crate::formula::hes::Problem;
 use crate::formula::hes::{Goal, GoalKind};
-use crate::formula::{Constraint, Ident, Logic, Subst};
+use crate::formula::{Constraint, Fv, Ident, Logic, Rename, Subst, Variable};
 use crate::pdr::rtype::{
     least_fml, types_check, tys_check, Refinement, Tau, TyEnv, TypeEnvironment,
 };
@@ -129,26 +129,79 @@ impl<C: Refinement> Goal<C> {
         self.reduce_goal().into()
     }
 
-    pub fn to_cnf(&self) -> Vec<Goal<C>> {
+    fn prenex_normal_form_raw(
+        self: &Goal<C>,
+        env: &mut HashSet<Ident>,
+    ) -> (Vec<Variable>, Goal<C>) {
+        match self.kind() {
+            GoalKind::Op(_)
+            | GoalKind::Var(_)
+            | GoalKind::Abs(_, _)
+            | GoalKind::App(_, _)
+            | GoalKind::Constr(_) => (Vec::new(), self.clone()),
+            GoalKind::Conj(a1, a2) => {
+                let (mut v1, a1) = a1.prenex_normal_form_raw(env);
+                let (mut v2, a2) = a2.prenex_normal_form_raw(env);
+                v1.append(&mut v2);
+                (v1, Goal::mk_conj(a1, a2))
+            }
+            GoalKind::Disj(a1, a2) => {
+                let (mut v1, a1) = a1.prenex_normal_form_raw(env);
+                let (mut v2, a2) = a2.prenex_normal_form_raw(env);
+                v1.append(&mut v2);
+                (v1, Goal::mk_disj(a1, a2))
+            }
+            GoalKind::Univ(x, a) => {
+                let (x, a) = if env.contains(&x.id) {
+                    // if env already contains the ident to be bound,
+                    // we rename it to a fresh one.
+                    let x2_ident = Ident::fresh();
+                    let x2 = Variable::mk(x2_ident, x.ty.clone());
+                    let a = a.rename(&x.id, &x2.id);
+                    (x2, a)
+                } else {
+                    (x.clone(), a.clone())
+                };
+                env.insert(x.id);
+                let (mut v, a) = a.prenex_normal_form_raw(env);
+                debug_assert!(v.iter().find(|y| { x.id == y.id }).is_none());
+                env.remove(&x.id);
+                v.push(x);
+                (v, a)
+            }
+        }
+    }
+    fn quantify(&self, vs: &[Variable]) -> Goal<C> {
+        let fv = self.fv();
+        let mut result = self.clone();
+        for v in vs.iter().rev() {
+            if fv.contains(&v.id) {
+                result = Goal::mk_univ(v.clone(), result);
+            }
+        }
+        result
+    }
+
+    fn to_cnf_inner(&self) -> Vec<Goal<C>> {
         fn cross_or<C: Refinement>(v1: &[Goal<C>], v2: &[Goal<C>]) -> Vec<Goal<C>> {
             let mut v = Vec::new();
             for x in v1 {
                 for y in v2 {
-                    v.push(Goal::mk_conj(x.clone(), y.clone()));
+                    v.push(Goal::mk_disj(x.clone(), y.clone()));
                 }
             }
             v
         }
         match self.kind() {
             GoalKind::Conj(x, y) => {
-                let mut v1 = x.to_cnf();
-                let mut v2 = y.to_cnf();
+                let mut v1 = x.to_cnf_inner();
+                let mut v2 = y.to_cnf_inner();
                 v1.append(&mut v2);
                 v1
             }
             GoalKind::Disj(x, y) => {
-                let v1 = x.to_cnf();
-                let v2 = y.to_cnf();
+                let v1 = x.to_cnf_inner();
+                let v2 = y.to_cnf_inner();
                 cross_or(&v1, &v2)
             }
             GoalKind::Constr(_)
@@ -158,6 +211,11 @@ impl<C: Refinement> Goal<C> {
             | GoalKind::App(_, _)
             | GoalKind::Univ(_, _) => vec![self.clone()],
         }
+    }
+    pub fn to_cnf(&self) -> Vec<Goal<C>> {
+        let (vs, pnf) = self.prenex_normal_form_raw(&mut HashSet::new());
+        let cnf = pnf.to_cnf_inner();
+        cnf.into_iter().map(|g| g.quantify(&vs)).collect()
     }
 }
 
