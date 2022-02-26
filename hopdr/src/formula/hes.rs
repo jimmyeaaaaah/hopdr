@@ -251,6 +251,7 @@ impl<C: Subst<Item = Op, Id = Ident> + Rename + Fv<Id = Ident> + fmt::Display> S
     type Item = Goal<C>;
     type Id = Variable;
     // we assume formula has already been alpha-renamed
+    // TODO: where? We will not assume alpha-renamed
     fn subst(&self, x: &Variable, v: &Goal<C>) -> Self {
         fn subst_inner<C: Subst<Item = Op, Id = Ident> + Rename + fmt::Display>(
             target: &Goal<C>,
@@ -296,7 +297,9 @@ impl<C: Subst<Item = Op, Id = Ident> + Rename + Fv<Id = Ident> + fmt::Display> S
                     Goal::mk_disj(g1, g2)
                 }
                 GoalKind::Abs(y, g) => {
-                    if fv.contains(&y.id) {
+                    if y.id == x.id {
+                        target.clone()
+                    } else if fv.contains(&y.id) {
                         let y2_ident = Ident::fresh();
                         let y2 = Variable::mk(y2_ident, y.ty.clone());
                         let g = g.rename(&y.id, &y2_ident);
@@ -305,7 +308,18 @@ impl<C: Subst<Item = Op, Id = Ident> + Rename + Fv<Id = Ident> + fmt::Display> S
                         Goal::mk_abs(y.clone(), subst_inner(g, x, v, fv))
                     }
                 }
-                GoalKind::Univ(y, g) => Goal::mk_univ(y.clone(), subst_inner(g, x, v, fv)),
+                GoalKind::Univ(y, g) => {
+                    if y.id == x.id {
+                        target.clone()
+                    } else if fv.contains(&y.id) {
+                        let y2_ident = Ident::fresh();
+                        let y2 = Variable::mk(y2_ident, y.ty.clone());
+                        let g = g.rename(&y.id, &y2_ident);
+                        Goal::mk_univ(y2, subst_inner(&g, x, v, fv))
+                    } else {
+                        Goal::mk_univ(y.clone(), subst_inner(g, x, v, fv))
+                    }
+                }
             }
         }
         let fv = v.clone().fv();
@@ -400,6 +414,52 @@ impl<C: fmt::Display> fmt::Display for Problem<C> {
     }
 }
 
+impl<C: Rename> Problem<C> {
+    // [ψ₁/F₁, ψ₂/F₂ … ]ψ
+    pub fn eval(&self, target: &Goal<C>) -> Goal<C> {
+        match target.kind() {
+            GoalKind::Var(y) => match self.get_clause(y) {
+                Some(c) => c.body.clone(),
+                None => target.clone(),
+            },
+            GoalKind::Constr(_) | GoalKind::Op(_) => target.clone(),
+            GoalKind::App(g1, g2) => {
+                let g1 = self.eval(g1);
+                let g2 = self.eval(g2);
+                Goal::mk_app(g1, g2)
+            }
+            GoalKind::Conj(g1, g2) => {
+                let g1 = self.eval(g1);
+                let g2 = self.eval(g2);
+                Goal::mk_conj(g1, g2)
+            }
+            GoalKind::Disj(g1, g2) => {
+                let g1 = self.eval(g1);
+                let g2 = self.eval(g2);
+                Goal::mk_disj(g1, g2)
+            }
+            GoalKind::Abs(y, g) => match self.get_clause(&y.id) {
+                Some(_) => {
+                    let y2_ident = Ident::fresh();
+                    let y2 = Variable::mk(y2_ident, y.ty.clone());
+                    let g = g.rename(&y.id, &y2_ident);
+                    Goal::mk_abs(y2, self.eval(&g))
+                }
+                None => Goal::mk_abs(y.clone(), self.eval(g)),
+            },
+            GoalKind::Univ(y, g) => match self.get_clause(&y.id) {
+                Some(c) => {
+                    let y2_ident = Ident::fresh();
+                    let y2 = Variable::mk(y2_ident, y.ty.clone());
+                    let g = g.rename(&y.id, &y2_ident);
+                    Goal::mk_univ(y2, self.eval(&g))
+                }
+                None => Goal::mk_univ(y.clone(), self.eval(g)),
+            },
+        }
+    }
+}
+
 impl<C> Problem<C> {
     pub fn order(&self) -> usize {
         let mut ord = 0;
@@ -407,5 +467,15 @@ impl<C> Problem<C> {
             ord = std::cmp::max(ord, c.order())
         }
         ord
+    }
+
+    pub fn get_clause<'a>(&'a self, id: &Ident) -> Option<&'a Clause<C>> {
+        println!("get_clause: {}", id);
+        for c in self.clauses.iter() {
+            if c.head.id == *id {
+                return Some(c);
+            }
+        }
+        None
     }
 }

@@ -35,7 +35,7 @@ fn main() {
 
     // RUST_LOG=info (trace, debug, etc..)
     println!("starting PDR...");
-    let (s, f) = parse::parse::<VerboseError<&str>>(&contents).unwrap();
+    let (_, f) = parse::parse::<VerboseError<&str>>(&contents).unwrap();
     //let (s, f) = parse::parse::<VerboseError<&str>>(
     //    "
     //    S n k =v (n > 0 || k n) && (n <= 0 || S (n - 1) (\\r. k (r + n))).

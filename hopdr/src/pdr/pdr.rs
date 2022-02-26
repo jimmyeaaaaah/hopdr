@@ -200,6 +200,23 @@ impl HoPDR {
     fn decide(&mut self) {
         debug!("{}", "decide".blue());
         debug!("[PDR]decide");
+        let level = self.get_current_cex_level();
+        let gamma_i = &self.envs[level];
+        let cex = self.models.last().unwrap().clone();
+        let cex_next = self.problem.eval(&cex);
+        debug!("cex: {}", cex);
+        debug!("cex_next: {}", cex_next);
+        let cex_next = cex_next.reduce_goal();
+        debug!("cex_next reduced: {}", cex_next);
+        let cnf = cex_next.to_cnf();
+        let env = fml::Env::from_type_environment(gamma_i);
+        for x in cnf {
+            if !fml::env_models(&env, &x) {
+                debug!("candidate: {}", x);
+                self.models.push(x);
+                return;
+            }
+        }
 
         unimplemented!()
     }

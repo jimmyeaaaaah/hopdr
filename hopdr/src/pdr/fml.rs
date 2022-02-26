@@ -107,8 +107,9 @@ impl<C: Refinement> Goal<C> {
             GoalKind::Var(_) | GoalKind::Op(_) => self.clone(),
         }
     }
-    // until it reaches the beta normal form
-    pub fn reduce(&self) -> C {
+    // since there is no recursion and g is strongly typed, this procedure
+    // always terminates
+    pub fn reduce_goal(&self) -> Goal<C> {
         // first reduces the formula to a formula of type *
         // then traslates it to a fofml::Atom constraint.
         // debug!("to be reduced: {}", &self);
@@ -118,10 +119,14 @@ impl<C: Refinement> Goal<C> {
             if g == g_old {
                 // debug
                 // debug!("reduced: {}", &g);
-                return g.into();
+                return g;
             }
             g_old = g;
         }
+    }
+    // until it reaches the beta normal form
+    pub fn reduce(&self) -> C {
+        self.reduce_goal().into()
     }
 
     pub fn to_cnf(&self) -> Vec<Goal<C>> {
