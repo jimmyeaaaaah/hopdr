@@ -1,4 +1,4 @@
-use crate::formula::{OpKind, PredKind};
+use crate::formula::{Fv, OpKind, PredKind};
 use crate::util::Unique;
 
 use std::fmt;
@@ -42,6 +42,33 @@ pub enum ExprKind {
 }
 
 pub type Expr = Unique<ExprKind>;
+
+impl Fv for Expr {
+    type Id = Ident;
+
+    fn fv_with_vec(&self, fvs: &mut std::collections::HashSet<Self::Id>) {
+        match self.kind() {
+            ExprKind::Var(x) => {
+                fvs.insert(x.clone());
+            }
+            ExprKind::Pred(_, e1, e2)
+            | ExprKind::Op(_, e1, e2)
+            | ExprKind::App(e1, e2)
+            | ExprKind::And(e1, e2)
+            | ExprKind::Or(e1, e2) => {
+                e1.fv_with_vec(fvs);
+                e2.fv_with_vec(fvs);
+            }
+            ExprKind::Fix(_, x, _)
+            | ExprKind::Abs(x, _)
+            | ExprKind::Univ(x, _)
+            | ExprKind::Exist(x, _) => {
+                fvs.remove(x);
+            }
+            ExprKind::Num(_) | ExprKind::True | ExprKind::False => (),
+        }
+    }
+}
 
 impl Expr {
     pub fn mk_var(x: Ident) -> Expr {

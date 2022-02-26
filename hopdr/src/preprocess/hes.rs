@@ -1,14 +1,15 @@
-use std::fmt;
-
 use super::alpha::alpha_renaming;
 use super::transform::transform;
 use super::typing::typing;
 use super::Context;
 use crate::formula;
 use crate::formula::hes;
-use crate::formula::{OpKind, PredKind, Type as SimpleType};
+use crate::formula::{Fv, OpKind, PredKind, Type as SimpleType};
 use crate::parse;
 use crate::util::Unique;
+
+use std::collections::HashSet;
+use std::fmt;
 
 #[derive(Debug)]
 pub enum ExprKind<Id, Ty> {
@@ -126,10 +127,23 @@ impl<Id: fmt::Display, Ty: fmt::Display> fmt::Display for Clause<Id, Ty> {
     }
 }
 
+fn quantify_toplevel(mut expr: parse::Expr, clauses: &Vec<parse::Clause>) -> parse::Expr {
+    let fvs = expr.fv();
+    let preds: HashSet<String> = clauses.iter().map(|x| x.id.clone()).collect();
+
+    for fv in fvs.iter() {
+        if !preds.contains(fv) {
+            expr = parse::Expr::mk_univ(fv.clone(), expr);
+        }
+    }
+    expr
+}
+
 pub fn preprocess<'a>(vc: parse::Problem) -> (hes::Problem<formula::Constraint>, Context) {
     match vc {
         parse::Problem::NuHFLZValidityChecking(vc) => {
-            let problem = typing(vc.formulas, vc.toplevel);
+            let toplevel = quantify_toplevel(vc.toplevel, &vc.formulas);
+            let problem = typing(vc.formulas, toplevel);
             let (problem, ctx) = alpha_renaming(problem);
             (transform(problem), ctx)
         }
