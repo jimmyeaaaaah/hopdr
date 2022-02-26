@@ -217,14 +217,14 @@ fn test_parse_expr() {
 }
 
 pub fn parse<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Problem, E> {
-    let v = Vec::new();
     let (input, _) = preceded(sp, tag("%HES"))(input)?;
-    let (input, mut formulas) = fold_many0(parse_hes, v, |mut v, hes| {
+    let (input, toplevel) = parse_hes(input)?;
+
+    let (input, mut formulas) = fold_many0(parse_hes, Vec::new(), |mut v, hes| {
         v.push(hes);
         v
     })(input)?;
-    // tentative
-    let toplevel = formulas.pop().unwrap().expr;
+    let toplevel = toplevel.expr;
 
     Ok((
         input,
@@ -237,10 +237,10 @@ fn test_parse() {
     let (_, f) = parse::<VerboseError<&str>>(
         "
         %HES
+        M =v ∀ x. S x (K x).
         S n k =v (n > 0 || k 0) && (n <= 0 || S (n - 1) (L n k)).
         K m n =v m <= n.
         L n k m =v k (n + m).
-        M =v ∀ x. S x (K x).
          ",
     )
     .unwrap();
