@@ -7,6 +7,7 @@ use crate::formula::chc;
 use crate::formula::fofml;
 use crate::formula::pcsp;
 use crate::formula::OpKind;
+use crate::formula::QuantifierKind;
 use crate::formula::Subst;
 use crate::formula::{Constraint, Fv, Ident, Logic, Op, PredKind, Top};
 
@@ -261,6 +262,7 @@ fn parse_body_cons(v: &lexpr::Cons, env: &HashMap<&str, Ident>) -> fofml::Atom {
         Or,
         Not,
         Var(Ident),
+        Quantifier(QuantifierKind),
     }
 
     let mut itr = v.iter().map(|x| x.car());
@@ -275,6 +277,8 @@ fn parse_body_cons(v: &lexpr::Cons, env: &HashMap<&str, Ident>) -> fofml::Atom {
         "and" => Tag::And,
         "or" => Tag::Or,
         "not" => Tag::Not,
+        "exists" => Tag::Quantifier(QuantifierKind::Existential),
+        "forall" => Tag::Quantifier(QuantifierKind::Universal),
         x => match env.get(x) {
             Some(id) => Tag::Var(*id),
             None => {
@@ -313,6 +317,28 @@ fn parse_body_cons(v: &lexpr::Cons, env: &HashMap<&str, Ident>) -> fofml::Atom {
         Tag::Var(p) => {
             let l: Vec<Op> = itr.map(|x| parse_op(x, env)).collect();
             fofml::Atom::mk_pred(p, l)
+        }
+        Tag::Quantifier(q) => {
+            //  (exists ( (v_1 Int) ) (xx_255 v_1 v_0 v_1))
+            let args = itr.next().unwrap();
+            let (args, env2) = parse_args(args);
+            for (k, i) in env2.iter() {
+                let r = env.insert(k, *i);
+                debug_assert!(r.is_none());
+            }
+
+            let r: Vec<fofml::Atom> = itr.map(|x| parse_body(x, env)).collect();
+            debug_assert!(r.len() == 1);
+
+            for (k, i) in env2.iter() {
+                let r = env.remove(k);
+                debug_assert!(r.is_some());
+            }
+            let mut a = r[0].clone();
+            for p in args {
+                a = fofml::Atom::mk_quantifier(q, p, a);
+            }
+            a
         }
     }
 }
