@@ -512,27 +512,42 @@ impl Atom {
             AtomKind::Not(x) => negate(x),
         }
     }
-    pub fn prenex_normal_form_raw(self: &Atom) -> (Vec<(QuantifierKind, Ident)>, Atom) {
+    // Assumption: Not is already reduced by `reduce_not`
+    pub fn prenex_normal_form_raw(
+        self: &Atom,
+        env: &mut HashSet<Ident>,
+    ) -> (Vec<(QuantifierKind, Ident)>, Atom) {
         match self.kind() {
             AtomKind::True | AtomKind::Constraint(_) | AtomKind::Predicate(_, _) => {
                 (Vec::new(), self.clone())
             }
             AtomKind::Conj(a1, a2) => {
-                let (mut v1, a1) = a1.prenex_normal_form_raw();
-                let (mut v2, a2) = a2.prenex_normal_form_raw();
+                let (mut v1, a1) = a1.prenex_normal_form_raw(env);
+                let (mut v2, a2) = a2.prenex_normal_form_raw(env);
                 v1.append(&mut v2);
                 (v1, Atom::mk_conj(a1, a2))
             }
             AtomKind::Disj(a1, a2) => {
-                let (mut v1, a1) = a1.prenex_normal_form_raw();
-                let (mut v2, a2) = a2.prenex_normal_form_raw();
+                let (mut v1, a1) = a1.prenex_normal_form_raw(env);
+                let (mut v2, a2) = a2.prenex_normal_form_raw(env);
                 v1.append(&mut v2);
                 (v1, Atom::mk_disj(a1, a2))
             }
             AtomKind::Quantifier(q, x, a) => {
-                let (mut v, a) = a.prenex_normal_form_raw();
-                debug_assert!(v.iter().find(|(_, y)| { x == y }).is_none());
-                v.push((*q, *x));
+                let (x, a) = if env.contains(x) {
+                    // if env already contains the ident to be bound,
+                    // we rename it to a fresh one.
+                    let x2 = Ident::fresh();
+                    let a = a.rename(x, &x2);
+                    (x2, a)
+                } else {
+                    (*x, a.clone())
+                };
+                env.insert(x);
+                let (mut v, a) = a.prenex_normal_form_raw(env);
+                debug_assert!(v.iter().find(|(_, y)| { x == *y }).is_none());
+                v.push((*q, x));
+                env.remove(&x);
                 (v, a)
             }
             AtomKind::Not(x) => {
@@ -547,7 +562,7 @@ impl Atom {
     }
     // Assumption: Not is already reduced by `reduce_not`
     pub fn prenex_normal_form(&self) -> Atom {
-        let (v, mut a) = self.prenex_normal_form_raw();
+        let (v, mut a) = self.prenex_normal_form_raw(&mut HashSet::new());
         for (q, x) in v.into_iter().rev() {
             a = Atom::mk_quantifier(q, x, a);
         }

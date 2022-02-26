@@ -179,7 +179,7 @@ pub(super) fn infer(
     // 4. solve constraints by CHC (or a template-based method)
     // 4.1 translate constraint to CHC or extended chc
     let constraint = constraint.reduce_not();
-    let (quantifiers, pnf) = constraint.prenex_normal_form_raw();
+    let (quantifiers, pnf) = constraint.prenex_normal_form_raw(&mut HashSet::new());
     let mut ienv = HashSet::new();
     for (q, x) in quantifiers {
         match q {

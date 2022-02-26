@@ -220,7 +220,7 @@ pub fn parse<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Pro
     let (input, _) = preceded(sp, tag("%HES"))(input)?;
     let (input, toplevel) = parse_hes(input)?;
 
-    let (input, mut formulas) = fold_many0(parse_hes, Vec::new(), |mut v, hes| {
+    let (input, formulas) = fold_many0(parse_hes, Vec::new(), |mut v, hes| {
         v.push(hes);
         v
     })(input)?;
