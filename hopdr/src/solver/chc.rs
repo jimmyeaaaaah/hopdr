@@ -193,6 +193,9 @@ fn parse_arg<'a>(v: &'a lexpr::Value) -> &'a str {
 }
 
 fn parse_args<'a>(v: &'a lexpr::Value) -> (Vec<Ident>, HashMap<&'a str, Ident>) {
+    if v.is_null() {
+        return (Vec::new(), HashMap::new());
+    }
     let itr = cons_value_to_iter(v);
     let mut env = HashMap::new();
     let mut args = Vec::new();
