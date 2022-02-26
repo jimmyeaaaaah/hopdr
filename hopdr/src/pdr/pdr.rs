@@ -58,6 +58,7 @@ impl<C: Refinement> TypeEnvironment<Tau<C>> {
 }
 
 impl HoPDR {
+    #[allow(dead_code)]
     fn dump_state(&self) {
         println!("{}", "[PDR STATE]".green().bold());
         println!("- current loop: {}", self.loop_cnt);

@@ -2,12 +2,12 @@ use super::smt;
 use super::smt::constraint_to_smt2_inner;
 use super::smt::ident_2_smt2;
 use super::util;
-use super::{SMT2Style, SolverResult};
+use super::SMT2Style;
 use crate::formula::chc;
 use crate::formula::fofml;
 use crate::formula::pcsp;
 use crate::formula::OpKind;
-use crate::formula::{Bot, Constraint, Fv, Ident, Logic, Op, PredKind, Top};
+use crate::formula::{Constraint, Fv, Ident, Logic, Op, PredKind, Top};
 
 use lexpr;
 use lexpr::Value;
@@ -374,7 +374,7 @@ fn reduce_application(
     use fofml::{Atom, AtomKind};
     fn reduce(a: &Atom, env: &E) -> (bool, Atom) {
         match a.kind() {
-            AtomKind::Predicate(p, l) => todo!(),
+            AtomKind::Predicate(_, _) => todo!(),
             AtomKind::Conj(a1, a2) => {
                 let (flag1, a1) = reduce(a1, env);
                 let (flag2, a2) = reduce(a2, env);

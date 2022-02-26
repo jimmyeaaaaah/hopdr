@@ -202,7 +202,7 @@ pub(super) fn infer(
                 fofml::AtomKind::True | fofml::AtomKind::Constraint(_) => {
                     body = pcsp::Atom::mk_conj(atom.negate().into(), body);
                 }
-                fofml::AtomKind::Predicate(p, l) => {
+                fofml::AtomKind::Predicate(_, _) => {
                     if !head.is_false() {
                         is_chc = false;
                     }

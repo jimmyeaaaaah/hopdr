@@ -447,15 +447,16 @@ impl<C: Rename> Problem<C> {
                 }
                 None => Goal::mk_abs(y.clone(), self.eval(g)),
             },
-            GoalKind::Univ(y, g) => match self.get_clause(&y.id) {
-                Some(c) => {
+            GoalKind::Univ(y, g) => {
+                if self.get_clause(&y.id).is_some() {
                     let y2_ident = Ident::fresh();
                     let y2 = Variable::mk(y2_ident, y.ty.clone());
                     let g = g.rename(&y.id, &y2_ident);
                     Goal::mk_univ(y2, self.eval(&g))
+                } else {
+                    Goal::mk_univ(y.clone(), self.eval(g))
                 }
-                None => Goal::mk_univ(y.clone(), self.eval(g)),
-            },
+            }
         }
     }
 }

@@ -1,9 +1,7 @@
 use super::hes::ValidityChecking;
 use crate::formula;
 use crate::formula::hes;
-use crate::formula::{Bot, Fv, Ident, Logic, Type as SimpleType, Variable};
-
-use std::collections::HashSet;
+use crate::formula::{Bot, Ident, Logic, Type as SimpleType, Variable};
 
 type In = ValidityChecking<formula::Ident, SimpleType>;
 type Out = hes::Problem<formula::Constraint>;
