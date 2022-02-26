@@ -7,6 +7,7 @@ use crate::formula::chc;
 use crate::formula::fofml;
 use crate::formula::pcsp;
 use crate::formula::OpKind;
+use crate::formula::Subst;
 use crate::formula::{Constraint, Fv, Ident, Logic, Op, PredKind, Top};
 
 use lexpr;
@@ -274,8 +275,8 @@ fn parse_body_cons(v: &lexpr::Cons, env: &HashMap<&str, Ident>) -> fofml::Atom {
         x => match env.get(x) {
             Some(id) => Tag::Var(*id),
             None => {
-                // TODO: x_nn can happen since hoice sometimes abbreviate it
-                unimplemented!()
+                // x_nn can happen since hoice sometimes abbreviate it
+                Tag::Var(parse_predicate_variable(x))
             }
         },
     };
@@ -374,7 +375,13 @@ fn reduce_application(
     use fofml::{Atom, AtomKind};
     fn reduce(a: &Atom, env: &E) -> (bool, Atom) {
         match a.kind() {
-            AtomKind::Predicate(_, _) => todo!(),
+            AtomKind::Predicate(p, l) => match env.get(p) {
+                Some((args, a)) => {
+                    let a = a.subst_multi(args.iter().zip(l.iter()).map(|(x, y)| (*x, y.clone())));
+                    (true, a)
+                }
+                None => panic!("failed to handle the model from hoice"),
+            },
             AtomKind::Conj(a1, a2) => {
                 let (flag1, a1) = reduce(a1, env);
                 let (flag2, a2) = reduce(a2, env);
@@ -396,12 +403,14 @@ fn reduce_application(
             AtomKind::True | AtomKind::Constraint(_) => (false, a.clone()),
         }
     }
-    let mut continue_flag = false;
+    let mut continue_flag = true;
     while continue_flag {
         continue_flag = false;
         let mut new_model = HashMap::new();
         for (k, (l, a)) in model.iter() {
+            debug!("old: {} ", a);
             let (flag, a) = reduce(a, &model);
+            debug!("new: {} ", a);
             continue_flag |= flag;
             new_model.insert(*k, (l.clone(), a));
         }
@@ -416,6 +425,7 @@ fn reduce_application(
 }
 impl Model {
     fn parse_hoice_model(model_str: &str) -> Result<Model, lexpr::parse::Error> {
+        debug!("{}", model_str);
         let x = lexpr::from_str(model_str)?;
         let model: HashMap<Ident, (Vec<Ident>, fofml::Atom)> = match x {
             Value::Cons(x) => x

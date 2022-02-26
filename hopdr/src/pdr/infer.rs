@@ -129,8 +129,13 @@ fn infer_intersection(problem: &Problem, _cex: &Candidate) -> ITEnv {
         return env;
     }
 
-    // 2.
-    unimplemented!()
+    // 2. temporarily do the same thing
+    let mut env = ITEnv::new();
+    for c in problem.clauses.iter() {
+        let t = c.head.ty.clone().into();
+        env.add(c.head.id, t);
+    }
+    return env;
 }
 
 // Type inference in `Conflict`
