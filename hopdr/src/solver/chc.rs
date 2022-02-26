@@ -255,7 +255,7 @@ fn parse_op(v: &lexpr::Value, env: &HashMap<&str, Ident>) -> Op {
         | Value::Vector(_) => panic!("program error"),
     }
 }
-fn parse_body_cons(v: &lexpr::Cons, env: &HashMap<&str, Ident>) -> fofml::Atom {
+fn parse_body_cons<'a>(v: &'a lexpr::Cons, env: &mut HashMap<&'a str, Ident>) -> fofml::Atom {
     enum Tag {
         Pred(PredKind),
         And,
@@ -342,7 +342,7 @@ fn parse_body_cons(v: &lexpr::Cons, env: &HashMap<&str, Ident>) -> fofml::Atom {
         }
     }
 }
-fn parse_body(v: &lexpr::Value, env: &HashMap<&str, Ident>) -> fofml::Atom {
+fn parse_body<'a>(v: &'a lexpr::Value, env: &mut HashMap<&'a str, Ident>) -> fofml::Atom {
     debug!("parse_body: {}", v);
     match v {
         Value::Bool(t) if *t => fofml::Atom::mk_true(),
@@ -384,7 +384,7 @@ fn parse_define_fun(v: lexpr::Value) -> (Ident, (Vec<Ident>, fofml::Atom)) {
 
     // args
     let v = itr.next().unwrap_or_else(|| panic!("{}", ERRMSG));
-    let (args, env) = parse_args(v);
+    let (args, mut env) = parse_args(v);
 
     // Bool
     let v = itr.next().unwrap_or_else(|| panic!("{}", ERRMSG));
@@ -392,7 +392,7 @@ fn parse_define_fun(v: lexpr::Value) -> (Ident, (Vec<Ident>, fofml::Atom)) {
 
     // body of the predicate
     let v = itr.next().unwrap_or_else(|| panic!("{}", ERRMSG));
-    let body = parse_body(v, &env);
+    let body = parse_body(v, &mut env);
 
     // ident(args) = body
     (ident, (args, body))
