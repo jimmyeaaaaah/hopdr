@@ -58,15 +58,14 @@ impl<C: Refinement> TypeEnvironment<Tau<C>> {
 }
 
 impl HoPDR {
-    #[allow(dead_code)]
     fn dump_state(&self) {
-        println!("{}", "[PDR STATE]".green().bold());
-        println!("- current loop: {}", self.loop_cnt);
-        println!("- size of env: {}", self.envs.len());
+        debug!("{}", "[PDR STATE]".green().bold());
+        debug!("- current loop: {}", self.loop_cnt);
+        debug!("- size of env: {}", self.envs.len());
         //println!("- size of model: {}", self.models.size());
         for (level, e) in self.envs.iter().enumerate() {
-            println!("Level {}", level);
-            println!("{}", e);
+            debug!("Level {}", level);
+            debug!("{}", e);
         }
     }
 
@@ -226,7 +225,7 @@ impl HoPDR {
         info!("[PDR] target formula");
         info!("{}", self.problem);
         loop {
-            //self.dump_state();
+            self.dump_state();
             if !self.check_valid() {
                 self.candidate();
                 if self.check_feasible()? {

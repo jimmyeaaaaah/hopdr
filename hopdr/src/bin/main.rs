@@ -55,9 +55,9 @@ fn main() {
     }
 
     let (vc, _ctx) = preprocess::hes::preprocess(f);
-    //for fml in vc.clauses.iter() {
-    //    println!("{}", fml);
-    //}
+    for fml in vc.clauses.iter() {
+        println!("{}", fml);
+    }
 
     match pdr::run(vc) {
         pdr::VerificationResult::Valid => {

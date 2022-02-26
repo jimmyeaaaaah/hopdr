@@ -462,7 +462,11 @@ impl Atom {
                 Some((r, c)) => {
                     c.subst_multi(r.iter().zip(l.iter()).map(|(x, y)| (x.clone(), y.clone())))
                 }
-                None => panic!("not found: {}", p),
+                None => {
+                    // TODO: is it true?
+                    // there is no entry in p
+                    Constraint::mk_false()
+                }
             },
             AtomKind::Conj(x, y) => Constraint::mk_conj(x.assign(model), y.assign(model)),
             AtomKind::Disj(x, y) => Constraint::mk_disj(x.assign(model), y.assign(model)),
