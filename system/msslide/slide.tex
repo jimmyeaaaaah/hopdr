@@ -13,7 +13,7 @@
 \usepackage{color}
 %\usepackage{xcolor}
 \usepackage{amsthm}
-%\usepackage{bcprules}
+\usepackage{bcprules}
 
 \usepackage{algorithm,algorithmic}
 
@@ -522,6 +522,123 @@ x > 0
     \ENDLOOP
 \end{algorithmic}
 \end{algorithm}
+
+\begin{align*}
+  & \Tr (\epsilon, \top) &\rinitialize \\
+  & \Tr (\epsilon, \top \cdot \bot) & \runfold \\
+  & \Tr ((1,\pdrtop), \top \cdot \bot) & \rcandidate \\
+  & \Tr (\epsilon, \top \cdot \tau) & \rconflict \\
+  & \Tr (\epsilon, \top \cdot \tau) & \rvalid
+\end{align*}
+
+\begin{figure}[t]
+	\centering
+	\infrule[Initialize]{
+	}{
+	\pdrapp \epsilon \pdrmid \top
+	}
+
+	\infrule[Valid]{
+    \left\{
+	\begin{array}{l}
+    [\floor{\tau_i}/Sum] \pdrtop \\
+    \pdrtransform(\floor{\tau_i}) \pdrtypes \tau_i
+	\end{array}
+    \right.
+	\andalso \mbox{for some \( i \in \{\, 0, \dots, N \,\} \)}
+	}{
+	\epsilon \pdrmid \tau_0 \cdots \tau_N \pdrapp \valid
+	}
+
+	\infrule[Invalid]{
+	}{
+	(0, \psi) \cdot C \pdrmid \tau_0 \cdots \tau_N \pdrapp \invalid
+	}
+
+	\infrule[Unfold]{
+    [\floor{\tau_i}/Sum] \pdrtop
+    \andalso \not \models \pdrtransform(\floor{\tau_N}) \pdrtypes \tau_N
+	}{
+	\epsilon \pdrmid \tau_0 \cdots \tau_N \pdrapp
+	\epsilon \pdrmid \tau_0 \cdots \tau_N \cdot \bot
+	}
+
+	\infrule[Candidate]{
+	\pdrtop = \forall \vec{x}. \bigwedge_i \psi_i
+    \andalso \not \models \forall \vec{x}.[\floor{\tau_N}/Sum]\psi_i
+	}{
+	\epsilon \pdrmid \tau_0 \cdots \tau_N \pdrapp
+	(N, \forall \vec{x}.\psi_i) \pdrmid \tau_0 \cdots \tau_N
+	}
+
+	\infrule[Conflict]{
+    [\pdrtransform(\floor{\tau_i})/Sum] \psi
+    \andalso [\floor{\tau_{i+1} \wedge \tau'}/Sum]\psi
+    \andalso \pdrtransform(\floor{\tau_i}) \pdrtypes \tau' \\
+	\tau'_j =
+	\left\{
+	\begin{array}{ll}
+	\tau_j \wedge \tau' &\text{ if } j \leq i + 1\\
+	\tau_j &\text{ if } j > i + 1
+	\end{array}
+	\right.
+	}{
+	(i+1, \psi)\cdot C \pdrmid \tau_0 \cdots \tau_N \pdrapp
+	C \pdrmid \tau'_0 \cdots \tau'_N
+	}
+
+	\infrule[Decide]{
+    \not \models [\pdrtransform(\floor{\tau_i})/Sum] \psi \\
+	\left[\psi_{sum}/Sum \right] \psi = \forall \vec{x}.\bigwedge_j \psi_j
+    \andalso \not \models \forall \vec{x}. [\floor{\tau_i}/Sum] \psi_j
+	}{
+	(i+1, \psi)\cdot C \pdrmid \tau_0 \cdots \tau_N \pdrapp
+	(i, \forall \vec{x}. \psi_j) \cdot (i+1, \psi)\cdot C \pdrmid \tau_0 \cdots \tau_N
+	}
+	\caption{Abstract transition system specification of HoPDR}
+	\label{fig:pdrrule}
+\end{figure}
+
+\begin{align*}
+    \lambda x.\: x \neq 0 \pdrtypes \ti{x} \to \tb{x > 0}
+    &= \forall x.\: x > 0 \Rightarrow x \neq 0
+\end{align*}
+
+\begin{align*}
+    \tau = \ti{x} \to (\ti{y} \to \tb{y \geq x}) \to \tb{\true}
+\end{align*}
+
+\begin{align*}
+    \begin{cases}
+        [\floor{\tau}/Sum]\pdrtop = \forall n.\: \forall y.\: n \leq y
+        \Rightarrow n \leq y \\
+        \pdrF(\floor{\tau}) \pdrtypes \tau = \forall x.\: \forall y.\: x > 0 \land y
+        \geq x - 1 \Rightarrow y \geq 0
+    \end{cases}
+\end{align*}
+
+\begin{align*}
+    \begin{cases}
+        \pdrF(\floor{\top}) \pdrtypes \tau \\
+        [\floor{\tau}/Sum] \pdrtop
+    \end{cases}
+\end{align*}
+
+\begin{align*}
+    &\begin{cases}
+        Sum =_\nu \goal_{\text{sum}} \\
+        \pdrtop ::= \forall n. \text{Sum}\ n\ (\lambda r. r \geq n)
+    \end{cases} \\
+    \goal_{\text{sum}} &::= \lambda x.\: \lambda k.\: (x > 0 \lor k\ x) \land \\
+                     &\quad\quad  (x \leq 0 \lor \text{Sum}\ (x - 1)\ (\lambda r. k\ (x + r))\\
+\end{align*}
+
+\begin{align*}
+    \refty &::=
+	\typebool{\constraint}
+	\mid \typeint{x} \to \refty
+	\mid \{\, \refty_1, \dots, \refty_n \,\} \to \refty
+\end{align*}
 
 \end{document}
 
