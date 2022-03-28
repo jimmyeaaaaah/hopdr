@@ -61,12 +61,6 @@ pub enum Error {
     SMTUnknown,
 }
 
-impl From<chc::ResolutionError> for Error {
-    fn from(_: chc::ResolutionError) -> Error {
-        Error::TypeError
-    }
-}
-
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = match self {

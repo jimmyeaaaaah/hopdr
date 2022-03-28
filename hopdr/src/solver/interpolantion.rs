@@ -15,7 +15,7 @@ use crate::formula::pcsp;
 use crate::formula::{Bot, Constraint, Ident, Logic, Negation, Top};
 
 use std::collections::{HashMap, HashSet};
-type CHC = chc::CHC<pcsp::Atom>;
+type CHC = chc::CHC;
 
 // topological sort
 fn topological_sort(l: &[CHC]) -> Vec<Ident> {
@@ -129,16 +129,13 @@ fn check_contains(p: Ident, a: &pcsp::Atom) -> bool {
 //   - q(x, y) = x >= y
 //
 // result: p(x, y) => x > y /\ x <= y /\ x >= y
-fn remove_pred_except_for(p: Ident, a: pcsp::Atom, least_model: Model, model: Model) -> pcsp::Atom {
-    use pcsp::Atom;
-    match a.kind() {
-        pcsp::AtomKind::True => Atom::mk_false(),
-        pcsp::AtomKind::Constraint(c) => Atom::mk_constraint(c.negate().unwrap()),
-        pcsp::AtomKind::Predicate(p, l) => Atom::mk_true(),
-        pcsp::AtomKind::Conj(_, _) => todo!(),
-        pcsp::AtomKind::Disj(_, _) => todo!(),
-        pcsp::AtomKind::Quantifier(_, _, _) => todo!(),
-    }
+fn remove_pred_except_for(
+    p: Ident,
+    a: &pcsp::Atom,
+    least_model: Model,
+    model: Model,
+) -> pcsp::Atom {
+    unimplemented!()
 }
 
 pub fn solve(chc: &Vec<CHC>) -> CHCResult {

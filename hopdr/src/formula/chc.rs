@@ -9,20 +9,26 @@ use super::pcsp;
 use super::{Constraint, Fv, Ident, Logic, Op, Rename, Top};
 
 #[derive(Debug, Clone)]
+pub struct Atom {
+    predicate: Ident,
+    args: Vec<Op>
+}
+
+#[derive(Debug, Clone)]
 pub enum CHCHead {
     Constraint(Constraint),
-    Predicate(Ident, Vec<Op>),
+    Predicate(Atom),
 }
 impl fmt::Display for CHCHead {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             CHCHead::Constraint(c) => write!(f, "{}", c),
-            CHCHead::Predicate(i, args) => {
-                write!(f, "{}(", i)?;
-                if !args.is_empty() {
-                    write!(f, "{}", args[0])?;
+            CHCHead::Predicate(a) => {
+                write!(f, "{}(", a.predicate)?;
+                if !a.args.is_empty() {
+                    write!(f, "{}", a.args[0])?;
                 }
-                for arg in args[1..].iter() {
+                for arg in a.args[1..].iter() {
                     write!(f, ",{}", arg)?;
                 }
                 write!(f, ")")
@@ -67,23 +73,23 @@ impl Rename for CHCHead {
 }
 
 #[derive(Debug, Clone)]
-pub struct CHC<A> {
-    pub body: A,
+pub struct CHC {
+    pub body: Vec<CHCHead>,
     pub head: CHCHead,
 }
 
-impl<A: Rename> Rename for CHC<A> {
+impl Rename for CHC {
     fn rename(&self, x: &Ident, y: &Ident) -> Self {
-        CHC::new(self.head.rename(x, y), self.body.rename(x, y))
+        let body = self.body.iter().map(|h| h.rename(x, y)).collect();
+        CHC::new(self.head.rename(x, y), body)
     }
 }
 
-impl<A: Fv<Id = Ident>> Fv for CHC<A> {
+impl Fv for CHCHead {
     type Id = Ident;
 
     fn fv_with_vec(&self, fvs: &mut HashSet<Self::Id>) {
-        self.body.fv_with_vec(fvs);
-        match &self.head {
+        match &self {
             CHCHead::Constraint(c) => c.fv_with_vec(fvs),
             CHCHead::Predicate(_, l) => {
                 for i in l {
@@ -94,20 +100,40 @@ impl<A: Fv<Id = Ident>> Fv for CHC<A> {
     }
 }
 
-impl<A> CHC<A> {
-    pub fn new(head: CHCHead, body: A) -> CHC<A> {
-        CHC { head, body }
+impl Fv for CHC {
+    type Id = Ident;
+
+    fn fv_with_vec(&self, fvs: &mut HashSet<Self::Id>) {
+        for b in self.body.iter() {
+            b.fv_with_vec(fvs);
+        }
+        self.head.fv_with_vec(fvs);
     }
 }
 
-impl<A: fmt::Display> fmt::Display for CHC<A> {
+impl CHCHead {
+    pub fn new(body: pcsp::Atom) -> Vec<CHCHead> {
+        // 1. to_pnf
+        // 2. dnf
+        // 3. cnf
+    }
+}
+
+impl fmt::Display for CHC {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} -> {}", self.body, self.head)
+        if self.body.len() > 0 {
+            write!(f, "{}", self.body[0])?;
+            for b in &self.body[1..] {
+                write!(f, "/\\ {}", b)?;
+            }
+        }
+        write!(f, " -> {}", self.head)
     }
 }
 
-impl CHC<pcsp::Atom> {
-    fn replace_inner(expr: &pcsp::Atom, target: &CHC<pcsp::Atom>) -> pcsp::Atom {
+impl CHC {
+    fn vec_to_atom() -> 
+    fn replace_inner(expr: &pcsp::Atom, target: &CHC) -> pcsp::Atom {
         let (target_p, target_args) = target.head.predicate().unwrap();
         match expr.kind() {
             pcsp::AtomKind::True | pcsp::AtomKind::Constraint(_) => expr.clone(),
@@ -135,23 +161,11 @@ impl CHC<pcsp::Atom> {
             }
         }
     }
-    fn replace(self, target: &CHC<pcsp::Atom>) -> CHC<pcsp::Atom> {
+    fn replace(self, target: &CHC) -> CHC {
         assert!(!self.head.have_same_predicate(&target.head));
         assert!(target.head.predicate().is_some());
         let body = Self::replace_inner(&self.body, target);
         CHC { body, ..self }
-    }
-
-    fn resolve_target(&self, _target: &Ident) -> Result<fofml::Atom, ResolutionError> {
-        // 1. transform body of chc to disjunction normal form: bodies
-        // 2. check when P(x, y, z) /\ P'(x', y', z') then x = x' and y = y' and z = z' and P = P' = target
-        // 3. transform each body in bodies to P(x, y, z) /\ constraint => constraint'
-        // 4. negate constraint, then P(x, y, z) => not(constraint) \/ constraint'
-        // 5. returns /\_[for each body in bodies] not(constraint) \/ constraint'
-
-        // 1. to dnf
-        // removed: refer to 9890bba3a5230997a8a7a9219ee3605c7caea8e4
-        unimplemented!()
     }
     pub fn collect_predicates(&self, predicates: &mut HashMap<Ident, usize>) {
         match &self.head {
@@ -162,20 +176,6 @@ impl CHC<pcsp::Atom> {
             },
         }
         self.body.collect_predicates(predicates);
-    }
-    // translate
-    //   θ /\ Q(x) => P(x, y)
-    // to
-    //   θ /\ Q(x) /\ P(x, y) => P(x, y)
-    // for the purpose of hacking CHC solvers to avoid their preprocesses.
-    pub fn to_trivial_recursive(&self) -> CHC<pcsp::Atom> {
-        let body = match &self.head {
-            CHCHead::Constraint(_) => self.body.clone(),
-            CHCHead::Predicate(p, l) => {
-                pcsp::Atom::mk_conj(pcsp::Atom::mk_pred(*p, l.clone()), self.body.clone())
-            }
-        };
-        CHC::new(self.head.clone(), body)
     }
 }
 
@@ -210,197 +210,4 @@ pub fn to_dnf(atom: &pcsp::Atom) -> Vec<Vec<CHCHead>> {
         }
         AtomKind::Quantifier(_, _, _) => unimplemented!(),
     }
-}
-
-#[derive(Debug, Copy, Clone)]
-pub enum ResolutionError {
-    TargetVariableNotFound,
-    CHCNotDeterministic,
-    ContainsDisjunctions,
-    IllegalConstraint,
-}
-
-fn simplify_atom(atom: pcsp::Atom) -> pcsp::Atom {
-    fn simplify_atom_inner(atom: &pcsp::Atom) -> Result<Constraint, pcsp::Atom> {
-        match atom.kind() {
-            pcsp::AtomKind::True => Ok(Constraint::mk_true()),
-            pcsp::AtomKind::Constraint(c) => Ok(c.clone()),
-            pcsp::AtomKind::Predicate(_, _) => Err(atom.clone()),
-            pcsp::AtomKind::Conj(x, y) => {
-                let x2 = simplify_atom_inner(x);
-                let y2 = simplify_atom_inner(y);
-                match (x2, y2) {
-                    (Ok(x1), Ok(x2)) => Ok(Constraint::mk_conj(x1, x2)),
-                    (Err(x), Ok(c)) | (Ok(c), Err(x)) => {
-                        Err(pcsp::Atom::mk_conj(x, pcsp::Atom::mk_constraint(c)))
-                    }
-                    (Err(x), Err(y)) => Err(pcsp::Atom::mk_conj(x, y)),
-                }
-            }
-            pcsp::AtomKind::Disj(x, y) => {
-                let x2 = simplify_atom_inner(x);
-                let y2 = simplify_atom_inner(y);
-                match (x2, y2) {
-                    (Ok(x1), Ok(x2)) => Ok(Constraint::mk_disj(x1, x2)),
-                    (Err(x), Ok(c)) | (Ok(c), Err(x)) => {
-                        Err(pcsp::Atom::mk_disj(x, pcsp::Atom::mk_constraint(c)))
-                    }
-                    (Err(x), Err(y)) => Err(pcsp::Atom::mk_disj(x, y)),
-                }
-            }
-            pcsp::AtomKind::Quantifier(_, _, _) => todo!(),
-        }
-    }
-
-    match simplify_atom_inner(&atom) {
-        Ok(x) => pcsp::Atom::mk_constraint(x),
-        Err(x) => x,
-    }
-}
-
-fn conjoin2vec(atom: &pcsp::Atom) -> Vec<pcsp::Atom> {
-    fn conjoin2vec_inner(atom: &pcsp::Atom, result: &mut Vec<pcsp::Atom>) {
-        match atom.kind() {
-            pcsp::AtomKind::True
-            | pcsp::AtomKind::Constraint(_)
-            | pcsp::AtomKind::Predicate(_, _)
-            | pcsp::AtomKind::Disj(_, _)
-            | pcsp::AtomKind::Quantifier(_, _, _) => result.push(atom.clone()),
-            pcsp::AtomKind::Conj(x, y) => {
-                conjoin2vec_inner(x, result);
-                conjoin2vec_inner(y, result);
-            }
-        }
-    }
-    let mut result = Vec::new();
-    let atom = &simplify_atom(atom.clone());
-    conjoin2vec_inner(atom, &mut result);
-    result
-}
-
-// Assumption: atom has already been simplified by simplify_atom.
-fn atom2chc_head(atom: pcsp::Atom) -> Option<CHCHead> {
-    match atom.kind() {
-        pcsp::AtomKind::True => Some(CHCHead::Constraint(Constraint::mk_true())),
-        pcsp::AtomKind::Constraint(c) => Some(CHCHead::Constraint(c.clone())),
-        pcsp::AtomKind::Conj(_c1, _c2) => None,
-        pcsp::AtomKind::Predicate(p, args) => Some(CHCHead::Predicate(*p, args.clone())),
-        pcsp::AtomKind::Disj(_c1, _c2) => None,
-        pcsp::AtomKind::Quantifier(_q, _x, _c) => None,
-    }
-}
-
-pub fn pcsps2chcs(clauses: &[pcsp::PCSP<pcsp::Atom>]) -> Option<Vec<CHC<pcsp::Atom>>> {
-    let mut result = Vec::new();
-    for clause in clauses {
-        let body = clause.body.clone();
-        let atom_heads = conjoin2vec(&clause.head);
-        for atom in atom_heads {
-            match atom2chc_head(atom) {
-                Some(head) => result.push(CHC::new(head, body.clone())),
-                None => return None,
-            }
-        }
-    }
-    Some(result)
-}
-
-// solve by resolution
-pub fn solve_by_resolution(
-    target: Ident,
-    clauses: Vec<CHC<pcsp::Atom>>,
-) -> Result<Constraint, ResolutionError> {
-    debug!("solve_by_resolution: target={}", target);
-
-    let mut defs = HashMap::new();
-    let mut goals = Vec::new();
-    for clause in clauses {
-        match &clause.head {
-            CHCHead::Constraint(_) => goals.push(clause),
-            CHCHead::Predicate(p, _args) => {
-                if defs.insert(*p, clause).is_some() {
-                    return Err(ResolutionError::CHCNotDeterministic);
-                }
-            }
-        }
-    }
-    let mut defs = Vec::from_iter(defs.into_iter().map(|(_, x)| x));
-    while !defs.is_empty() {
-        let target = defs.pop().unwrap();
-        goals = goals.into_iter().map(|g| g.replace(&target)).collect();
-        defs = defs.into_iter().map(|g| g.replace(&target)).collect();
-    }
-    // for c in goals.iter() {
-    //     debug!("- constraint: {}", c)
-    // }
-
-    // subst をするべきで、
-    unimplemented!()
-}
-pub fn simplify(
-    c: &[CHC<pcsp::Atom>],
-    c1: &[CHC<pcsp::Atom>],
-    c2: &[CHC<pcsp::Atom>],
-    _l: &HashMap<Ident, pcsp::Predicate>, // not to be removed
-    template_variables: &HashSet<Ident>,  // to be removed
-) -> Result<Vec<CHC<pcsp::Atom>>, ResolutionError> {
-    let mut defs = HashMap::new();
-    let mut defs_l = HashMap::new();
-    let mut goals = Vec::new();
-    for clauses in [c, c1, c2].iter() {
-        for clause in clauses.iter() {
-            match &clause.head {
-                CHCHead::Constraint(_) => goals.push(clause.clone()),
-                CHCHead::Predicate(p, _) if template_variables.contains(p) => {
-                    if defs.insert(*p, clause.clone()).is_some() {
-                        return Err(ResolutionError::CHCNotDeterministic);
-                    }
-                }
-                CHCHead::Predicate(p, _) => {
-                    if defs_l.insert(*p, clause.clone()).is_some() {
-                        return Err(ResolutionError::CHCNotDeterministic);
-                    }
-                }
-            }
-        }
-    }
-    // for c in goals.iter() {
-    //     debug!("- constraint: {}", c);
-    // }
-    // for (_, c) in defs.iter() {
-    //     debug!("- constraint: {}", c);
-    // }
-    // for (_, c) in defs_l.iter() {
-    //     debug!("- constraint: {}", c);
-    // }
-    // debug!("-------");
-    let mut defs = Vec::from_iter(defs.into_iter().map(|(_, x)| x));
-    let mut defs_l = Vec::from_iter(defs_l.into_iter().map(|(_, x)| x));
-    while !defs.is_empty() {
-        let target = defs.pop().unwrap();
-        goals = goals.into_iter().map(|g| g.replace(&target)).collect();
-        defs = defs.into_iter().map(|g| g.replace(&target)).collect();
-        defs_l = defs_l.into_iter().map(|g| g.replace(&target)).collect();
-    }
-
-    // merge goals and defs_l
-    for def in defs_l {
-        goals.push(def);
-    }
-    // for c in goals.iter() {
-    //     debug!("- constraint: {}", c)
-    // }
-    Ok(goals)
-}
-
-pub fn resolve_target(
-    chcs: Vec<CHC<pcsp::Atom>>,
-    target: &Ident,
-) -> Result<fofml::Atom, ResolutionError> {
-    let mut ret = fofml::Atom::mk_true();
-    for chc in chcs {
-        let c = chc.resolve_target(target)?;
-        ret = fofml::Atom::mk_conj(c, ret);
-    }
-    Ok(ret)
 }

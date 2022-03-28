@@ -30,7 +30,7 @@ pub enum CHCResult {
     Timeout,
 }
 
-type CHC = chc::CHC<pcsp::Atom>;
+type CHC = chc::CHC;
 
 //const PROLOGUE: &'static str =
 //   "(set-option :no-simplify-clauses true)\n(set-option :no-inlining true)\n(set-logic HORN)\n";
