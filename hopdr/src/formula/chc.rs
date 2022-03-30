@@ -15,8 +15,8 @@ use super::{Constraint, Fv, Ident, Logic, Op, Rename, Top};
 
 #[derive(Debug, Clone)]
 pub struct Atom {
-    predicate: Ident,
-    args: Vec<Op>,
+    pub predicate: Ident,
+    pub args: Vec<Op>,
 }
 
 pub trait TConstraint:
@@ -206,7 +206,7 @@ fn body_iter(body: pcsp::Atom) -> impl Iterator<Item = CHCBody<Constraint>> {
         match atom.kind() {
             pcsp::AtomKind::True => (),
             pcsp::AtomKind::Constraint(c) => {
-                *constraint = Constraint::mk_conj(*constraint, c.clone())
+                *constraint = Constraint::mk_conj(constraint.clone(), c.clone())
             }
             pcsp::AtomKind::Predicate(predicate, args) => predicates.push(Atom {
                 predicate: *predicate,
@@ -250,6 +250,16 @@ pub fn generate_chcs(
     chcs
 }
 
+impl From<CHCBody<Constraint>> for pcsp::Atom {
+    fn from(body: CHCBody<Constraint>) -> Self {
+        let mut a = pcsp::Atom::mk_true();
+        for b in body.predicates {
+            let b = pcsp::Atom::mk_pred(b.predicate, b.args);
+            a = pcsp::Atom::mk_conj(a, b);
+        }
+        pcsp::Atom::mk_conj(pcsp::Atom::mk_constraint(body.constraint), a)
+    }
+}
 impl From<CHCBody<pcsp::Atom>> for pcsp::Atom {
     fn from(body: CHCBody<pcsp::Atom>) -> Self {
         let mut a = pcsp::Atom::mk_true();
@@ -257,7 +267,7 @@ impl From<CHCBody<pcsp::Atom>> for pcsp::Atom {
             let b = pcsp::Atom::mk_pred(b.predicate, b.args);
             a = pcsp::Atom::mk_conj(a, b);
         }
-        a
+        pcsp::Atom::mk_conj(body.constraint, a)
     }
 }
 
@@ -334,7 +344,7 @@ impl From<CHC<pcsp::Atom>> for CHC<Constraint> {
 
 impl<C: TConstraint> CHCBody<C> {
     fn collect_predicates(&self, predicates: &mut HashMap<Ident, usize>) {
-        for a in self.predicates {
+        for a in self.predicates.iter() {
             match predicates.insert(a.predicate, a.args.len()) {
                 Some(n) => debug_assert!(n == a.args.len()),
                 None => (),

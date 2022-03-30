@@ -72,6 +72,11 @@ fn atom_to_smt2(p: &pcsp::Atom) -> String {
     }
 }
 
+fn body_to_smt2(body: &chc::CHCBody<Constraint>) -> String {
+    let a = body.clone().into();
+    atom_to_smt2(&a)
+}
+
 fn chc_to_smt2(chc: &CHC, style: CHCStyle) -> String {
     let mut fvs = chc.body.fv();
     let head_smt2 = match &chc.head {
@@ -79,14 +84,14 @@ fn chc_to_smt2(chc: &CHC, style: CHCStyle) -> String {
             c.fv_with_vec(&mut fvs);
             smt::constraint_to_smt2_inner(c, SMT2Style::Z3)
         }
-        chc::CHCHead::Predicate(p, l) => {
-            for i in l {
+        chc::CHCHead::Predicate(a) => {
+            for i in a.args.iter() {
                 i.fv_with_vec(&mut fvs);
             }
-            predicate_to_smt2(p, l)
+            predicate_to_smt2(&a.predicate, &a.args)
         }
     };
-    let body_smt2 = atom_to_smt2(&chc.body);
+    let body_smt2 = body_to_smt2(&chc.body);
 
     match style {
         CHCStyle::Hoice => {

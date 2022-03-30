@@ -65,29 +65,30 @@ fn topological_sort(l: &[CHC]) -> Vec<Ident> {
     let mut graph: Graph = HashMap::new();
 
     // add predicates that appear in the bodies of the given clauses
-    let mut nodes = HashSet::new();
-    for c in l {
-        collect_preds(&c.body, &mut nodes);
-    }
-    for node in nodes.into_iter() {
-        graph.insert(node, HashSet::new());
-    }
+    // let mut nodes = HashSet::new();
+    //for c in l {
+    //    collect_preds(&c.body, &mut nodes);
+    //}
+    //for node in nodes.into_iter() {
+    //    graph.insert(node, HashSet::new());
+    //}
 
-    for c in l {
-        // generate edge
-        match &c.head {
-            chc::CHCHead::Constraint(_) => {}
-            chc::CHCHead::Predicate(p, _) => match graph.get_mut(p) {
-                Some(s) => collect_preds(&c.body, s),
-                None => {
-                    let mut s = HashSet::new();
-                    collect_preds(&c.body, &mut s);
-                    graph.insert(*p, s);
-                }
-            },
-        }
-    }
-    sort(&graph)
+    unimplemented!()
+    // for c in l {
+    //     // generate edge
+    //     match &c.head {
+    //         chc::CHCHead::Constraint(_) => {}
+    //         chc::CHCHead::Predicate(p, _) => match graph.get_mut(p) {
+    //             Some(s) => collect_preds(&c.body, s),
+    //             None => {
+    //                 let mut s = HashSet::new();
+    //                 collect_preds(&c.body, &mut s);
+    //                 graph.insert(*p, s);
+    //             }
+    //         },
+    //     }
+    // }
+    // sort(&graph)
 }
 
 fn generate_least_solution(chc: &Vec<CHC>) -> CHCResult {
@@ -98,23 +99,24 @@ fn generate_least_solution(chc: &Vec<CHC>) -> CHCResult {
 }
 
 fn check_contains(p: Ident, a: &pcsp::Atom) -> bool {
-    match a.kind() {
-        pcsp::AtomKind::Predicate(q, _) if q == p => true,
-        pcsp::AtomKind::True | pcsp::AtomKind::Constraint(_) | pcsp::AtomKind::Predicate(_, _) => {
-            false
-        }
-        pcsp::AtomKind::Conj(x, y) | pcsp::AtomKind::Disj(x, y) => {
-            let x = check_contains(p, x);
-            let y = check_contains(p, y);
-            if x && y {
-                // the clause contains p more than once
-                panic!("program error")
-            } else {
-                x || y
-            }
-        }
-        pcsp::AtomKind::Quantifier(_, _, x) => check_contains(p, x),
-    }
+    unimplemented!()
+    // match a.kind() {
+    //     pcsp::AtomKind::Predicate(q, _) if q == p => true,
+    //     pcsp::AtomKind::True | pcsp::AtomKind::Constraint(_) | pcsp::AtomKind::Predicate(_, _) => {
+    //         false
+    //     }
+    //     pcsp::AtomKind::Conj(x, y) | pcsp::AtomKind::Disj(x, y) => {
+    //         let x = check_contains(p, x);
+    //         let y = check_contains(p, y);
+    //         if x && y {
+    //             // the clause contains p more than once
+    //             panic!("program error")
+    //         } else {
+    //             x || y
+    //         }
+    //     }
+    //     pcsp::AtomKind::Quantifier(_, _, x) => check_contains(p, x),
+    // }
 }
 
 // replace q by model(q) such that p < q in the topological order
@@ -148,7 +150,7 @@ pub fn solve(chc: &Vec<CHC>) -> CHCResult {
     for p in preds {
         let p = Constraint::mk_false();
         for c in chc {
-            if check_contains(p, c.body) {}
+            //if check_contains(p, c.body) {}
         }
     }
 
