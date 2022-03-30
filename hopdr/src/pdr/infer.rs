@@ -231,17 +231,17 @@ pub(super) fn infer(
         clauses.push(pcsp::PCSP::new(body, head));
     }
     if is_chc {
-        let clauses: Vec<chc::CHC<pcsp::Atom>> = clauses
-            .into_iter()
-            .map(|c| {
-                let head = match c.head.kind() {
-                    pcsp::AtomKind::Predicate(p, l) => chc::CHCHead::Predicate(*p, l.clone()),
-                    _ if c.head.is_false() => chc::CHCHead::Constraint(Constraint::mk_false()),
-                    _ => panic!("program error"),
-                };
-                chc::CHC::new(head, c.body)
-            })
-            .collect();
+        let clauses = clauses.into_iter().map(|c| {
+            let head = match c.head.kind() {
+                pcsp::AtomKind::Predicate(p, l) => {
+                    chc::CHCHead::Predicate(chc::Atom::new(*p, l.clone()))
+                }
+                _ if c.head.is_false() => chc::CHCHead::Constraint(Constraint::mk_false()),
+                _ => panic!("program error"),
+            };
+            (c.body, head)
+        });
+        let clauses = chc::generate_chcs(clauses);
         debug!("before recursion");
         for c in clauses.iter() {
             debug!("{}", c);

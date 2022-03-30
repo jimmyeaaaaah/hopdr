@@ -15,7 +15,7 @@ use crate::formula::pcsp;
 use crate::formula::{Bot, Constraint, Ident, Logic, Negation, Top};
 
 use std::collections::{HashMap, HashSet};
-type CHC = chc::CHC;
+type CHC = chc::CHC<Constraint>;
 
 // topological sort
 fn topological_sort(l: &[CHC]) -> Vec<Ident> {
