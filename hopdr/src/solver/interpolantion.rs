@@ -12,27 +12,21 @@
 use super::chc::{CHCResult, Model};
 use crate::formula::chc;
 use crate::formula::pcsp;
+use crate::formula::Op;
 use crate::formula::{Bot, Constraint, Ident, Logic, Negation, Top};
+use crate::solver::interpolantion;
 
 use std::collections::{HashMap, HashSet};
 type CHC = chc::CHC<Constraint>;
+type CHCBody = chc::CHCBody<Constraint>;
 
 // topological sort
-fn topological_sort(l: &[CHC]) -> Vec<Ident> {
+fn topological_sort(l: &[CHC]) -> (Vec<Ident>, HashMap<Ident, usize>) {
     type Graph = HashMap<Ident, HashSet<Ident>>;
-    fn collect_preds(a: &pcsp::Atom, s: &mut HashSet<Ident>) {
-        match a.kind() {
-            pcsp::AtomKind::True | pcsp::AtomKind::Constraint(_) => (),
-            pcsp::AtomKind::Predicate(p, _) => {
-                s.insert(*p);
-            }
-            pcsp::AtomKind::Conj(x, y) | pcsp::AtomKind::Disj(x, y) => {
-                collect_preds(x, s);
-                collect_preds(y, s);
-            }
-            pcsp::AtomKind::Quantifier(_, _, x) => {
-                collect_preds(x, s);
-            }
+    fn collect_preds(body: &CHCBody, s: &mut HashSet<Ident>, n_args: &mut HashMap<Ident, usize>) {
+        for atom in body.predicates.iter() {
+            s.insert(atom.predicate);
+            n_args.insert(atom.predicate, atom.args.len());
         }
     }
 
@@ -63,32 +57,32 @@ fn topological_sort(l: &[CHC]) -> Vec<Ident> {
     }
 
     let mut graph: Graph = HashMap::new();
+    let mut n_args = HashMap::new();
 
     // add predicates that appear in the bodies of the given clauses
-    // let mut nodes = HashSet::new();
-    //for c in l {
-    //    collect_preds(&c.body, &mut nodes);
-    //}
-    //for node in nodes.into_iter() {
-    //    graph.insert(node, HashSet::new());
-    //}
+    let mut nodes = HashSet::new();
+    for c in l {
+        collect_preds(&c.body, &mut nodes, &mut n_args);
+    }
+    for node in nodes.into_iter() {
+        graph.insert(node, HashSet::new());
+    }
 
-    unimplemented!()
-    // for c in l {
-    //     // generate edge
-    //     match &c.head {
-    //         chc::CHCHead::Constraint(_) => {}
-    //         chc::CHCHead::Predicate(p, _) => match graph.get_mut(p) {
-    //             Some(s) => collect_preds(&c.body, s),
-    //             None => {
-    //                 let mut s = HashSet::new();
-    //                 collect_preds(&c.body, &mut s);
-    //                 graph.insert(*p, s);
-    //             }
-    //         },
-    //     }
-    // }
-    // sort(&graph)
+    for c in l {
+        // generate edge
+        match &c.head {
+            chc::CHCHead::Constraint(_) => {}
+            chc::CHCHead::Predicate(a) => match graph.get_mut(&a.predicate) {
+                Some(s) => collect_preds(&c.body, s, &mut n_args),
+                None => {
+                    let mut s = HashSet::new();
+                    collect_preds(&c.body, &mut s, &mut n_args);
+                    graph.insert(a.predicate, s);
+                }
+            },
+        }
+    }
+    (sort(&graph), n_args)
 }
 
 fn generate_least_solution(chc: &Vec<CHC>) -> CHCResult {
@@ -98,25 +92,19 @@ fn generate_least_solution(chc: &Vec<CHC>) -> CHCResult {
     solver.solve(chc)
 }
 
-fn check_contains(p: Ident, a: &pcsp::Atom) -> bool {
-    unimplemented!()
-    // match a.kind() {
-    //     pcsp::AtomKind::Predicate(q, _) if q == p => true,
-    //     pcsp::AtomKind::True | pcsp::AtomKind::Constraint(_) | pcsp::AtomKind::Predicate(_, _) => {
-    //         false
-    //     }
-    //     pcsp::AtomKind::Conj(x, y) | pcsp::AtomKind::Disj(x, y) => {
-    //         let x = check_contains(p, x);
-    //         let y = check_contains(p, y);
-    //         if x && y {
-    //             // the clause contains p more than once
-    //             panic!("program error")
-    //         } else {
-    //             x || y
-    //         }
-    //     }
-    //     pcsp::AtomKind::Quantifier(_, _, x) => check_contains(p, x),
-    // }
+fn check_contains_head<'a>(p: Ident, head: &'a chc::CHCHead<Constraint>) -> Option<&'a Vec<Op>> {
+    match head {
+        chc::CHCHead::Predicate(a) if p == a.predicate => Some(&a.args),
+        _ => None,
+    }
+}
+fn check_contains_body(p: Ident, body: &chc::CHCBody<Constraint>) -> bool {
+    for b in body.predicates.iter() {
+        if b.predicate == p {
+            return true;
+        }
+    }
+    return false;
 }
 
 // replace q by model(q) such that p < q in the topological order
@@ -131,12 +119,48 @@ fn check_contains(p: Ident, a: &pcsp::Atom) -> bool {
 //   - q(x, y) = x >= y
 //
 // result: p(x, y) => x > y /\ x <= y /\ x >= y
-fn remove_pred_except_for(
+fn remove_pred_except_for<'a>(
     p: Ident,
-    a: &pcsp::Atom,
-    least_model: Model,
-    model: Model,
-) -> pcsp::Atom {
+    clause: &'a CHC,
+    least_model: &Model,
+    model: &Model,
+) -> (Constraint, Option<&'a Vec<Op>>) {
+    let get_constraint = |q: &chc::Atom| -> Constraint {
+        let (arg_vars, c) = match model.model.get(&q.predicate) {
+            Some((arg_vars, c)) => (arg_vars, c),
+            None => {
+                let (arg_vars, c) = least_model.model.get(&q.predicate).unwrap();
+                (arg_vars, c)
+            }
+        };
+        // replace [q.args/arg_vars]c
+        unimplemented!()
+    };
+    let head = match &clause.head {
+        chc::CHCHead::Constraint(c) => c.clone(),
+        chc::CHCHead::Predicate(q) => get_constraint(q),
+    };
+
+    let mut body_constraint = clause.body.constraint.clone();
+    // we assume that clause does not contain two `p`
+    // i.e. p(x, y) /\ p(x + 1, y) => C is invalid
+    let mut args = None;
+    for body in clause.body.predicates.iter() {
+        debug_assert!(body.predicate != p || args.is_none());
+        if body.predicate == p {
+            args = Some(&body.args);
+        } else {
+            let c = get_constraint(body);
+            body_constraint = Constraint::mk_conj(body_constraint, c);
+        }
+    }
+    (
+        Constraint::mk_disj(body_constraint.negate().unwrap(), head),
+        args,
+    )
+}
+
+pub fn interpolate(left: &Constraint, right: &Constraint) -> Constraint {
     unimplemented!()
 }
 
@@ -145,13 +169,40 @@ pub fn solve(chc: &Vec<CHC>) -> CHCResult {
         CHCResult::Sat(m) => m,
         x => return x,
     };
-    let preds = topological_sort(chc);
+    let (preds, n_args) = topological_sort(chc);
 
+    let mut model = Model::new();
     for p in preds {
-        let p = Constraint::mk_false();
+        let arg_vars: Vec<Ident> = (0..*n_args.get(&p).unwrap())
+            .map(|_| Ident::fresh())
+            .collect();
+        let mut strongest = Constraint::mk_false();
+        let mut weakest = Constraint::mk_true();
         for c in chc {
-            //if check_contains(p, c.body) {}
+            if check_contains_body(p, &c.body) {
+                let (mut c, args) = remove_pred_except_for(p, c, &least_model, &model);
+                let args = args.unwrap();
+                assert!(args.len() == arg_vars.len());
+                for i in 0..args.len() {
+                    let left = Op::mk_var(arg_vars[i]);
+                    let right = args[i].clone();
+                    let c2 = Constraint::mk_pred(crate::formula::PredKind::Eq, vec![left, right]);
+                    c = Constraint::mk_conj(c, c2);
+                }
+                strongest = Constraint::mk_disj(strongest, c);
+            }
+            match check_contains_head(p, &c.head) {
+                Some(args) => {
+                    let (c, args_debug) = remove_pred_except_for(p, c, &least_model, &model);
+                    debug_assert!(args_debug.is_none());
+                    weakest = Constraint::mk_conj(weakest, c);
+                }
+                None => (),
+            }
         }
+        // interpolation:
+        let c = interpolate(&weakest, &strongest);
+        model.model.insert(p, (arg_vars, c));
     }
 
     unimplemented!()

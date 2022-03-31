@@ -54,8 +54,8 @@ pub enum CHCHead<C> {
 
 #[derive(Debug, Clone)]
 pub struct CHCBody<C> {
-    predicates: Vec<Atom>,
-    constraint: C,
+    pub predicates: Vec<Atom>,
+    pub constraint: C,
 }
 
 impl fmt::Display for Atom {

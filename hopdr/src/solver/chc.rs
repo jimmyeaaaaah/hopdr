@@ -176,6 +176,14 @@ pub struct Model {
     pub model: HashMap<Ident, (Vec<Ident>, Constraint)>,
 }
 
+impl Model {
+    pub fn new() -> Model {
+        Model {
+            model: HashMap::new(),
+        }
+    }
+}
+
 fn parse_predicate_variable(v: &str) -> Ident {
     assert!(v.starts_with('x'));
     Ident::from_str(&v[1..]).unwrap_or_else(|| panic!("parse fail"))
