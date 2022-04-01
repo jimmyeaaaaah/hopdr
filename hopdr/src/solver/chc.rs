@@ -15,6 +15,7 @@ use lexpr;
 use lexpr::Value;
 
 use std::collections::HashMap;
+use std::fmt;
 use std::time::Duration;
 
 #[derive(Copy, Clone)]
@@ -28,6 +29,15 @@ pub enum CHCResult {
     Unsat,
     Unknown,
     Timeout,
+}
+
+impl CHCResult {
+    pub fn is_sat(&self) -> bool {
+        match self {
+            CHCResult::Sat(_) => true,
+            _ => false,
+        }
+    }
 }
 
 type CHC = chc::CHC<Constraint>;
@@ -159,9 +169,9 @@ pub fn default_solver() -> Box<dyn CHCSolver> {
 }
 
 fn hoice_solver(smt_string: String) -> String {
+    debug!("hoice_solver: {}", smt_string);
     let f = smt::save_smt2(smt_string);
     let args = vec![f.path().to_str().unwrap()];
-    // debug
     debug!("filename: {}", &args[0]);
     let out = util::exec_with_timeout(
         "../../../hopv/hoice/target/release/hoice",
@@ -174,6 +184,25 @@ fn hoice_solver(smt_string: String) -> String {
 
 pub struct Model {
     pub model: HashMap<Ident, (Vec<Ident>, Constraint)>,
+}
+
+impl fmt::Display for Model {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for (key, (args, assign)) in self.model.iter() {
+            write!(f, "{}(", key)?;
+            let mut first = true;
+            for arg in args.iter() {
+                if first {
+                    first = false
+                } else {
+                    write!(f, ", ")?;
+                }
+                write!(f, "{}", arg)?;
+            }
+            write!(f, ") => {}\n", assign)?;
+        }
+        Ok(())
+    }
 }
 
 impl Model {
@@ -358,7 +387,7 @@ fn parse_body_cons<'a>(v: &'a lexpr::Cons, env: &mut HashMap<&'a str, Ident>) ->
         }
     }
 }
-fn parse_body<'a>(v: &'a lexpr::Value, env: &mut HashMap<&'a str, Ident>) -> fofml::Atom {
+pub fn parse_body<'a>(v: &'a lexpr::Value, env: &mut HashMap<&'a str, Ident>) -> fofml::Atom {
     debug!("parse_body: {}", v);
     match v {
         Value::Bool(t) if *t => fofml::Atom::mk_true(),
@@ -389,7 +418,7 @@ fn parse_body<'a>(v: &'a lexpr::Value, env: &mut HashMap<&'a str, Ident>) -> fof
         | Value::Vector(_) => panic!("program error"),
     }
 }
-fn parse_define_fun(v: lexpr::Value) -> (Ident, (Vec<Ident>, fofml::Atom)) {
+pub fn parse_define_fun(v: lexpr::Value) -> (Ident, (Vec<Ident>, fofml::Atom)) {
     let mut itr = cons_value_to_iter(&v);
     let v = itr.next().unwrap_or_else(|| panic!("{}", ERRMSG));
     debug_assert_eq!(v.as_symbol().unwrap(), "define-fun");

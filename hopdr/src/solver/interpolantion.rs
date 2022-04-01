@@ -11,12 +11,18 @@
 
 use super::chc::{CHCResult, Model};
 use crate::formula::chc;
-use crate::formula::pcsp;
+use crate::formula::chc::CHCHead;
+use crate::formula::Fv;
 use crate::formula::Op;
+use crate::formula::Subst;
 use crate::formula::{Bot, Constraint, Ident, Logic, Negation, Top};
-use crate::solver::interpolantion;
+
+use crate::solver::smt::ident_2_smt2;
+use crate::solver::util;
+use crate::solver::{smt, SMT2Style};
 
 use std::collections::{HashMap, HashSet};
+use std::time::Duration;
 type CHC = chc::CHC<Constraint>;
 type CHCBody = chc::CHCBody<Constraint>;
 
@@ -124,7 +130,7 @@ fn remove_pred_except_for<'a>(
     clause: &'a CHC,
     least_model: &Model,
     model: &Model,
-) -> (Constraint, Option<&'a Vec<Op>>) {
+) -> (Constraint, Constraint, Option<&'a Vec<Op>>) {
     let get_constraint = |q: &chc::Atom| -> Constraint {
         let (arg_vars, c) = match model.model.get(&q.predicate) {
             Some((arg_vars, c)) => (arg_vars, c),
@@ -133,8 +139,13 @@ fn remove_pred_except_for<'a>(
                 (arg_vars, c)
             }
         };
+        let mut c = c.clone();
         // replace [q.args/arg_vars]c
-        unimplemented!()
+        assert_eq!(arg_vars.len(), q.args.len());
+        for i in 0..arg_vars.len() {
+            c = c.subst(&arg_vars[i], &q.args[i]);
+        }
+        c
     };
     let head = match &clause.head {
         chc::CHCHead::Constraint(c) => c.clone(),
@@ -154,14 +165,94 @@ fn remove_pred_except_for<'a>(
             body_constraint = Constraint::mk_conj(body_constraint, c);
         }
     }
-    (
-        Constraint::mk_disj(body_constraint.negate().unwrap(), head),
-        args,
-    )
+    (body_constraint, head, args)
+}
+
+fn conjoin_args(arg_vars: &[Ident], args: &[Op], mut body: Constraint) -> Constraint {
+    assert!(args.len() == arg_vars.len());
+    for i in 0..args.len() {
+        let left = Op::mk_var(arg_vars[i]);
+        let right = args[i].clone();
+        let c2 = Constraint::mk_pred(crate::formula::PredKind::Eq, vec![left, right]);
+        body = Constraint::mk_conj(body, c2);
+    }
+    body
+}
+
+fn parse_body(s: &str, fvs: HashSet<Ident>) -> Constraint {
+    use crate::solver::chc::parse_body;
+    let x = lexpr::from_str(s).unwrap();
+    let x = x.as_cons().unwrap().car();
+    let idents: HashMap<String, Ident> = fvs.into_iter().map(|x| (ident_2_smt2(&x), x)).collect();
+    let mut map = idents.iter().map(|(x, y)| (x.as_str(), *y)).collect();
+    debug!("{:?}", x);
+    parse_body(x, &mut map).to_constraint().unwrap()
 }
 
 pub fn interpolate(left: &Constraint, right: &Constraint) -> Constraint {
-    unimplemented!()
+    fn smtinterpol_solver(smt_string: String) -> String {
+        debug!("smt_string: {}", &smt_string);
+        let f = smt::save_smt2(smt_string);
+        let args = vec!["-jar", "smtinterpol.jar", f.path().to_str().unwrap()];
+        debug!("filename: {}", &args[0]);
+        let out = util::exec_with_timeout(
+            "java",
+            //"../../../Hogeyama/hoice/target/debug/hoice",
+            &args,
+            Duration::from_secs(1),
+        );
+        String::from_utf8(out).unwrap()
+    }
+
+    let generate_smtinterpol = || -> (String, HashSet<Ident>) {
+        /*
+        (set-option :produce-interpolants true)
+        (set-info :status unsat)
+        (set-logic QF_UFLIA)
+        (declare-fun x_1 () Int)
+        (declare-fun xm1 () Int)
+        (declare-fun x2 () Int)
+        (declare-fun res4 () Int)
+        (assert (! (<= x_1 100) :named IP_0))
+        (assert (! (and (<= xm1 (+ x_1 11)) (>= xm1 (+ x_1 11))) :named IP_1))
+        (assert (! (and (<= x2 xm1) (>= x2 xm1)) :named IP_2))
+        (assert (! (> x2 100) :named IP_3))
+        (assert (! (and (<= res4 (- x2 10)) (>= res4 (- x2 10))) :named IP_4))
+        (assert (! (and (<= x2 101) (or (< res4 91) (> res4 91))) :named IP_5))
+        (check-sat)
+        (get-interpolants IP_0 IP_1 IP_2 IP_3 IP_4 IP_5)
+         */
+        let mut fvs = left.fv();
+        right.fv_with_vec(&mut fvs);
+
+        let header = "(set-option :produce-interpolants true)\n(set-info :status unsat)\n(set-logic QF_UFLIA)\n";
+
+        let mut result = header.to_string();
+        for var in fvs.iter() {
+            result += &format!("(declare-fun {} () Int)\n", smt::ident_2_smt2(var));
+        }
+        let left_s = smt::constraint_to_smt2_inner(left, SMT2Style::Z3);
+        result += &format!("(assert (! {} :named IP_0))\n", left_s);
+        let right_s = smt::constraint_to_smt2_inner(right, SMT2Style::Z3);
+        result += &format!("(assert (! {} :named IP_1))\n", right_s);
+
+        result += "(check-sat)\n(get-interpolants IP_0 IP_1)\n";
+
+        (result, fvs)
+    };
+    let (s, fvs) = generate_smtinterpol();
+    let r = smtinterpol_solver(s);
+    let mut lines = r.lines();
+    loop {
+        let line = lines.next().unwrap();
+        if line.starts_with("unsat") {
+            let line = lines.next().unwrap();
+            println!("parse_body: {}", line);
+            return parse_body(line, fvs);
+        } else if line.starts_with("sat") {
+            panic!("program error")
+        }
+    }
 }
 
 pub fn solve(chc: &Vec<CHC>) -> CHCResult {
@@ -169,6 +260,8 @@ pub fn solve(chc: &Vec<CHC>) -> CHCResult {
         CHCResult::Sat(m) => m,
         x => return x,
     };
+    let chc: Vec<_> = chc.iter().map(|c| c.fresh_variailes()).collect();
+    let chc = &chc;
     let (preds, n_args) = topological_sort(chc);
 
     let mut model = Model::new();
@@ -180,30 +273,79 @@ pub fn solve(chc: &Vec<CHC>) -> CHCResult {
         let mut weakest = Constraint::mk_true();
         for c in chc {
             if check_contains_body(p, &c.body) {
-                let (mut c, args) = remove_pred_except_for(p, c, &least_model, &model);
+                let (body, head, args) = remove_pred_except_for(p, c, &least_model, &model);
                 let args = args.unwrap();
-                assert!(args.len() == arg_vars.len());
-                for i in 0..args.len() {
-                    let left = Op::mk_var(arg_vars[i]);
-                    let right = args[i].clone();
-                    let c2 = Constraint::mk_pred(crate::formula::PredKind::Eq, vec![left, right]);
-                    c = Constraint::mk_conj(c, c2);
-                }
+                let body = conjoin_args(&arg_vars, &args, body);
+                // Constraint::mk_disj(body_constraint.negate().unwrap(), head),
+                let c = Constraint::mk_disj(body.negate().unwrap(), head);
                 strongest = Constraint::mk_disj(strongest, c);
             }
             match check_contains_head(p, &c.head) {
+                //
                 Some(args) => {
-                    let (c, args_debug) = remove_pred_except_for(p, c, &least_model, &model);
+                    let (body, _, args_debug) = remove_pred_except_for(p, c, &least_model, &model);
                     debug_assert!(args_debug.is_none());
+                    let c = conjoin_args(&arg_vars, &args, body);
                     weakest = Constraint::mk_conj(weakest, c);
                 }
                 None => (),
             }
         }
+        let strongest = strongest.negate().unwrap();
         // interpolation:
         let c = interpolate(&weakest, &strongest);
+        debug!("interpolated: {}", c);
         model.model.insert(p, (arg_vars, c));
     }
 
-    unimplemented!()
+    CHCResult::Sat(model)
+}
+
+#[test]
+fn interpolation() {
+    use crate::formula::chc::Atom;
+    use crate::formula::PredKind;
+    // P(x, y) => x >= y
+    // x = 0 /\ y = 0 => P(x, y)
+    let xi = Ident::fresh();
+    let yi = Ident::fresh();
+    let x = Op::mk_var(xi);
+    let y = Op::mk_var(yi);
+    let predicate = Ident::fresh();
+
+    let tmp = Constraint::mk_pred(PredKind::Eq, vec![x.clone(), Op::mk_const(0)]);
+    let tmp2 = Constraint::mk_pred(PredKind::Eq, vec![y.clone(), Op::mk_const(0)]);
+    let c1 = Constraint::mk_pred(PredKind::Geq, vec![x.clone(), y.clone()]);
+    let c2 = Constraint::mk_conj(tmp, tmp2);
+
+    let a = Atom {
+        predicate,
+        args: vec![x.clone(), y.clone()],
+    };
+    let b1 = CHCBody {
+        predicates: vec![a.clone()],
+        constraint: Constraint::mk_true(),
+    };
+    let h1 = CHCHead::Constraint(c1);
+    let b2 = CHCBody {
+        predicates: Vec::new(),
+        constraint: c2,
+    };
+    let h2 = CHCHead::Predicate(a.clone());
+    let clause1 = CHC { head: h1, body: b1 };
+    let clause2 = CHC { head: h2, body: b2 };
+    debug!("- {}", clause1);
+    debug!("- {}", clause2);
+    let clauses = vec![clause1, clause2];
+
+    let r = solve(&clauses);
+
+    match r {
+        CHCResult::Sat(m) => {
+            for (x, (_, z)) in m.model {
+                debug!("{} => {}", x, z)
+            }
+        }
+        _ => assert!(false),
+    }
 }

@@ -110,21 +110,31 @@ impl<C: TConstraint> CHCHead<C> {
         CHCHead::Predicate(Atom { predicate, args })
     }
 }
+impl Rename for Atom {
+    fn rename(&self, x: &Ident, y: &Ident) -> Self {
+        let args = self.args.iter().map(|o| o.rename(x, y)).collect();
+        Atom {
+            args,
+            predicate: self.predicate,
+        }
+    }
+}
 impl<C: Rename> Rename for CHCHead<C> {
     fn rename(&self, x: &Ident, y: &Ident) -> Self {
         match self {
             CHCHead::Constraint(c) => CHCHead::Constraint(c.rename(x, y)),
-            CHCHead::Predicate(_a) => {
-                unimplemented!()
-                //let new_args = Ident::rename_idents(args, x, y);
-                //CHCHead::Predicate(*p, new_args)
-            }
+            CHCHead::Predicate(a) => CHCHead::Predicate(a.rename(x, y)),
         }
     }
 }
 impl<C: Rename> Rename for CHCBody<C> {
     fn rename(&self, x: &Ident, y: &Ident) -> Self {
-        unimplemented!()
+        let constraint = self.constraint.rename(x, y);
+        let predicates = self.predicates.iter().map(|a| a.rename(x, y)).collect();
+        CHCBody {
+            constraint,
+            predicates,
+        }
     }
 }
 
@@ -139,6 +149,24 @@ impl<C: Refinement> Rename for CHC<C> {
         let body = self.body.rename(x, y);
         let head = self.head.rename(x, y);
         CHC { head, body }
+    }
+}
+
+impl<C: Rename + Fv> CHCBody<C> {}
+
+impl<C: Rename + Fv<Id = Ident> + Clone> CHC<C> {
+    pub fn fresh_variailes(&self) -> CHC<C> {
+        let mut fvs = self.body.fv();
+        self.head.fv_with_vec(&mut fvs);
+
+        let mut head = self.head.clone();
+        let mut body = self.body.clone();
+        let fvs = fvs.into_iter().map(|x| (x, Ident::fresh()));
+        for (old, new) in fvs {
+            head = head.rename(&old, &new);
+            body = body.rename(&old, &new);
+        }
+        CHC { body, head }
     }
 }
 
@@ -271,18 +299,25 @@ impl From<CHCBody<pcsp::Atom>> for pcsp::Atom {
     }
 }
 
-impl<C: fmt::Display> fmt::Display for CHCBody<C> {
+impl<C: fmt::Display + Top> fmt::Display for CHCBody<C> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.predicates.len() > 0 {
-            write!(f, "{}", self.predicates[0])?;
-            for b in &self.predicates[1..] {
-                write!(f, "/\\ {}", b)?;
+        let mut first = true;
+        if !self.constraint.is_true() {
+            first = false;
+            write!(f, "{}", self.constraint)?;
+        }
+        for b in &self.predicates {
+            if !first {
+                write!(f, "/\\ ")?;
+            } else {
+                first = false;
             }
+            write!(f, "{}", b)?;
         }
         Ok(())
     }
 }
-impl<C: fmt::Display> fmt::Display for CHC<C> {
+impl<C: fmt::Display + Top> fmt::Display for CHC<C> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} -> {}", self.body, self.head)
     }

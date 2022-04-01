@@ -262,6 +262,14 @@ pub(super) fn infer(
                 "PDR fails to infer a refinement type due to timeout of the background CHC solver"
             ),
         };
+        // TODO: Display model
+        debug!("{}", m);
+        let m = match solver::interpolantion::solve(&clauses) {
+            solver::chc::CHCResult::Sat(m) => m,
+            _ => panic!("program error"),
+        };
+        debug!("interpolated:");
+        debug!("{}", m);
         let model = m.model;
         let mut result_env = TypeEnvironment::new();
         for (k, ts) in tenv.map.iter() {
@@ -271,6 +279,11 @@ pub(super) fn infer(
         }
         Some(result_env)
     } else {
+        debug!("uouo");
+        for c in &clauses {
+            debug!("{}", c);
+        }
+        assert!(false);
         constraint.check_satisfiability().map(|model| {
             let mut result_env = TypeEnvironment::new();
             for (k, ts) in tenv.map.iter() {
