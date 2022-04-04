@@ -3,7 +3,7 @@ use std::{
     fmt::{self, Display},
 };
 
-use crate::formula::{chc, fofml, Variable};
+use crate::formula::{fofml, Variable};
 use crate::formula::{
     Bot, Constraint, Fv, Ident, Logic, Negation, Op, Rename, Subst, Top, Type as SType,
     TypeKind as STypeKind,

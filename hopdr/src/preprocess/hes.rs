@@ -147,7 +147,9 @@ pub fn preprocess<'a>(vc: parse::Problem) -> (hes::Problem<formula::Constraint>,
             let problem = typing(vc.formulas, toplevel);
             let (problem, ctx) = alpha_renaming(problem);
             let problem = transform(problem);
+            debug!("[problem]\n{}\n", problem);
             let problem = safety::transform(problem);
+            debug!("[safety::transform]\n{}\n", problem);
             (problem, ctx)
         }
     }

@@ -11,7 +11,7 @@
 
 use super::chc::{CHCResult, Model};
 use crate::formula::chc;
-use crate::formula::chc::CHCHead;
+
 use crate::formula::Fv;
 use crate::formula::Op;
 use crate::formula::Subst;
@@ -305,6 +305,7 @@ pub fn solve(chc: &Vec<CHC>) -> CHCResult {
 fn interpolation() {
     use crate::formula::chc::Atom;
     use crate::formula::PredKind;
+    use chc::CHCHead;
     // P(x, y) => x >= y
     // x = 0 /\ y = 0 => P(x, y)
     let xi = Ident::fresh();

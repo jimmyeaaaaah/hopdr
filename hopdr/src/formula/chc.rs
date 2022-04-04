@@ -1,12 +1,11 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
-use std::iter::FromIterator;
+
 use std::vec;
 
 use crate::pdr::rtype::Refinement;
 
-use super::fofml;
 use super::pcsp;
 use super::Bot;
 use super::Negation;
@@ -88,18 +87,6 @@ impl Atom {
 }
 
 impl<C: TConstraint> CHCHead<C> {
-    fn have_same_predicate(&self, other: &CHCHead<C>) -> bool {
-        match (self, other) {
-            (CHCHead::Predicate(a), CHCHead::Predicate(b)) if a.predicate == b.predicate => true,
-            _ => false,
-        }
-    }
-    fn predicate<'a>(&'a self) -> Option<(&'a Ident, &'a Vec<Op>)> {
-        match self {
-            CHCHead::Predicate(a) => Some((&a.predicate, &a.args)),
-            _ => None,
-        }
-    }
     pub fn mk_true() -> CHCHead<C> {
         CHCHead::Constraint(C::mk_true())
     }
