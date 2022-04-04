@@ -10,7 +10,7 @@ cargo build --release
 
 ### Log
 
-You can tern on the debug output by using `RUST_LOG=...`.
+You can turn on the debug output by using `RUST_LOG=...`.
 
 #### ex1: enable smt/chc solvers log with rust backtrace
 
