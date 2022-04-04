@@ -57,8 +57,12 @@ fn topological_sort(l: &[CHC]) -> (Vec<Ident>, HashMap<Ident, usize>) {
         for k in graph.keys() {
             unchecked.insert(*k);
         }
-        let cur = graph.keys().nth(0).unwrap();
-        dfs(graph, &mut sorted, &mut unchecked, *cur);
+        while let Some(cur) = unchecked.iter().next() {
+            let cur = *cur;
+            unchecked.remove(&cur);
+            dfs(graph, &mut sorted, &mut unchecked, cur);
+        }
+        sorted.reverse();
         sorted
     }
 
@@ -69,26 +73,103 @@ fn topological_sort(l: &[CHC]) -> (Vec<Ident>, HashMap<Ident, usize>) {
     let mut nodes = HashSet::new();
     for c in l {
         collect_preds(&c.body, &mut nodes, &mut n_args);
+        match &c.head {
+            chc::CHCHead::Constraint(_) => (),
+            chc::CHCHead::Predicate(a) => {
+                nodes.insert(a.predicate);
+                n_args.insert(a.predicate, a.args.len());
+            }
+        }
     }
     for node in nodes.into_iter() {
         graph.insert(node, HashSet::new());
     }
 
     for c in l {
-        // generate edge
+        // generate edge P -> Q for clause P(x) /\ .. => Q(x')
         match &c.head {
             chc::CHCHead::Constraint(_) => {}
-            chc::CHCHead::Predicate(a) => match graph.get_mut(&a.predicate) {
-                Some(s) => collect_preds(&c.body, s, &mut n_args),
-                None => {
-                    let mut s = HashSet::new();
-                    collect_preds(&c.body, &mut s, &mut n_args);
-                    graph.insert(a.predicate, s);
+            chc::CHCHead::Predicate(q) => {
+                for p in c.body.predicates.iter() {
+                    let s = graph.get_mut(&p.predicate).unwrap();
+                    s.insert(q.predicate);
                 }
-            },
+            }
         }
     }
     (sort(&graph), n_args)
+}
+
+#[test]
+fn test_topological_sort() {
+    use crate::formula::chc::Atom;
+    use crate::formula::Constraint;
+    use chc::CHCHead;
+    // Q => false
+    // R /\ P => Q
+    // true => P
+    // true => R
+
+    let pi = Ident::fresh();
+    let p = Atom {
+        predicate: pi,
+        args: Vec::new(),
+    };
+    let qi = Ident::fresh();
+    let q = Atom {
+        predicate: qi,
+        args: Vec::new(),
+    };
+    let ri = Ident::fresh();
+    let r = Atom {
+        predicate: ri,
+        args: Vec::new(),
+    };
+
+    // graph
+    // R -> Q
+    // P ---^
+
+    let b1 = CHCBody {
+        predicates: vec![q.clone()],
+        constraint: Constraint::mk_true(),
+    };
+    let b2 = CHCBody {
+        predicates: vec![r.clone(), p.clone()],
+        constraint: Constraint::mk_true(),
+    };
+    let b3 = CHCBody {
+        predicates: vec![],
+        constraint: Constraint::mk_true(),
+    };
+    let b4 = CHCBody {
+        predicates: vec![],
+        constraint: Constraint::mk_true(),
+    };
+
+    let h1 = CHCHead::Constraint(Constraint::mk_false());
+    let h2 = CHCHead::Predicate(q.clone());
+    let h3 = CHCHead::Predicate(p.clone());
+    let h4 = CHCHead::Predicate(r.clone());
+    let c1 = CHC { head: h1, body: b1 };
+    let c2 = CHC { head: h2, body: b2 };
+    let c3 = CHC { head: h3, body: b3 };
+    let c4 = CHC { head: h4, body: b4 };
+
+    let clauses = vec![c1, c2, c3, c4];
+    let (order, _) = topological_sort(&clauses);
+    println!("[clauses]");
+    for c in clauses.iter() {
+        println!("{}", c);
+    }
+    println!("[order]");
+    for o in order.iter() {
+        print!("{} ", o);
+    }
+    println!("");
+    assert!(order.len() == 3);
+    // R and P must appear before Q appears
+    assert_eq!(order[2], qi);
 }
 
 fn generate_least_solution(chc: &Vec<CHC>) -> CHCResult {
@@ -247,7 +328,7 @@ pub fn interpolate(left: &Constraint, right: &Constraint) -> Constraint {
         let line = lines.next().unwrap();
         if line.starts_with("unsat") {
             let line = lines.next().unwrap();
-            println!("parse_body: {}", line);
+            debug!("parse_body: {}", line);
             return parse_body(line, fvs);
         } else if line.starts_with("sat") {
             panic!("program error")
@@ -302,7 +383,7 @@ pub fn solve(chc: &Vec<CHC>) -> CHCResult {
 }
 
 #[test]
-fn interpolation() {
+fn test_interpolation() {
     use crate::formula::chc::Atom;
     use crate::formula::PredKind;
     use chc::CHCHead;

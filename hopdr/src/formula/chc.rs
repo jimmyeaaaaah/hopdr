@@ -62,9 +62,11 @@ impl fmt::Display for Atom {
         write!(f, "{}(", self.predicate)?;
         if !self.args.is_empty() {
             write!(f, "{}", self.args[0])?;
-        }
-        for arg in self.args[1..].iter() {
-            write!(f, ",{}", arg)?;
+            if !self.args.len() > 1 {
+                for arg in self.args[1..].iter() {
+                    write!(f, ",{}", arg)?;
+                }
+            }
         }
         write!(f, ")")
     }
