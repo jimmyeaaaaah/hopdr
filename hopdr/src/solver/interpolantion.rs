@@ -337,6 +337,10 @@ pub fn interpolate(left: &Constraint, right: &Constraint) -> Constraint {
 }
 
 pub fn solve(chc: &Vec<CHC>) -> CHCResult {
+    debug!("[interpolation::solve]");
+    for c in chc {
+        debug!("- {}", c);
+    }
     let least_model = match generate_least_solution(chc) {
         CHCResult::Sat(m) => m,
         x => return x,
@@ -346,28 +350,31 @@ pub fn solve(chc: &Vec<CHC>) -> CHCResult {
     let (preds, n_args) = topological_sort(chc);
 
     let mut model = Model::new();
-    for p in preds {
+    // interpolate in the decending order of preds
+    for p in preds.into_iter().rev() {
         let arg_vars: Vec<Ident> = (0..*n_args.get(&p).unwrap())
             .map(|_| Ident::fresh())
             .collect();
-        let mut strongest = Constraint::mk_false();
-        let mut weakest = Constraint::mk_true();
+        let mut strongest = Constraint::mk_true();
+        let mut weakest = Constraint::mk_false();
         for c in chc {
+            // case: p(x) /\ ... => ...
             if check_contains_body(p, &c.body) {
                 let (body, head, args) = remove_pred_except_for(p, c, &least_model, &model);
                 let args = args.unwrap();
                 let body = conjoin_args(&arg_vars, &args, body);
                 // Constraint::mk_disj(body_constraint.negate().unwrap(), head),
                 let c = Constraint::mk_disj(body.negate().unwrap(), head);
-                strongest = Constraint::mk_disj(strongest, c);
+                strongest = Constraint::mk_conj(strongest, c);
             }
+            // case: ... => p(x)
             match check_contains_head(p, &c.head) {
                 //
                 Some(args) => {
                     let (body, _, args_debug) = remove_pred_except_for(p, c, &least_model, &model);
                     debug_assert!(args_debug.is_none());
                     let c = conjoin_args(&arg_vars, &args, body);
-                    weakest = Constraint::mk_conj(weakest, c);
+                    weakest = Constraint::mk_disj(weakest, c);
                 }
                 None => (),
             }
