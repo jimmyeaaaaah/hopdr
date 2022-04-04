@@ -540,6 +540,23 @@ impl Constraint {
         Constraint::new(ConstraintExpr::Pred(k, v))
     }
 
+    // these methods are useful for generating constraints to make tests
+    pub fn mk_bin_pred(k: PredKind, left: Op, right: Op) -> Constraint {
+        Constraint::mk_pred(k, vec![left, right])
+    }
+    pub fn mk_lt(left: Op, right: Op) -> Constraint {
+        Self::mk_bin_pred(PredKind::Lt, left, right)
+    }
+    pub fn mk_geq(left: Op, right: Op) -> Constraint {
+        Self::mk_bin_pred(PredKind::Geq, left, right)
+    }
+    pub fn mk_eq(left: Op, right: Op) -> Constraint {
+        Self::mk_bin_pred(PredKind::Eq, left, right)
+    }
+    pub fn mk_neq(left: Op, right: Op) -> Constraint {
+        Self::mk_bin_pred(PredKind::Neq, left, right)
+    }
+
     pub fn variable_guard(v: Ident, op: Op) -> Constraint {
         let v = Op::mk_var(v);
         Constraint::mk_pred(PredKind::Eq, vec![v, op])
@@ -649,8 +666,12 @@ impl Variable {
         let id = Ident::fresh();
         Variable::new(VariableS { id, ty })
     }
+    // methods for testing
     pub fn fresh_prop() -> Variable {
         Variable::fresh(Type::mk_type_prop())
+    }
+    pub fn fresh_int() -> Variable {
+        Variable::fresh(Type::mk_type_int())
     }
     pub fn order(&self) -> usize {
         self.ty.order()

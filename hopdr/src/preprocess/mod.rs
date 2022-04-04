@@ -1,5 +1,6 @@
 mod alpha;
 pub mod hes;
+mod safety;
 mod transform;
 mod typing;
 

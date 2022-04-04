@@ -165,8 +165,20 @@ impl<C> Goal<C> {
     pub fn mk_conj(lhs: Goal<C>, rhs: Goal<C>) -> Goal<C> {
         Goal::new(GoalKind::Conj(lhs, rhs))
     }
+    pub fn is_conj(&self) -> bool {
+        match self.kind() {
+            GoalKind::Conj(_, _) => true,
+            _ => false,
+        }
+    }
     pub fn mk_disj(lhs: Goal<C>, rhs: Goal<C>) -> Goal<C> {
         Goal::new(GoalKind::Disj(lhs, rhs))
+    }
+    pub fn is_disj(&self) -> bool {
+        match self.kind() {
+            GoalKind::Disj(_, _) => true,
+            _ => false,
+        }
     }
 }
 impl<C: Bot + Top> Goal<C> {

@@ -1,4 +1,5 @@
 use super::alpha::alpha_renaming;
+use super::safety;
 use super::transform::transform;
 use super::typing::typing;
 use super::Context;
@@ -145,7 +146,9 @@ pub fn preprocess<'a>(vc: parse::Problem) -> (hes::Problem<formula::Constraint>,
             let toplevel = quantify_toplevel(vc.toplevel, &vc.formulas);
             let problem = typing(vc.formulas, toplevel);
             let (problem, ctx) = alpha_renaming(problem);
-            (transform(problem), ctx)
+            let problem = transform(problem);
+            let problem = safety::transform(problem);
+            (problem, ctx)
         }
     }
 }
