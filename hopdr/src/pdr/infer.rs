@@ -264,7 +264,7 @@ pub(super) fn infer(
         };
         // TODO: Display model
         debug!("{}", m);
-        let m = match solver::interpolantion::solve(&clauses) {
+        let m = match solver::interpolation::solve(&clauses) {
             solver::chc::CHCResult::Sat(m) => m,
             _ => panic!("program error"),
         };

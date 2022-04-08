@@ -1,5 +1,5 @@
 pub mod chc;
-pub mod interpolantion;
+pub mod interpolation;
 pub mod smt;
 mod util;
 
