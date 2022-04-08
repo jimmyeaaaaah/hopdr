@@ -253,7 +253,11 @@ fn parse_args<'a>(v: &'a lexpr::Value) -> (Vec<Ident>, HashMap<&'a str, Ident>) 
     }
     (args, env)
 }
-fn parse_op_cons(v: &lexpr::Cons, env: &HashMap<&str, Ident>) -> Op {
+fn parse_op_cons(
+    v: &lexpr::Cons,
+    env: &HashMap<&str, Ident>,
+    letenv: &HashMap<&str, &lexpr::Value>,
+) -> Op {
     let mut itr = v.iter().map(|x| x.car());
     let p = itr.next().unwrap().as_symbol().unwrap();
     let kind = match p {
@@ -264,7 +268,7 @@ fn parse_op_cons(v: &lexpr::Cons, env: &HashMap<&str, Ident>) -> Op {
         "%" => OpKind::Mod,
         _ => panic!("failed to handle: {}", p),
     };
-    let v: Vec<Op> = itr.map(|x| parse_op(x, env)).collect();
+    let v: Vec<Op> = itr.map(|x| parse_op(x, env, letenv)).collect();
 
     if kind == OpKind::Sub && v.len() == 1 {
         match v[0].kind() {
@@ -282,13 +286,20 @@ fn parse_op_cons(v: &lexpr::Cons, env: &HashMap<&str, Ident>) -> Op {
         result
     }
 }
-fn parse_op(v: &lexpr::Value, env: &HashMap<&str, Ident>) -> Op {
+fn parse_op(
+    v: &lexpr::Value,
+    env: &HashMap<&str, Ident>,
+    letenv: &HashMap<&str, &lexpr::Value>,
+) -> Op {
     match v {
-        Value::Cons(x) => parse_op_cons(x, env),
+        Value::Cons(x) => parse_op_cons(x, env, letenv),
         Value::Number(n) => Op::mk_const(n.as_i64().unwrap()),
         Value::Symbol(x) => match env.get(x.as_ref()) {
             Some(i) => Op::mk_var(*i),
-            None => panic!("program error"),
+            None => match letenv.get(x.as_ref()) {
+                Some(v) => parse_op(v, env, letenv),
+                None => panic!("program error: unknown symbol {}", x),
+            },
         },
         Value::Bool(_)
         | Value::Nil
@@ -300,7 +311,35 @@ fn parse_op(v: &lexpr::Value, env: &HashMap<&str, Ident>) -> Op {
         | Value::Vector(_) => panic!("program error"),
     }
 }
-fn parse_body_cons<'a>(v: &'a lexpr::Cons, env: &mut HashMap<&'a str, Ident>) -> fofml::Atom {
+fn parse_let_args<'a>(
+    v: &'a lexpr::Value,
+    env: &HashMap<&'a str, Ident>,
+    letenv: &mut HashMap<&'a str, &'a lexpr::Value>,
+) {
+    fn parse_let_arg<'a>(
+        v: &'a lexpr::Value,
+        env: &HashMap<&'a str, Ident>,
+        letenv: &mut HashMap<&'a str, &'a lexpr::Value>,
+    ) {
+        // (.cse0 (+ xx_193 xx_193))
+        let mut itr = cons_value_to_iter(&v);
+        let var = itr.next().unwrap().as_symbol().unwrap();
+        // we assume that variable shadowing does not occur.
+        assert!(!(env.contains_key(var) || letenv.contains_key(var)));
+        let v = itr.next().unwrap();
+        letenv.insert(var, v);
+    }
+    // ((.cse0 (+ xx_193 xx_193)))
+    let itr = cons_value_to_iter(&v);
+    for v in itr {
+        parse_let_arg(v, env, letenv);
+    }
+}
+fn parse_body_cons<'a>(
+    v: &'a lexpr::Cons,
+    env: &mut HashMap<&'a str, Ident>,
+    letenv: &mut HashMap<&'a str, &'a lexpr::Value>,
+) -> fofml::Atom {
     enum Tag {
         Pred(PredKind),
         And,
@@ -308,6 +347,7 @@ fn parse_body_cons<'a>(v: &'a lexpr::Cons, env: &mut HashMap<&'a str, Ident>) ->
         Not,
         Var(Ident),
         Quantifier(QuantifierKind),
+        Let,
     }
 
     let mut itr = v.iter().map(|x| x.car());
@@ -324,6 +364,7 @@ fn parse_body_cons<'a>(v: &'a lexpr::Cons, env: &mut HashMap<&'a str, Ident>) ->
         "not" => Tag::Not,
         "exists" => Tag::Quantifier(QuantifierKind::Existential),
         "forall" => Tag::Quantifier(QuantifierKind::Universal),
+        "let" => Tag::Let,
         x => match env.get(x) {
             Some(id) => Tag::Var(*id),
             None => {
@@ -334,33 +375,33 @@ fn parse_body_cons<'a>(v: &'a lexpr::Cons, env: &mut HashMap<&'a str, Ident>) ->
     };
     match t {
         Tag::Pred(p) => {
-            let v: Vec<Op> = itr.map(|x| parse_op(x, env)).collect();
+            let v: Vec<Op> = itr.map(|x| parse_op(x, env, letenv)).collect();
             debug_assert!(v.len() == 2); // maybe?
             let c = Constraint::mk_pred(p, v);
             fofml::Atom::mk_constraint(c)
         }
         Tag::And => {
             let mut r = fofml::Atom::mk_true();
-            for a in itr.map(|x| parse_body(x, env)) {
+            for a in itr.map(|x| parse_body_inner(x, env, letenv)) {
                 r = fofml::Atom::mk_conj(r, a);
             }
             r
         }
         Tag::Or => {
             let mut r = fofml::Atom::mk_false();
-            for a in itr.map(|x| parse_body(x, env)) {
+            for a in itr.map(|x| parse_body_inner(x, env, letenv)) {
                 r = fofml::Atom::mk_disj(r, a);
             }
             r
         }
         Tag::Not => {
-            let r: Vec<fofml::Atom> = itr.map(|x| parse_body(x, env)).collect();
+            let r: Vec<fofml::Atom> = itr.map(|x| parse_body_inner(x, env, letenv)).collect();
             debug_assert!(r.len() == 1);
             let a = r[0].clone();
             fofml::Atom::mk_not(a)
         }
         Tag::Var(p) => {
-            let l: Vec<Op> = itr.map(|x| parse_op(x, env)).collect();
+            let l: Vec<Op> = itr.map(|x| parse_op(x, env, letenv)).collect();
             fofml::Atom::mk_pred(p, l)
         }
         Tag::Quantifier(q) => {
@@ -372,7 +413,7 @@ fn parse_body_cons<'a>(v: &'a lexpr::Cons, env: &mut HashMap<&'a str, Ident>) ->
                 debug_assert!(r.is_none());
             }
 
-            let r: Vec<fofml::Atom> = itr.map(|x| parse_body(x, env)).collect();
+            let r: Vec<fofml::Atom> = itr.map(|x| parse_body_inner(x, env, letenv)).collect();
             debug_assert!(r.len() == 1);
 
             for (k, _) in env2.iter() {
@@ -385,14 +426,29 @@ fn parse_body_cons<'a>(v: &'a lexpr::Cons, env: &mut HashMap<&'a str, Ident>) ->
             }
             a
         }
+        Tag::Let => {
+            // (let ((.cse0 (+ xx_193 xx_193))) (and (>= .cse0 0) (>= 0 .cse0)))
+            let args = itr.next().unwrap();
+            parse_let_args(args, env, letenv);
+            let r: Vec<fofml::Atom> = itr.map(|x| parse_body_inner(x, env, letenv)).collect();
+            debug_assert!(r.len() == 1);
+            r[0].clone()
+        }
     }
 }
-pub fn parse_body<'a>(v: &'a lexpr::Value, env: &mut HashMap<&'a str, Ident>) -> fofml::Atom {
+
+/* Cons((Symbol("let") . Cons((Cons((Cons((Symbol(".cse0") . Cons((Cons((Symbol("and") . Cons((Cons((Symbol("<=") . Cons((Symbol("xx_113") . Cons((Symbol("xx_113") . Null)))))) . Cons((Cons((Symbol("or") . Cons((Cons((Symbol("<") . Cons((Symbol("xx_113") . Cons((Symbol("xx_113") . Null)))))) . Cons((Cons((Symbol("=") . Cons((Symbol("xx_113") . Cons((Symbol("xx_112") . Null)))))) . Null)))))) . Null)))))) . Null)))) . Null)) . Cons((Cons((Symbol("and") . Cons((Cons((Symbol("or") . Cons((Cons((Symbol("<=") . Cons((Symbol("xx_113") . Cons((Number(PosInt(0)) . Null)))))) . Cons((Symbol(".cse0") . Null)))))) . Cons((Cons((Symbol("or") . Cons((Cons((Symbol("<=") . Cons((Number(PosInt(0)) . Cons((Symbol("xx_113") . Null)))))) . Cons((Symbol(".cse0") . Null)))))) . Cons((Cons((Symbol("or") . Cons((Cons((Symbol("=") . Cons((Number(PosInt(0)) . Cons((Symbol("xx_112") . Null)))))) . Cons((Symbol(".cse0") . Null)))))) . Null)))))))) . Null)))))) */
+// parse
+fn parse_body_inner<'a>(
+    v: &'a lexpr::Value,
+    env: &mut HashMap<&'a str, Ident>,
+    letenv: &mut HashMap<&'a str, &'a lexpr::Value>,
+) -> fofml::Atom {
     debug!("parse_body: {}", v);
     match v {
         Value::Bool(t) if *t => fofml::Atom::mk_true(),
         Value::Bool(_) => fofml::Atom::mk_false(),
-        Value::Cons(v) => parse_body_cons(v, env),
+        Value::Cons(v) => parse_body_cons(v, env, letenv),
         // Value::Symbol(x) => {
         //     match env.get(x) {
         //         Some(ident) => pcsp::Atom::mk_
@@ -404,7 +460,10 @@ pub fn parse_body<'a>(v: &'a lexpr::Value, env: &mut HashMap<&'a str, Ident>) ->
             } else if s.as_ref() == "false" {
                 fofml::Atom::mk_false()
             } else {
-                panic!("program error")
+                match letenv.get(s.as_ref()) {
+                    Some(v) => parse_body_inner(v, env, letenv),
+                    None => panic!("program error: unknown variable {}", s),
+                }
             }
         }
         // this also should not happen in parsing constraint
@@ -418,6 +477,36 @@ pub fn parse_body<'a>(v: &'a lexpr::Value, env: &mut HashMap<&'a str, Ident>) ->
         | Value::Vector(_) => panic!("program error"),
     }
 }
+pub fn parse_body<'a>(v: &'a lexpr::Value, env: &mut HashMap<&'a str, Ident>) -> fofml::Atom {
+    let mut letenv = HashMap::new();
+    parse_body_inner(v, env, &mut letenv)
+}
+
+#[test]
+fn test_parse_body_let() {
+    use fofml::Atom;
+    let s = "(let ((.cse0 (+ xx_193 xx_193))) (and (>= .cse0 0) (>= 0 .cse0)))";
+    let x = lexpr::from_str(s).unwrap();
+    let mut env = HashMap::new();
+    let i = Ident::fresh();
+    env.insert("xx_193", i);
+    let a = parse_body(&x, &mut env);
+    let o = Op::mk_bin_op(OpKind::Add, Op::mk_var(i), Op::mk_var(i));
+    let c1 = Atom::mk_constraint(Constraint::mk_geq(o.clone(), Op::mk_const(0)));
+    let c2 = Atom::mk_constraint(Constraint::mk_geq(Op::mk_const(0), o.clone()));
+    let b = Atom::mk_conj(c1, c2);
+    assert_eq!(a, b);
+
+    let s = "(let ((.cse0 (= xx_193 0))) (and .cse0 (>= 0 xx_193)))";
+    let x = lexpr::from_str(s).unwrap();
+    let a = parse_body(&x, &mut env);
+    let o = Op::mk_var(i);
+    let c1 = Atom::mk_constraint(Constraint::mk_eq(o.clone(), Op::mk_const(0)));
+    let c2 = Atom::mk_constraint(Constraint::mk_geq(Op::mk_const(0), o.clone()));
+    let b = Atom::mk_conj(c1, c2);
+    assert_eq!(a, b);
+}
+
 pub fn parse_define_fun(v: lexpr::Value) -> (Ident, (Vec<Ident>, fofml::Atom)) {
     let mut itr = cons_value_to_iter(&v);
     let v = itr.next().unwrap_or_else(|| panic!("{}", ERRMSG));
