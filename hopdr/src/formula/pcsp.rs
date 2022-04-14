@@ -35,7 +35,7 @@ impl fmt::Display for Atom {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.kind() {
             AtomKind::True => write!(f, "true"),
-            AtomKind::Constraint(c) => write!(f, "{}", c),
+            AtomKind::Constraint(c) => write!(f, "({})", c),
             AtomKind::Predicate(id, ops) => {
                 write!(f, "{}(", id)?;
                 for op in ops.iter() {

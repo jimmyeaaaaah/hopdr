@@ -71,7 +71,6 @@ impl<C: PartialEq> PartialEq for Goal<C> {
 impl<C: Refinement> Goal<C> {
     fn reduce_inner(&self) -> Goal<C> {
         match self.kind() {
-            GoalKind::Constr(_) => self.clone(),
             GoalKind::App(g, arg) => {
                 // g must be have form \x. phi
                 let g = g.reduce_inner();
@@ -104,6 +103,7 @@ impl<C: Refinement> Goal<C> {
                 let g = g.reduce_inner();
                 Goal::mk_abs(x.clone(), g)
             }
+            GoalKind::Constr(_) |
             GoalKind::Var(_) | GoalKind::Op(_) => self.clone(),
         }
     }
@@ -113,6 +113,8 @@ impl<C: Refinement> Goal<C> {
         // first reduces the formula to a formula of type *
         // then traslates it to a fofml::Atom constraint.
         // debug!("to be reduced: {}", &self);
+        crate::title!("reduce_goal");
+        debug!("reduce {}", self);
         let mut g_old = self.clone();
         loop {
             let g = g_old.reduce_inner();
@@ -121,6 +123,7 @@ impl<C: Refinement> Goal<C> {
                 // debug!("reduced: {}", &g);
                 return g;
             }
+            debug!("⇝ {}", g);
             g_old = g;
         }
     }
@@ -292,6 +295,8 @@ pub fn env_models_constraint<C: Refinement>(env: &Env<C>, g: &Goal<C>) -> C {
 
 // Γ ⊧ g ⇔ ⊧ θ where Γ(g) → θ
 pub fn env_models(env: &Env<Constraint>, g: &Goal<Constraint>) -> bool {
+    crate::title!("env_models");
+    debug!("{}", g);
     let cnstr = env_models_constraint(env, g);
     match smt::default_solver().solve(&cnstr, &HashSet::new()) {
         solver::SolverResult::Sat => true,
@@ -302,9 +307,14 @@ pub fn env_models(env: &Env<Constraint>, g: &Goal<Constraint>) -> bool {
 
 pub fn env_types<C: Refinement>(env: &Env<C>, tenv: &TypeEnvironment<Tau<C>>) -> C {
     let mut result_constraint = C::mk_true();
+    crate::title!("env_types");
     for (x, g) in env.map.iter() {
         let ts = tenv.get(x).unwrap();
         let c = types_check(g, ts.iter().map(|x| x.clone()));
+        debug!("pred name: {}", x);
+        debug!("{}", g);
+        debug!("generates");
+        debug!("{}", c);
         result_constraint = C::mk_conj(result_constraint, c);
     }
     result_constraint

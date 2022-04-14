@@ -160,12 +160,18 @@ pub(super) fn infer(
     let tenv = ienv.generate_template();
     // 3. calculate constraints
 
+    title!("Γᵢ");
+    debug!("{}", env_i);
     // 3.1 calculate constraint `c` ℱ(⌊Γᵢ⌋) ↑ Γ
     let env_i = fml::Env::from_type_environment(env_i);
 
+    title!("⌊Γᵢ⌋");
+    debug!("{}", env_i);
     let translated = problem.transform(&env_i); // ℱ(⌊Γᵢ⌋)
-    let c = fml::env_types(&translated, &tenv);
+    title!("ℱ⌊Γᵢ⌋");
+    debug!("{}", translated);
 
+    let c = fml::env_types(&translated, &tenv);
     title!("ℱ(⌊Γᵢ⌋) ↑ Γ");
     debug!("{}", c);
 
@@ -198,6 +204,13 @@ pub(super) fn infer(
     let cnf = pnf.to_cnf();
     let mut is_chc = true;
     let mut clauses = Vec::new();
+    title!("PNF");
+    debug!("{}", pnf);
+    title!("CNF");
+    for c in cnf.iter() {
+        debug!("{}", c);
+    }
+
     for c in cnf {
         let dnf = c.to_dnf();
         let mut body = pcsp::Atom::mk_true();

@@ -58,8 +58,8 @@ impl<C: fmt::Display> fmt::Display for Goal<C> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use GoalKind::*;
         match self.kind() {
-            Constr(c) => write!(f, "{}", c),
-            Op(o) => write!(f, "{}", o),
+            Constr(c) => write!(f, "({})", c),
+            Op(o) => write!(f, "({})", o),
             Var(x) => write!(f, "{}", x),
             App(x, y) => write!(f, "[{} {}]", x, y),
             Conj(x, y) => write!(f, "({} & {})", x, y),
@@ -121,7 +121,7 @@ impl From<Goal<Constraint>> for Constraint {
                 Constraint::mk_quantifier_int(super::QuantifierKind::Universal, x.id, c)
             }
             GoalKind::Op(_) | GoalKind::Var(_) | GoalKind::Abs(_, _) | GoalKind::App(_, _) => {
-                panic!("program error")
+                panic!("program error: {} cannot be translated to Constraint", g)
             }
         }
     }
@@ -235,7 +235,7 @@ impl<C: Rename> Rename for Goal<C> {
         match self.kind() {
             GoalKind::Constr(c) => Goal::mk_constr(c.rename(x, y)),
             GoalKind::Op(op) => Goal::mk_op(op.rename(x, y)),
-            GoalKind::Var(id) => Goal::mk_var(if id == x { *y } else { *x }),
+            GoalKind::Var(id) => Goal::mk_var(if id == x { *y } else { *id }),
             GoalKind::Abs(id, g) => {
                 let g = if &id.id != x {
                     g.rename(x, y)
@@ -272,7 +272,7 @@ impl<C: Subst<Item = Op, Id = Ident> + Rename + Fv<Id = Ident> + fmt::Display> S
             fv: &HashSet<Ident>,
         ) -> Goal<C> {
             // tmp debug
-            // println!("subst_inner: [{}/{}]{}", v, x, target);
+            //debug!("subst_inner: [{}/{}]{}", v, x, target);
             match target.kind() {
                 GoalKind::Var(y) => {
                     if x.id == *y {
@@ -336,11 +336,17 @@ impl<C: Subst<Item = Op, Id = Ident> + Rename + Fv<Id = Ident> + fmt::Display> S
         }
         let fv = v.clone().fv();
         // debug
-        // println!("fvs:");
-        // for f in fv.iter() {
-        //     println!("- {}", f)
-        // }
-        subst_inner(self, x, v, &fv)
+        crate::title!("fvs:");
+        for f in fv.iter() {
+            debug!("- {}", f)
+        }
+        crate::title!("subst");
+        debug!("subst: [{}/{}]", v, x);
+        debug!("{}", self);
+        let r = subst_inner(self, x, v, &fv);
+        debug!("{}", r);
+        debug!("substed");
+        r
     }
 }
 

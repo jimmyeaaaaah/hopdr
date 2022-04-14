@@ -648,7 +648,7 @@ pub type Variable = P<VariableS>;
 
 impl fmt::Display for Variable {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "x_{}: {}", self.id, self.ty)
+        write!(f, "{}: {}", self.id, self.ty)
     }
 }
 
