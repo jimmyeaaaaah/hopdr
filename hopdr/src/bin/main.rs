@@ -1,10 +1,12 @@
 extern crate clap;
 extern crate hopdr;
 extern crate lazy_static;
+#[macro_use]
 extern crate log;
 
 use hopdr::*;
 
+use hopdr::title;
 use clap::Parser;
 use colored::Colorize;
 use nom::error::VerboseError;
@@ -34,30 +36,24 @@ fn main() {
     let contents = fs::read_to_string(&args.input).expect("Something went wrong reading the file");
 
     // RUST_LOG=info (trace, debug, etc..)
-    //println!("starting PDR...");
+    debug!("starting PDR...");
     let (_, f) = parse::parse::<VerboseError<&str>>(&contents).unwrap();
-    //let (s, f) = parse::parse::<VerboseError<&str>>(
-    //    "
-    //    S n k =v (n > 0 || k n) && (n <= 0 || S (n - 1) (\\r. k (r + n))).
-    //    M =v ∀ x. S x (\\r. r >= x).
-    //     ",
-    //)
-    //.unwrap();
-    // println!("{}", s);
 
-    // match &f {
-    //     parse::Problem::NuHFLZValidityChecking(vc) => {
-    //         for fml in vc.formulas.iter() {
-    //             println!("{}", fml);
-    //         }
-    //         println!("TOP={}", vc.toplevel);
-    //     }
-    // }
+    title!("problem");
+    match &f {
+        parse::Problem::NuHFLZValidityChecking(vc) => {
+            for fml in vc.formulas.iter() {
+                debug!("{}", fml);
+            }
+            debug!("TOP={}", vc.toplevel);
+        }
+    }
 
+    title!("proprocessed");
     let (vc, _ctx) = preprocess::hes::preprocess(f);
-    // for fml in vc.clauses.iter() {
-    //     println!("{}", fml);
-    // }
+    for fml in vc.clauses.iter() {
+        debug!("{}", fml);
+    }
 
     match pdr::run(vc) {
         pdr::VerificationResult::Valid => {

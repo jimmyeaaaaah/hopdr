@@ -1,7 +1,7 @@
 use super::fml;
 use super::fml::{env_models_constraint, Env};
 use super::rtype::{Tau, TyEnv, TypeEnvironment};
-use crate::formula;
+use crate::{formula, title};
 use crate::formula::hes::{Goal, Problem as ProblemBase};
 use crate::formula::{chc, fofml, pcsp, Bot, Constraint, Ident, Logic, Op, Top};
 use crate::solver;
@@ -166,7 +166,7 @@ pub(super) fn infer(
     let translated = problem.transform(&env_i); // ℱ(⌊Γᵢ⌋)
     let c = fml::env_types(&translated, &tenv);
 
-    debug!("ℱ(⌊Γᵢ⌋) ↑ Γ");
+    title!("ℱ(⌊Γᵢ⌋) ↑ Γ");
     debug!("{}", c);
 
     // 3.2 calculate constraint `c2` from Γ ⋃ Γᵢ₊₁ ⊨ ψ
@@ -175,11 +175,12 @@ pub(super) fn infer(
 
     let tenv_merged_floored = Env::from_type_environment(&tenv_merged); // ⌊Γᵢ₊₁ ∪ Γ⌋
     let c2 = env_models_constraint(&tenv_merged_floored, cex);
-    debug!("Γ ⋃ Γᵢ₊₁ ⊨ ψ");
+    title!("Γ ⋃ Γᵢ₊₁ ⊨ ψ");
     debug!("{}", c2);
 
     let constraint = fofml::Atom::mk_conj(c, c2);
-    debug!("generated constraint: {}", constraint);
+    title!("generated constraint");
+    debug!("{}", constraint);
 
     // 4. solve constraints by CHC (or a template-based method)
     // 4.1 translate constraint to CHC or extended chc
@@ -202,7 +203,6 @@ pub(super) fn infer(
         let mut body = pcsp::Atom::mk_true();
         let mut head = pcsp::Atom::mk_false();
         for atom in dnf {
-            debug!("{}", atom);
             match atom.kind() {
                 fofml::AtomKind::True | fofml::AtomKind::Constraint(_) => {
                     body = pcsp::Atom::mk_conj(atom.negate().into(), body);
@@ -242,7 +242,8 @@ pub(super) fn infer(
             (c.body, head)
         });
         let clauses = chc::generate_chcs(clauses);
-        debug!("before recursion");
+        //debug!("{}", "[generated CHC]".bold());
+        title!("generated CHC");
         for c in clauses.iter() {
             debug!("{}", c);
         }
@@ -262,6 +263,8 @@ pub(super) fn infer(
                 "PDR fails to infer a refinement type due to timeout of the background CHC solver"
             ),
         };
+
+        title!("model from CHC solver");
         // TODO: Display model
         debug!("{}", m);
         let m = match solver::interpolation::solve(&clauses) {

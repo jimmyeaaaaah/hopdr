@@ -170,3 +170,12 @@ pub fn global_counter() -> u64 {
         tmp
     }
 }
+#[macro_export]
+macro_rules! title {
+    ($arg:tt) => {
+        {
+            use colored::Colorize;
+            debug!("{}{}{}", "[".bold(), $arg.bold(), "]".bold());
+        }
+    }
+}
