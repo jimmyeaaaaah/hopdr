@@ -578,6 +578,50 @@ impl Constraint {
             ConstraintExpr::Quantifier(_, _, c) => c.clone().remove_quantifier(),
         }
     }
+    fn prenex_normal_form_raw(
+        &self,
+        env: &mut HashSet<Ident>,
+    ) -> (Vec<(QuantifierKind, Variable)>, Constraint) {
+        match self.kind() {
+            ConstraintExpr::True |
+            ConstraintExpr::False |
+            ConstraintExpr::Pred(_, _) => (Vec::new(), self.clone()),
+            ConstraintExpr::Conj(c1, c2) => {
+                let (mut v1, c1) = c1.prenex_normal_form_raw(env);
+                let (mut v2, c2) = c2.prenex_normal_form_raw(env);
+                v1.append(&mut v2);
+                (v1, Constraint::mk_conj(c1, c2))
+            }
+            ConstraintExpr::Disj(c1, c2) => {
+                let (mut v1, c1) = c1.prenex_normal_form_raw(env);
+                let (mut v2, c2) = c2.prenex_normal_form_raw(env);
+                v1.append(&mut v2);
+                (v1, Constraint::mk_disj(c1, c2))
+            }
+            ConstraintExpr::Quantifier(q, x, c) => {
+                let (x, c) = if env.contains(&x.id) {
+                    // if env already contains the ident to be bound,
+                    // we rename it to a fresh one.
+                    let x2_ident = Ident::fresh();
+                    let x2 = Variable::mk(x2_ident, x.ty.clone());
+                    let c = c.rename(&x.id, &x2_ident);
+                    (x2, c)
+                } else {
+                    (x.clone(), c.clone())
+                };
+                env.insert(x.id);
+                let (mut v, c) = c.prenex_normal_form_raw(env);
+                debug_assert!(v.iter().find(|(_, y)| { x.id == y.id }).is_none());
+                v.push((*q, x.clone()));
+                env.remove(&x.id);
+                (v, c)
+            }
+        }
+    }
+    pub fn to_pnf(&self) -> Constraint {
+        let (_, c) = self.prenex_normal_form_raw(&mut HashSet::new());
+        c
+    }
 }
 impl Fv for Constraint {
     type Id = Ident;

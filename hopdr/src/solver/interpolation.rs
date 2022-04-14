@@ -331,7 +331,7 @@ pub fn interpolate(left: &Constraint, right: &Constraint) -> Constraint {
             debug!("parse_body: {}", line);
             return parse_body(line, fvs);
         } else if line.starts_with("sat") {
-            panic!("program error")
+            panic!("program error: SMTInterpol concluded the constraint was sat (expected: unsat)")
         }
     }
 }
@@ -380,6 +380,9 @@ pub fn solve(chc: &Vec<CHC>) -> CHCResult {
             }
         }
         let strongest = strongest.negate().unwrap();
+        // translate constraints to prenex normal form
+        let strongest = strongest.to_pnf();
+        let weakest = weakest.to_pnf();
         // interpolation:
         let c = interpolate(&weakest, &strongest);
         debug!("interpolated: {}", c);
