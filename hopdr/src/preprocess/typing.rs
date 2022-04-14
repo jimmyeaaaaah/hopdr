@@ -87,8 +87,8 @@ impl TmpType {
                     "{} is not constrained in the process of type checking",
                     ty_var
                 );
-                warn!("{} is regarded as integer", ty_var);
-                SimpleType::mk_type_int()
+                warn!("{} is regarded as prop", ty_var);
+                SimpleType::mk_type_prop()
             }
         }
     }
