@@ -6,9 +6,9 @@ extern crate log;
 
 use hopdr::*;
 
-use hopdr::title;
 use clap::Parser;
 use colored::Colorize;
+use hopdr::title;
 use nom::error::VerboseError;
 
 use std::fs;

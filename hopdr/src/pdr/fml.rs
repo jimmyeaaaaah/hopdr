@@ -103,8 +103,7 @@ impl<C: Refinement> Goal<C> {
                 let g = g.reduce_inner();
                 Goal::mk_abs(x.clone(), g)
             }
-            GoalKind::Constr(_) |
-            GoalKind::Var(_) | GoalKind::Op(_) => self.clone(),
+            GoalKind::Constr(_) | GoalKind::Var(_) | GoalKind::Op(_) => self.clone(),
         }
     }
     // since there is no recursion and g is strongly typed, this procedure

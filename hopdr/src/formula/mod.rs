@@ -583,9 +583,9 @@ impl Constraint {
         env: &mut HashSet<Ident>,
     ) -> (Vec<(QuantifierKind, Variable)>, Constraint) {
         match self.kind() {
-            ConstraintExpr::True |
-            ConstraintExpr::False |
-            ConstraintExpr::Pred(_, _) => (Vec::new(), self.clone()),
+            ConstraintExpr::True | ConstraintExpr::False | ConstraintExpr::Pred(_, _) => {
+                (Vec::new(), self.clone())
+            }
             ConstraintExpr::Conj(c1, c2) => {
                 let (mut v1, c1) = c1.prenex_normal_form_raw(env);
                 let (mut v2, c2) = c2.prenex_normal_form_raw(env);

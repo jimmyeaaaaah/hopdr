@@ -431,6 +431,7 @@ impl TySubst {
         TySubst(HashMap::new())
     }
     fn add(&mut self, k: TypeVariable, t: TmpType) {
+        // compose two substitutions self∘[k:=t]
         {
             let k = &k;
             let t = &t;
@@ -449,7 +450,14 @@ impl TySubst {
             }
             TmpTypeKind::Var(ty_var) => match self.0.get(ty_var) {
                 Some(t) => t.force(),
-                None => panic!("substitution of type variable failed"),
+                None => {
+                    warn!(
+                        "{} is not constrained in the process of type checking",
+                        ty_var
+                    );
+                    warn!("{} is regarded as prop", ty_var);
+                    SimpleType::mk_type_prop()
+                }
             },
         }
     }
