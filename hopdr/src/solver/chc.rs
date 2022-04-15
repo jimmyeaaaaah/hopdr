@@ -344,6 +344,7 @@ fn parse_body_cons<'a>(
         Pred(PredKind),
         And,
         Or,
+        RightArrow,
         Not,
         Var(Ident),
         Quantifier(QuantifierKind),
@@ -359,6 +360,7 @@ fn parse_body_cons<'a>(
         ">=" => Tag::Pred(PredKind::Geq),
         "=" => Tag::Pred(PredKind::Eq),
         "!=" => Tag::Pred(PredKind::Neq),
+        "=>" => Tag::RightArrow,
         "and" => Tag::And,
         "or" => Tag::Or,
         "not" => Tag::Not,
@@ -393,6 +395,13 @@ fn parse_body_cons<'a>(
                 r = fofml::Atom::mk_disj(r, a);
             }
             r
+        }
+        Tag::RightArrow => {
+            let r: Vec<fofml::Atom> = itr.map(|x| parse_body_inner(x, env, letenv)).collect();
+            debug_assert!(r.len() == 2);
+            let a = r[0].clone();
+            let b = r[1].clone();
+            fofml::Atom::mk_disj(fofml::Atom::mk_not(a), b)
         }
         Tag::Not => {
             let r: Vec<fofml::Atom> = itr.map(|x| parse_body_inner(x, env, letenv)).collect();
@@ -505,6 +514,11 @@ fn test_parse_body_let() {
     let c2 = Atom::mk_constraint(Constraint::mk_geq(Op::mk_const(0), o.clone()));
     let b = Atom::mk_conj(c1, c2);
     assert_eq!(a, b);
+
+    let s = "(let ((.cse1 (= x 0))) (let ((.cse0 (let ((.cse2 (= (+ x (- 1)) 0)) (.cse3 (+ x 1))) (and (=> .cse2 (=> (not (= x 0)) (and (<= .cse3 .cse3) (or (< .cse3 .cse3) (= x (+ x 2)))))) (=> (not .cse2) (and (<= x x) (or (< x x) (= x .cse3)))) (not .cse1))))) (and (or (= x x) .cse0) (or .cse1 .cse0))))";
+    env.insert("x", i);
+    let x = lexpr::from_str(s).unwrap();
+    parse_body(&x, &mut env);
 }
 
 pub fn parse_define_fun(v: lexpr::Value) -> (Ident, (Vec<Ident>, fofml::Atom)) {
