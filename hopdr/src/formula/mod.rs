@@ -289,12 +289,15 @@ pub trait Logic: Top + Bot + Clone {
     }
 }
 
-pub trait Subst: Sized {
+pub trait Subst: Sized + Clone {
     type Item;
     type Id;
     fn subst_multi(&self, substs: impl IntoIterator<Item = (Self::Id, Self::Item)>) -> Self {
         let mut itr = substs.into_iter();
-        let (id, item) = itr.next().unwrap();
+        let (id, item) = match itr.next() {
+            Some((id, item)) => (id, item),
+            None => return self.clone(),
+        };
         let mut ret = self.subst(&id, &item);
         for (ident, val) in itr {
             ret = ret.subst(&ident, &val);
