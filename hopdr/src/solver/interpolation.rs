@@ -274,7 +274,8 @@ pub fn interpolate(left: &Constraint, right: &Constraint) -> Constraint {
     fn smtinterpol_solver(smt_string: String) -> String {
         debug!("smt_string: {}", &smt_string);
         let f = smt::save_smt2(smt_string);
-        let args = vec!["-jar", "smtinterpol.jar", f.path().to_str().unwrap()];
+        // TODO: determine the path when it's compiled
+        let args = vec!["-jar", "/home/katsura/github.com/moratorium08/hopdr/hopdr/smtinterpol.jar", f.path().to_str().unwrap()];
         debug!("filename: {}", &args[0]);
         let out = util::exec_with_timeout(
             "java",
