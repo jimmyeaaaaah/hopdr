@@ -380,6 +380,7 @@ fn parse_body_cons<'a>(
         Or,
         RightArrow,
         Not,
+        ITE, // if-then-else
         Var(Ident),
         Quantifier(QuantifierKind),
         Let,
@@ -401,6 +402,7 @@ fn parse_body_cons<'a>(
         "exists" => Tag::Quantifier(QuantifierKind::Existential),
         "forall" => Tag::Quantifier(QuantifierKind::Universal),
         "let" => Tag::Let,
+        "ite" => Tag::ITE,
         x => match env.get(x) {
             Some(id) => Tag::Var(*id),
             None => {
@@ -477,6 +479,17 @@ fn parse_body_cons<'a>(
             debug_assert!(r.len() == 1);
             r[0].clone()
         }
+        Tag::ITE => {
+            // if-then-else
+            let r: Vec<fofml::Atom> = itr.map(|x| parse_body_inner(x, env, letenv.clone())).collect();
+            assert!(r.len() == 3);
+            let conj = r[0].clone();
+            let ifbr = r[1].clone();
+            let elsebr = r[2].clone();
+            let ifb = fofml::Atom::mk_disj(fofml::Atom::mk_not(conj.clone()), ifbr);
+            let elseb = fofml::Atom::mk_disj(conj, elsebr);
+            fofml::Atom::mk_conj(ifb, elseb)
+        }
     }
 }
 
@@ -551,6 +564,10 @@ fn test_parse_body_let() {
 
     let s = "(let ((.cse1 (= x 0))) (let ((.cse0 (let ((.cse2 (= (+ x (- 1)) 0)) (.cse3 (+ x 1))) (and (=> .cse2 (=> (not (= x 0)) (and (<= .cse3 .cse3) (or (< .cse3 .cse3) (= x (+ x 2)))))) (=> (not .cse2) (and (<= x x) (or (< x x) (= x .cse3)))) (not .cse1))))) (and (or (= x x) .cse0) (or .cse1 .cse0))))";
     env.insert("x", i);
+    let x = lexpr::from_str(s).unwrap();
+    parse_body(&x, &mut env);
+
+    let s = "(ite (= x 0) (=> (not (= (+ x (- 1)) 0)) (=> (not (= (+ x (- 2)) 0)) (and (<= x x) (or (< x x) (= x (+ x 1)))))) (let ((.cse2 (+ x x))) (and (<= .cse2 .cse2) (or (< .cse2 .cse2) (= x (+ x x 1))))))";
     let x = lexpr::from_str(s).unwrap();
     parse_body(&x, &mut env);
 }
