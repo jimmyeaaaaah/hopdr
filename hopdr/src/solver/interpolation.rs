@@ -9,9 +9,9 @@
 // Current available interpolant solvers
 //   1. Mathsat5
 
-use super::chc::{CHCResult, Model};
+use super::chc::{CHCResult};
 use crate::formula::chc;
-
+use crate::formula::chc::Model;
 use crate::formula::Fv;
 use crate::formula::Op;
 use crate::formula::Subst;
@@ -346,6 +346,7 @@ pub fn solve(chc: &Vec<CHC>) -> CHCResult {
         CHCResult::Sat(m) => m,
         x => return x,
     };
+    debug_assert!(crate::solver::chc::is_solution_valid(chc, &least_model));
     let chc: Vec<_> = chc.iter().map(|c| c.fresh_variailes()).collect();
     let chc = &chc;
     let (preds, n_args) = topological_sort(chc);

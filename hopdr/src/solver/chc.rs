@@ -4,6 +4,7 @@ use super::smt::ident_2_smt2;
 use super::util;
 use super::SMT2Style;
 use crate::formula::chc;
+use crate::formula::chc::Model;
 use crate::formula::fofml;
 use crate::formula::pcsp;
 use crate::formula::OpKind;
@@ -16,7 +17,6 @@ use lexpr::Value;
 use rpds::Stack;
 
 use std::collections::HashMap;
-use std::fmt;
 use std::time::Duration;
 
 #[derive(Copy, Clone)]
@@ -184,36 +184,7 @@ fn hoice_solver(smt_string: String) -> String {
     String::from_utf8(out).unwrap()
 }
 
-pub struct Model {
-    pub model: HashMap<Ident, (Vec<Ident>, Constraint)>,
-}
 
-impl fmt::Display for Model {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for (key, (args, assign)) in self.model.iter() {
-            write!(f, "{}(", key)?;
-            let mut first = true;
-            for arg in args.iter() {
-                if first {
-                    first = false
-                } else {
-                    write!(f, ", ")?;
-                }
-                write!(f, "{}", arg)?;
-            }
-            write!(f, ") => {}\n", assign)?;
-        }
-        Ok(())
-    }
-}
-
-impl Model {
-    pub fn new() -> Model {
-        Model {
-            model: HashMap::new(),
-        }
-    }
-}
 
 #[derive(Clone, Debug)]
 struct LetEntry<'a> {
@@ -686,6 +657,22 @@ fn test_parse_model() {
             assert!(m.model.len() == 2);
         }
         Err(_) => panic!("model is broken"),
+    }
+}
+
+pub fn is_solution_valid(clauses: &Vec<CHC>, model: &Model) -> bool {
+    let mut c = Constraint::mk_true();
+    for clause in clauses.iter() {
+        let c2 = clause.replace_with_model(model);
+        c = Constraint::mk_conj(c, c2);
+    }
+    let mut solver = smt::default_solver();
+    let fvs = c.fv();
+    match solver.solve(&c, &fvs) {
+        super::SolverResult::Sat => true,
+        super::SolverResult::Unsat => false,
+        super::SolverResult::Unknown => panic!("failed to verify"),
+        super::SolverResult::Timeout => panic!("smt timeout")
     }
 }
 

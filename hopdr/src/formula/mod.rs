@@ -182,6 +182,10 @@ impl Op {
         Op::new(OpExpr::Op(op, x, y))
     }
 
+    pub fn mk_add(x: Op, y: Op) -> Op {
+        Op::new(OpExpr::Op(OpKind::Add, x, y))
+    }
+
     pub fn mk_const(x: i64) -> Op {
         Op::new(OpExpr::Const(x))
     }
@@ -535,8 +539,8 @@ impl Constraint {
         ))
     }
 
-    pub fn mk_arrow(x: Constraint, y: Constraint) -> Option<Constraint> {
-        x.negate().map(|x| Constraint::mk_disj(x, y))
+    pub fn mk_arrow(x: Constraint, y: Constraint) -> Constraint {
+        x.negate().map(|x| Constraint::mk_disj(x, y)).unwrap()
     }
 
     pub fn mk_pred(k: PredKind, v: Vec<Op>) -> Constraint {

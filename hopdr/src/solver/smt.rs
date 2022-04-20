@@ -98,10 +98,15 @@ fn z3_parse_model() {
 }
 
 pub trait SMTSolver {
-    fn solve(&mut self, c: &Constraint, vars: &HashSet<Ident>) -> SolverResult;
+    /// Given a constraint, the solver executes an SMT solver to check whether
+    /// it is satisfiable or not
+    /// 
+    /// - constraint: The constraint to be checked by SMT solver
+    /// - vars: variables to be bound by universal quantifiers.
+    fn solve(&mut self, constraint: &Constraint, vars: &HashSet<Ident>) -> SolverResult;
     fn solve_with_model(
         &mut self,
-        c: &Constraint,
+        constraint: &Constraint,
         vars: &HashSet<Ident>,
         fvs: &HashSet<Ident>,
     ) -> Result<Model, SolverResult>;
