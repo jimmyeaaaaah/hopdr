@@ -661,11 +661,13 @@ fn test_parse_model() {
 }
 
 pub fn is_solution_valid(clauses: &Vec<CHC>, model: &Model) -> bool {
+    crate::title!("is_solution_valid");
     let mut c = Constraint::mk_true();
     for clause in clauses.iter() {
         let c2 = clause.replace_with_model(model);
         c = Constraint::mk_conj(c, c2);
     }
+    debug!("{}", c);
     let mut solver = smt::default_solver();
     let fvs = c.fv();
     match solver.solve(&c, &fvs) {
@@ -675,6 +677,25 @@ pub fn is_solution_valid(clauses: &Vec<CHC>, model: &Model) -> bool {
         super::SolverResult::Timeout => panic!("smt timeout")
     }
 }
+
+#[test]
+fn test_is_solution_valid() {
+    let (chc, mut model, vars) = chc::gen_clause_pqp();
+    let clauses = vec![chc];
+    assert!(is_solution_valid(&clauses, &model));
+    let x = vars[0];
+    let y = vars[1];
+    let p = vars[2];
+    let q = vars[3];
+    let sol_for_p = model.model.remove(&p).unwrap();
+    let sol_for_q = model.model.remove(&q).unwrap();
+    let new_sol_c = Constraint::mk_eq(Op::mk_var(x), Op::mk_var(y));
+    model.model.insert(p, (sol_for_p.0, new_sol_c));
+    model.model.insert(q, (sol_for_q.0, Constraint::mk_true()));
+
+    assert!(!is_solution_valid(&clauses, &model));
+}
+
 
 impl CHCSolver for HoiceSolver {
     fn solve(&mut self, clauses: &Vec<CHC>) -> CHCResult {

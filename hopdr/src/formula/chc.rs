@@ -428,13 +428,13 @@ impl CHC<Constraint> {
 
 #[cfg(test)]
 /// ### clause
-/// P(x + 1, y) /\ Q(x) /\ x < 0 => P(x, y)
+/// P(x + 1, y) /\ Q(y) /\ x < 0 => P(x, y)
 /// ### model
 /// - P(x, y) = x < y
-/// - Q(x)    = x < 5
+/// - Q(y)    = 5 < y
 /// ### variables
 /// [x, y, p, q]
-fn gen_clause_pqp() -> (CHC<Constraint>, Model, Vec<Ident>) {
+pub fn gen_clause_pqp() -> (CHC<Constraint>, Model, Vec<Ident>) {
     let p = Ident::fresh();
     let q = Ident::fresh();
     let x = Ident::fresh();
@@ -442,12 +442,12 @@ fn gen_clause_pqp() -> (CHC<Constraint>, Model, Vec<Ident>) {
     let x_p_1 = Op::mk_add(Op::mk_var(x), Op::mk_const(1));
     let head = CHCHead::Predicate(Atom{ predicate: p, args: vec![Op::mk_var(x), Op::mk_var(y)]});
     let c1 = Atom{ predicate: p, args: vec![x_p_1, Op::mk_var(y)]};
-    let c2 = Atom { predicate: q, args: vec![Op::mk_var(x)]};
+    let c2 = Atom { predicate: q, args: vec![Op::mk_var(y)]};
     let constr = Constraint::mk_lt(Op::mk_var(x), Op::mk_const(0));
     let body = CHCBody{constraint: constr, predicates: vec![c1, c2]};
     
     let p_c = Constraint::mk_lt(Op::mk_var(x), Op::mk_var(y));
-    let q_c = Constraint::mk_lt(Op::mk_var(x), Op::mk_const(5));
+    let q_c = Constraint::mk_lt( Op::mk_const(5), Op::mk_var(y));
     let mut model = Model::new();
     model.model.insert(p, (vec![x, y], p_c));
     model.model.insert(q, (vec![x], q_c));
@@ -463,9 +463,9 @@ fn test_replace_with_model() {
     let x = vars[0];
     let y = vars[1];
 
-    // x + 1 < y /\ x < 5 /\ x < 0 => x < y
+    // x + 1 < y /\ 5 < y /\ x < 0 => x < y
     let c1 = Constraint::mk_lt(Op::mk_add(Op::mk_var(x), Op::mk_const(1)), Op::mk_var(y));
-    let c2 = Constraint::mk_lt(Op::mk_var(x), Op::mk_const(5));
+    let c2 = Constraint::mk_lt(Op::mk_const(5), Op::mk_var(y));
     let c3 = Constraint::mk_lt(Op::mk_var(x), Op::mk_const(0));
     let head= Constraint::mk_lt(Op::mk_var(x), Op::mk_var(y));
     let body = Constraint::mk_conj(c1, Constraint::mk_conj(c2, c3));

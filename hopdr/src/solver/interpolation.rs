@@ -332,7 +332,7 @@ pub fn interpolate(left: &Constraint, right: &Constraint) -> Constraint {
             debug!("parse_body: {}", line);
             return parse_body(line, fvs);
         } else if line.starts_with("sat") {
-            panic!("program error: SMTInterpol concluded the constraint was sat (expected: unsat)")
+            panic!("program error: SMTInterpol concluded the constraint was sat (expected: unsat)\n[result of smtinterpol]\n{}", &r)
         }
     }
 }
