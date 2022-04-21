@@ -550,13 +550,9 @@ impl Constraint {
     // these methods are useful for generating constraints to make tests
     pub fn mk_bin_pred(k: PredKind, left: Op, right: Op) -> Constraint {
         match k {
-            PredKind::Eq |
-            PredKind::Leq |
-            PredKind::Geq if left == right => Constraint::mk_true(),
-            PredKind::Neq |
-            PredKind::Lt |
-            PredKind::Gt if left == right => Constraint::mk_false(),
-            _ => Constraint::mk_pred(k, vec![left, right])
+            PredKind::Eq | PredKind::Leq | PredKind::Geq if left == right => Constraint::mk_true(),
+            PredKind::Neq | PredKind::Lt | PredKind::Gt if left == right => Constraint::mk_false(),
+            _ => Constraint::mk_pred(k, vec![left, right]),
         }
     }
     pub fn mk_lt(left: Op, right: Op) -> Constraint {

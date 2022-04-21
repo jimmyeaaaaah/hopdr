@@ -10,7 +10,6 @@ pub mod solver;
 #[macro_use]
 pub mod util;
 
-
 #[cfg(test)]
 #[ctor::ctor]
 fn init() {

@@ -390,10 +390,14 @@ impl<C: TConstraint> CHC<C> {
 }
 
 impl Atom {
-    fn replace_with_model(&self, model:&Model) -> Constraint {
-                let m = model.model.get(&self.predicate).unwrap();
-                assert_eq!(m.0.len(), self.args.len());
-                m.1.subst_multi(m.0.iter().zip(self.args.iter()).map(|(x, y)|(x.clone(), y.clone())))
+    fn replace_with_model(&self, model: &Model) -> Constraint {
+        let m = model.model.get(&self.predicate).unwrap();
+        assert_eq!(m.0.len(), self.args.len());
+        m.1.subst_multi(
+            m.0.iter()
+                .zip(self.args.iter())
+                .map(|(x, y)| (x.clone(), y.clone())),
+        )
     }
 }
 
@@ -401,9 +405,7 @@ impl CHCHead<Constraint> {
     fn replace_with_model(&self, model: &Model) -> Constraint {
         match self {
             CHCHead::Constraint(c) => c.clone(),
-            CHCHead::Predicate(a) => {
-                a.replace_with_model(model)
-            }
+            CHCHead::Predicate(a) => a.replace_with_model(model),
         }
     }
 }
@@ -440,20 +442,31 @@ pub fn gen_clause_pqp() -> (CHC<Constraint>, Model, Vec<Ident>) {
     let x = Ident::fresh();
     let y = Ident::fresh();
     let x_p_1 = Op::mk_add(Op::mk_var(x), Op::mk_const(1));
-    let head = CHCHead::Predicate(Atom{ predicate: p, args: vec![Op::mk_var(x), Op::mk_var(y)]});
-    let c1 = Atom{ predicate: p, args: vec![x_p_1, Op::mk_var(y)]};
-    let c2 = Atom { predicate: q, args: vec![Op::mk_var(y)]};
+    let head = CHCHead::Predicate(Atom {
+        predicate: p,
+        args: vec![Op::mk_var(x), Op::mk_var(y)],
+    });
+    let c1 = Atom {
+        predicate: p,
+        args: vec![x_p_1, Op::mk_var(y)],
+    };
+    let c2 = Atom {
+        predicate: q,
+        args: vec![Op::mk_var(y)],
+    };
     let constr = Constraint::mk_lt(Op::mk_var(x), Op::mk_const(0));
-    let body = CHCBody{constraint: constr, predicates: vec![c1, c2]};
-    
+    let body = CHCBody {
+        constraint: constr,
+        predicates: vec![c1, c2],
+    };
+
     let p_c = Constraint::mk_lt(Op::mk_var(x), Op::mk_var(y));
-    let q_c = Constraint::mk_lt( Op::mk_const(5), Op::mk_var(y));
+    let q_c = Constraint::mk_lt(Op::mk_const(5), Op::mk_var(y));
     let mut model = Model::new();
     model.model.insert(p, (vec![x, y], p_c));
     model.model.insert(q, (vec![x], q_c));
-    (CHC{ head, body}, model, vec![x, y, p, q])
+    (CHC { head, body }, model, vec![x, y, p, q])
 }
-
 
 #[test]
 fn test_replace_with_model() {
@@ -467,7 +480,7 @@ fn test_replace_with_model() {
     let c1 = Constraint::mk_lt(Op::mk_add(Op::mk_var(x), Op::mk_const(1)), Op::mk_var(y));
     let c2 = Constraint::mk_lt(Op::mk_const(5), Op::mk_var(y));
     let c3 = Constraint::mk_lt(Op::mk_var(x), Op::mk_const(0));
-    let head= Constraint::mk_lt(Op::mk_var(x), Op::mk_var(y));
+    let head = Constraint::mk_lt(Op::mk_var(x), Op::mk_var(y));
     let body = Constraint::mk_conj(c1, Constraint::mk_conj(c2, c3));
     let answer = Constraint::mk_arrow(body, head);
     println!("answer: {}", answer);
@@ -477,7 +490,7 @@ fn test_replace_with_model() {
     let mut solver = smt::default_solver();
     match solver.check_equivalent(&result, &answer) {
         crate::solver::SolverResult::Sat => (),
-        _ => panic!("error")
+        _ => panic!("error"),
     }
 }
 

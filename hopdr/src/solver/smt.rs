@@ -100,7 +100,7 @@ fn z3_parse_model() {
 pub trait SMTSolver {
     /// Given a constraint, the solver executes an SMT solver to check whether
     /// it is satisfiable or not
-    /// 
+    ///
     /// - constraint: The constraint to be checked by SMT solver
     /// - vars: variables to be bound by universal quantifiers.
     fn solve(&mut self, constraint: &Constraint, vars: &HashSet<Ident>) -> SolverResult;
@@ -111,10 +111,10 @@ pub trait SMTSolver {
         fvs: &HashSet<Ident>,
     ) -> Result<Model, SolverResult>;
     /// check left <=> right
-    /// 
+    ///
     /// all free variables are to be universally quantified
     fn check_equivalent(&mut self, left: &Constraint, right: &Constraint) -> SolverResult {
-        use crate::formula::{Logic, Fv};
+        use crate::formula::{Fv, Logic};
         let rightarrow = Constraint::mk_arrow(left.clone(), right.clone());
         let leftarrow = Constraint::mk_arrow(right.clone(), left.clone());
         let equivalent = Constraint::mk_conj(rightarrow, leftarrow);

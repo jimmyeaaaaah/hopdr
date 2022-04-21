@@ -184,28 +184,29 @@ fn hoice_solver(smt_string: String) -> String {
     String::from_utf8(out).unwrap()
 }
 
-
-
 #[derive(Clone, Debug)]
 struct LetEntry<'a> {
-    id: &'a str, 
+    id: &'a str,
     env: LetEnv<'a>,
-    expr: &'a lexpr::Value
+    expr: &'a lexpr::Value,
 }
 
 #[derive(Clone, Debug)]
 struct LetEnv<'a> {
-    entries: Stack<LetEntry<'a>>
+    entries: Stack<LetEntry<'a>>,
 }
 
-
-impl <'a> LetEnv<'a> {
+impl<'a> LetEnv<'a> {
     fn new() -> LetEnv<'a> {
-        LetEnv{ entries: Stack::new() }
+        LetEnv {
+            entries: Stack::new(),
+        }
     }
     fn add(&self, id: &'a str, env: LetEnv<'a>, expr: &'a lexpr::Value) -> LetEnv<'a> {
-        let entry = LetEntry{ id, env, expr };
-        LetEnv{ entries: self.entries.push(entry) }
+        let entry = LetEntry { id, env, expr };
+        LetEnv {
+            entries: self.entries.push(entry),
+        }
     }
     fn search(self, id: &str) -> Option<(LetEnv<'a>, &'a lexpr::Value)> {
         for v in self.entries.iter() {
@@ -216,7 +217,6 @@ impl <'a> LetEnv<'a> {
         None
     }
 }
-
 
 fn parse_predicate_variable(v: &str) -> Ident {
     assert!(v.starts_with('x'));
@@ -258,11 +258,7 @@ fn parse_args<'a>(v: &'a lexpr::Value) -> (Vec<Ident>, HashMap<&'a str, Ident>) 
     }
     (args, env)
 }
-fn parse_op_cons(
-    v: &lexpr::Cons,
-    env: &HashMap<&str, Ident>,
-    letenv: LetEnv
-) -> Op {
+fn parse_op_cons(v: &lexpr::Cons, env: &HashMap<&str, Ident>, letenv: LetEnv) -> Op {
     let mut itr = v.iter().map(|x| x.car());
     let p = itr.next().unwrap().as_symbol().unwrap();
     let kind = match p {
@@ -291,11 +287,7 @@ fn parse_op_cons(
         result
     }
 }
-fn parse_op(
-    v: &lexpr::Value,
-    env: &HashMap<&str, Ident>,
-    letenv: LetEnv
-) -> Op {
+fn parse_op(v: &lexpr::Value, env: &HashMap<&str, Ident>, letenv: LetEnv) -> Op {
     match v {
         Value::Cons(x) => parse_op_cons(x, env, letenv),
         Value::Number(n) => Op::mk_const(n.as_i64().unwrap()),
@@ -324,7 +316,7 @@ fn parse_let_args<'a>(
     fn parse_let_arg<'a>(
         v: &'a lexpr::Value,
         env: &HashMap<&'a str, Ident>,
-        letenv: LetEnv<'a>
+        letenv: LetEnv<'a>,
     ) -> LetEnv<'a> {
         // (.cse0 (+ xx_193 xx_193))
         let mut itr = cons_value_to_iter(&v);
@@ -405,14 +397,18 @@ fn parse_body_cons<'a>(
             r
         }
         Tag::RightArrow => {
-            let r: Vec<fofml::Atom> = itr.map(|x| parse_body_inner(x, env, letenv.clone())).collect();
+            let r: Vec<fofml::Atom> = itr
+                .map(|x| parse_body_inner(x, env, letenv.clone()))
+                .collect();
             debug_assert!(r.len() == 2);
             let a = r[0].clone();
             let b = r[1].clone();
             fofml::Atom::mk_disj(fofml::Atom::mk_not(a), b)
         }
         Tag::Not => {
-            let r: Vec<fofml::Atom> = itr.map(|x| parse_body_inner(x, env, letenv.clone())).collect();
+            let r: Vec<fofml::Atom> = itr
+                .map(|x| parse_body_inner(x, env, letenv.clone()))
+                .collect();
             debug_assert!(r.len() == 1);
             let a = r[0].clone();
             fofml::Atom::mk_not(a)
@@ -430,7 +426,9 @@ fn parse_body_cons<'a>(
                 debug_assert!(r.is_none());
             }
 
-            let r: Vec<fofml::Atom> = itr.map(|x| parse_body_inner(x, env, letenv.clone())).collect();
+            let r: Vec<fofml::Atom> = itr
+                .map(|x| parse_body_inner(x, env, letenv.clone()))
+                .collect();
             debug_assert!(r.len() == 1);
 
             for (k, _) in env2.iter() {
@@ -447,13 +445,17 @@ fn parse_body_cons<'a>(
             // (let ((.cse0 (+ xx_193 xx_193))) (and (>= .cse0 0) (>= 0 .cse0)))
             let args = itr.next().unwrap();
             let letenv = parse_let_args(args, env, letenv);
-            let r: Vec<fofml::Atom> = itr.map(|x| parse_body_inner(x, env, letenv.clone())).collect();
+            let r: Vec<fofml::Atom> = itr
+                .map(|x| parse_body_inner(x, env, letenv.clone()))
+                .collect();
             debug_assert!(r.len() == 1);
             r[0].clone()
         }
         Tag::ITE => {
             // if-then-else
-            let r: Vec<fofml::Atom> = itr.map(|x| parse_body_inner(x, env, letenv.clone())).collect();
+            let r: Vec<fofml::Atom> = itr
+                .map(|x| parse_body_inner(x, env, letenv.clone()))
+                .collect();
             assert!(r.len() == 3);
             let conj = r[0].clone();
             let ifbr = r[1].clone();
@@ -470,7 +472,7 @@ fn parse_body_cons<'a>(
 fn parse_body_inner<'a>(
     v: &'a lexpr::Value,
     env: &mut HashMap<&'a str, Ident>,
-    letenv: LetEnv<'a>
+    letenv: LetEnv<'a>,
 ) -> fofml::Atom {
     debug!("parse_body: {}", v);
     match v {
@@ -551,13 +553,13 @@ fn test_parse_body_let() {
         env
     }
     let s = "(let ((.cse0 (= xx_408 0))) (let ((.cse1 (and (let ((.cse2 (+ xx_407 1))) (ite (= xx_377 0) (and (<= xx_407 xx_407) (or (< xx_407 xx_407) (= xx_409 .cse2))) (and (<= .cse2 .cse2) (or (< .cse2 .cse2) (= xx_409 (+ xx_407 2)))))) (not .cse0)))) (and (or .cse0 .cse1) (or (= xx_409 xx_407) .cse1))))";
-    let v = [ "xx_377", "xx_407","xx_408", "xx_409"];
+    let v = ["xx_377", "xx_407", "xx_408", "xx_409"];
     let mut env = fresh_env(&v);
     let x = lexpr::from_str(s).unwrap();
     let result = parse_body(&x, &mut env).to_constraint().unwrap();
     println!("result: {}", result);
 
-    // calculated by hand: (xx408 = 0 \/     (xx408 != 0 /\ (x377 != 0 \/ xx409 = xx407 + 1) /\ (x377 = 0 \/ xx409 = xx407 + 2))) 
+    // calculated by hand: (xx408 = 0 \/     (xx408 != 0 /\ (x377 != 0 \/ xx409 = xx407 + 1) /\ (x377 = 0 \/ xx409 = xx407 + 2)))
     //                  /\ (xx409 = xx407 \/ (xx408 != 0 /\ (x377 != 0 \/ xx409 = xx407 + 1) /\ (x377 = 0 \/ xx409 = xx407 + 2)))
     let x377 = *env.get("xx_377").unwrap();
     let x407 = *env.get("xx_407").unwrap();
@@ -566,13 +568,33 @@ fn test_parse_body_let() {
 
     let x377neq0 = Constraint::mk_neq(Op::mk_var(x377), Op::mk_const(0));
     let x377eq0 = Constraint::mk_eq(Op::mk_var(x377), Op::mk_const(0));
-    let cse1 = Constraint::mk_conj(Constraint::mk_neq(Op::mk_var(x408), Op::mk_const(0)),
+    let cse1 = Constraint::mk_conj(
+        Constraint::mk_neq(Op::mk_var(x408), Op::mk_const(0)),
         Constraint::mk_conj(
-            Constraint::mk_disj(x377neq0.clone(), Constraint::mk_eq(Op::mk_var(x409), Op::mk_add(Op::mk_var(x407), Op::mk_const(1)))),
-            Constraint::mk_disj(x377eq0.clone(), Constraint::mk_eq(Op::mk_var(x409), Op::mk_add(Op::mk_var(x407), Op::mk_const(2))))
-        ));
-    let left = Constraint::mk_disj(Constraint::mk_eq(Op::mk_var(x408), Op::mk_const(0)), cse1.clone());
-    let right = Constraint::mk_disj(Constraint::mk_eq(Op::mk_var(x409), Op::mk_var(x407)), cse1.clone());
+            Constraint::mk_disj(
+                x377neq0.clone(),
+                Constraint::mk_eq(
+                    Op::mk_var(x409),
+                    Op::mk_add(Op::mk_var(x407), Op::mk_const(1)),
+                ),
+            ),
+            Constraint::mk_disj(
+                x377eq0.clone(),
+                Constraint::mk_eq(
+                    Op::mk_var(x409),
+                    Op::mk_add(Op::mk_var(x407), Op::mk_const(2)),
+                ),
+            ),
+        ),
+    );
+    let left = Constraint::mk_disj(
+        Constraint::mk_eq(Op::mk_var(x408), Op::mk_const(0)),
+        cse1.clone(),
+    );
+    let right = Constraint::mk_disj(
+        Constraint::mk_eq(Op::mk_var(x409), Op::mk_var(x407)),
+        cse1.clone(),
+    );
     let answer = Constraint::mk_conj(left, right);
     println!("{}", answer);
 
@@ -710,7 +732,7 @@ pub fn is_solution_valid(clauses: &Vec<CHC>, model: &Model) -> bool {
         super::SolverResult::Sat => true,
         super::SolverResult::Unsat => false,
         super::SolverResult::Unknown => panic!("failed to verify"),
-        super::SolverResult::Timeout => panic!("smt timeout")
+        super::SolverResult::Timeout => panic!("smt timeout"),
     }
 }
 
@@ -731,7 +753,6 @@ fn test_is_solution_valid() {
 
     assert!(!is_solution_valid(&clauses, &model));
 }
-
 
 impl CHCSolver for HoiceSolver {
     fn solve(&mut self, clauses: &Vec<CHC>) -> CHCResult {

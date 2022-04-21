@@ -9,7 +9,7 @@
 // Current available interpolant solvers
 //   1. Mathsat5
 
-use super::chc::{CHCResult};
+use super::chc::CHCResult;
 use crate::formula::chc;
 use crate::formula::chc::Model;
 use crate::formula::Fv;
@@ -275,7 +275,11 @@ pub fn interpolate(left: &Constraint, right: &Constraint) -> Constraint {
         debug!("smt_string: {}", &smt_string);
         let f = smt::save_smt2(smt_string);
         // TODO: determine the path when it's compiled
-        let args = vec!["-jar", "/home/katsura/github.com/moratorium08/hopdr/hopdr/smtinterpol.jar", f.path().to_str().unwrap()];
+        let args = vec![
+            "-jar",
+            "/home/katsura/github.com/moratorium08/hopdr/hopdr/smtinterpol.jar",
+            f.path().to_str().unwrap(),
+        ];
         debug!("filename: {}", &args[0]);
         let out = util::exec_with_timeout(
             "java",
@@ -400,9 +404,9 @@ pub fn solve(chc: &Vec<CHC>) -> CHCResult {
             let fvs = check.fv();
             match solver.solve(&check, &fvs) {
                 crate::solver::SolverResult::Sat => (),
-                crate::solver::SolverResult::Unsat |
-                crate::solver::SolverResult::Unknown |
-                crate::solver::SolverResult::Timeout => panic!("smtinterpol fail")
+                crate::solver::SolverResult::Unsat
+                | crate::solver::SolverResult::Unknown
+                | crate::solver::SolverResult::Timeout => panic!("smtinterpol fail"),
             }
         }
 
