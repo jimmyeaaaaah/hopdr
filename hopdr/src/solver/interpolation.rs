@@ -266,7 +266,6 @@ fn parse_body(s: &str, fvs: HashSet<Ident>) -> Constraint {
     let x = x.as_cons().unwrap().car();
     let idents: HashMap<String, Ident> = fvs.into_iter().map(|x| (ident_2_smt2(&x), x)).collect();
     let mut map = idents.iter().map(|(x, y)| (x.as_str(), *y)).collect();
-    debug!("{:?}", x);
     parse_body(x, &mut map).to_constraint().unwrap()
 }
 
@@ -328,13 +327,16 @@ pub fn interpolate(left: &Constraint, right: &Constraint) -> Constraint {
     };
     let (s, fvs) = generate_smtinterpol();
     let r = smtinterpol_solver(s);
+    crate::title!("smt_interpol");
+    debug!("{}", r);
     let mut lines = r.lines();
     loop {
         let line = lines.next().unwrap();
         if line.starts_with("unsat") {
             let line = lines.next().unwrap();
-            debug!("parse_body: {}", line);
-            return parse_body(line, fvs);
+            let parsed = parse_body(line, fvs);
+            debug!("parsed: {}", parsed);
+            return parsed;
         } else if line.starts_with("sat") {
             panic!("program error: SMTInterpol concluded the constraint was sat (expected: unsat)\n[result of smtinterpol]\n{}", &r)
         }
@@ -385,29 +387,39 @@ pub fn solve(chc: &Vec<CHC>) -> CHCResult {
                 None => (),
             }
         }
+
+        // to get ψ s.t. "weakest" => ψ => "strongest",
+        // calculate SMTInterpol("weakest", not "strongest")
         let strongest_tmp = strongest.clone();
         let strongest = strongest.negate().unwrap();
         // translate constraints to prenex normal form
         let strongest = strongest.to_pnf();
         let weakest = weakest.to_pnf();
-        // interpolation:
-        let c = interpolate(&weakest, &strongest);
-
-        // check weakest => c => strongest
         #[cfg(debug_assertions)]
         {
-            let arrow1 = Constraint::mk_arrow(weakest, c.clone());
-            let arrow2 = Constraint::mk_arrow(c.clone(), strongest_tmp);
-            let check = Constraint::mk_conj(arrow1, arrow2);
             let mut solver = smt::default_solver();
-            debug!("check:{}", check);
-            let fvs = check.fv();
-            match solver.solve(&check, &fvs) {
-                crate::solver::SolverResult::Sat => (),
-                crate::solver::SolverResult::Unsat
-                | crate::solver::SolverResult::Unknown
-                | crate::solver::SolverResult::Timeout => panic!("smtinterpol fail"),
-            }
+            crate::title!("strongest");
+            // adhoc: to print the formula
+            solver.solve(&strongest_tmp, &mut HashSet::new());
+            crate::title!("weakest");
+            solver.solve(&weakest, &mut HashSet::new());
+            // check weakest => c => strongest
+            let arrow3 = Constraint::mk_implies(weakest.clone(), strongest_tmp.clone());
+            assert!(solver.solve_with_universal_quantifiers(&arrow3).is_sat());
+        }
+        // interpolation:
+        crate::title!("trying to interpolate...");
+        let c = interpolate(&weakest, &strongest);
+
+        #[cfg(debug_assertions)]
+        {
+            let mut solver = smt::default_solver();
+            crate::title!("trying to check if the result is correct");
+            // check if weakest => strongest
+            let arrow1 = Constraint::mk_implies(weakest, c.clone());
+            let arrow2 = Constraint::mk_implies(c.clone(), strongest_tmp);
+            assert!(solver.solve(&arrow1, &mut HashSet::new()).is_sat());
+            assert!(solver.solve(&arrow2, &mut HashSet::new()).is_sat());
         }
 
         debug!("interpolated: {}", c);

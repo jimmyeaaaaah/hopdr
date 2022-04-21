@@ -324,7 +324,7 @@ impl<A> PCSP<A> {
 
 impl PCSP<Constraint> {
     pub fn to_constraint(&self) -> Constraint {
-        Constraint::mk_arrow(self.body.clone(), self.head.clone())
+        Constraint::mk_implies(self.body.clone(), self.head.clone())
     }
 }
 

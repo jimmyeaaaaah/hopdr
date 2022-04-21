@@ -424,7 +424,7 @@ impl CHC<Constraint> {
     pub fn replace_with_model(&self, model: &Model) -> Constraint {
         let head = self.head.replace_with_model(model);
         let body = self.body.replace_with_model(model);
-        Constraint::mk_arrow(body, head)
+        Constraint::mk_implies(body, head)
     }
 }
 
@@ -482,7 +482,7 @@ fn test_replace_with_model() {
     let c3 = Constraint::mk_lt(Op::mk_var(x), Op::mk_const(0));
     let head = Constraint::mk_lt(Op::mk_var(x), Op::mk_var(y));
     let body = Constraint::mk_conj(c1, Constraint::mk_conj(c2, c3));
-    let answer = Constraint::mk_arrow(body, head);
+    let answer = Constraint::mk_implies(body, head);
     println!("answer: {}", answer);
 
     // check if result <=> answer using SMT solver

@@ -539,7 +539,7 @@ impl Constraint {
         ))
     }
 
-    pub fn mk_arrow(x: Constraint, y: Constraint) -> Constraint {
+    pub fn mk_implies(x: Constraint, y: Constraint) -> Constraint {
         x.negate().map(|x| Constraint::mk_disj(x, y)).unwrap()
     }
 

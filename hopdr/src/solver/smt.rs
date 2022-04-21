@@ -114,13 +114,19 @@ pub trait SMTSolver {
     ///
     /// all free variables are to be universally quantified
     fn check_equivalent(&mut self, left: &Constraint, right: &Constraint) -> SolverResult {
-        use crate::formula::{Fv, Logic};
-        let rightarrow = Constraint::mk_arrow(left.clone(), right.clone());
-        let leftarrow = Constraint::mk_arrow(right.clone(), left.clone());
+        use crate::formula::Logic;
+        let rightarrow = Constraint::mk_implies(left.clone(), right.clone());
+        let leftarrow = Constraint::mk_implies(right.clone(), left.clone());
         let equivalent = Constraint::mk_conj(rightarrow, leftarrow);
 
-        let fvs = equivalent.fv();
-        self.solve(&equivalent, &fvs)
+        self.solve_with_universal_quantifiers(&equivalent)
+    }
+    /// check if the constraint is satisfiable where all free variables are quantified by universal
+    /// quantifiers
+    fn solve_with_universal_quantifiers(&mut self, constraint: &Constraint) -> SolverResult {
+        use crate::formula::Fv;
+        let fvs = constraint.fv();
+        self.solve(constraint, &fvs)
     }
 }
 
@@ -252,8 +258,11 @@ fn z3_solver(smt_string: String) -> String {
 
 impl SMTSolver for Z3Solver {
     fn solve(&mut self, c: &Constraint, vars: &HashSet<Ident>) -> SolverResult {
+        use crate::formula::Fv;
         debug!("smt_solve: {}", c);
-        let smt2 = constraint_to_smt2(c, SMT2Style::Z3, vars, None);
+        let fvs = c.fv();
+        let fvs = &fvs - vars;
+        let smt2 = constraint_to_smt2(c, SMT2Style::Z3, vars, Some(&fvs));
         debug!("smt2: {}", &smt2);
         let s = z3_solver(smt2);
         debug!("smt_solve result: {:?}", &s);

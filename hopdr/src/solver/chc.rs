@@ -474,7 +474,6 @@ fn parse_body_inner<'a>(
     env: &mut HashMap<&'a str, Ident>,
     letenv: LetEnv<'a>,
 ) -> fofml::Atom {
-    debug!("parse_body: {}", v);
     match v {
         Value::Bool(t) if *t => fofml::Atom::mk_true(),
         Value::Bool(_) => fofml::Atom::mk_false(),
