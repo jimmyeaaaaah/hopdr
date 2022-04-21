@@ -1,3 +1,4 @@
+
 pub mod chc;
 pub mod interpolation;
 pub mod smt;
@@ -14,4 +15,31 @@ pub enum SolverResult {
     Unsat,
     Unknown,
     Timeout,
+}
+
+impl SolverResult {
+    pub fn is_sat(&self) -> bool {
+        match self {
+            SolverResult::Sat => true,
+            _ => false
+        }
+    }
+    pub fn is_unsat(&self) -> bool {
+        match self {
+            SolverResult::Unsat => true,
+            _ => false
+        }
+    }
+    pub fn is_unknown(&self) -> bool {
+        match self {
+            SolverResult::Unknown => true,
+            _ => false
+        }
+    }
+    pub fn is_timeout(&self) -> bool {
+        match self {
+            SolverResult::Timeout => true,
+            _ => false
+        }
+    }
 }

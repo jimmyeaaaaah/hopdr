@@ -387,7 +387,7 @@ fn parse_body_cons<'a>(
         Tag::Pred(p) => {
             let v: Vec<Op> = itr.map(|x| parse_op(x, env, letenv.clone())).collect();
             debug_assert!(v.len() == 2); // maybe?
-            let c = Constraint::mk_pred(p, v);
+            let c = Constraint::mk_bin_pred(p, v[0].clone(), v[1].clone());
             fofml::Atom::mk_constraint(c)
         }
         Tag::And => {
@@ -542,6 +542,42 @@ fn test_parse_body_let() {
     let s = "(ite (= x 0) (=> (not (= (+ x (- 1)) 0)) (=> (not (= (+ x (- 2)) 0)) (and (<= x x) (or (< x x) (= x (+ x 1)))))) (let ((.cse2 (+ x x))) (and (<= .cse2 .cse2) (or (< .cse2 .cse2) (= x (+ x x 1))))))";
     let x = lexpr::from_str(s).unwrap();
     parse_body(&x, &mut env);
+
+    fn fresh_env<'a>(v: &'a [&'a str]) -> HashMap<&'a str, Ident> {
+        let mut env = HashMap::new();
+        for id in v {
+            env.insert(*id, Ident::fresh());
+        }
+        env
+    }
+    let s = "(let ((.cse0 (= xx_408 0))) (let ((.cse1 (and (let ((.cse2 (+ xx_407 1))) (ite (= xx_377 0) (and (<= xx_407 xx_407) (or (< xx_407 xx_407) (= xx_409 .cse2))) (and (<= .cse2 .cse2) (or (< .cse2 .cse2) (= xx_409 (+ xx_407 2)))))) (not .cse0)))) (and (or .cse0 .cse1) (or (= xx_409 xx_407) .cse1))))";
+    let v = [ "xx_377", "xx_407","xx_408", "xx_409"];
+    let mut env = fresh_env(&v);
+    let x = lexpr::from_str(s).unwrap();
+    let result = parse_body(&x, &mut env).to_constraint().unwrap();
+    println!("result: {}", result);
+
+    // calculated by hand: (xx408 = 0 \/     (xx408 != 0 /\ (x377 != 0 \/ xx409 = xx407 + 1) /\ (x377 = 0 \/ xx409 = xx407 + 2))) 
+    //                  /\ (xx409 = xx407 \/ (xx408 != 0 /\ (x377 != 0 \/ xx409 = xx407 + 1) /\ (x377 = 0 \/ xx409 = xx407 + 2)))
+    let x377 = *env.get("xx_377").unwrap();
+    let x407 = *env.get("xx_407").unwrap();
+    let x408 = *env.get("xx_408").unwrap();
+    let x409 = *env.get("xx_409").unwrap();
+
+    let x377neq0 = Constraint::mk_neq(Op::mk_var(x377), Op::mk_const(0));
+    let x377eq0 = Constraint::mk_eq(Op::mk_var(x377), Op::mk_const(0));
+    let cse1 = Constraint::mk_conj(Constraint::mk_neq(Op::mk_var(x408), Op::mk_const(0)),
+        Constraint::mk_conj(
+            Constraint::mk_disj(x377neq0.clone(), Constraint::mk_eq(Op::mk_var(x409), Op::mk_add(Op::mk_var(x407), Op::mk_const(1)))),
+            Constraint::mk_disj(x377eq0.clone(), Constraint::mk_eq(Op::mk_var(x409), Op::mk_add(Op::mk_var(x407), Op::mk_const(2))))
+        ));
+    let left = Constraint::mk_disj(Constraint::mk_eq(Op::mk_var(x408), Op::mk_const(0)), cse1.clone());
+    let right = Constraint::mk_disj(Constraint::mk_eq(Op::mk_var(x409), Op::mk_var(x407)), cse1.clone());
+    let answer = Constraint::mk_conj(left, right);
+    println!("{}", answer);
+
+    let mut solver = crate::solver::smt::default_solver();
+    assert!(solver.check_equivalent(&result, &answer).is_sat());
 }
 
 pub fn parse_define_fun(v: lexpr::Value) -> (Ident, (Vec<Ident>, fofml::Atom)) {

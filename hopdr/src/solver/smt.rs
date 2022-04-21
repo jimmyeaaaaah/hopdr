@@ -110,6 +110,18 @@ pub trait SMTSolver {
         vars: &HashSet<Ident>,
         fvs: &HashSet<Ident>,
     ) -> Result<Model, SolverResult>;
+    /// check left <=> right
+    /// 
+    /// all free variables are to be universally quantified
+    fn check_equivalent(&mut self, left: &Constraint, right: &Constraint) -> SolverResult {
+        use crate::formula::{Logic, Fv};
+        let rightarrow = Constraint::mk_arrow(left.clone(), right.clone());
+        let leftarrow = Constraint::mk_arrow(right.clone(), left.clone());
+        let equivalent = Constraint::mk_conj(rightarrow, leftarrow);
+
+        let fvs = equivalent.fv();
+        self.solve(&equivalent, &fvs)
+    }
 }
 
 fn pred_to_smt2(p: &PredKind, args: &[String]) -> String {

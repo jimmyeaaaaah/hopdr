@@ -549,7 +549,15 @@ impl Constraint {
 
     // these methods are useful for generating constraints to make tests
     pub fn mk_bin_pred(k: PredKind, left: Op, right: Op) -> Constraint {
-        Constraint::mk_pred(k, vec![left, right])
+        match k {
+            PredKind::Eq |
+            PredKind::Leq |
+            PredKind::Geq if left == right => Constraint::mk_true(),
+            PredKind::Neq |
+            PredKind::Lt |
+            PredKind::Gt if left == right => Constraint::mk_false(),
+            _ => Constraint::mk_pred(k, vec![left, right])
+        }
     }
     pub fn mk_lt(left: Op, right: Op) -> Constraint {
         Self::mk_bin_pred(PredKind::Lt, left, right)
@@ -646,8 +654,11 @@ impl Fv for Constraint {
                 y.fv_with_vec(fvs);
             }
             ConstraintExpr::Quantifier(_, v, x) => {
+                let already_contained = fvs.contains(&v.id);
                 x.fv_with_vec(fvs);
-                fvs.remove(&v.id);
+                if !already_contained {
+                    fvs.remove(&v.id);
+                }
             }
         }
     }

@@ -381,12 +381,31 @@ pub fn solve(chc: &Vec<CHC>) -> CHCResult {
                 None => (),
             }
         }
+        let strongest_tmp = strongest.clone();
         let strongest = strongest.negate().unwrap();
         // translate constraints to prenex normal form
         let strongest = strongest.to_pnf();
         let weakest = weakest.to_pnf();
         // interpolation:
         let c = interpolate(&weakest, &strongest);
+
+        // check weakest => c => strongest
+        #[cfg(debug_assertions)]
+        {
+            let arrow1 = Constraint::mk_arrow(weakest, c.clone());
+            let arrow2 = Constraint::mk_arrow(c.clone(), strongest_tmp);
+            let check = Constraint::mk_conj(arrow1, arrow2);
+            let mut solver = smt::default_solver();
+            debug!("check:{}", check);
+            let fvs = check.fv();
+            match solver.solve(&check, &fvs) {
+                crate::solver::SolverResult::Sat => (),
+                crate::solver::SolverResult::Unsat |
+                crate::solver::SolverResult::Unknown |
+                crate::solver::SolverResult::Timeout => panic!("smtinterpol fail")
+            }
+        }
+
         debug!("interpolated: {}", c);
         model.model.insert(p, (arg_vars, c));
     }

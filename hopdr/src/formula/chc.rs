@@ -473,14 +473,9 @@ fn test_replace_with_model() {
     println!("answer: {}", answer);
 
     // check if result <=> answer using SMT solver
-    let rightarrow = Constraint::mk_arrow(result.clone(), answer.clone());
-    let leftarrow = Constraint::mk_arrow(answer, result);
-    let equivalent = Constraint::mk_conj(rightarrow, leftarrow);
-
     use crate::solver::smt;
     let mut solver = smt::default_solver();
-    let fvs = equivalent.fv();
-    match solver.solve(&equivalent, &fvs) {
+    match solver.check_equivalent(&result, &answer) {
         crate::solver::SolverResult::Sat => (),
         _ => panic!("error")
     }
