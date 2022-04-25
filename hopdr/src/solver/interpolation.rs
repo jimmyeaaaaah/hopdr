@@ -26,7 +26,7 @@ type CHC = chc::CHC<Constraint>;
 type CHCBody = chc::CHCBody<Constraint>;
 
 // topological sort
-fn topological_sort(l: &[CHC]) -> (Vec<Ident>, HashMap<Ident, usize>) {
+fn topological_sort(l: &[CHC]) -> Option<(Vec<Ident>, HashMap<Ident, usize>)> {
     type Graph = HashMap<Ident, HashSet<Ident>>;
     fn collect_preds(body: &CHCBody, s: &mut HashSet<Ident>, n_args: &mut HashMap<Ident, usize>) {
         for atom in body.predicates.iter() {
@@ -35,23 +35,36 @@ fn topological_sort(l: &[CHC]) -> (Vec<Ident>, HashMap<Ident, usize>) {
         }
     }
 
-    fn dfs(graph: &Graph, sorted: &mut Vec<Ident>, unchecked: &mut HashSet<Ident>, cur: Ident) {
+    fn dfs(
+        graph: &Graph,
+        sorted: &mut Vec<Ident>,
+        unchecked: &mut HashSet<Ident>,
+        is_temporary: &mut HashSet<Ident>,
+        cur: Ident,
+    ) -> Result<(), ()> {
         match graph.get(&cur) {
             Some(s) => {
                 for i in s.iter() {
                     if unchecked.contains(i) {
                         unchecked.remove(i);
-                        dfs(graph, sorted, unchecked, *i);
+                        is_temporary.insert(*i);
+                        dfs(graph, sorted, unchecked, is_temporary, *i)?;
+                        is_temporary.remove(i);
+                    } else if is_temporary.contains(i) {
+                        // a cycle has been found.
+                        return Err(());
                     }
                 }
             }
             None => panic!("program error"),
         }
         sorted.push(cur);
+        return Ok(());
     }
 
-    fn sort(graph: &Graph) -> Vec<Ident> {
+    fn sort(graph: &Graph) -> Option<Vec<Ident>> {
         let mut unchecked = HashSet::new();
+        let mut is_temporary = HashSet::new();
         let mut sorted = Vec::new();
         for k in graph.keys() {
             unchecked.insert(*k);
@@ -59,10 +72,15 @@ fn topological_sort(l: &[CHC]) -> (Vec<Ident>, HashMap<Ident, usize>) {
         while let Some(cur) = unchecked.iter().next() {
             let cur = *cur;
             unchecked.remove(&cur);
-            dfs(graph, &mut sorted, &mut unchecked, cur);
+            is_temporary.insert(cur);
+            match dfs(graph, &mut sorted, &mut unchecked, &mut is_temporary, cur) {
+                Ok(()) => (),
+                Err(()) => return None,
+            }
+            is_temporary.remove(&cur);
         }
         sorted.reverse();
-        sorted
+        Some(sorted)
     }
 
     let mut graph: Graph = HashMap::new();
@@ -96,7 +114,7 @@ fn topological_sort(l: &[CHC]) -> (Vec<Ident>, HashMap<Ident, usize>) {
             }
         }
     }
-    (sort(&graph), n_args)
+    sort(&graph).map(|order| (order, n_args))
 }
 
 #[test]
@@ -155,8 +173,8 @@ fn test_topological_sort() {
     let c3 = CHC { head: h3, body: b3 };
     let c4 = CHC { head: h4, body: b4 };
 
-    let clauses = vec![c1, c2, c3, c4];
-    let (order, _) = topological_sort(&clauses);
+    let mut clauses = vec![c1, c2, c3, c4];
+    let (order, _) = topological_sort(&clauses).unwrap();
     println!("[clauses]");
     for c in clauses.iter() {
         println!("{}", c);
@@ -169,6 +187,26 @@ fn test_topological_sort() {
     assert!(order.len() == 3);
     // R and P must appear before Q appears
     assert_eq!(order[2], qi);
+
+    debug!("next we check the case where the constraints contain a cycle");
+
+    // check detection of a cycle
+    // Graph:
+    //  P => P
+    //   + the above
+    let b = CHCBody {
+        predicates: vec![p.clone()],
+        constraint: Constraint::mk_true(),
+    };
+    let h = CHCHead::Predicate(p.clone());
+    let c = CHC { head: h, body: b };
+    clauses.push(c);
+
+    println!("[clauses]");
+    for c in clauses.iter() {
+        println!("{}", c);
+    }
+    assert!(topological_sort(&clauses).is_none());
 }
 
 fn check_contains_head<'a>(p: Ident, head: &'a chc::CHCHead<Constraint>) -> Option<&'a Vec<Op>> {
@@ -207,6 +245,7 @@ fn remove_pred_except_for<'a>(
     debug!("{}", clause);
     debug!("{}", p);
     let get_constraint = |q: &chc::Atom| -> Constraint {
+        debug!("get_constraint q: {}", q);
         let (arg_vars, c) = match model.model.get(&q.predicate) {
             Some((arg_vars, c)) => (arg_vars, c),
             None => {
@@ -529,7 +568,8 @@ pub fn solve(chc: &Vec<CHC>) -> Model {
     }
     let chc: Vec<_> = chc.iter().map(|c| c.fresh_variables()).collect();
     let chc = &chc;
-    let (preds, n_args) = topological_sort(chc);
+    let (preds, n_args) =
+        topological_sort(chc).unwrap_or_else(|| panic!("constraints contain a cycle"));
 
     let least_model = generate_least_solution(chc, &preds, &n_args);
 
