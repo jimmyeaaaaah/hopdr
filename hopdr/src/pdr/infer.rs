@@ -280,10 +280,7 @@ pub(super) fn infer(
         title!("model from CHC solver");
         // TODO: Display model
         debug!("{}", m);
-        let m = match solver::interpolation::solve(&clauses) {
-            solver::chc::CHCResult::Sat(m) => m,
-            _ => panic!("program error"),
-        };
+        let m = solver::interpolation::solve(&clauses);
         debug!("interpolated:");
         debug!("{}", m);
         let model = m.model;

@@ -144,7 +144,7 @@ impl<C: Refinement> Rename for CHC<C> {
 impl<C: Rename + Fv> CHCBody<C> {}
 
 impl<C: Rename + Fv<Id = Ident> + Clone> CHC<C> {
-    pub fn fresh_variailes(&self) -> CHC<C> {
+    pub fn fresh_variables(&self) -> CHC<C> {
         let mut fvs = self.body.fv();
         self.head.fv_with_vec(&mut fvs);
 
