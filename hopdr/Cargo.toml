@@ -28,6 +28,7 @@ lexpr = "0.2.5"
 colored = "2"
 clap = { version = "3.1.2", features = ["derive"] }
 atty = "0.2"
+either = "1.6"
 
 [dev-dependencies]
 ctor = "0.1.22"

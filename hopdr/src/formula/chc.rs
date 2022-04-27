@@ -561,4 +561,7 @@ impl Model {
             model: HashMap::new(),
         }
     }
+    pub fn merge(&mut self, model: Model) -> Model {
+        unimplemented!()
+    }
 }
