@@ -115,8 +115,9 @@ fn calculate_upperbound(_clauses: &[Clause], _p: &chc::Atom) -> Constraint {
 }
 
 fn translate_clauses_to_problems(clauses: &[Clause]) -> Vec<Vec<CHC>> {
-    let mut problems: Vec<Vec<CHC>> = Vec::new();
+    let mut problems: Vec<Vec<CHC>> = vec![Vec::new()];
     for clause in clauses {
+        let mut next_problems = Vec::new();
         match &clause.head {
             Head::Predicates(preds) => {
                 for i in 0..preds.len() {
@@ -145,8 +146,10 @@ fn translate_clauses_to_problems(clauses: &[Clause]) -> Vec<Vec<CHC>> {
                         constraint: body_constr,
                     };
                     let c = CHC { head, body };
-                    for problem in problems.iter_mut() {
-                        problem.push(c.clone());
+                    for problem in problems.iter() {
+                        let mut p = problem.clone();
+                        p.push(c.clone());
+                        next_problems.push(p);
                     }
                 }
             }
@@ -172,13 +175,58 @@ fn translate_clauses_to_problems(clauses: &[Clause]) -> Vec<Vec<CHC>> {
                 }
             }
         }
+        problems = next_problems;
     }
     problems
 }
 
 #[test]
 fn test_translate_clauses_to_problems() {
-    unimplemented!()
+    // P(x) => Q(x)
+    // true => Q(x) \/ R(x)
+
+    let p = Ident::fresh();
+    let q = Ident::fresh();
+    let r = Ident::fresh();
+    let x = Ident::fresh();
+    let argx = vec![Op::mk_var(x)];
+    let head = Head::Predicates(vec![chc::Atom {
+        predicate: q,
+        args: argx.clone(),
+    }]);
+    let body = chc::CHCBody {
+        predicates: vec![chc::Atom {
+            predicate: p,
+            args: argx.clone(),
+        }],
+        constraint: Constraint::mk_true(),
+    };
+    let c1 = Clause { head, body };
+    let head = Head::Predicates(vec![
+        chc::Atom {
+            predicate: q,
+            args: argx.clone(),
+        },
+        chc::Atom {
+            predicate: r,
+            args: argx.clone(),
+        },
+    ]);
+    let body = chc::CHCBody {
+        predicates: Vec::new(),
+        constraint: Constraint::mk_true(),
+    };
+    let c2 = Clause { head, body };
+    let clauses = vec![c1, c2];
+    let chcss = translate_clauses_to_problems(&clauses);
+    println!("chcss.len() == {}", chcss.len());
+    for (i, chcs) in chcss.iter().enumerate() {
+        println!("problem {}", i);
+        for chc in chcs {
+            println!("- {}", chc);
+        }
+    }
+    assert!(chcss.len() == 2);
 }
 
 fn solve_chcs(clauses: &Vec<CHC>, current_model: &chc::Model) -> Option<Model> {

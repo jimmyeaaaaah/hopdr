@@ -561,7 +561,9 @@ impl Model {
             model: HashMap::new(),
         }
     }
-    pub fn merge(&mut self, model: Model) -> Model {
-        unimplemented!()
+    pub fn merge(&mut self, model: Model) {
+        for (k, v) in model.model.into_iter() {
+            self.model.insert(k, v);
+        }
     }
 }
