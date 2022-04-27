@@ -41,7 +41,7 @@ impl CHCResult {
     }
 }
 
-type CHC = chc::CHC<Constraint>;
+type CHC = chc::CHC<chc::Atom, Constraint>;
 
 //const PROLOGUE: &'static str =
 //   "(set-option :no-simplify-clauses true)\n(set-option :no-inlining true)\n(set-logic HORN)\n";
@@ -83,7 +83,7 @@ fn atom_to_smt2(p: &pcsp::Atom) -> String {
     }
 }
 
-fn body_to_smt2(body: &chc::CHCBody<Constraint>) -> String {
+fn body_to_smt2(body: &chc::CHCBody<chc::Atom, Constraint>) -> String {
     let a = body.clone().into();
     atom_to_smt2(&a)
 }

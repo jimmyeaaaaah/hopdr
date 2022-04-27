@@ -46,14 +46,14 @@ impl<T> TConstraint for T where
 }
 
 #[derive(Debug, Clone)]
-pub enum CHCHead<C> {
+pub enum CHCHead<A, C> {
     Constraint(C),
-    Predicate(Atom),
+    Predicate(A),
 }
 
 #[derive(Debug, Clone)]
-pub struct CHCBody<C> {
-    pub predicates: Vec<Atom>,
+pub struct CHCBody<A, C> {
+    pub predicates: Vec<A>,
     pub constraint: C,
 }
 
@@ -72,7 +72,7 @@ impl fmt::Display for Atom {
     }
 }
 
-impl<C: fmt::Display> fmt::Display for CHCHead<C> {
+impl<A: fmt::Display, C: fmt::Display> fmt::Display for CHCHead<A, C> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             CHCHead::Constraint(c) => write!(f, "{}", c),
@@ -88,14 +88,16 @@ impl Atom {
     }
 }
 
-impl<C: TConstraint> CHCHead<C> {
-    pub fn mk_true() -> CHCHead<C> {
+impl<A, C: TConstraint> CHCHead<A, C> {
+    pub fn mk_true() -> CHCHead<A, C> {
         CHCHead::Constraint(C::mk_true())
     }
-    pub fn mk_constraint(c: C) -> CHCHead<C> {
+    pub fn mk_constraint(c: C) -> CHCHead<A, C> {
         CHCHead::Constraint(c)
     }
-    pub fn mk_predicate(predicate: Ident, args: Vec<Op>) -> CHCHead<C> {
+}
+impl<C> CHCHead<Atom, C> {
+    pub fn mk_predicate(predicate: Ident, args: Vec<Op>) -> CHCHead<Atom, C> {
         CHCHead::Predicate(Atom { predicate, args })
     }
 }
@@ -108,7 +110,7 @@ impl Rename for Atom {
         }
     }
 }
-impl<C: Rename> Rename for CHCHead<C> {
+impl<A: Rename, C: Rename> Rename for CHCHead<A, C> {
     fn rename(&self, x: &Ident, y: &Ident) -> Self {
         match self {
             CHCHead::Constraint(c) => CHCHead::Constraint(c.rename(x, y)),
@@ -116,7 +118,7 @@ impl<C: Rename> Rename for CHCHead<C> {
         }
     }
 }
-impl<C: Rename> Rename for CHCBody<C> {
+impl<A: Rename, C: Rename> Rename for CHCBody<A, C> {
     fn rename(&self, x: &Ident, y: &Ident) -> Self {
         let constraint = self.constraint.rename(x, y);
         let predicates = self.predicates.iter().map(|a| a.rename(x, y)).collect();
@@ -128,12 +130,12 @@ impl<C: Rename> Rename for CHCBody<C> {
 }
 
 #[derive(Debug, Clone)]
-pub struct CHC<C> {
-    pub body: CHCBody<C>,
-    pub head: CHCHead<C>,
+pub struct CHC<A, C> {
+    pub body: CHCBody<A, C>,
+    pub head: CHCHead<A, C>,
 }
 
-impl<C: Refinement> Rename for CHC<C> {
+impl<A: Refinement, C: Refinement> Rename for CHC<A, C> {
     fn rename(&self, x: &Ident, y: &Ident) -> Self {
         let body = self.body.rename(x, y);
         let head = self.head.rename(x, y);
@@ -141,10 +143,10 @@ impl<C: Refinement> Rename for CHC<C> {
     }
 }
 
-impl<C: Rename + Fv> CHCBody<C> {}
+impl<A: Rename + Fv, C: Rename + Fv> CHCBody<A, C> {}
 
-impl<C: Rename + Fv<Id = Ident> + Clone> CHC<C> {
-    pub fn fresh_variables(&self) -> CHC<C> {
+impl<A: Rename + Fv<Id = Ident> + Clone, C: Rename + Fv<Id = Ident> + Clone> CHC<A, C> {
+    pub fn fresh_variables(&self) -> CHC<A, C> {
         let mut fvs = self.body.fv();
         self.head.fv_with_vec(&mut fvs);
 
@@ -169,7 +171,7 @@ impl Fv for Atom {
     }
 }
 
-impl<C: Fv<Id = Ident>> Fv for CHCHead<C> {
+impl<A: Fv<Id = Ident>, C: Fv<Id = Ident>> Fv for CHCHead<A, C> {
     type Id = Ident;
 
     fn fv_with_vec(&self, fvs: &mut HashSet<Self::Id>) {
@@ -180,7 +182,7 @@ impl<C: Fv<Id = Ident>> Fv for CHCHead<C> {
     }
 }
 
-impl<C: Fv<Id = Ident>> Fv for CHCBody<C> {
+impl<A: Fv<Id = Ident>, C: Fv<Id = Ident>> Fv for CHCBody<A, C> {
     type Id = Ident;
 
     fn fv_with_vec(&self, fvs: &mut HashSet<Self::Id>) {
@@ -191,7 +193,7 @@ impl<C: Fv<Id = Ident>> Fv for CHCBody<C> {
     }
 }
 
-impl<C: Fv<Id = Ident>> Fv for CHC<C> {
+impl<A: Fv<Id = Ident>, C: Fv<Id = Ident>> Fv for CHC<A, C> {
     type Id = Ident;
 
     fn fv_with_vec(&self, fvs: &mut HashSet<Self::Id>) {
@@ -218,7 +220,7 @@ fn to_pnf(a: &pcsp::Atom) -> pcsp::Atom {
     }
 }
 
-fn body_iter(body: pcsp::Atom) -> impl Iterator<Item = CHCBody<Constraint>> {
+pub(crate) fn body_iter(body: pcsp::Atom) -> impl Iterator<Item = CHCBody<Atom, Constraint>> {
     fn translate(atom: pcsp::Atom, predicates: &mut Vec<Atom>, constraint: &mut Constraint) {
         match atom.kind() {
             pcsp::AtomKind::True => (),
@@ -253,8 +255,8 @@ fn body_iter(body: pcsp::Atom) -> impl Iterator<Item = CHCBody<Constraint>> {
 }
 
 pub fn generate_chcs(
-    pairs: impl Iterator<Item = (pcsp::Atom, CHCHead<Constraint>)>,
-) -> Vec<CHC<Constraint>> {
+    pairs: impl Iterator<Item = (pcsp::Atom, CHCHead<Atom, Constraint>)>,
+) -> Vec<CHC<Atom, Constraint>> {
     let mut chcs = Vec::new();
     for (body, head) in pairs {
         for body in body_iter(body) {
@@ -267,8 +269,8 @@ pub fn generate_chcs(
     chcs
 }
 
-impl From<CHCBody<Constraint>> for pcsp::Atom {
-    fn from(body: CHCBody<Constraint>) -> Self {
+impl From<CHCBody<Atom, Constraint>> for pcsp::Atom {
+    fn from(body: CHCBody<Atom, Constraint>) -> Self {
         let mut a = pcsp::Atom::mk_true();
         for b in body.predicates {
             let b = pcsp::Atom::mk_pred(b.predicate, b.args);
@@ -277,8 +279,8 @@ impl From<CHCBody<Constraint>> for pcsp::Atom {
         pcsp::Atom::mk_conj(pcsp::Atom::mk_constraint(body.constraint), a)
     }
 }
-impl From<CHCBody<pcsp::Atom>> for pcsp::Atom {
-    fn from(body: CHCBody<pcsp::Atom>) -> Self {
+impl From<CHCBody<Atom, pcsp::Atom>> for pcsp::Atom {
+    fn from(body: CHCBody<Atom, pcsp::Atom>) -> Self {
         let mut a = pcsp::Atom::mk_true();
         for b in body.predicates {
             let b = pcsp::Atom::mk_pred(b.predicate, b.args);
@@ -288,7 +290,7 @@ impl From<CHCBody<pcsp::Atom>> for pcsp::Atom {
     }
 }
 
-impl<C: fmt::Display + Top> fmt::Display for CHCBody<C> {
+impl<A: fmt::Display, C: fmt::Display + Top> fmt::Display for CHCBody<A, C> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut first = true;
         if !self.constraint.is_true() {
@@ -306,14 +308,14 @@ impl<C: fmt::Display + Top> fmt::Display for CHCBody<C> {
         Ok(())
     }
 }
-impl<C: fmt::Display + Top> fmt::Display for CHC<C> {
+impl<A: fmt::Display, C: fmt::Display + Top> fmt::Display for CHC<A, C> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} -> {}", self.body, self.head)
     }
 }
 
-impl From<CHCHead<Constraint>> for CHCHead<pcsp::Atom> {
-    fn from(h: CHCHead<Constraint>) -> Self {
+impl<A> From<CHCHead<A, Constraint>> for CHCHead<A, pcsp::Atom> {
+    fn from(h: CHCHead<A, Constraint>) -> Self {
         match h {
             CHCHead::Constraint(c) => CHCHead::Constraint(c.into()),
             CHCHead::Predicate(p) => CHCHead::Predicate(p),
@@ -321,8 +323,8 @@ impl From<CHCHead<Constraint>> for CHCHead<pcsp::Atom> {
     }
 }
 
-impl From<CHCBody<Constraint>> for CHCBody<pcsp::Atom> {
-    fn from(h: CHCBody<Constraint>) -> Self {
+impl<A> From<CHCBody<A, Constraint>> for CHCBody<A, pcsp::Atom> {
+    fn from(h: CHCBody<A, Constraint>) -> Self {
         let constraint = h.constraint.into();
         CHCBody {
             constraint,
@@ -331,16 +333,16 @@ impl From<CHCBody<Constraint>> for CHCBody<pcsp::Atom> {
     }
 }
 
-impl From<CHC<Constraint>> for CHC<pcsp::Atom> {
-    fn from(c: CHC<Constraint>) -> Self {
+impl<A> From<CHC<A, Constraint>> for CHC<A, pcsp::Atom> {
+    fn from(c: CHC<A, Constraint>) -> Self {
         let body = c.body.into();
         let head = c.head.into();
         CHC { body, head }
     }
 }
 
-impl From<CHCHead<pcsp::Atom>> for CHCHead<Constraint> {
-    fn from(h: CHCHead<pcsp::Atom>) -> Self {
+impl<A> From<CHCHead<A, pcsp::Atom>> for CHCHead<A, Constraint> {
+    fn from(h: CHCHead<A, pcsp::Atom>) -> Self {
         match h {
             CHCHead::Constraint(c) => CHCHead::Constraint(c.to_constraint().unwrap()),
             CHCHead::Predicate(p) => CHCHead::Predicate(p),
@@ -348,8 +350,8 @@ impl From<CHCHead<pcsp::Atom>> for CHCHead<Constraint> {
     }
 }
 
-impl From<CHCBody<pcsp::Atom>> for CHCBody<Constraint> {
-    fn from(h: CHCBody<pcsp::Atom>) -> Self {
+impl<A> From<CHCBody<A, pcsp::Atom>> for CHCBody<A, Constraint> {
+    fn from(h: CHCBody<A, pcsp::Atom>) -> Self {
         let constraint = h.constraint.to_constraint().unwrap();
         CHCBody {
             constraint,
@@ -358,15 +360,15 @@ impl From<CHCBody<pcsp::Atom>> for CHCBody<Constraint> {
     }
 }
 
-impl From<CHC<pcsp::Atom>> for CHC<Constraint> {
-    fn from(c: CHC<pcsp::Atom>) -> Self {
+impl<A> From<CHC<A, pcsp::Atom>> for CHC<A, Constraint> {
+    fn from(c: CHC<A, pcsp::Atom>) -> Self {
         let body = c.body.into();
         let head = c.head.into();
         CHC { body, head }
     }
 }
 
-impl<C: TConstraint> CHCBody<C> {
+impl<C: TConstraint> CHCBody<Atom, C> {
     fn collect_predicates(&self, predicates: &mut HashMap<Ident, usize>) {
         for a in self.predicates.iter() {
             match predicates.insert(a.predicate, a.args.len()) {
@@ -376,7 +378,7 @@ impl<C: TConstraint> CHCBody<C> {
         }
     }
 }
-impl<C: TConstraint> CHC<C> {
+impl<C: TConstraint> CHC<Atom, C> {
     pub fn collect_predicates(&self, predicates: &mut HashMap<Ident, usize>) {
         match &self.head {
             CHCHead::Constraint(_) => (),
@@ -401,7 +403,7 @@ impl Atom {
     }
 }
 
-impl CHCHead<Constraint> {
+impl CHCHead<Atom, Constraint> {
     fn replace_with_model(&self, model: &Model) -> Constraint {
         match self {
             CHCHead::Constraint(c) => c.clone(),
@@ -410,7 +412,7 @@ impl CHCHead<Constraint> {
     }
 }
 
-impl CHCBody<Constraint> {
+impl CHCBody<Atom, Constraint> {
     fn replace_with_model(&self, model: &Model) -> Constraint {
         let mut c = self.constraint.clone();
         for a in self.predicates.iter() {
@@ -420,7 +422,7 @@ impl CHCBody<Constraint> {
     }
 }
 
-impl CHC<Constraint> {
+impl CHC<Atom, Constraint> {
     pub fn replace_with_model(&self, model: &Model) -> Constraint {
         let head = self.head.replace_with_model(model);
         let body = self.body.replace_with_model(model);
@@ -436,7 +438,7 @@ impl CHC<Constraint> {
 /// - Q(y)    = 5 < y
 /// ### variables
 /// [x, y, p, q]
-pub fn gen_clause_pqp() -> (CHC<Constraint>, Model, Vec<Ident>) {
+pub fn gen_clause_pqp() -> (CHC<Atom, Constraint>, Model, Vec<Ident>) {
     let p = Ident::fresh();
     let q = Ident::fresh();
     let x = Ident::fresh();
@@ -494,10 +496,10 @@ fn test_replace_with_model() {
     }
 }
 
-fn cross_and<C: TConstraint>(
-    left: Vec<Vec<CHCHead<C>>>,
-    mut right: Vec<Vec<CHCHead<C>>>,
-) -> Vec<Vec<CHCHead<C>>> {
+fn cross_and<A: Clone, C: TConstraint>(
+    left: Vec<Vec<CHCHead<A, C>>>,
+    mut right: Vec<Vec<CHCHead<A, C>>>,
+) -> Vec<Vec<CHCHead<A, C>>> {
     let mut ret = Vec::new();
     for x in left.iter() {
         for y in right.iter_mut() {
@@ -509,7 +511,7 @@ fn cross_and<C: TConstraint>(
     ret
 }
 
-pub fn to_dnf(atom: &pcsp::Atom) -> Vec<Vec<CHCHead<Constraint>>> {
+pub fn to_dnf(atom: &pcsp::Atom) -> Vec<Vec<CHCHead<Atom, Constraint>>> {
     use pcsp::AtomKind;
     match atom.kind() {
         AtomKind::True => vec![vec![CHCHead::mk_true()]],

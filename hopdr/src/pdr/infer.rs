@@ -243,7 +243,7 @@ pub(super) fn infer(
         }
         clauses.push(pcsp::PCSP::new(body, head));
     }
-    if is_chc {
+    let model = if is_chc {
         let clauses = clauses.into_iter().map(|c| {
             let head = match c.head.kind() {
                 pcsp::AtomKind::Predicate(p, l) => {
@@ -283,28 +283,42 @@ pub(super) fn infer(
         let m = solver::interpolation::solve(&clauses);
         debug!("interpolated:");
         debug!("{}", m);
-        let model = m.model;
-        let mut result_env = TypeEnvironment::new();
-        for (k, ts) in tenv.map.iter() {
-            for t in ts {
-                result_env.add(*k, t.assign(&model));
-            }
-        }
-        Some(result_env)
+        m
     } else {
-        debug!("uouo");
-        for c in &clauses {
-            debug!("{}", c);
-        }
-        assert!(false);
-        constraint.check_satisfiability().map(|model| {
-            let mut result_env = TypeEnvironment::new();
-            for (k, ts) in tenv.map.iter() {
-                for t in ts {
-                    result_env.add(*k, t.assign(&model));
+        // the algorithm for solving disjunctive CHC
+        fn aux(c: &pcsp::Atom, heads: &mut Vec<chc::Atom>) {
+            match c.kind() {
+                pcsp::AtomKind::Disj(x, y) => {
+                    aux(x, heads);
+                    aux(y, heads);
                 }
+                pcsp::AtomKind::Predicate(p, l) => {
+                    heads.push(chc::Atom::new(*p, l.clone()));
+                }
+                _ => panic!("program error"),
             }
-            result_env
-        })
+        }
+        // first translates the clause into the desired format by the disjunctive solver.
+        let clauses = clauses.into_iter().map(|c| {
+            let head = if c.head.is_false() {
+                solver::disj::Head::Constraint(Constraint::mk_false())
+            } else {
+                let mut heads = Vec::new();
+                aux(&c.head, &mut heads);
+                solver::disj::Head::Predicates(heads)
+            };
+            (c.body, head)
+        });
+
+        let clauses = solver::disj::generate_clauses(clauses);
+        solver::disj::solve(&clauses)
+    };
+    let model = model.model;
+    let mut result_env = TypeEnvironment::new();
+    for (k, ts) in tenv.map.iter() {
+        for t in ts {
+            result_env.add(*k, t.assign(&model));
+        }
     }
+    Some(result_env)
 }

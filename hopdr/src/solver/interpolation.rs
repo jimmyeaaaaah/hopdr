@@ -22,8 +22,8 @@ use crate::solver::{smt, SMT2Style};
 
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
-type CHC = chc::CHC<Constraint>;
-type CHCBody = chc::CHCBody<Constraint>;
+type CHC = chc::CHC<chc::Atom, Constraint>;
+type CHCBody = chc::CHCBody<chc::Atom, Constraint>;
 
 // topological sort
 fn topological_sort(l: &[CHC]) -> Option<(Vec<Ident>, HashMap<Ident, usize>)> {
@@ -209,13 +209,16 @@ fn test_topological_sort() {
     assert!(topological_sort(&clauses).is_none());
 }
 
-fn check_contains_head<'a>(p: Ident, head: &'a chc::CHCHead<Constraint>) -> Option<&'a Vec<Op>> {
+fn check_contains_head<'a>(
+    p: Ident,
+    head: &'a chc::CHCHead<chc::Atom, Constraint>,
+) -> Option<&'a Vec<Op>> {
     match head {
         chc::CHCHead::Predicate(a) if p == a.predicate => Some(&a.args),
         _ => None,
     }
 }
-fn check_contains_body(p: Ident, body: &chc::CHCBody<Constraint>) -> bool {
+fn check_contains_body(p: Ident, body: &chc::CHCBody<chc::Atom, Constraint>) -> bool {
     for b in body.predicates.iter() {
         if b.predicate == p {
             return true;
