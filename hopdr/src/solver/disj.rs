@@ -1,7 +1,6 @@
 use crate::formula::chc::Model;
-use crate::formula::{chc, fofml, pcsp, Bot, Constraint, Ident, Logic, Negation, Op, Subst, Top};
+use crate::formula::{chc, pcsp, Constraint, Logic, Negation, Subst, Top};
 use crate::solver;
-use crate::solver::interpolation;
 
 use either::Either;
 
@@ -135,10 +134,35 @@ pub fn generate_clauses(pairs: impl Iterator<Item = (pcsp::Atom, Head)>) -> Vec<
     chcs
 }
 
-// Assumption: clauses are acyclic
-// temporarily we always assume that the upperbound is top
+/// Calculates the upperbound of p
+///
+/// Assumption: clauses are acyclic
+/// Replace pred with another one only when the new one is greater than
+/// the old one in the topological order of predicates.
+/// temporarily we always assume that the upperbound is top.
 fn calculate_upperbound(_clauses: &[Clause], _p: &chc::Atom) -> Constraint {
-    Constraint::mk_true()
+    return Constraint::mk_true();
+    //   use rpds::Stack;
+    //   /// reperesents left[0] /\ ... /\ left[m-1] /\ constraint => right[0] \/ ... \/ right[n-1]
+    //   #[derive(Clone)]
+    //   struct State {
+    //       left: Stack<chc::Atom>,
+    //       right: Stack<chc::Atom>,
+    //       constraint: Constraint,
+    //   }
+    //   let mut left = Stack::new();
+    //   let mut right = Stack::new();
+    //   let mut constraint = Constraint::mk_true();
+    //   let mut state = State{left, right, constraint};
+
+    //   while left.len() != 0 || right.len() != 0{
+    //       match left.pop() {
+    //           Some(l, a) => {
+    //
+    //           }
+    //       }
+    //   }
+    //   constraint.negate().unwrap()
 }
 
 fn translate_clauses_to_problems(clauses: &[Clause]) -> Vec<Vec<CHC>> {
@@ -210,6 +234,7 @@ fn translate_clauses_to_problems(clauses: &[Clause]) -> Vec<Vec<CHC>> {
 
 #[test]
 fn test_translate_clauses_to_problems() {
+    use crate::formula::{Ident, Op};
     // P(x) => Q(x)
     // true => Q(x) \/ R(x)
 
