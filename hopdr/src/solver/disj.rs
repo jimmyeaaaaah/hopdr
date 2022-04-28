@@ -87,10 +87,37 @@ pub enum Head {
     Predicates(Vec<chc::Atom>),
     Constraint(Constraint),
 }
+
+impl fmt::Display for Head {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Head::Constraint(c) => write!(f, "{}", c),
+            Head::Predicates(ps) => {
+                let mut first = true;
+                for p in ps {
+                    if first {
+                        first = false;
+                    } else {
+                        write!(f, " \\/ ")?;
+                    }
+                    write!(f, "{}", p)?;
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct Clause {
     head: Head,
     body: chc::CHCBody<chc::Atom, Constraint>,
+}
+
+impl fmt::Display for Clause {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} => {}", self.body, self.head)
+    }
 }
 
 // this CHC is extended with "negative occurrence" of preds in the body
@@ -138,7 +165,7 @@ fn translate_clauses_to_problems(clauses: &[Clause]) -> Vec<Vec<CHC>> {
                     }
                     let mut body_constr = clause.body.constraint.clone();
                     for p in &preds[i + 1..] {
-                        let c = calculate_upperbound(clauses, p);
+                        let c = calculate_upperbound(clauses, p).negate().unwrap();
                         body_constr = Constraint::mk_conj(body_constr, c);
                     }
                     let body = Body {
@@ -154,24 +181,25 @@ fn translate_clauses_to_problems(clauses: &[Clause]) -> Vec<Vec<CHC>> {
                 }
             }
             Head::Constraint(c) => {
-                for problem in problems.iter_mut() {
-                    let body = {
-                        let predicates = clause
-                            .body
-                            .predicates
-                            .iter()
-                            .cloned()
-                            .map(|x| x.into())
-                            .collect();
-                        let constraint = clause.body.constraint.clone();
-                        Body {
-                            predicates,
-                            constraint,
-                        }
-                    };
-                    let head = chc::CHCHead::Constraint(c.clone());
-                    let c = CHC { head, body };
-                    problem.push(c);
+                let body = {
+                    let predicates = clause
+                        .body
+                        .predicates
+                        .iter()
+                        .cloned()
+                        .map(|x| x.into())
+                        .collect();
+                    let constraint = clause.body.constraint.clone();
+                    Body {
+                        predicates,
+                        constraint,
+                    }
+                };
+                let head = chc::CHCHead::Constraint(c.clone());
+                let c = CHC { head, body };
+                next_problems = problems;
+                for problem in next_problems.iter_mut() {
+                    problem.push(c.clone());
                 }
             }
         }
@@ -258,6 +286,10 @@ fn solve_chcs(clauses: &Vec<CHC>, current_model: &chc::Model) -> Option<Model> {
 }
 
 pub fn solve(clauses: &[Clause]) -> Model {
+    crate::title!("clauses");
+    for clause in clauses {
+        debug!("- {}", clause);
+    }
     // 1. generate a sequence of CHC problems;
     let problems = translate_clauses_to_problems(clauses);
     crate::title!("problems");
