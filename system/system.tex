@@ -1,836 +1,199 @@
-\documentclass[runningheads]{llncs}
-\usepackage{amsmath, amssymb}
-\usepackage{mathtools}
-\usepackage{braket}
-\usepackage{stmaryrd}
-\usepackage{tikz}
-\usepackage{mathpartir}
-\usepackage{pifont}
-\usepackage{multirow}
+\documentclass[acmsmall,review,anonymous]{acmart}\settopmatter{printfolios=true,printccs=false,printacmref=false}
+
+
 \usepackage{algorithmic}
-\usepackage{graphicx}
-\usepackage{color}
+\usepackage{amsmath}
 \usepackage{bcprules}
+\usepackage{braket}
+\usepackage{color}
 
-%\usepackage{xcolor}
-%\pagecolor[rgb]{0,0,0} %black
-%\color[rgb]{0.5,0.5,0.5} %grey
-
-
-\newcommand \nhz{\(\nu\text{HFL}_\mathbb{Z}\)}
-\newcommand \hflz {\(\text{HFL}_\mathbb{Z}\)}
-
-\newcommand\COL{\mathbin{:}}
-
-% nhz syntax
-\newcommand \true {\textbf{tt}}
-\newcommand \false {\textbf{ff}}
-\newcommand \predicate {\textbf{p}}
-\newcommand \arith {\textbf{a}}
-\newcommand \operator {\mathbin{\textbf{op}}}
-\newcommand \term {M}
-\newcommand \atom {A}
-\newcommand \goal {G}
-\newcommand \definite {D}
-
-% nu HFLz semantics
-\newcommand {\val}[1]{[\![#1]\!]}
-\newcommand {\vwt}[3][]{\val{\wt{#2}{#3}}(\alpha\ifthenelse{\isempty{#1}}{}{[#1]})}
-\newcommand {\wta}[3]{\Gamma, #1 \vdash_H #2 : #3}
-\newcommand {\vwta}[3]{\val{\wta{#1}{#2}{#3}}(\alpha)}
-
-\newcommand {\valfun}{\alpha}
-\newcommand {\domain}[1]{\mathcal{D}_{#1}}
-\newcommand {\order}[1]{\sqsubseteq_{#1}}
-\newcommand {\join}[1]{\sqcap_#1}
-\newcommand {\meet}[1]{\sqcup_#1}
-\newcommand \gfp {\textbf{gfp}}
+\usepackage{graphicx}
+\usepackage{listings}
+\usepackage{mathpartir}
+\usepackage{mathtools}
+\usepackage{multirow}
+\usepackage{pifont}
+\usepackage{stmaryrd}
 
 
-% simple type
-\newcommand \stypeint {\textbf{Int}}
-\newcommand \stypebool {\bullet}
-\newcommand \stypeboolf {\circ}
-\newcommand \srtype {\rho} % simple result type
-\newcommand \satype {\eta} % simple argument type
-\newcommand \senv {\Gamma}
-\newcommand \wt[3][]{\ifthenelse{\isempty{#1}}{\senv}{\senv, #1} \vdash_H #2: #3}
-
-% refinement type syntax
-\newcommand \constraint {\theta}
-\newcommand \refty {\tau}
-\newcommand \typeint[1]{{#1} : \stypeint}
-\newcommand \typebool[1]{\stypebool \langle #1 \rangle}
-\newcommand \typeboolf[1]{\stypeboolf \langle #1 \rangle}
-
-% refinement type judgement
-\newcommand \refines[2]{#1:: #2}
-\newcommand \tenv {\Gamma}
-\newcommand \wf[2]{\tenv \vdash \refines{#1}{#2}}
-\newcommand \minimalize[1] {#1_{\Downarrow}}
-
-% refinement type semantics
-\newcommand {\semt}[1]{(\!|#1|\!)_\bullet}
-\newcommand {\mjudge}[2]{\tenv \models #1 \COL #2}
-\newcommand {\semsbt}[3][]{\tenv; \ifthenelse{\isempty{#1}}{\dcnstr}{#1} \models #2 \subtypeRelation #3}
-\newcommand {\wsemsbt}[4][]{\tenv; \ifthenelse{\isempty{#1}}{\dcnstr}{#1} \models #2 \subtypeRelation_{#4} #3}
-\newcommand {\srt}[2]{\semt{\wf{#1}{#2}}(\alpha)}
-\newcommand {\srtg}[3][]{\semt{\wf{#2}{#3}}(\alpha[#1])}
-\newcommand {\vc}[1]{[\!|#1|\!]}
-\newcommand {\vtenv}[2][]{\val{#2}({\ifthenelse{\isempty{#1}}{\valfun}{#1}})}
-
-% PDR rules
-\newcommand {\rdecide} {\emph{Decide}}
-\newcommand {\rconflict} {\emph{Conflict}}
-\newcommand {\rvalid} {\emph{Valid}}
-\newcommand {\rcandidate} {\emph{Candidate}}
-\newcommand {\runfold} {\emph{Unfold}}
-\newcommand {\rinitialize} {\emph{Initialize}}
-
-% negative types
-\newcommand {\fenv} {\Delta} % negative type environment
-\newcommand {\semtf}[1]{(\!|#1|\!)_\circ}
-\newcommand {\srtf}[2]{\semtf{\wf{#1}{#2}}(\alpha)}
-
-% conflict relation
-\newcommand {\conflict}{\not \sim}
-\newcommand {\consistent}{\sim}
-
-\newcommand {\intersect} {\land}
-\newcommand {\interpolation} {\textbf{Interp}}
-
-% dual
-\newcommand {\dual}[1]{\overline{#1}}
-
-\newlength\myindent
-\setlength\myindent{2em}
-\newcommand\bindent{%
-  \begingroup
-  \setlength{\itemindent}{\myindent}
-  \addtolength{\algorithmicindent}{\myindent}
-}
-\newcommand\eindent{\endgroup}
-
+\input{katsura_preamble}
 
 \begin{document}
 
-\section{Higher-order PDR}
+\section{yet another HoPDR}
 
-The target problem is \nhz{} validity checking.
-For the syntax of the target language, we adopt the following HES-like language,
-which is equivalent to \nhz{} since we can translate them mutually.
+\subsection{rules}
 
-\subsection{Target Language}
+Approximations are a sequence of type environments \( \{\, \tenv_1, \dots, \tenv_n \, \} \). We use \( \aprx \) as the metavariable of approximations.
+Counterexamples are a sequence of (a restricted form of) formulas \( \{\, \cex_k, \dots, \cex_n \, \} \). We use \( \cexs \) as the metavariable of counterexamples.
 
-\begin{align*}
-    \goal &\quad ::= \quad
-          G \land G
-          \mid G \lor G
-          \mid \forall x. G
-          \mid \atom
-          \mid \constraint
-         \\
-    \definite &\quad ::= \quad X x_1 \cdots x_n =_\nu G
-          \\
-    \atom &\quad ::= \quad X \mid A_1\ A_2\\
-    \constraint &\quad ::= \quad \cdots
-\end{align*}
-
-
-Then \nhz{} validity checking is that given definite formulas
-\( X_1 \bar{x_1} = \psi_1, \cdots X_n \bar{x_n} =  \psi_n \)
-and a goal formula \( \psi \),
-we check the validity of \( \psi \).
-
-\subsection{refinement type}
-
-\subsubsection{Syntax}
-
-\begin{align*}
-  &\textit{arithmetic expressions} &
-  \arith &::=
-  n
-  \mid
-  x
-  \mid
-  \operator(\arith_1, \cdots, \arith_n)
-  \\
-  &\textit{constraint formulas}&
-  \constraint &::=
-  \true
-  \mid \false
-  \mid \predicate(\arith_1, \cdots, \arith_n)
-  \mid \constraint_1 \land \constraint_2
-  \mid \constraint_1 \lor \constraint_2
-  \\
-  &\textit{positive types}&
-  \refty &::=
-  \typebool{\theta}
-  \mid t \rightarrow \refty_2
-  \\
-  &&
-  t &::=
-  \tau
-  \mid \typeint{x}
-  \mid t_1 \land t_2
-  \\
-  &\textit{negative types}&
-  \sigma &::=
-  \typeboolf{\theta}
-  \mid \typeint{x} \rightarrow \sigma
-  \mid \sigma_1 \rightarrow \sigma_2
-  %\mid \sigma_1 \intersect \sigma_2
-\end{align*}
-
-\subsubsection{Semantics}
-
-\begin{align*}
-    \srt{\typebool{\constraint}}{\stypebool} &= \{\val{\tenv \vdash_c \constraint}(\alpha), \top \}\\
-    \srt{\typeint{x} \rightarrow \refty}{\stypeint \rightarrow \srtype} &=
-      \{f \in \domain{\stypeint \rightarrow \srtype} \mid \forall v \in \domain{\stypeint}. \\
-          &\quad \quad f(v) \in \semt{\tenv, x \vdash \refty:: \srtype}(\alpha[x \mapsto v])\\
-    \srt{\refty_1 \rightarrow \refty_2}{\srtype_1 \rightarrow \srtype_2} &= \{f \in \domain{\srtype_1 \rightarrow \srtype_2} \mid \forall v \in
-        \srt{\refty_1}{\srtype_1}. \\
-          &\quad \quad \quad f(v) \in \srt{\refty_2}{\srtype_2}\}\\
-    \srt{\refty_1 \intersect \refty_2}{\srtype} &=
-    \srt{\refty_1}{\srtype} \cap \srt{\refty_2}{\srtype}
-\end{align*}
-and
-\begin{align*}
-    \srtf{\typeboolf{\constraint}}{\stypebool} &= \{\val{\tenv \vdash_c \lnot \constraint}(\alpha), \bot \}\\
-    \srtf{\typeint{x} \rightarrow \sigma}{\stypeint \rightarrow \srtype} &=
-      \{f \in \domain{\stypeint \rightarrow \srtype} \mid \forall v \in \domain{\stypeint}. \\
-          &\quad \quad f(v) \in \semtf{\tenv, x \vdash \sigma :: \srtype}(\alpha[x \mapsto v])\\
-    \srtf{\sigma_1 \rightarrow \sigma_2}{\srtype_1 \rightarrow \srtype_2} &= \{f \in \domain{\srtype_1 \rightarrow \srtype_2} \mid \forall v \in
-        \srtf{\sigma_1}{\srtype_1}. \\
-          &\quad \quad \quad f(v) \in \srtf{\sigma_2}{\srtype_2}\}\\
-    \srtf{\sigma_1 \intersect \sigma_2}{\srtype} &=
-    \srtf{\sigma_1}{\srtype} \cap \srt{\sigma_2}{\srtype}
-\end{align*}
-
-\subsubsection{type system for negative types}
-
-\infrule[F-App]{
-  \fenv \vdash \psi_1 : \sigma_1 \rightarrow \sigma_2
-  \andalso \fenv \vdash \psi_2 : \sigma_2
+\infrule[Initialize]{
 }{
-  \fenv \vdash \psi_1\ \psi_2 : \sigma_2
+\Tr \epsilon \pdrmid \TE{\stE}
 }
 
-\infrule[F-AppInt]{
-  \fenv \vdash \psi_1 \COL \typeint{x} \rightarrow \sigma
+\infrule[Valid]{
+\tenv_N \types \pdrtop \COL \tb{\true} 
+\andalso \tenv_N \types \RULES \COL \tenv_N
 }{
-  \fenv \vdash \psi_1\ n \COL [n/x]\sigma
+\epsilon \pdrmid \aprx \cdot \tenv_N \Tr \valid
 }
 
-\infrule[F-Conj]{
-  \fenv \vdash \psi_1 : \typeboolf{\theta_1}
-  \andalso \fenv \vdash \psi_2 \COL \typeboolf{\theta_2}
+\infrule[Unfold]{
+\tenv_N \types \TOP \COL \tb{\true}
+\andalso \tenv_N \not \types \RULES \COL \tenv_N
 }{
-  \fenv \vdash \psi_1 \land \psi_2 \COL \typeboolf{\theta_1 \lor \theta_2}
+\epsilon \pdrmid \aprx \cdot \tenv_N \Tr \epsilon \pdrmid \aprx \cdot \tenv_N \cdot \BE{\stE}
 }
 
-\infrule[F-Disj]{
-  \fenv \vdash \psi_1 : \typeboolf{\theta}
-  \andalso \fenv \vdash \psi_2 \COL \typeboolf{\theta}
+\infrule[Candidate]{
+\pdrtop = \forall \vec{x}.\bigwedge_i \formula_i
+\andalso \tenv_N \not \types \forall \vec{x}.\: \formula_i \COL \tb{\true}
+} {
+\epsilon \pdrmid \aprx \cdot \tenv_N
+\Tr (N, \forall \vec{x}.\: \formula_i) \pdrmid \aprx \cdot \tenv_N
+}
+
+\infrule[Conflict]{
+\tenv_i \types \RULES \COL \tenv 
+\andalso \tenv \types \cex \COL \tb{\true}
+\andalso 
+\Gamma'_j =
+	\left\{
+	\begin{array}{ll}
+	\Gamma_j \cup \Gamma' &\text{ if } j \leq i + 1\\
+	\Gamma_j &\text{ if } j > i + 1
+	\end{array}
+	\right.
+} {
+(i+1, \cex) \cdot \cexs \pdrmid \tenv_0 \dots \tenv_N 
+\Tr \cexs \pdrmid \tenv_0' \dots \tenv_N'
+}
+
+\infrule[Decide]{
+\RULES \cex = \forall \vec{x}.\bigwedge_i \formula_i
+\andalso \tenv_i \not \types \formula_j \COL \tb{\true}
 }{
-  \fenv \vdash \psi_1 \lor \psi_2 \COL \typeboolf{\theta}
+(i+1, \cex) \cdot \cexs \pdrmid \tenv_0 \cdots \tenv_N
+\Tr (i, \cex') \cdot (i+1, \cex) \cdot \cexs \pdrmid \tenv_0 \cdots \tenv_N
 }
 
-\infrule[F-Constr]{}{
-  \fenv \vdash \theta \COL \typeboolf{\lnot \theta}
-}
+\subsubsection{Assumption on the Parameterized Type System}
 
-\infrule[F-Var]{}{
-  \fenv, x \COL \sigma \vdash x \COL \sigma
-}
-
-\infrule[F-Forall]{
-    \fenv, x \COL \stypeint \vdash \psi \typeboolf{\theta}
-}{
-  \fenv \vdash \forall x. \psi \COL \typeboolf{\exists x.\theta}
-}
-
-\infrule[F-Intersect-I]{
-\fenv \vdash \psi \COL \sigma_1
-\andalso \fenv \vdash \psi \COL \sigma_2
-}{
-\fenv \vdash \psi \COL \sigma_1 \intersect \sigma_2
-}
-
-\infrule[F-Intersect-E1]{
-\fenv \vdash \psi \COL \sigma_1 \intersect \sigma_2
-}{
-\fenv \vdash \psi \COL \sigma_1
-}
-
-\infrule[F-Intersect-E2]{
-\fenv \vdash \psi \COL \sigma_1 \intersect \sigma_2
-}{
-\fenv \vdash \psi \COL \sigma_2
-}
-
-\infrule[F-Subsumption]{
-\fenv \vdash \psi \COL \sigma_1
-\andalso \fenv; \true \vdash \sigma_1 \prec \sigma_2
-}{
-\fenv \vdash \psi \COL \sigma_2
-}
-
-
-
-The type system for positive types are almost the same as the one by Katsura et al., but we have to introduce a rule for intersection types.
-
-\infrule[P-Intersect-I]{
-\Gamma \vdash \psi \COL \tau_1
-\andalso \Gamma \vdash \psi \COL \tau_2
-}{
-\Gamma \vdash \psi \COL \tau_1 \intersect \tau_2
-}
-
-
-\infrule[P-Intersect-E1]{
-\Gamma \vdash \psi \COL \tau_1 \intersect \tau_2
-}{
-\Gamma \vdash \psi \COL \tau_1
-}
-
-\infrule[P-Intersect-E2]{
-\Gamma \vdash \psi \COL \tau_1 \intersect \tau_2
-}{
-\Gamma \vdash \psi \COL \tau_2
-}
-
-Also, we introduce subtyping rules.
-
-\infrule[F-Prop]{
-\fenv \models \Theta \land \theta_2 \Rightarrow \theta_1
-}{
-\fenv; \Theta \vdash \typeboolf{\theta_1} \prec \typeboolf{\theta_2}
-}
-\infrule[F-Int-Predicate]{
-\fenv, \typeint{x};\Theta \models \sigma_1 \prec \sigma_2
-}{
-\fenv; \Theta \vdash \typeint{x} \to \sigma_1 \prec \typeint{x} \to \sigma_2
-}
-\infrule[F-HO-Predicate]{
-\fenv; \Theta \land rty(\sigma_2') \models \sigma_2 \prec \sigma_1
-\andalso \fenv; \Theta \models \sigma_1' \prec \sigma_2'
-}{
-\fenv; \Theta \vdash \sigma_1 \to \sigma_1' \prec \sigma_2 \to \sigma_2'
-}
-
-\infrule[F-Intersection]{
-\forall i \in \{1,2\}. \exists j \in \{1,2\}. \fenv; \Theta \vdash \sigma_i \prec \sigma_j
-}{
-\fenv; \Theta \vdash \sigma_1 \intersect \sigma_1' \prec \sigma_2 \intersect \sigma_2'
-}
-
-\begin{lemma}[Soundness of the type system]
-    TBD
-\end{lemma}
-\begin{proof}
-    TBD
-\end{proof}
-
-
-\subsection{HoPDR}
-
-\subsubsection{State}
-
-PDR hold two states: candidates and approximations \( M \mid \mid A \).
-
-Candidates are represented in a labeled tree.
-Each node is labeled with a tuple of negative type
-judgement and step index
-\( \langle X \COL \sigma, i \rangle \). The root of a candidate tree always has
-\( \epsilon \) tag for the simplicity.
-Let \( \epsilon \) be a tree which holds only \( \epsilon \) node
-and we write \( T[L \bullet \{C_1\ C_2\cdots C_n\}] \) to mean \( T \) has a node with label \( L \) and its children are \( C_1, \cdots C_n \).
-
-approximations are a sequence of refinement type environments \( \Gamma_1, \Gamma_2, \cdots, \Gamma_N \).
-Note that type environments admit multiple items of the same name: \( x: \tau_1, x: \tau_2 \), meaning that the intersection type \( x: \tau_1 \wedge \tau_2 \).
-
-\subsubsection{Conflict relation}
-
-We define two maps: \( \conflict \) and \( \consistent \). They map a negative type and a positive type to a constraint formula. We use infix style notation. That is we write \( \sigma \conflict \tau \) to denote \( (\conflict)(\sigma, \tau) \).
-Then we define the maps as follows:
-\begin{align*}
-    \typeboolf{\theta_1} \consistent \typebool{\theta_2}
-        &= \lnot(\theta_1 \land \theta_2) \\
-    \typeint{x} \to \sigma \consistent \typeint{x} \to \tau
-        &= \forall x. \sigma \consistent \tau \\
-    \sigma_1 \to \sigma_2 \consistent \tau_1 \to \tau_2
-        &= \lnot(\sigma_1 \consistent \tau_1)
-            \lor \sigma_2 \consistent \tau_2
-\end{align*}
-We define \( \sigma \conflict \tau = \lnot(\sigma \consistent \tau) \).
-
-Intuitively, \( \Gamma \vdash \sigma \conflict \tau \) means that
-there is no formula which have both \( \sigma \) and \( \tau \) type; \( \Gamma \vdash \sigma \consistent \tau \) is the dual of it.
-
-
-\begin{lemma}[Soundness of conflict]
-\label{lemma:conflict}
-For any type environment \( \Gamma \), simple type \( \rho \), negative type \( \vdash \sigma :: \rho \) and refinement type \( \vdash \tau :: \rho \), the followings hold:
-\begin{itemize}
-    \item \( \Gamma \vdash \sigma \conflict \tau \Rightarrow
-    \exists \alpha \in \val{\Gamma}.
-    \semtf{\Gamma \vdash \sigma}(\alpha) \cap \semt{\Gamma \vdash \tau}(\alpha) = \emptyset \)
-
-    \item \( \Gamma \vdash \sigma \consistent \tau \Rightarrow
-    \forall \alpha \in \val{\Gamma}.
-    \semtf{\Gamma \vdash \sigma}(\alpha) \cap \semt{\Gamma \vdash \tau}(\alpha) \neq \emptyset \).
-\end{itemize}
+\begin{lemma}[Inverse Substitution Lemma]
+Assume we have \( \tenv \types \RULES\ \cex \COL \tb{\true} \).
+Then, there exists \( \tenv' \) such that
+\( \tenv \types \RULES \COL \tenv' \) and \( \tenv' \types \cex \COL \tb{\true} \).
 \end{lemma}
 
-\begin{proof}
-By induction on the structure of the derivation.
+\subsection{Inference Algorithm on \rconflict{}}
 
-Case \( \sigma_1 \to \sigma_2 \conflict \tau_1 \to \tau_2 \)
-and \( \sigma_1' \to \sigma_2' \consistent \tau_1' \to \tau_2' \):
-First, we consider the conflict one. That is, we assume \( \Gamma \vdash \sigma_1 \to \sigma_2 \conflict \tau_1 \to \tau_2 \).
-From the induction hypothesis, there exists \( \alpha \in \val{\Gamma} \) such that \( \semtf{\sigma_1}(\alpha) \cap \semt{\tau_1}(\alpha) \neq \emptyset \).
-We take \( g \in  \semtf{\sigma_1}(\alpha) \cap \semt{\tau_1}(\alpha) \). Then, we arbitrarily take \( f \in \semtf{\sigma_1 \to \sigma_2}(\alpha) \).
-From the definition of the semantics of negative types, we have \( f(g) \in \semt{\sigma_2}(\alpha) \).
-However, from the induction hypothesis, \( \semtf{\sigma_2}(\alpha) \cap \semt{\tau_2}(\alpha) = \emptyset \) holds, so
-\( f(g) \not \in \semt{\tau_2}(\alpha) \).
-Therefore, \( f \not \in \semt{\tau_1 \to \tau_2}(\alpha \) holds.
-Since \( f \) was taken arbitrarily, \( \semtf{\sigma_1 \to \sigma_2}(\alpha) \cap \semt{\tau_1 \to \tau_2}(\alpha) = \emptyset \).
+The inference algorithm consists of three parts:
+\begin{enumerate}
+\item Derive \( \tenv_i \types \RULES\ \cex \COL \tb{\true} \). Let the derivation tree be \( \tree \).
+\item Collect types at each occurrence of \( \RULES X \).
+\item Create a template environment \( \tenv' \) by replacing the all refinement constraints with appropriate template predicates.
+\item Generate constraints based on the deriving tree \( \tree \) with the type environment \( \tenv' \)
+\item Solve the constraints.
+\end{enumerate}
 
-Secondly, we consider the consistent one. This can be proved in a similar manner. (TBD)
-\end{proof}
+\subsection{Running examples}
 
-
-For a type environment \( \Gamma \), a negative type \( \sigma \) and a variable \( X \), we write \( X : \sigma \consistent \Gamma \) for \( \forall X \COL \tau \in \Gamma. \vdash \sigma \consistent \tau \) and \(X : \sigma \conflict \Gamma\)
-for \( \exists X \COL \tau \in \Gamma. \vdash \sigma \conflict \tau \).
-
-\subsubsection{Algorithm Specification}
-
-The input of this algorithm is definite formulas \(\{F_i\}_i\) and a goal formula
-\(\psi\).
-
-Then, let \( \Gamma_\true \) be \( \{F_i: \tau_\top\}_i \)
-and \( \Gamma_\false \) be \( \{F_i: \tau_\bot \}_i \).
-We write \( \Gamma \vdash \Gamma' \) when for any \( F \COL \tau \in \Gamma' \)
-and \( \Gamma \vdash \psi_F \COL \tau \).
-Also, let \( N \) be the length of approximations.
+\subsubsection{Example 1}
 
 \begin{align*}
-    \textbf{Initialize} &\quad
-        \Longrightarrow
-        \epsilon \mid \mid [\Gamma_0 \leftarrow \Gamma_\true]
-        &&\\
-    \textbf{Valid} &\quad
-        \epsilon \mid \mid A \Longrightarrow \textit{Valid}
-        &&\quad \textbf{if} \ \Gamma_{i} \vdash \Gamma_{i-1} \\
-        &&&\quad \quad \Gamma_i \vdash \psi \COL \typebool{\true}
-        \\
-    \textbf{Unfold} &\quad
-        \epsilon \mid \mid A \Longrightarrow
-        \epsilon \mid \mid A[\Gamma_{N+1} \leftarrow \Gamma_\false]
-        &&\quad \textbf{if} \ \Gamma_{N} \vdash \psi \COL \typebool{\true}
-        \\
-    \textbf{Candidate} &\quad
-        \epsilon \mid \mid A
-        \Longrightarrow&&\\
-        & \epsilon[\epsilon \bullet \langle X_1 \COL \sigma_1, N \rangle, \cdots, \langle X_n \COL \sigma_n, N \rangle]\mid \mid A
-        && \quad \textbf{if} \ \Gamma_N \not \vdash \psi \COL
-        \typebool{\true},\\
-        &&&\quad  X_1 \COL \sigma_1 , \cdots, X_n \COL \sigma_n\\
-        &&&\quad \quad \quad=\textbf{CEX}(\Gamma_N, \psi, \typeboolf{\true})
-        \\
-    \textbf{Conflict} &\quad
-        T[L \bullet \langle X_1: \sigma_1, i + 1 \rangle, \cdots,
-                     \langle X_n: \sigma_n, i + 1 \rangle
-        ] \mid \mid A
-        \Longrightarrow&&\\
-        & T[L]
-        \mid \mid A[\Gamma_j \leftarrow \Gamma_j \cup \{X_k: \tau'\}]_{j=1}^{i+1}
-        &&\quad \textbf{if} \  \exists k \in [1, n].
-        \sigma_k \conflict \tau' \\
-        &&&\quad \quad \text{ and } X_k \COL \tau' \in F(\Gamma_i)
-        \\
-    \textbf{Decide} &\quad
-         T[\langle X: \sigma, i + 1 \rangle], \cdots\mid \mid A
-        \Longrightarrow&&\\
-        &  T[\langle X: \sigma, i + 1 \rangle
-                \bullet \langle X_1 \COL \sigma_1, i\rangle, \cdots,
-                        \langle X_n \COL \sigma_n, i\rangle]
-        \mid \mid A
-        &&\quad \textbf{if} \ X \COL \sigma \consistent F(\Gamma_i),\\
-        &&&\quad  X_1 \COL \sigma_1, \cdots, X_n \COL \sigma_n\\
-        &&&\quad\quad\quad= \textbf{CEX}(\Gamma_i, \psi_X, \sigma)
-        \\
-    \textbf{Model} &\quad
-        T \mid \mid A \Rightarrow Invalid
-        &&\quad \textbf{if} \text{ all the leaves of } T \text{ are } \langle \_, 0 \rangle \
-        \\
+    &H\ x\ y = y < x \\
+    &F\ x\ g = g\ x \\
+    &G\ x\ g = F\ (-x)\ g  \\
+    &\TOP = \forall x. x\leq 0 \vee G\ x\ (H\ 0)
+\end{align*}
+
+We have the following execution of HoPDR.
+\begin{align*}
+    &\Tr (\epsilon, \TE{\stE}) &\rinitialize\\
+    &\Tr (\epsilon, \TE{\stE} \cdot \BE{\stE}) &\runfold\\
+    &\pdrapp ((1, \pdrtop), \TE{\stE} \cdot \BE{\stE}) &\rcandidate\\
+\end{align*}
+We have \( \TE{\stE} \types \pdrtop \COL \tb{\true} \), so we apply \rconflict{}. Let \( \psi' \) be \( \RULES \pdrtop = \RULES (\forall x. x \leq 0 \lor G\ x\ (H\ 0) \). 
+We have the following derivation
+( \( \tenv_0' = \{x \COL \stypeint\} \cup \tenv_0 \) ).
+To make the derivation smaller, we omit \( \COL \stypeint \) from \( \ti{x} \) in the following tree.
+
+\begin{align*}
+\dfrac{
+\dfrac{
+\dfrac{}{
+\cdots
+%\tenv_0, x\COL\stypeint \types \RULES (x \leq 0) \COL \tb{x \leq 0}
+}
+\qquad
+\dfrac{
+\dfrac{
+\dfrac{
+\dfrac{
+\dfrac{\tenv_0', \cdots \types F \COL x \to (y \to \tb{\bot}) \to \tb{\top} }{\vdots}}
+{
+\tenv_0' \types \lambda x. \lambda g. F\ (-x)\ g \COL x\to(y\to\tb{y<0})\to\tb{x > 0}
+}
+}{
+\tenv_0' \types \RULES G \COL x\to(y\to\tb{y<0})\to\tb{x > 0}
+}
+}{
+\tenv_0' \types \RULES (G\ x)
+}
+\qquad
+\dfrac{
+\dfrac{
+\vdots
+}{
+\tenv_0' \types \RULES H \COL x \to y \to \tb{y < x}
+}
+}{
+\tenv_0' \types \RULES (H\ 0)
+}
+}{
+\tenv_0' \types \RULES (G\ x\ (H\ 0)) \COL \tb{x > 0}
+}
+}{
+\tenv_0' \types \RULES (x \leq 0 \lor G\ x\ (H\ 0))
+}
+}{
+\tenv_0 \types \RULES (\forall x. x \leq 0 \lor G\ x\ (H\ 0)
+}
+\end{align*}
+
+Then, we temporarily have \( \Gamma' = \{\, G \COL \ti{x} \to (\ti{y} \to \tb{y < 0}) \to \tb{x > 0}, H \COL \ti{x} \to \ti{y} \to \tb{y < x} \, \} \).
+Based on this we create a template environment \( \Gamma'' = \{\, G \COL \ti{x} \to (\ti{y} \to \tb{P(x, y)}) \to \tb{Q(x)}, H \COL \ti{x} \to \ti{y} \to \tb{R(x, y)} \, \} \).
+
+Using this template and the above derivation, we generate constraints as follows. (TBD)
+
+
+
+\subsection{Example 2}
+
+\begin{align*}
+  &\text{Twice}\ k\ f\ g = f\ (f\ k)\ g\\
+  &\text{Neg}\ k\ f = k\ (\lambda u. f (\lambda r. u (-r))) \\
+  &\TOP = \forall x. x \leq 0 \lor \text{Twice}\ (\lambda g. g\ (\lambda r. r > 0))\ \text{Neg}\ (\lambda k. k\ x)
+\end{align*}
+
+\subsection{Example 3}
+
+% %HES
+% S   =v H F K.
+% H f k =v f 0 (G f k).
+% G f k x =v f x k.
+% F x k =v k x.
+% K x =v K x.
+\begin{align*}
+    &H\ f\ k =_{\nu} f\ 0\ (G\ f\ k) \\
+    &G\ f\ k =_{\nu} f\ x\ k \\
+    &F\ x\ k =_{\nu} k\ x \\
+    &K\ x =_{\nu} K\ x \\
+    &\TOP = H\ F\ K
 \end{align*}
 
 
-\subsubsection{\( \mathbf{CEX} \)}
-
-\( \textbf{CEX}(\Gamma, \psi, \sigma) \) is a type inference routine of negative types.
-Given \( \Gamma \), \( \psi \) and \( \sigma \),
-\( \textbf{CEX}(\Gamma, \psi, \sigma) \) returns a negative type environment \( \fenv \) such that
-\( \Gamma \sim \fenv \) and \( \fenv \vdash \psi \COL \sigma \).
-
-\subsubsection{\( F\)}
-
-We define \( F \) as follows:
-\begin{align*}
-    F(\Gamma) = \{ F_i \COL \tau \mid
-        \Gamma \vdash \psi_{F_i} \COL \tau \}.
-\end{align*}
-
-%\subsection{How to achieve \( \mathbf{CEX}  \) and \( F \) using SMT}
-%
-%\subsubsection{ dual operation }
-%
-%For a negative type \( \sigma \), we define a positive type \( \dual{\sigma} \)
-%as follows:
-%\begin{align*}
-%    \dual{\typeboolf{\theta}} &= \typebool{\lnot \theta}\\
-%    \dual{\typeint{x} \to \sigma} &= \typeint{x} \to \dual{\sigma}\\
-%    \dual{\sigma_1 \to \sigma_2} &= \dual{\sigma_1} \to \dual{\sigma_2}\\
-%    \dual{\sigma_1 \intersect \sigma_2} &= ???
-%\end{align*}
-%Note that \( \sigma \consistent \dual{\sigma} \) holds.
-%
-%\begin{lemma}
-%For a negative type \( \sigma \),
-%a positive type environment \( \Gamma \)
-%and a clause \( X \),
-%\( \Gamma \vdash \psi_X \COL \dual{\sigma} \) holds if and only if
-%there exists \( \tau \in F(\Gamma) \) such that
-%\( \sigma \conflict \tau \).
-%\end{lemma}
-%
-%
-%\begin{proof}
-%\( \Rightarrow \) is trivial. So we consider \( \Leftarrow \) case.
-%We prove this by induction of the structure of the negative type \( \sigma \).
-%\begin{itemize}
-%    \item Case \( \typeboolf{\theta} \): if the
-%\end{itemize}
-%\end{proof}
-%
-%From Lemma \ref{lemma:conflict}, the condition checking in \rconflict{} can be
-%achieved through an SMT solver.
-
-\subsubsection{Deciding whether Decide or Conflict is taken}
-
-To decide which is taken, we have to find a refinement type \( \tau' \) such that \( \sigma_k \conflict \tau' \text{ and } X_k \COL \tau' \in F(\Gamma_i) \) holds.
-To do this, we do a template based-approach to infer such types using SMT solvers.
-
-
-Given a candidate \( X \COL \sigma \) and positive type environment \( \Gamma \), first we generate a following type template:
-\begin{align*}
-    \textbf{Template}(\tilde{x}, \typeboolf{\theta})
-        &= \typebool{P(\tilde{x})} \quad \text{where } P \text{ is a fresh name} \\
-    \textbf{Template}(\tilde{x}, \typeint{x} \to \sigma)
-        &= \typeint{x} \to \textbf{Template}(\tilde{x} \cup \{x\}, \sigma)\\
-    \textbf{Template}(\tilde{x}, \sigma_1 \to \sigma_2)
-        &= \textbf{Template}(\tilde{x}, \sigma_1)
-        \to \textbf{Template}(\tilde{x}, \sigma_2)
-\end{align*}
-Here, we think \( \tilde{x} \) is a sequence of variables.
-
-Let \( \tau \) be \( \textbf{Template}(\{\}, \sigma) \) now.
-Next, we generate constraints on conflict relation \( \sigma \conflict \tau \)
-and derivation \( \Gamma \vdash \psi_X \COL \tau \).
-The resulting constraint \( \Theta \) has the following form:
-\begin{align*}
-    \Theta &= P(\tilde{x})
-            \mid \theta
-            \mid \Theta_1 \land \Theta_2
-            \mid \Theta_1 \lor \Theta_2
-            \mid \lnot \Theta
-            \mid \forall x. \Theta.
-\end{align*}
-
-Next, we replace predicate variables with templates.
-We use the following template:
-\begin{align*}
-    &T(tag, \{x_0, \cdots, x_{n-1}\}) = \\
-       &\quad \sum_{i=0}^{n-1} \alpha^{tag}_i x_i + \alpha^{tag} \geq 0
-        \land \sum_{i=0}^{n-1} \beta^{tag}_i x_i + \beta^{tag} = 0
-        \land \sum_{i=0}^{n-1} \gamma^{tag}_i x_i + \gamma^{tag} \neq 0
-\end{align*}
-For each predicate variable \( P \) whose arity is n, we create a new template
-\( T(P, \{x_0, \cdots, x_{n-1}\}) \). We use variable name \( P \) as the tag for the variables appear in the template in order to avoid conflicting names between templates.
-
-Finally, we consult an SMT solver whether this is satisfiable or not.
-If it's sat, we can recover the refinement type, meaning that
-we do \rconflict{}.
-If it's unsat, we do \rdecide{}.
-
-\subsubsection{Calculating \( \textbf{CEX} \) using SMT}
-
-This is almost the same as the above discussion.
-\( \textbf{CEX} \) can be seen as negative type inference. Given a positive type environment \( \Gamma \), a clause \( X \) and a negative type \( \sigma \), we want to find a negative type environment \( \Delta \) such that \( \Delta \consistent \Gamma \) and \( \Delta \vdash \psi_X \COL \sigma \).
-
-To do this, we create a template for each clause \( X \in dom(\Gamma) \) in the same way as the above. Then from the consistent relation and derivation, we have constraints on the template, so using an SMT solver, we can infer the type environment.
-
-\subsubsection{Current problem}
-
-\begin{itemize}
-    \item What shape of templates is better?
-    \item What if we cannot find \( \tau \) nor \( \Delta \).
-    In that case, we have to consider intersection types?
-    \item When restricted to order-1 case, the above procedures is
-    a little different from the original PDR. There is no interpolation.
-    This perhaps leads to a divergence of the procedure.
-\end{itemize}
-
-\subsection{Optimization}
-
-In the above procedure, every time CEX or a new positive type is generated, a new predicate will be introduced. This leads to the problem that the procedure will be divergent. To mitigate this problem, by introducing a flow analysis, we fix the set of possible refinement types for the arguments of each predicates and try \rconflict{} or \rdecide{} before the above procedure is done.
-
-TODO
-
-\subsection{Case order-2}
-
-TODO
-
-Try to investigate whether there is a better way to calculate the refinement types than template-based one.
-
-%\subsection{Least formula of type \( \tau \)}
-%
-%We consider the following two operators:
-%\begin{align*}
-%    \psi \Downarrow \typebool{\constraint} \quad
-%        &= \quad \psi \land \constraint
-%        \\
-%    \psi \Downarrow \typeint{x} \to \tau   \quad
-%        &= \quad \lambda x. \psi \Downarrow \tau
-%        \\
-%    \psi \Downarrow \tau_1 \to \tau_2 \quad
-%        &= \quad \lambda f. \psi \land f \in \tau_1 \Downarrow \tau_2
-%        \\
-%    \psi \Downarrow \tau_1 \intersect \tau_2 \to \ta\quad
-%        &= TODO
-%        \\
-%    \psi \in \typebool{\constraint} \quad
-%        &= \quad \lnot \theta \lor \psi
-%        \\
-%    \psi \in \typeint{x} \to \tau   \quad
-%        &= \quad \forall x. \psi\ x \in \tau
-%        \\
-%    \psi \in \tau_1 \to \tau_2 \quad
-%        &= \quad \psi\ (\true \Downarrow \tau_1) \in \tau_2
-%        \\
-%    \psi \in \tau_1 \intersect \tau_2 \quad
-%        &= \psi \in \tau_1 \land \psi \in \tau_2
-%        \\
-%\end{align*}
-%
-%We abbreviate \( \true \Downarrow \tau_1 \) as \( \minimalize{\Gamma} \).
-%Then, we define \( \minimalize{\Gamma} \) as \( \{ X \COL \minimalize{\Gamma(X)} \mid X \in dom(\Gamma) \} \).
-%
-%\begin{lemma}
-%For any positive type environment \( \Gamma \), any formula \( \psi \) and a positive type \( \tau \), \( \Gamma \vdash \psi \COL \typebool{\theta} \) if and only if  \( \minimalize{\Gamma} \models \psi \COL \stypebool \).
-%\end{lemma}
-
-\subsection{Running examples 1. \( Sum \)}
-
-\begin{align*}
-    Sum\ x\ k\ &=_\nu (x > 0 \lor k\ x) \land
-                    (x \leq 0 \lor Sum\ (x - 1) (\lambda r. k\ (x + r)))\\
-    \psi &::= \forall x. Sum\ x\ (\lambda r. r \geq x)
-\end{align*}
-
-\begin{align*}
-    &\Longrightarrow \rinitialize{} \\
-    &\epsilon ||
-    [\tau_0 = \typeint{x} \to (\typeint{r} \to \typebool{\false}) \to \typebool{\true}]\\
-    &\Longrightarrow \runfold{} \\
-    &\epsilon ||
-    [\tau_0; \tau_1 = \typeint{x} \to (\typeint{r} \to \typebool{\true}) \to \typebool{\false}]\\
-    &\Longrightarrow \rcandidate{}
-    ; \sigma_1 = \typeint{x} \to (\typeint{r} \to \typeboolf{r < x}) \to \typeboolf{\true}  \\
-    &
-    [\sigma_1] ||
-    [\tau_0; \tau_1 = \typeint{x} \to (\typeint{r} \to \typebool{\true}) \to \typebool{\false}]\\
-    &\Longrightarrow \rconflict{};  F(\tau_0) \ni \typeint{x} \to (\typeint{r} \to \typebool{r \geq x} \to \typebool{\true}\\
-    &
-    [\sigma_1] ||
-    [\tau_0; \tau_1 = \typeint{x} \to (\typeint{r} \to \typebool{r \geq x} \to \typebool{\true}]\\
-    &\cdots
-\end{align*}
-
-\subsection{type checking}
-\subsubsection{The problem of type checking}
-
-In the middle of
-
-Consider
-\begin{align*}
-    F\ x\ k =_\nu \forall y. y \neq x - 1 \lor
-        & \{ (x > 0 \lor k\ x)\\
-        & \land ( x \leq 0 \lor F\ y\ (L\ x\ k)) \}
-\end{align*}
-where \( L\ x\ k\ y =_\nu k\ (x + y) \).
-We can prove the safety by the following type environment:
-
-\begin{align*}
-    F&: \typeint{x} \to (\typeint{y} \to \typebool{x \leq y}) \to
-    \typebool{\true}\\
-    L&: \typeint{x} \to (\typeint{z} \to \typebool{x \leq z}) \to
-    \typeint{y}) \to \typebool{0 \leq y}
-\end{align*}
-
-Consider the following type environment \(\Gamma\)
-\begin{align*}
-    f&: (\typeint{x} \to \typebool{C_1}) \to ((\typeint{y} \to \typebool{C_2})
-    \to \typebool{C_3})\\
-    k&: \typeint{x} \to \typebool{C_4}\\
-    g&: \typeint{x} \to \typebool{C_5}\\
-    f'&: (\typeint{x} \to \typebool{C_1'}) \to ((\typeint{y} \to \typebool{C_2'})
-    \to \typebool{C_3'})\\
-    k'&: \typeint{x} \to \typebool{C_4'}\\
-    g'&: \typeint{x} \to \typebool{C_5'}\\
-    z&: \stypeint.
-\end{align*}
-We would like to prove \( \Gamma \vdash (f\ k\ g) \lor (f'\ k'\ g'):
-\typebool{C}\)
-
-
-\subsubsection{Algorithm of type checking}
-
-\begin{algorithmic}
-\STATE infer($\Gamma$, $f$) = ($\{\}$, $\Gamma(f)$)
-\STATE infer($\Gamma$, $a\ x$) where $\Gamma(x) = \stypeint$ =
-    \bindent
-    \STATE let ($c, \typeint{y} \mapsto \tau$) = infer($\Gamma$, $a$) in
-    \STATE ($[y/x]C, [y/x]\tau$)
-    \eindent
-\STATE infer($\Gamma$, $a_1\ a_2$) otherwise =
-    \bindent
-    \STATE let ($c_1, \sigma \mapsto \tau$) = infer($\Gamma$, $a_1$) in
-    \STATE let ($c_2, \sigma'$) = infer($\Gamma$, $a_2$) in
-    \STATE let ($\tau', L$) = generate\_template($\tau$) in
-    \STATE let C = subtype($\sigma \mapsto \tau, \sigma'\mapsto \tau'$) in
-    \STATE let C' = simplify($ C \cup C' \cup C'', L)$ in
-    \STATE ($ C', \tau'$)
-    \eindent
-\STATE simplify(C, L) =
-    \bindent
-    \WHILE{let $P(\tilde{x}) \Leftarrow \psi$ where $P \not \in L$}
-        \FORALL{$Q(\tilde{y}) \Leftarrow \psi' \land P(\tilde{x})$ in $C$}
-            \STATE remove $P(\tilde{x}) \Leftarrow \psi$ from $C$
-            \STATE add $Q(\tilde{y}) \Leftarrow \psi' \land \psi$ to $C$
-        \ENDFOR
-    \ENDWHILE
-    \eindent
-
-\end{algorithmic}
-
-Consider the following type environment \(\Gamma\)
-\begin{align*}
-    f&: (\typeint{x} \to \typebool{C_1}) \to ((\typeint{x} \to \typebool{C_2})
-    \to \typebool{C_3})\\
-    g&: \typeint{x} \to \typebool{C_4}\\
-    h&: (\typeint{x} \to \typebool{C_1'}) \to x \to \typebool{C_3'}\\
-    i&: \typeint{x} \to \typebool{C_4'}\\
-    y&: \stypeint
-\end{align*}
-Then, we try to check \(\Gamma \vdash (f\ g)\ (h\ i): \typebool{\true}\).
-To do that, we first infer the type of this formula: infer\((\Gamma, (f\ g)\
-(h\ i)\).
-Observing that infer\((\Gamma, f\ g) = (C_1, (\typeint{x} \rightarrow
-\typebool{P(x, y)}) \rightarrow \typebool{Q(y)} )\), infer\((\Gamma, f\ g)
-= (C_2, \typeint{x} \rightarrow \typebool{R(x, y)})\),
-generate\_template\((\typebool{Q(y)}) = (\typebool{Q'(y)}, \{Q'\})\)
-where \(C_1\) is
-\begin{align*}
-    Q(y) \Rightarrow &C_3\\
-    Q(y) \land \Rightarrow &P(x, y)\\
-    Q(y) \land C_1  \Rightarrow &C_4
-\end{align*}
-and \(C_2\) is
-\begin{align*}
-    R(x, y) \Rightarrow &C_3'\\
-    R(x, y) \land C_1'\Rightarrow &C_4',
-\end{align*}
-subtype\(( (\typeint{x} \to \typebool{P(x, y)}) \to \typebool{Q(y)} \prec
-(\typeint{x} \to \typebool{R(x, y)}) \to \typebool{Q'(y)}) \) returns \(C_3\):
-\begin{align*}
-    Q'(y) \Rightarrow &Q(y)\\
-    Q'(y) \land P(x, y) \Rightarrow &C_4'.
-\end{align*}
-Then, simplify\((C_1 \cup C_2 \cup C_3, \{Q'\})\) will be
-\begin{align*}
-    Q'(y) \Rightarrow &C_3\\
-    Q'(y) \land C_2 \Rightarrow &C_3'\\
-    Q'(y) \land C_2 \land C_1' \Rightarrow &C_4'\\
-    Q'(y) \land C_1 \Rightarrow &C_4.
-\end{align*}
-
-%
-%
-%\subsection{non-linear extension}
-%
-%GPDRの論文で言う、linearなCHCは、APLAS20の論文でtractableと読んでいたものに対応。今回は簡単のため、non-linear
-%
-%counterexampleは、ラベル付き木を成すものとする。ラベルは、型環境と展開数のタプルであり、空の木を \( \epsilon \)、木Tの中のノードNを、その子供のノード\( C_1, \cdots C_n \) を用いて、\( T[N \bullet C_1\ C_2\cdots C_n] \) と表す
-%
-%
-%次にnon-linearなものを扱えるようにするために、PDR実行中に保持する状態を
-%現在の最大の展開数を \( N \)としたときに、counterexampleの列と
-%\( \Gamma_1 \cdots \Gamma_N \)のタプルとする。
-%
-%つまり、単一のcounterexample（列）から、複数のcounterexample（木）となる。
-%これは、toplevelの述語もnon-linearになりうるので、その場合複数の木が生える。
-%
-%non-linearの拡張として一部のルールを以下のように変更
-%
-%\begin{align*}
-%    \textbf{Candidate} &\quad
-%        \epsilon \mid \mid A
-%        \Longrightarrow
-%        \langle \Gamma_1^N, \cdots \Gamma_n^N, N \rangle \mid \mid A
-%        && \quad \textbf{if} \ \Gamma_N \not \vdash \psi \COL
-%        \typebool{\true},\\
-%        &&&\quad \Gamma_1^N, \cdots \Gamma_n^N = \textbf{CEX}(\Gamma, \psi, \typebool{\true})
-%        \\
-%    \textbf{Conflict} &\quad
-%        T[\langle \Gamma \cup \{X: \tau\}, i + 1 \rangle], \cdots \mid \mid A
-%        \Longrightarrow&&\\
-%        & T[\langle \Gamma, i + 1 \rangle], \cdots
-%        \mid \mid A[\Gamma_j \leftarrow \Gamma_j \cup \{X: \tau'\}]_{j=1}^{i+1}
-%        &&\quad \textbf{if} \  \Gamma_i \vdash \psi_X \COL \tau' \text{ and }
-%        \Gamma_i \vdash \tau' \prec \tau
-%        \\
-%    \textbf{Decide} &\quad
-%         T[\langle\Gamma \cup \{X: \tau\}, i + 1 \rangle],  \cdots\mid \mid A
-%        \Longrightarrow&&\\
-%        &  T[\langle\Gamma \cup \{X: \tau\}, i + 1 \rangle \bullet \langle\Gamma_1^i, i\rangle, \cdots], \cdots
-%        \mid \mid A
-%        &&\quad \textbf{if} \ \Gamma_i \not\vdash \psi_X \COL \tau,\\
-%        &&&\quad \Gamma_1^i, \cdots, \Gamma_n^i = \textbf{CEX}(\Gamma_i, \psi_X, \tau)
-%        \\
-%    \textbf{Model} &\quad
-%        \langle T, \cdots \rangle M \mid \mid A \Rightarrow Invalid
-%        &&\quad \textbf{if Tの全ての葉が展開数0になったとき} \
-%        \\
-%\end{align*}
-%
-%
-%\subsection{non-linear extension example}
-%
-%\begin{align*}
-%    F(x) &= x \neq 0 \wedge F\ (x+1) \\
-%    G(x) &= x \neq 0 \wedge G\ (x-1)  \\
-%    M    &= \forall x. x=0 \lor F\ x \lor G\ x
-%\end{align*}
-%
-%\begin{itemize}
-%    \item Initialize: \(\Gamma_0 = F(\{X \COL x \rightarrow \top\}) = \{ X \COL
-%        \typeint{x} \to \typebool{x \neq 0} \} \)
-%    \item Unfold: \(\Gamma_0, \Gamma_1 = \{X \COL x \rightarrow \bot\}\)
-%\end{itemize}
 
 \end{document}
 
