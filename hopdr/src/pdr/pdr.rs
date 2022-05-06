@@ -8,7 +8,6 @@ use crate::pdr::infer;
 use colored::Colorize;
 
 use std::fmt;
-use std::unimplemented;
 
 #[derive(Debug, Copy, Clone)]
 pub enum Error {
