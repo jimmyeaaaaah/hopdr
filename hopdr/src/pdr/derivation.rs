@@ -1,7 +1,9 @@
 use super::rtype::{Tau, TyEnv, TypeEnvironment};
-use crate::formula::hes::{Goal, Problem as ProblemBase};
 use crate::formula;
-use crate::formula::{chc, fofml, pcsp, Bot, Constraint, Ident, Logic, Op, Top, Rename, Variable, Type as Sty};
+use crate::formula::hes::{Goal, Problem as ProblemBase};
+use crate::formula::{
+    chc, fofml, pcsp, Bot, Constraint, Ident, Logic, Op, Rename, Top, Type as Sty, Variable,
+};
 
 use rpds::Stack;
 
@@ -24,8 +26,8 @@ impl Into<ITy> for Ty {
 }
 
 impl Sty {
-    fn generate_template(ity: &Sty, env: &mut HashSet<Ident>) -> Ty {
-        match ity.kind() {
+    fn generate_template(&self, env: &mut HashSet<Ident>) -> Ty {
+        match self.kind() {
             formula::TypeKind::Proposition => {
                 let args: Vec<Op> = env.iter().map(|x| x.clone().into()).collect();
                 let p = fofml::Atom::mk_fresh_pred(args);
@@ -34,17 +36,17 @@ impl Sty {
             formula::TypeKind::Arrow(s, t) if s.is_int() => {
                 let arg = Ident::fresh();
                 env.insert(arg);
-                let t = t.generate_template(env);
+                let t = self.generate_template(env);
                 let exists = env.remove(&arg);
                 debug_assert!(exists);
                 Ty::mk_iarrow(arg, t)
-            },
+            }
             formula::TypeKind::Arrow(t1, t2) => {
-                let v = xs.iter().map(|t| t.generate_template(env)).collect();
-                let t = y.generate_template(env);
+                let v = vec![t1.generate_template(env)];
+                let t = t2.generate_template(env);
                 Ty::mk_arrow(v, t)
-            },
-            formula::TypeKind::Integer => panic!("program error")
+            }
+            formula::TypeKind::Integer => panic!("program error"),
         }
     }
 }
@@ -55,45 +57,4 @@ fn vec2ity(v: &[Ty]) -> ITy {
         s.push(t.clone());
     }
     s
-}
-
-/// calculates the required
-/// where A := X | a | θ | A₁ A₂ |
-/// (a: arithmetic terms, θ: constraints, X: variables)
-///
-/// Γ ⊢ ℛψ : •〈θ〉
-/// tenv: Γ
-/// term: ψ
-/// constraint: θ
-fn derive(tenv: &mut TemplateEnv, term: Candidate, constraint: Constraint, problem: &Problem) {
-    fn go(
-        tenv: &mut TemplateEnv,
-        term: Candidate,
-        constraint: Constraint,
-        problem: &Problem,
-    ) -> ITy {
-        match term.kind() {
-            crate::formula::hes::GoalKind::Constr(theta) => {
-                Ty::mk_prop_ty(theta.clone().into()).into()
-            }
-            crate::formula::hes::GoalKind::Op(_) => {
-                panic!("program error")
-            }
-            crate::formula::hes::GoalKind::Var(i) => vec2ity(tenv.get(i).unwrap()),
-            crate::formula::hes::GoalKind::Abs(x, g) => {
-                let (g, v) = if tenv.exists(&x.id) {
-                    let new_id = Ident::fresh();
-                    (g.rename(&x.id, &new_id), Variable::mk(new_id, x.ty.clone()))
-                } else {
-                    (g.clone(), x.clone())
-                };
-                tenv.add(&v.id, )
-                go(tenv)
-            },
-            crate::formula::hes::GoalKind::App(_, _) => todo!(),
-            crate::formula::hes::GoalKind::Conj(_, _) => todo!(),
-            crate::formula::hes::GoalKind::Disj(_, _) => todo!(),
-            crate::formula::hes::GoalKind::Univ(_, _) => todo!(),
-        }
-    }
 }
