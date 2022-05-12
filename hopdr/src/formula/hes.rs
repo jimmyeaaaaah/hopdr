@@ -1,5 +1,6 @@
 use crate::formula::ty::Type;
 use crate::formula::{Bot, Constraint, Fv, Ident, Logic, Op, Rename, Top, Variable};
+use crate::pdr::rtype::Refinement;
 use crate::util::P;
 use std::collections::HashSet;
 use std::fmt;
@@ -347,6 +348,210 @@ impl<C: Subst<Item = Op, Id = Ident> + Rename + Fv<Id = Ident> + fmt::Display> S
         debug!("{}", r);
         debug!("substed");
         r
+    }
+}
+
+impl<C: Rename + Fv<Id = Ident>> Goal<C> {
+    pub fn alpha_renaming(&self) -> Goal<C> {
+        pub fn go<C: Rename>(goal: &Goal<C>, vars: &mut HashSet<Ident>) -> Goal<C> {
+            // aux function for checking the uniqueness of v.id;
+            // if v.id has already appeared previously (meaning v.id in vars),
+            // first it generates a fresh identifier and rename v.id with the new one.
+            let aux = |v: &Variable, g: &Goal<C>, vars: &HashSet<Ident>| {
+                if vars.contains(&v.id) {
+                    let id = Ident::fresh();
+                    let g = g.rename(&v.id, &id);
+                    (Variable::mk(id, v.ty.clone()), g)
+                } else {
+                    (v.clone(), g.clone())
+                }
+            };
+            match goal.kind() {
+                GoalKind::Constr(_) | GoalKind::Op(_) | GoalKind::Var(_) => goal.clone(),
+                GoalKind::Abs(v, g) => {
+                    let (v, g) = aux(v, g, vars);
+                    vars.insert(v.id);
+                    let g = go(&g, vars);
+                    Goal::mk_abs(v, g)
+                }
+                GoalKind::Univ(v, g) => {
+                    let (v, g) = aux(v, g, vars);
+                    vars.insert(v.id);
+                    let g = go(&g, vars);
+                    Goal::mk_univ(v, g)
+                }
+                GoalKind::App(g1, g2) => {
+                    let g1 = go(g1, vars);
+                    let g2 = go(g2, vars);
+                    Goal::mk_app(g1, g2)
+                }
+                GoalKind::Conj(g1, g2) => {
+                    let g1 = go(g1, vars);
+                    let g2 = go(g2, vars);
+                    Goal::mk_conj(g1, g2)
+                }
+                GoalKind::Disj(g1, g2) => {
+                    let g1 = go(g1, vars);
+                    let g2 = go(g2, vars);
+                    Goal::mk_disj(g1, g2)
+                }
+            }
+        }
+        let mut fvs = self.fv();
+        go(self, &mut fvs)
+    }
+}
+// TODO: fix not to use Refinement
+impl<C: Refinement> Goal<C> {
+    fn reduce_inner(&self) -> Goal<C> {
+        match self.kind() {
+            GoalKind::App(g, arg) => {
+                // g must be have form \x. phi
+                let g = g.reduce_inner();
+                let arg = arg.reduce_inner();
+                match g.kind() {
+                    GoalKind::Abs(x, g) => {
+                        let g2 = g.subst(x, &arg);
+                        // debug
+                        // println!("app: [{}/{}]{} ---> {}", arg, x.id, g, g2);
+                        g2
+                    }
+                    _ => Goal::mk_app(g, arg),
+                }
+            }
+            GoalKind::Conj(g1, g2) => {
+                let g1 = g1.reduce_inner();
+                let g2 = g2.reduce_inner();
+                Goal::mk_conj(g1, g2)
+            }
+            GoalKind::Disj(g1, g2) => {
+                let g1 = g1.reduce_inner();
+                let g2 = g2.reduce_inner();
+                Goal::mk_disj(g1, g2)
+            }
+            GoalKind::Univ(x, g) => {
+                let g = g.reduce_inner();
+                Goal::mk_univ(x.clone(), g)
+            }
+            GoalKind::Abs(x, g) => {
+                let g = g.reduce_inner();
+                Goal::mk_abs(x.clone(), g)
+            }
+            GoalKind::Constr(_) | GoalKind::Var(_) | GoalKind::Op(_) => self.clone(),
+        }
+    }
+    // since there is no recursion and g is strongly typed, this procedure
+    // always terminates
+    pub fn reduce_goal(&self) -> Goal<C> {
+        // first reduces the formula to a formula of type *
+        // then traslates it to a fofml::Atom constraint.
+        // debug!("to be reduced: {}", &self);
+        crate::title!("reduce_goal");
+        debug!("reduce {}", self);
+        let mut g_old = self.clone();
+        loop {
+            let g = g_old.reduce_inner();
+            if g == g_old {
+                // debug
+                // debug!("reduced: {}", &g);
+                return g;
+            }
+            debug!("⇝ {}", g);
+            g_old = g;
+        }
+    }
+    // until it reaches the beta normal form
+    pub fn reduce(&self) -> C {
+        self.reduce_goal().into()
+    }
+
+    fn prenex_normal_form_raw(
+        self: &Goal<C>,
+        env: &mut HashSet<Ident>,
+    ) -> (Vec<Variable>, Goal<C>) {
+        match self.kind() {
+            GoalKind::Op(_)
+            | GoalKind::Var(_)
+            | GoalKind::Abs(_, _)
+            | GoalKind::App(_, _)
+            | GoalKind::Constr(_) => (Vec::new(), self.clone()),
+            GoalKind::Conj(a1, a2) => {
+                let (mut v1, a1) = a1.prenex_normal_form_raw(env);
+                let (mut v2, a2) = a2.prenex_normal_form_raw(env);
+                v1.append(&mut v2);
+                (v1, Goal::mk_conj(a1, a2))
+            }
+            GoalKind::Disj(a1, a2) => {
+                let (mut v1, a1) = a1.prenex_normal_form_raw(env);
+                let (mut v2, a2) = a2.prenex_normal_form_raw(env);
+                v1.append(&mut v2);
+                (v1, Goal::mk_disj(a1, a2))
+            }
+            GoalKind::Univ(x, a) => {
+                let (x, a) = if env.contains(&x.id) {
+                    // if env already contains the ident to be bound,
+                    // we rename it to a fresh one.
+                    let x2_ident = Ident::fresh();
+                    let x2 = Variable::mk(x2_ident, x.ty.clone());
+                    let a = a.rename(&x.id, &x2.id);
+                    (x2, a)
+                } else {
+                    (x.clone(), a.clone())
+                };
+                env.insert(x.id);
+                let (mut v, a) = a.prenex_normal_form_raw(env);
+                debug_assert!(v.iter().find(|y| { x.id == y.id }).is_none());
+                env.remove(&x.id);
+                v.push(x);
+                (v, a)
+            }
+        }
+    }
+    fn quantify(&self, vs: &[Variable]) -> Goal<C> {
+        let fv = self.fv();
+        let mut result = self.clone();
+        for v in vs.iter().rev() {
+            if fv.contains(&v.id) {
+                result = Goal::mk_univ(v.clone(), result);
+            }
+        }
+        result
+    }
+
+    fn to_cnf_inner(&self) -> Vec<Goal<C>> {
+        fn cross_or<C: Refinement>(v1: &[Goal<C>], v2: &[Goal<C>]) -> Vec<Goal<C>> {
+            let mut v = Vec::new();
+            for x in v1 {
+                for y in v2 {
+                    v.push(Goal::mk_disj(x.clone(), y.clone()));
+                }
+            }
+            v
+        }
+        match self.kind() {
+            GoalKind::Conj(x, y) => {
+                let mut v1 = x.to_cnf_inner();
+                let mut v2 = y.to_cnf_inner();
+                v1.append(&mut v2);
+                v1
+            }
+            GoalKind::Disj(x, y) => {
+                let v1 = x.to_cnf_inner();
+                let v2 = y.to_cnf_inner();
+                cross_or(&v1, &v2)
+            }
+            GoalKind::Constr(_)
+            | GoalKind::Op(_)
+            | GoalKind::Var(_)
+            | GoalKind::Abs(_, _)
+            | GoalKind::App(_, _)
+            | GoalKind::Univ(_, _) => vec![self.clone()],
+        }
+    }
+    pub fn to_cnf(&self) -> Vec<Goal<C>> {
+        let (vs, pnf) = self.prenex_normal_form_raw(&mut HashSet::new());
+        let cnf = pnf.to_cnf_inner();
+        cnf.into_iter().map(|g| g.quantify(&vs)).collect()
     }
 }
 
