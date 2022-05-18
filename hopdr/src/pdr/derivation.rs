@@ -148,6 +148,9 @@ impl Level {
             level: Stack::new(),
         }
     }
+    fn add_level(&mut self, level: usize) {
+        self.level = self.level.push(level)
+    }
 }
 
 /// internal representation of candidate terms.
@@ -192,6 +195,8 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
                             go_(arg, level)
                                 .map(|arg| G::mk_app_t(g.clone(), arg, goal.aux.clone()))
                                 .or_else(|| {
+                                    let mut g = g.clone();
+                                    g.aux.add_level(level);
                                     match g.kind() {
                                         GoalKind::Abs(x, g) => {
                                             let g2 = g.subst(x, &arg);
