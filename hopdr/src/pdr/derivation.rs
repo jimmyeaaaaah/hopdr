@@ -128,21 +128,25 @@ fn subst_predicate(
 
 // perhaps we will attach auxiliary information so we prepare another struct for reduction sequence
 struct Reduction {
-    candidate: Candidate,
+    candidate: G,
+    level: usize,
 }
 
 impl Reduction {
-    fn new(candidate: Candidate) -> Reduction {
-        Reduction { candidate }
+    fn new(candidate: G, level: usize) -> Reduction {
+        Reduction { candidate, level }
     }
 }
 
+#[derive(Clone)]
 struct Level {
-    level: Vec<usize>,
+    level: Stack<usize>,
 }
 impl Level {
     fn new() -> Level {
-        Level { level: Vec::new() }
+        Level {
+            level: Stack::new(),
+        }
     }
 }
 
@@ -152,56 +156,91 @@ impl Level {
 /// as the argument of beta-reduction.
 type G = GoalBase<Atom, Level>;
 
-impl From<Candidate> for G {}
+impl From<Candidate> for G {
+    fn from(c: Candidate) -> Self {
+        let l = Level::new();
+        match c.kind() {
+            formula::hes::GoalKind::Constr(c) => G::mk_constr_t(c.clone(), l),
+            formula::hes::GoalKind::Op(op) => G::mk_op_t(op.clone(), l),
+            formula::hes::GoalKind::Var(id) => G::mk_var_t(*id, l),
+            formula::hes::GoalKind::Abs(v, g) => G::mk_abs_t(v.clone(), g.clone().into(), l),
+            formula::hes::GoalKind::App(x, y) => G::mk_app_t(x.clone().into(), y.clone().into(), l),
+            formula::hes::GoalKind::Conj(x, y) => {
+                G::mk_conj_t(x.clone().into(), y.clone().into(), l)
+            }
+            formula::hes::GoalKind::Disj(x, y) => {
+                G::mk_disj_t(x.clone().into(), y.clone().into(), l)
+            }
+            formula::hes::GoalKind::Univ(x, g) => G::mk_univ_t(x.clone(), g.clone().into(), l),
+        }
+    }
+}
 
 fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
     // Some(Candidate): substituted an app
     // None: not yet
     use formula::hes::GoalKind;
-    fn go(goal: &Candidate) -> Option<Candidate> {
-        match goal.kind() {
-            GoalKind::App(g, arg) => {
-                // g must be have form \x. phi
-                go(g).map(|g| Goal::mk_app(g, arg.clone())).or_else(|| {
-                    go(arg).map(|arg| Goal::mk_app(g.clone(), arg)).or_else(|| {
-                        match g.kind() {
-                            GoalKind::Abs(x, g) => {
-                                let g2 = g.subst(x, &arg);
-                                // debug
-                                // println!("app: [{}/{}]{} ---> {}", arg, x.id, g, g2);
-                                Some(g2)
-                            }
-                            _ => None,
-                        }
-                    })
-                })
-            }
-            GoalKind::Conj(g1, g2) => go(g1)
-                .map(|g1| Goal::mk_conj(g1, g2.clone()))
-                .or_else(|| go(g2).map(|g2| Goal::mk_conj(g1.clone(), g2))),
-            GoalKind::Disj(g1, g2) => go(g1)
-                .map(|g1| Goal::mk_disj(g1, g2.clone()))
-                .or_else(|| go(g2).map(|g2| Goal::mk_disj(g1.clone(), g2))),
-            GoalKind::Univ(x, g) => go(g).map(|g| Goal::mk_univ(x.clone(), g)),
-            GoalKind::Abs(x, g) => go(g).map(|g| Goal::mk_abs(x.clone(), g)),
-            GoalKind::Constr(_) | GoalKind::Var(_) | GoalKind::Op(_) => None,
-        }
-    }
 
-    let mut seq = vec![Reduction::new(goal.clone())];
+    fn go(goal: &G, level: &mut usize) -> Option<G> {
+        fn go_(goal: &G, level: usize) -> Option<G> {
+            match goal.kind() {
+                GoalKind::App(g, arg) => {
+                    // g must be have form \x. phi
+                    go_(g, level)
+                        .map(|g| G::mk_app_t(g, arg.clone(), goal.aux.clone()))
+                        .or_else(|| {
+                            go_(arg, level)
+                                .map(|arg| G::mk_app_t(g.clone(), arg, goal.aux.clone()))
+                                .or_else(|| {
+                                    match g.kind() {
+                                        GoalKind::Abs(x, g) => {
+                                            let g2 = g.subst(x, &arg);
+                                            // debug
+                                            // println!("app: [{}/{}]{} ---> {}", arg, x.id, g, g2);
+                                            Some(g2)
+                                        }
+                                        _ => None,
+                                    }
+                                })
+                        })
+                }
+                GoalKind::Conj(g1, g2) => go_(g1, level)
+                    .map(|g1| G::mk_conj_t(g1, g2.clone(), goal.aux.clone()))
+                    .or_else(|| {
+                        go_(g2, level).map(|g2| G::mk_conj_t(g1.clone(), g2, goal.aux.clone()))
+                    }),
+                GoalKind::Disj(g1, g2) => go_(g1, level)
+                    .map(|g1| G::mk_disj_t(g1, g2.clone(), goal.aux.clone()))
+                    .or_else(|| {
+                        go_(g2, level).map(|g2| G::mk_disj_t(g1.clone(), g2, goal.aux.clone()))
+                    }),
+                GoalKind::Univ(x, g) => {
+                    go_(g, level).map(|g| G::mk_univ_t(x.clone(), g, goal.aux.clone()))
+                }
+                GoalKind::Abs(x, g) => {
+                    go_(g, level).map(|g| G::mk_abs_t(x.clone(), g, goal.aux.clone()))
+                }
+                GoalKind::Constr(_) | GoalKind::Var(_) | GoalKind::Op(_) => None,
+            }
+        }
+        *level += 1;
+        go_(goal, *level)
+    }
+    let mut level = 0usize;
+    let mut seq = vec![Reduction::new(goal.clone(), level)];
     let mut reduced = goal.clone();
 
     debug!("{}", reduced);
-    while let Some(g) = go(&reduced) {
+    while let Some(g) = go(&reduced, &mut level) {
         reduced = g.clone();
         debug!("-> {}", reduced);
-        seq.push(Reduction::new(g));
+        seq.push(Reduction::new(g, level));
     }
     (seq, reduced)
 }
 
 struct Context {
-    normal_form: Candidate,
+    normal_form: G,
     track_idents: HashMap<Ident, Vec<Ident>>,
     reduction_sequence: Vec<Reduction>,
     abstraction_types: HashMap<Ident, Ty>,
@@ -210,7 +249,7 @@ struct Context {
 
 impl Context {
     fn new(
-        normal_form: Candidate,
+        normal_form: G,
         track_idents: HashMap<Ident, Vec<Ident>>,
         reduction_sequence: Vec<Reduction>,
     ) -> Context {
@@ -232,7 +271,7 @@ fn reduce_until_normal_form(candidate: &Candidate, problem: &Problem) -> Context
     let mut track_idents = HashMap::new();
     let goal = subst_predicate(candidate, problem, &mut track_idents);
     // track idents must not be renamed since we have already assigned new idents.
-    let goal = goal.alpha_renaming();
+    let goal = goal.alpha_renaming().into();
     let (reduction_sequence, normal_form) = generate_reduction_sequence(&goal);
     Context::new(normal_form, track_idents, reduction_sequence)
 }
@@ -242,7 +281,9 @@ fn reduce_until_normal_form(candidate: &Candidate, problem: &Problem) -> Context
 /// tenv: Γ
 /// candidate: ψ
 /// ctx.abstraction_types: is used for handling types appeared in derivations
-fn type_check_top(ctx: &mut Context, tenv: &Env, candidate: &Candidate) -> bool {}
+fn type_check_top(ctx: &mut Context, tenv: &Env, candidate: &G) -> bool {
+    unimplemented!()
+}
 
 pub fn generate_constraint(
     candidate: &Candidate,

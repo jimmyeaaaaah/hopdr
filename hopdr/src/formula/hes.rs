@@ -57,7 +57,7 @@ pub enum GoalKind<C, T> {
 #[derive(Debug)]
 pub struct GoalBase<C, T> {
     ptr: P<GoalKind<C, T>>,
-    aux: T,
+    pub aux: T,
 }
 
 impl<C, T> GoalBase<C, T> {
