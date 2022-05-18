@@ -1,6 +1,6 @@
 use super::rtype::{Tau, TyEnv, TypeEnvironment};
 use crate::formula;
-use crate::formula::hes::{Goal, Problem as ProblemBase};
+use crate::formula::hes::{Goal, GoalBase, Problem as ProblemBase};
 use crate::formula::{
     chc, fofml, pcsp, Bot, Constraint, Ident, Logic, Op, Rename, Subst, Top, Type as Sty, Variable,
 };
@@ -137,7 +137,24 @@ impl Reduction {
     }
 }
 
-fn generate_reduction_sequence(goal: &Candidate) -> (Vec<Reduction>, Candidate) {
+struct Level {
+    level: Vec<usize>,
+}
+impl Level {
+    fn new() -> Level {
+        Level { level: Vec::new() }
+    }
+}
+
+/// internal representation of candidate terms.
+///
+/// Level is used for tracking when this candidate is used
+/// as the argument of beta-reduction.
+type G = GoalBase<Atom, Level>;
+
+impl From<Candidate> for G {}
+
+fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
     // Some(Candidate): substituted an app
     // None: not yet
     use formula::hes::GoalKind;

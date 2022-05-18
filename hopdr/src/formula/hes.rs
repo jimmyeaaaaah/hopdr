@@ -4,6 +4,7 @@ use crate::pdr::rtype::Refinement;
 use crate::util::P;
 use std::collections::HashSet;
 use std::fmt;
+use std::hash::Hash;
 
 use super::{fofml, Subst};
 
@@ -42,20 +43,56 @@ impl Const {
 }
 
 #[derive(Debug)]
-pub enum GoalKind<C> {
+pub enum GoalKind<C, T> {
     Constr(C),
     Op(Op),
     Var(Ident),
-    Abs(Variable, Goal<C>),
-    App(Goal<C>, Goal<C>),
-    Conj(Goal<C>, Goal<C>),
-    Disj(Goal<C>, Goal<C>),
-    Univ(Variable, Goal<C>),
+    Abs(Variable, GoalBase<C, T>),
+    App(GoalBase<C, T>, GoalBase<C, T>),
+    Conj(GoalBase<C, T>, GoalBase<C, T>),
+    Disj(GoalBase<C, T>, GoalBase<C, T>),
+    Univ(Variable, GoalBase<C, T>),
 }
 
-pub type Goal<C> = P<GoalKind<C>>;
+#[derive(Debug)]
+pub struct GoalBase<C, T> {
+    ptr: P<GoalKind<C, T>>,
+    aux: T,
+}
 
-impl<C: fmt::Display> fmt::Display for Goal<C> {
+impl<C, T> GoalBase<C, T> {
+    pub fn kind<'a>(&'a self) -> &'a GoalKind<C, T> {
+        &*self.ptr
+    }
+}
+
+impl<C, T> GoalBase<C, T> {
+    pub fn new_t(v: GoalKind<C, T>, aux: T) -> GoalBase<C, T> {
+        GoalBase {
+            ptr: P::new(v),
+            aux,
+        }
+    }
+}
+
+impl<C> GoalBase<C, ()> {
+    pub fn new(v: GoalKind<C, ()>) -> GoalBase<C, ()> {
+        GoalBase::new_t(v, ())
+    }
+}
+
+impl<C, T: Clone> Clone for GoalBase<C, T> {
+    fn clone(&self) -> GoalBase<C, T> {
+        GoalBase {
+            ptr: self.ptr.clone(),
+            aux: self.aux.clone(),
+        }
+    }
+}
+
+pub type Goal<C> = GoalBase<C, ()>;
+
+impl<C: fmt::Display, T> fmt::Display for GoalBase<C, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use GoalKind::*;
         match self.kind() {
@@ -72,7 +109,7 @@ impl<C: fmt::Display> fmt::Display for Goal<C> {
 }
 impl<C: Top> Top for Goal<C> {
     fn mk_true() -> Self {
-        Goal::mk_constr(C::mk_true())
+        GoalBase::mk_constr(C::mk_true())
     }
 
     fn is_true(&self) -> bool {
@@ -82,9 +119,9 @@ impl<C: Top> Top for Goal<C> {
         }
     }
 }
-impl<C: Bot> Bot for Goal<C> {
+impl<C: Bot> Bot for GoalBase<C, ()> {
     fn mk_false() -> Self {
-        Goal::mk_constr(C::mk_false())
+        GoalBase::mk_constr(C::mk_false())
     }
 
     fn is_false(&self) -> bool {
@@ -94,17 +131,17 @@ impl<C: Bot> Bot for Goal<C> {
         }
     }
 }
-impl<C> From<C> for Goal<C> {
+impl<C> From<C> for GoalBase<C, ()> {
     fn from(c: C) -> Self {
-        Goal::mk_constr(c)
+        GoalBase::mk_constr(c)
     }
 }
 
-impl From<Goal<Constraint>> for Constraint {
+impl<T: Clone> From<GoalBase<Constraint, T>> for Constraint {
     // even though g has type *, and it can be beta-reduced to a constraint,
     // we cannot convert g to the constraint.
     // This is a naive way of translating Goal to Constraint.
-    fn from(g: Goal<Constraint>) -> Self {
+    fn from(g: GoalBase<Constraint, T>) -> Self {
         match g.kind() {
             GoalKind::Constr(c) => c.clone(),
             GoalKind::Conj(g1, g2) => {
@@ -127,8 +164,8 @@ impl From<Goal<Constraint>> for Constraint {
         }
     }
 }
-impl<C> From<Goal<C>> for Op {
-    fn from(g: Goal<C>) -> Self {
+impl<C, T> From<GoalBase<C, T>> for Op {
+    fn from(g: GoalBase<C, T>) -> Self {
         match g.kind() {
             GoalKind::Op(o) => o.clone(),
             GoalKind::Var(x) => Op::mk_var(*x),
@@ -142,38 +179,88 @@ impl<C> From<Goal<C>> for Op {
     }
 }
 
-impl<C> Goal<C> {
-    pub fn mk_constr(x: C) -> Goal<C> {
-        Goal::new(GoalKind::Constr(x))
+impl<C, T: Default> GoalBase<C, T> {
+    pub fn mk_constr(x: C) -> GoalBase<C, T> {
+        GoalBase::mk_constr_t(x, T::default())
     }
-    pub fn mk_app(lhs: Goal<C>, rhs: Goal<C>) -> Goal<C> {
-        Goal::new(GoalKind::App(lhs, rhs))
+    pub fn mk_app(lhs: GoalBase<C, T>, rhs: GoalBase<C, T>) -> GoalBase<C, T> {
+        GoalBase::mk_app_t(lhs, rhs, T::default())
     }
-    pub fn mk_var(ident: Ident) -> Goal<C> {
-        Goal::new(GoalKind::Var(ident))
+    pub fn mk_var(ident: Ident) -> GoalBase<C, T> {
+        GoalBase::mk_var_t(ident, T::default())
     }
-    pub fn mk_univ(x: Variable, g: Goal<C>) -> Goal<C> {
-        Goal::new(GoalKind::Univ(x, g))
+    pub fn mk_univ(x: Variable, g: GoalBase<C, T>) -> GoalBase<C, T> {
+        GoalBase::mk_univ_t(x, g, T::default())
     }
-    pub fn mk_abs(x: Variable, g: Goal<C>) -> Goal<C> {
-        Goal::new(GoalKind::Abs(x, g))
+    pub fn mk_abs(x: Variable, g: GoalBase<C, T>) -> GoalBase<C, T> {
+        GoalBase::mk_abs_t(x, g, T::default())
     }
-    pub fn mk_op(op: Op) -> Goal<C> {
-        Goal::new(GoalKind::Op(op))
+    pub fn mk_op(op: Op) -> GoalBase<C, T> {
+        GoalBase::mk_op_t(op, T::default())
+    }
+    pub fn mk_conj(lhs: GoalBase<C, T>, rhs: GoalBase<C, T>) -> GoalBase<C, T> {
+        GoalBase::mk_conj_t(lhs, rhs, T::default())
+    }
+    pub fn mk_disj(lhs: GoalBase<C, T>, rhs: GoalBase<C, T>) -> GoalBase<C, T> {
+        GoalBase::mk_disj_t(lhs, rhs, T::default())
     }
 }
-impl<C> Goal<C> {
-    pub fn mk_conj(lhs: Goal<C>, rhs: Goal<C>) -> Goal<C> {
-        Goal::new(GoalKind::Conj(lhs, rhs))
+impl<C, T> GoalBase<C, T> {
+    pub fn mk_constr_t(x: C, aux: T) -> GoalBase<C, T> {
+        GoalBase {
+            ptr: P::new(GoalKind::Constr(x)),
+            aux,
+        }
     }
+    pub fn mk_app_t(lhs: GoalBase<C, T>, rhs: GoalBase<C, T>, aux: T) -> GoalBase<C, T> {
+        GoalBase {
+            ptr: P::new(GoalKind::App(lhs, rhs)),
+            aux,
+        }
+    }
+    pub fn mk_var_t(ident: Ident, aux: T) -> GoalBase<C, T> {
+        GoalBase {
+            ptr: P::new(GoalKind::Var(ident)),
+            aux,
+        }
+    }
+    pub fn mk_univ_t(x: Variable, g: GoalBase<C, T>, aux: T) -> GoalBase<C, T> {
+        GoalBase {
+            ptr: P::new(GoalKind::Univ(x, g)),
+            aux,
+        }
+    }
+    pub fn mk_abs_t(x: Variable, g: GoalBase<C, T>, aux: T) -> GoalBase<C, T> {
+        GoalBase {
+            ptr: P::new(GoalKind::Abs(x, g)),
+            aux,
+        }
+    }
+    pub fn mk_op_t(op: Op, aux: T) -> GoalBase<C, T> {
+        GoalBase {
+            ptr: P::new(GoalKind::Op(op)),
+            aux,
+        }
+    }
+    pub fn mk_conj_t(lhs: GoalBase<C, T>, rhs: GoalBase<C, T>, aux: T) -> GoalBase<C, T> {
+        GoalBase {
+            ptr: P::new(GoalKind::Conj(lhs, rhs)),
+            aux,
+        }
+    }
+    pub fn mk_disj_t(lhs: GoalBase<C, T>, rhs: GoalBase<C, T>, aux: T) -> GoalBase<C, T> {
+        GoalBase {
+            ptr: P::new(GoalKind::Disj(lhs, rhs)),
+            aux,
+        }
+    }
+}
+impl<C, T> GoalBase<C, T> {
     pub fn is_conj(&self) -> bool {
         match self.kind() {
             GoalKind::Conj(_, _) => true,
             _ => false,
         }
-    }
-    pub fn mk_disj(lhs: Goal<C>, rhs: Goal<C>) -> Goal<C> {
-        Goal::new(GoalKind::Disj(lhs, rhs))
     }
     pub fn is_disj(&self) -> bool {
         match self.kind() {
@@ -210,7 +297,7 @@ impl<C: Bot + Top> Goal<C> {
     }
 }
 
-impl<C: Fv<Id = Ident>> Fv for Goal<C> {
+impl<C: Fv<Id = Ident>, T> Fv for GoalBase<C, T> {
     type Id = Ident;
 
     fn fv_with_vec(&self, fvs: &mut HashSet<Self::Id>) {
@@ -231,19 +318,21 @@ impl<C: Fv<Id = Ident>> Fv for Goal<C> {
         }
     }
 }
-impl<C: Rename> Rename for Goal<C> {
+impl<C: Rename, T: Clone> Rename for GoalBase<C, T> {
     fn rename(&self, x: &Ident, y: &Ident) -> Self {
         match self.kind() {
-            GoalKind::Constr(c) => Goal::mk_constr(c.rename(x, y)),
-            GoalKind::Op(op) => Goal::mk_op(op.rename(x, y)),
-            GoalKind::Var(id) => Goal::mk_var(if id == x { *y } else { *id }),
+            GoalKind::Constr(c) => GoalBase::mk_constr_t(c.rename(x, y), self.aux.clone()),
+            GoalKind::Op(op) => GoalBase::mk_op_t(op.rename(x, y), self.aux.clone()),
+            GoalKind::Var(id) => {
+                GoalBase::mk_var_t(if id == x { *y } else { *id }, self.aux.clone())
+            }
             GoalKind::Abs(id, g) => {
                 let g = if &id.id != x {
                     g.rename(x, y)
                 } else {
                     g.clone()
                 };
-                Goal::mk_abs(id.clone(), g)
+                GoalBase::mk_abs_t(id.clone(), g, self.aux.clone())
             }
             GoalKind::Univ(id, g) => {
                 let g = if &id.id != x {
@@ -251,27 +340,35 @@ impl<C: Rename> Rename for Goal<C> {
                 } else {
                     g.clone()
                 };
-                Goal::mk_univ(id.clone(), g)
+                GoalBase::mk_univ_t(id.clone(), g, self.aux.clone())
             }
-            GoalKind::App(g1, g2) => Goal::mk_app(g1.rename(x, y), g2.rename(x, y)),
-            GoalKind::Conj(g1, g2) => Goal::mk_conj(g1.rename(x, y), g2.rename(x, y)),
-            GoalKind::Disj(g1, g2) => Goal::mk_disj(g1.rename(x, y), g2.rename(x, y)),
+            GoalKind::App(g1, g2) => {
+                GoalBase::mk_app_t(g1.rename(x, y), g2.rename(x, y), self.aux.clone())
+            }
+            GoalKind::Conj(g1, g2) => {
+                GoalBase::mk_conj_t(g1.rename(x, y), g2.rename(x, y), self.aux.clone())
+            }
+            GoalKind::Disj(g1, g2) => {
+                GoalBase::mk_disj_t(g1.rename(x, y), g2.rename(x, y), self.aux.clone())
+            }
         }
     }
 }
 
-impl<C: Subst<Item = Op, Id = Ident> + Rename + Fv<Id = Ident> + fmt::Display> Subst for Goal<C> {
-    type Item = Goal<C>;
+impl<C: Subst<Item = Op, Id = Ident> + Rename + Fv<Id = Ident> + fmt::Display, T: Clone> Subst
+    for GoalBase<C, T>
+{
+    type Item = GoalBase<C, T>;
     type Id = Variable;
     // we assume formula has already been alpha-renamed
     // TODO: where? We will not assume alpha-renamed
-    fn subst(&self, x: &Variable, v: &Goal<C>) -> Self {
-        fn subst_inner<C: Subst<Item = Op, Id = Ident> + Rename + fmt::Display>(
-            target: &Goal<C>,
+    fn subst(&self, x: &Variable, v: &GoalBase<C, T>) -> Self {
+        fn subst_inner<C: Subst<Item = Op, Id = Ident> + Rename + fmt::Display, T: Clone>(
+            target: &GoalBase<C, T>,
             x: &Variable,
-            v: &Goal<C>,
+            v: &GoalBase<C, T>,
             fv: &HashSet<Ident>,
-        ) -> Goal<C> {
+        ) -> GoalBase<C, T> {
             // tmp debug
             //debug!("subst_inner: [{}/{}]{}", v, x, target);
             match target.kind() {
@@ -286,28 +383,28 @@ impl<C: Subst<Item = Op, Id = Ident> + Rename + Fv<Id = Ident> + fmt::Display> S
                     // when x has type int, v can be reduced to Op
                     let op = v.clone().into();
                     let c = c.subst(&x.id, &op);
-                    Goal::mk_constr(c)
+                    GoalBase::mk_constr_t(c, target.aux.clone())
                 }
                 GoalKind::Op(o) if x.ty.is_int() => {
                     let op = v.clone().into();
                     let o = o.subst(&x.id, &op);
-                    Goal::mk_op(o)
+                    GoalBase::mk_op_t(o, target.aux.clone())
                 }
                 GoalKind::Constr(_) | GoalKind::Op(_) => target.clone(),
                 GoalKind::App(g1, g2) => {
                     let g1 = subst_inner(g1, x, v, fv);
                     let g2 = subst_inner(g2, x, v, fv);
-                    Goal::mk_app(g1, g2)
+                    GoalBase::mk_app_t(g1, g2, target.aux.clone())
                 }
                 GoalKind::Conj(g1, g2) => {
                     let g1 = subst_inner(g1, x, v, fv);
                     let g2 = subst_inner(g2, x, v, fv);
-                    Goal::mk_conj(g1, g2)
+                    GoalBase::mk_conj_t(g1, g2, target.aux.clone())
                 }
                 GoalKind::Disj(g1, g2) => {
                     let g1 = subst_inner(g1, x, v, fv);
                     let g2 = subst_inner(g2, x, v, fv);
-                    Goal::mk_disj(g1, g2)
+                    GoalBase::mk_disj_t(g1, g2, target.aux.clone())
                 }
                 GoalKind::Abs(y, g) => {
                     if y.id == x.id {
@@ -316,9 +413,9 @@ impl<C: Subst<Item = Op, Id = Ident> + Rename + Fv<Id = Ident> + fmt::Display> S
                         let y2_ident = Ident::fresh();
                         let y2 = Variable::mk(y2_ident, y.ty.clone());
                         let g = g.rename(&y.id, &y2_ident);
-                        Goal::mk_abs(y2, subst_inner(&g, x, v, fv))
+                        GoalBase::mk_abs_t(y2, subst_inner(&g, x, v, fv), target.aux.clone())
                     } else {
-                        Goal::mk_abs(y.clone(), subst_inner(g, x, v, fv))
+                        GoalBase::mk_abs_t(y.clone(), subst_inner(g, x, v, fv), target.aux.clone())
                     }
                 }
                 GoalKind::Univ(y, g) => {
@@ -328,9 +425,9 @@ impl<C: Subst<Item = Op, Id = Ident> + Rename + Fv<Id = Ident> + fmt::Display> S
                         let y2_ident = Ident::fresh();
                         let y2 = Variable::mk(y2_ident, y.ty.clone());
                         let g = g.rename(&y.id, &y2_ident);
-                        Goal::mk_univ(y2, subst_inner(&g, x, v, fv))
+                        GoalBase::mk_univ_t(y2, subst_inner(&g, x, v, fv), target.aux.clone())
                     } else {
-                        Goal::mk_univ(y.clone(), subst_inner(g, x, v, fv))
+                        GoalBase::mk_univ_t(y.clone(), subst_inner(g, x, v, fv), target.aux.clone())
                     }
                 }
             }
@@ -351,13 +448,16 @@ impl<C: Subst<Item = Op, Id = Ident> + Rename + Fv<Id = Ident> + fmt::Display> S
     }
 }
 
-impl<C: Rename + Fv<Id = Ident>> Goal<C> {
-    pub fn alpha_renaming(&self) -> Goal<C> {
-        pub fn go<C: Rename>(goal: &Goal<C>, vars: &mut HashSet<Ident>) -> Goal<C> {
+impl<C: Rename + Fv<Id = Ident>, T: Clone> GoalBase<C, T> {
+    pub fn alpha_renaming(&self) -> GoalBase<C, T> {
+        pub fn go<C: Rename, T: Clone>(
+            goal: &GoalBase<C, T>,
+            vars: &mut HashSet<Ident>,
+        ) -> GoalBase<C, T> {
             // aux function for checking the uniqueness of v.id;
             // if v.id has already appeared previously (meaning v.id in vars),
             // first it generates a fresh identifier and rename v.id with the new one.
-            let aux = |v: &Variable, g: &Goal<C>, vars: &HashSet<Ident>| {
+            let aux = |v: &Variable, g: &GoalBase<C, T>, vars: &HashSet<Ident>| {
                 if vars.contains(&v.id) {
                     let id = Ident::fresh();
                     let g = g.rename(&v.id, &id);
@@ -372,28 +472,28 @@ impl<C: Rename + Fv<Id = Ident>> Goal<C> {
                     let (v, g) = aux(v, g, vars);
                     vars.insert(v.id);
                     let g = go(&g, vars);
-                    Goal::mk_abs(v, g)
+                    GoalBase::mk_abs_t(v, g, goal.aux.clone())
                 }
                 GoalKind::Univ(v, g) => {
                     let (v, g) = aux(v, g, vars);
                     vars.insert(v.id);
                     let g = go(&g, vars);
-                    Goal::mk_univ(v, g)
+                    GoalBase::mk_univ_t(v, g, goal.aux.clone())
                 }
                 GoalKind::App(g1, g2) => {
                     let g1 = go(g1, vars);
                     let g2 = go(g2, vars);
-                    Goal::mk_app(g1, g2)
+                    GoalBase::mk_app_t(g1, g2, goal.aux.clone())
                 }
                 GoalKind::Conj(g1, g2) => {
                     let g1 = go(g1, vars);
                     let g2 = go(g2, vars);
-                    Goal::mk_conj(g1, g2)
+                    GoalBase::mk_conj_t(g1, g2, goal.aux.clone())
                 }
                 GoalKind::Disj(g1, g2) => {
                     let g1 = go(g1, vars);
                     let g2 = go(g2, vars);
-                    Goal::mk_disj(g1, g2)
+                    GoalBase::mk_disj_t(g1, g2, goal.aux.clone())
                 }
             }
         }
@@ -401,6 +501,29 @@ impl<C: Rename + Fv<Id = Ident>> Goal<C> {
         go(self, &mut fvs)
     }
 }
+
+impl<C: Refinement> PartialEq for GoalKind<C, ()> {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (GoalKind::Constr(c), GoalKind::Constr(c2)) => c == c2,
+            (GoalKind::Op(o), GoalKind::Op(o2)) => o == o2,
+            (GoalKind::Var(x), GoalKind::Var(y)) => x == y,
+            (GoalKind::Abs(v, g), GoalKind::Abs(v2, g2))
+            | (GoalKind::Univ(v, g), GoalKind::Univ(v2, g2)) => v == v2 && g == g2,
+            (GoalKind::App(x1, y1), GoalKind::App(x2, y2))
+            | (GoalKind::Conj(x1, y1), GoalKind::Conj(x2, y2))
+            | (GoalKind::Disj(x1, y1), GoalKind::Disj(x2, y2)) => x1 == x2 && y1 == y2,
+            (_, _) => false,
+        }
+    }
+}
+
+impl<C: Refinement> PartialEq for Goal<C> {
+    fn eq(&self, other: &Self) -> bool {
+        self.ptr == other.ptr
+    }
+}
+
 // TODO: fix not to use Refinement
 impl<C: Refinement> Goal<C> {
     fn reduce_inner(&self) -> Goal<C> {
@@ -416,26 +539,26 @@ impl<C: Refinement> Goal<C> {
                         // println!("app: [{}/{}]{} ---> {}", arg, x.id, g, g2);
                         g2
                     }
-                    _ => Goal::mk_app(g, arg),
+                    _ => GoalBase::mk_app(g, arg),
                 }
             }
             GoalKind::Conj(g1, g2) => {
                 let g1 = g1.reduce_inner();
                 let g2 = g2.reduce_inner();
-                Goal::mk_conj(g1, g2)
+                GoalBase::mk_conj(g1, g2)
             }
             GoalKind::Disj(g1, g2) => {
                 let g1 = g1.reduce_inner();
                 let g2 = g2.reduce_inner();
-                Goal::mk_disj(g1, g2)
+                GoalBase::mk_disj(g1, g2)
             }
             GoalKind::Univ(x, g) => {
                 let g = g.reduce_inner();
-                Goal::mk_univ(x.clone(), g)
+                GoalBase::mk_univ(x.clone(), g)
             }
             GoalKind::Abs(x, g) => {
                 let g = g.reduce_inner();
-                Goal::mk_abs(x.clone(), g)
+                GoalBase::mk_abs(x.clone(), g)
             }
             GoalKind::Constr(_) | GoalKind::Var(_) | GoalKind::Op(_) => self.clone(),
         }
@@ -465,6 +588,7 @@ impl<C: Refinement> Goal<C> {
         self.reduce_goal().into()
     }
 
+    // TODO: Goal<C> to GoalBase<C, T>
     fn prenex_normal_form_raw(
         self: &Goal<C>,
         env: &mut HashSet<Ident>,
@@ -479,13 +603,13 @@ impl<C: Refinement> Goal<C> {
                 let (mut v1, a1) = a1.prenex_normal_form_raw(env);
                 let (mut v2, a2) = a2.prenex_normal_form_raw(env);
                 v1.append(&mut v2);
-                (v1, Goal::mk_conj(a1, a2))
+                (v1, GoalBase::mk_conj(a1, a2))
             }
             GoalKind::Disj(a1, a2) => {
                 let (mut v1, a1) = a1.prenex_normal_form_raw(env);
                 let (mut v2, a2) = a2.prenex_normal_form_raw(env);
                 v1.append(&mut v2);
-                (v1, Goal::mk_disj(a1, a2))
+                (v1, GoalBase::mk_disj(a1, a2))
             }
             GoalKind::Univ(x, a) => {
                 let (x, a) = if env.contains(&x.id) {
@@ -666,7 +790,7 @@ impl<C: Rename> Problem<C> {
                     let y2_ident = Ident::fresh();
                     let y2 = Variable::mk(y2_ident, y.ty.clone());
                     let g = g.rename(&y.id, &y2_ident);
-                    Goal::mk_abs(y2, self.eval(&g))
+                    GoalBase::mk_abs(y2, self.eval(&g))
                 }
                 None => Goal::mk_abs(y.clone(), self.eval(g)),
             },
@@ -675,7 +799,7 @@ impl<C: Rename> Problem<C> {
                     let y2_ident = Ident::fresh();
                     let y2 = Variable::mk(y2_ident, y.ty.clone());
                     let g = g.rename(&y.id, &y2_ident);
-                    Goal::mk_univ(y2, self.eval(&g))
+                    GoalBase::mk_univ(y2, self.eval(&g))
                 } else {
                     Goal::mk_univ(y.clone(), self.eval(g))
                 }

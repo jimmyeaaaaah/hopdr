@@ -52,21 +52,21 @@ impl From<Goal<fofml::Atom>> for fofml::Atom {
 // check if it is completely the same form
 // in other words, even if f1 and f2 are alpha-equivalent,
 // they are the different formulas.
-impl<C: PartialEq> PartialEq for Goal<C> {
-    fn eq(&self, other: &Self) -> bool {
-        match (self.kind(), other.kind()) {
-            (GoalKind::Constr(c1), GoalKind::Constr(c2)) => c1 == c2,
-            (GoalKind::Op(o1), GoalKind::Op(o2)) => o1 == o2,
-            (GoalKind::Var(x1), GoalKind::Var(x2)) => x1 == x2,
-            (GoalKind::Abs(x1, g1), GoalKind::Abs(x2, g2)) => x1 == x2 && g1 == g2,
-            (GoalKind::App(g11, g12), GoalKind::App(g21, g22)) => g11 == g21 && g12 == g22,
-            (GoalKind::Conj(g11, g12), GoalKind::Conj(g21, g22)) => g11 == g21 && g12 == g22,
-            (GoalKind::Disj(g11, g12), GoalKind::Disj(g21, g22)) => g11 == g21 && g12 == g22,
-            (GoalKind::Univ(x1, g1), GoalKind::Univ(x2, g2)) => x1 == x2 && g1 == g2,
-            (_, _) => false,
-        }
-    }
-}
+// impl<C: PartialEq> PartialEq for Goal<C> {
+// fn eq(&self, other: &Self) -> bool {
+// match (self.kind(), other.kind()) {
+// (GoalKind::Constr(c1), GoalKind::Constr(c2)) => c1 == c2,
+// (GoalKind::Op(o1), GoalKind::Op(o2)) => o1 == o2,
+// (GoalKind::Var(x1), GoalKind::Var(x2)) => x1 == x2,
+// (GoalKind::Abs(x1, g1), GoalKind::Abs(x2, g2)) => x1 == x2 && g1 == g2,
+// (GoalKind::App(g11, g12), GoalKind::App(g21, g22)) => g11 == g21 && g12 == g22,
+// (GoalKind::Conj(g11, g12), GoalKind::Conj(g21, g22)) => g11 == g21 && g12 == g22,
+// (GoalKind::Disj(g11, g12), GoalKind::Disj(g21, g22)) => g11 == g21 && g12 == g22,
+// (GoalKind::Univ(x1, g1), GoalKind::Univ(x2, g2)) => x1 == x2 && g1 == g2,
+// (_, _) => false,
+// }
+// }
+// }
 
 // Formula Environment Σ
 pub struct Env<C> {
