@@ -153,6 +153,12 @@ impl Level {
     }
 }
 
+impl Default for Level {
+    fn default() -> Self {
+        Level::new()
+    }
+}
+
 /// internal representation of candidate terms.
 ///
 /// Level is used for tracking when this candidate is used
@@ -391,6 +397,19 @@ fn check_int_expr(ienv: &HashSet<Ident>, g: &G) -> Option<Op> {
     }
 }
 
+fn format_cnf_clause(g: G) -> G {
+    match g.kind() {
+        formula::hes::GoalKind::Constr(_)
+        | formula::hes::GoalKind::Var(_)
+        | formula::hes::GoalKind::Abs(_, _)
+        | formula::hes::GoalKind::App(_, _) => g.clone(),
+        formula::hes::GoalKind::Disj(c, _) => todo!(),
+        formula::hes::GoalKind::Conj(_, _)
+        | formula::hes::GoalKind::Univ(_, _)
+        | formula::hes::GoalKind::Op(_) => panic!("fatal"),
+    }
+}
+
 /// Γ ⊢ ψ : •<T>
 ///
 /// tenv: Γ
@@ -456,7 +475,10 @@ fn type_check_top(ctx: &mut Context, tenv: &Env, candidate: &G) -> bool {
         }
     }
     // 1. collects integers of universal quantifiers
+    let (vars, g) = candidate.prenex_normal_form_raw(&mut HashSet::new());
     // 2. calculates cnf
+    let cnf = g.to_cnf_inner();
+    for clause in cnf {}
     // 3. formats element of cnf to be (θ => ψ)
     // 4. pt = go(ψ) for each ψ
     // 5. check if for some tc in pt, tc.t <= *<θ> and tc.constraints hold, and returns the result

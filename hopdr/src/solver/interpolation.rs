@@ -14,7 +14,7 @@ use crate::formula::chc::Model;
 use crate::formula::Fv;
 use crate::formula::Op;
 use crate::formula::Subst;
-use crate::formula::{Bot, Constraint, Ident, Logic, Negation, Top};
+use crate::formula::{Bot, Constraint, FirstOrderLogic, Ident, Logic, Negation, Top};
 
 use crate::solver::smt::ident_2_smt2;
 use crate::solver::util;

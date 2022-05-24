@@ -2,7 +2,7 @@ use super::fml;
 use super::fml::{env_models_constraint, Env};
 use super::rtype::{Tau, TyEnv, TypeEnvironment};
 use crate::formula::hes::{Goal, Problem as ProblemBase};
-use crate::formula::{chc, fofml, pcsp, Bot, Constraint, Ident, Logic, Op, Top};
+use crate::formula::{chc, fofml, pcsp, Bot, Constraint, FirstOrderLogic, Ident, Logic, Op, Top};
 use crate::solver;
 use crate::util::P;
 use crate::{formula, title};

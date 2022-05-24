@@ -3,8 +3,8 @@ use std::fmt;
 
 use super::pcsp;
 use super::{
-    hes, Bot, Constraint, Fv, Ident, Logic, Negation, Op, OpKind, PredKind, QuantifierKind, Rename,
-    Subst, Top, Type, Variable,
+    hes, Bot, Constraint, FirstOrderLogic, Fv, Ident, Logic, Negation, Op, OpKind, PredKind,
+    QuantifierKind, Rename, Subst, Top, Type, Variable,
 };
 use crate::solver;
 use crate::solver::smt;
@@ -301,6 +301,11 @@ impl Subst for Atom {
                 }
             }
         }
+    }
+}
+impl FirstOrderLogic for Atom {
+    fn mk_quantifier_int(q: QuantifierKind, x: Ident, c: Atom) -> Atom {
+        Atom::mk_quantifier(q, x, c)
     }
 }
 

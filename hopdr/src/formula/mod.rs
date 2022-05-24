@@ -293,6 +293,10 @@ pub trait Logic: Top + Bot + Clone {
     }
 }
 
+pub trait FirstOrderLogic: Logic {
+    fn mk_quantifier_int(q: QuantifierKind, v: Ident, c: Self) -> Self;
+}
+
 pub trait Subst: Sized + Clone {
     type Item;
     type Id;
@@ -446,6 +450,15 @@ impl Logic for Constraint {
         }
     }
 }
+impl FirstOrderLogic for Constraint {
+    fn mk_quantifier_int(q: QuantifierKind, v: Ident, c: Constraint) -> Constraint {
+        Constraint::new(ConstraintExpr::Quantifier(
+            q,
+            Variable::mk(v, Type::mk_type_int()),
+            c,
+        ))
+    }
+}
 
 impl Subst for Constraint {
     type Item = Op;
@@ -529,14 +542,6 @@ impl Negation for Constraint {
 impl Constraint {
     pub fn mk_quantifier(q: QuantifierKind, v: Variable, c: Constraint) -> Constraint {
         Constraint::new(ConstraintExpr::Quantifier(q, v, c))
-    }
-
-    pub fn mk_quantifier_int(q: QuantifierKind, v: Ident, c: Constraint) -> Constraint {
-        Constraint::new(ConstraintExpr::Quantifier(
-            q,
-            Variable::mk(v, Type::mk_type_int()),
-            c,
-        ))
     }
 
     pub fn mk_implies(x: Constraint, y: Constraint) -> Constraint {

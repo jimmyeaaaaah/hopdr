@@ -1,8 +1,11 @@
 use crate::formula::ty::Type;
-use crate::formula::{Bot, Constraint, Fv, Ident, Logic, Op, Rename, Top, Variable};
+use crate::formula::{
+    Bot, Constraint, FirstOrderLogic, Fv, Ident, Logic, Op, Rename, Top, Variable,
+};
 use crate::pdr::rtype::Refinement;
 use crate::util::P;
 use std::collections::HashSet;
+use std::convert::TryFrom;
 use std::fmt;
 use std::hash::Hash;
 
@@ -587,12 +590,28 @@ impl<C: Refinement> Goal<C> {
     pub fn reduce(&self) -> C {
         self.reduce_goal().into()
     }
-
+    pub fn quantify(&self, vs: &[Variable]) -> Goal<C> {
+        let fv = self.fv();
+        let mut result = self.clone();
+        for v in vs.iter().rev() {
+            if fv.contains(&v.id) {
+                result = Goal::mk_univ(v.clone(), result);
+            }
+        }
+        result
+    }
+    pub fn to_cnf(&self) -> Vec<Goal<C>> {
+        let (vs, pnf) = self.prenex_normal_form_raw(&mut HashSet::new());
+        let cnf = pnf.to_cnf_inner();
+        cnf.into_iter().map(|g| g.quantify(&vs)).collect()
+    }
+}
+impl<C: Refinement, T: Clone + Default> GoalBase<C, T> {
     // TODO: Goal<C> to GoalBase<C, T>
-    fn prenex_normal_form_raw(
-        self: &Goal<C>,
+    pub fn prenex_normal_form_raw(
+        &self,
         env: &mut HashSet<Ident>,
-    ) -> (Vec<Variable>, Goal<C>) {
+    ) -> (Vec<Variable>, GoalBase<C, T>) {
         match self.kind() {
             GoalKind::Op(_)
             | GoalKind::Var(_)
@@ -603,13 +622,13 @@ impl<C: Refinement> Goal<C> {
                 let (mut v1, a1) = a1.prenex_normal_form_raw(env);
                 let (mut v2, a2) = a2.prenex_normal_form_raw(env);
                 v1.append(&mut v2);
-                (v1, GoalBase::mk_conj(a1, a2))
+                (v1, GoalBase::mk_conj_t(a1, a2, self.aux.clone()))
             }
             GoalKind::Disj(a1, a2) => {
                 let (mut v1, a1) = a1.prenex_normal_form_raw(env);
                 let (mut v2, a2) = a2.prenex_normal_form_raw(env);
                 v1.append(&mut v2);
-                (v1, GoalBase::mk_disj(a1, a2))
+                (v1, GoalBase::mk_disj_t(a1, a2, self.aux.clone()))
             }
             GoalKind::Univ(x, a) => {
                 let (x, a) = if env.contains(&x.id) {
@@ -631,23 +650,17 @@ impl<C: Refinement> Goal<C> {
             }
         }
     }
-    fn quantify(&self, vs: &[Variable]) -> Goal<C> {
-        let fv = self.fv();
-        let mut result = self.clone();
-        for v in vs.iter().rev() {
-            if fv.contains(&v.id) {
-                result = Goal::mk_univ(v.clone(), result);
-            }
-        }
-        result
-    }
 
-    fn to_cnf_inner(&self) -> Vec<Goal<C>> {
-        fn cross_or<C: Refinement>(v1: &[Goal<C>], v2: &[Goal<C>]) -> Vec<Goal<C>> {
+    // assumption: prenex normal form without universal quantifiers
+    pub fn to_cnf_inner(&self) -> Vec<GoalBase<C, T>> {
+        fn cross_or<T: Clone + Default, C: Refinement>(
+            v1: &[GoalBase<C, T>],
+            v2: &[GoalBase<C, T>],
+        ) -> Vec<GoalBase<C, T>> {
             let mut v = Vec::new();
             for x in v1 {
                 for y in v2 {
-                    v.push(Goal::mk_disj(x.clone(), y.clone()));
+                    v.push(GoalBase::mk_disj_t(x.clone(), y.clone(), T::default()));
                 }
             }
             v
@@ -672,11 +685,6 @@ impl<C: Refinement> Goal<C> {
             | GoalKind::Univ(_, _) => vec![self.clone()],
         }
     }
-    pub fn to_cnf(&self) -> Vec<Goal<C>> {
-        let (vs, pnf) = self.prenex_normal_form_raw(&mut HashSet::new());
-        let cnf = pnf.to_cnf_inner();
-        cnf.into_iter().map(|g| g.quantify(&vs)).collect()
-    }
 }
 
 impl<C> Goal<C> {
@@ -689,6 +697,22 @@ impl<C> Goal<C> {
                 std::cmp::max(x.order(), y.order())
             }
             GoalKind::Univ(_, y) => y.order(),
+        }
+    }
+}
+
+impl<C: Refinement, T: Clone> Into<Option<C>> for GoalBase<C, T> {
+    fn into(self) -> Option<C> {
+        match self.kind() {
+            GoalKind::Constr(c) => Some(c.clone()),
+            GoalKind::Abs(_, _) | GoalKind::App(_, _) | GoalKind::Op(_) | GoalKind::Var(_) => None,
+            GoalKind::Conj(g1, g2) => Into::<Option<C>>::into(g1.clone())
+                .and_then(|c1| Into::<Option<C>>::into(g2.clone()).map(|c2| C::mk_conj(c1, c2))),
+            GoalKind::Disj(g1, g2) => Into::<Option<C>>::into(g1.clone())
+                .and_then(|c1| Into::<Option<C>>::into(g2.clone()).map(|c2| C::mk_disj(c1, c2))),
+            GoalKind::Univ(v, g) if v.ty.is_int() => Into::<Option<C>>::into(g.clone())
+                .map(|c| C::mk_quantifier_int(super::QuantifierKind::Universal, v.id, c)),
+            GoalKind::Univ(_, _) => None,
         }
     }
 }

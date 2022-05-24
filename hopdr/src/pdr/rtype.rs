@@ -5,8 +5,8 @@ use std::{
 
 use crate::formula::{fofml, Variable};
 use crate::formula::{
-    Bot, Constraint, Fv, Ident, Logic, Negation, Op, Rename, Subst, Top, Type as SType,
-    TypeKind as STypeKind,
+    Bot, Constraint, FirstOrderLogic, Fv, Ident, Logic, Negation, Op, Rename, Subst, Top,
+    Type as SType, TypeKind as STypeKind,
 };
 use crate::{formula::hes::Goal, solver, solver::smt};
 
@@ -25,10 +25,8 @@ pub type Ty = Tau<Constraint>;
 
 pub trait Refinement:
     Clone
-    + Top
-    + Bot
     + Negation
-    + Logic
+    + FirstOrderLogic
     + Subst<Id = Ident, Item = Op>
     + Fv<Id = Ident>
     + PartialEq
@@ -39,10 +37,8 @@ pub trait Refinement:
 }
 impl<T> Refinement for T where
     T: Clone
-        + Top
-        + Bot
         + Negation
-        + Logic
+        + FirstOrderLogic
         + Subst<Id = Ident, Item = Op>
         + Fv<Id = Ident>
         + PartialEq
