@@ -2,7 +2,7 @@ use super::rtype::{Tau, TypeEnvironment};
 use crate::formula::hes::{Goal, GoalBase, Problem as ProblemBase};
 use crate::formula::{self, Fv};
 use crate::formula::{
-    chc, fofml, pcsp, Bot, Constraint, Ident, Logic, Op, Rename, Subst, Top, Variable,
+    chc, fofml, pcsp, Bot, Constraint, Ident, Logic, Negation, Op, Rename, Subst, Top, Variable,
 };
 use crate::solver;
 
@@ -343,8 +343,10 @@ impl PossibleType {
             for s in self.types.iter() {
                 let c = go(constraint.clone(), s, t);
                 // check by smt solver
-                let fvs = c.fv();
-                if solver::smt::default_solver().solve(&c, &fvs).is_sat() {
+                if solver::smt::default_solver()
+                    .solve_with_universal_quantifiers(&c)
+                    .is_sat()
+                {
                     return true;
                 }
             }
@@ -396,14 +398,26 @@ fn check_int_expr(ienv: &HashSet<Ident>, g: &G) -> Option<Op> {
         | formula::hes::GoalKind::Univ(_, _) => None,
     }
 }
-
-fn format_cnf_clause(g: G) -> G {
+// takes g and formats it and returns (Θ, g') where Θ => g'
+fn format_cnf_clause(g: G) -> (Constraint, G) {
     match g.kind() {
         formula::hes::GoalKind::Constr(_)
         | formula::hes::GoalKind::Var(_)
         | formula::hes::GoalKind::Abs(_, _)
-        | formula::hes::GoalKind::App(_, _) => g.clone(),
-        formula::hes::GoalKind::Disj(_c, _) => todo!(),
+        | formula::hes::GoalKind::App(_, _) => (Constraint::mk_true(), g.clone()),
+        formula::hes::GoalKind::Disj(g1, g2) => {
+            let c: Option<Atom> = g1.clone().into();
+            match c {
+                Some(c) => (c.negate().unwrap(), g2.clone()),
+                None => {
+                    let c: Option<Atom> = g2.clone().into();
+                    match c {
+                        Some(c) => (c.negate().unwrap(), g1.clone()),
+                        None => panic!("fatal: candidate is non-linear."),
+                    }
+                }
+            }
+        }
         formula::hes::GoalKind::Conj(_, _)
         | formula::hes::GoalKind::Univ(_, _)
         | formula::hes::GoalKind::Op(_) => panic!("fatal"),
@@ -416,7 +430,7 @@ fn format_cnf_clause(g: G) -> G {
 /// candidate: ψ
 /// ctx.abstraction_types: is used for handling types appeared in derivations
 /// assumption: candidate has a beta-normal form of type *.
-fn type_check_top(_ctx: &mut Context, _tenv: &Env, candidate: &G) -> bool {
+fn type_check_top(ctx: &mut Context, tenv: &Env, candidate: &G) -> bool {
     use crate::pdr::rtype::TauKind;
     // we assume conjunction normal form and has the form (θ => a₁ a₂ ⋯) ∧ ⋯
     // constraint: Θ
@@ -475,14 +489,47 @@ fn type_check_top(_ctx: &mut Context, _tenv: &Env, candidate: &G) -> bool {
         }
     }
     // 1. collects integers of universal quantifiers
-    let (_vars, g) = candidate.prenex_normal_form_raw(&mut HashSet::new());
+    let (vars, g) = candidate.prenex_normal_form_raw(&mut HashSet::new());
     // 2. calculates cnf
     let cnf = g.to_cnf_inner();
-    for _clause in cnf {}
-    // 3. formats element of cnf to be (θ => ψ)
-    // 4. pt = go(ψ) for each ψ
-    // 5. check if for some tc in pt, tc.t <= *<θ> and tc.constraints hold, and returns the result
-    unimplemented!()
+    for clause in cnf {
+        // 3. formats element of cnf to be (θ => ψ)
+        let (theta, phi) = format_cnf_clause(clause);
+        // 4. pt = go(ψ) for each ψ
+        let pt = go(
+            ctx,
+            &theta,
+            tenv,
+            &vars
+                .iter()
+                .map(|v| {
+                    debug_assert!(v.ty.is_int());
+                    v.id
+                })
+                .collect(),
+            &phi,
+        );
+        // 5. check if for some tc in pt, tc.t <= *<θ> and tc.constraints hold, and returns the result
+        let mut flag = false;
+        for t in pt.types.iter() {
+            match t.kind() {
+                TauKind::Proposition(c) => {
+                    if solver::smt::default_solver()
+                        .solve_with_universal_quantifiers(&c)
+                        .is_sat()
+                    {
+                        flag = true;
+                        break;
+                    }
+                }
+                _ => panic!("fatal"),
+            }
+        }
+        if !flag {
+            return false;
+        }
+    }
+    true
 }
 
 pub fn generate_constraint(

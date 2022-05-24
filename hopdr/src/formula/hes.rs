@@ -8,7 +8,6 @@ use std::collections::HashSet;
 
 use std::fmt;
 
-
 use super::{fofml, Subst};
 
 #[derive(Debug)]

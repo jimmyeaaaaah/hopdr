@@ -5,8 +5,8 @@ use std::{
 
 use crate::formula::{fofml, Variable};
 use crate::formula::{
-    Bot, Constraint, FirstOrderLogic, Fv, Ident, Logic, Negation, Op, Rename, Subst, Top,
-    Type as SType, TypeKind as STypeKind,
+    Constraint, FirstOrderLogic, Fv, Ident, Negation, Op, Rename, Subst, Top, Type as SType,
+    TypeKind as STypeKind,
 };
 use crate::{formula::hes::Goal, solver, solver::smt};
 
