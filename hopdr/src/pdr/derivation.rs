@@ -9,6 +9,7 @@ use crate::solver;
 use rpds::Stack;
 
 use std::collections::{HashMap, HashSet};
+use std::iter::FromIterator;
 
 type Atom = fofml::Atom;
 type Candidate = Goal<Atom>;
@@ -281,12 +282,101 @@ fn reduce_until_normal_form(candidate: &Candidate, problem: &Problem) -> Context
     Context::new(normal_form, track_idents, reduction_sequence)
 }
 
+#[derive(Clone, Debug)]
+struct TypeCandidate {
+    t: Ty,
+    constraints: Stack<PCSP>,
+}
+
+impl From<Ty> for TypeCandidate {
+    fn from(t: Ty) -> Self {
+        TypeCandidate {
+            t,
+            constraints: Stack::new(),
+        }
+    }
+}
+
+impl TypeCandidate {
+    fn new(t: Ty, constraints: Stack<PCSP>) -> TypeCandidate {
+        TypeCandidate { t, constraints }
+    }
+}
+
+/// Since type environment can contain multiple candidate types,
+/// we make sure that which one is suitable by considering them parallely.
+#[derive(Clone, Debug)]
+struct PossibleType {
+    types: Stack<TypeCandidate>,
+}
+impl<'a, T: IntoIterator<Item = &'a Ty>> From<T> for PossibleType {
+    fn from(ts: T) -> Self {
+        let mut types = Stack::new();
+        for t in ts.into_iter() {
+            let t: Ty = t.clone().into();
+            let t = t.into();
+            types.push_mut(t);
+        }
+        PossibleType { types }
+    }
+}
+
+impl PossibleType {
+    fn new(types: Stack<TypeCandidate>) -> PossibleType {
+        PossibleType { types }
+    }
+}
+
+impl From<Ty> for PossibleType {
+    fn from(t: Ty) -> Self {
+        let t = t.into();
+        let mut types = Stack::new();
+        types.push_mut(t);
+        PossibleType { types }
+    }
+}
+
 /// Γ ⊢ ψ : •〈⊤〉
 ///
 /// tenv: Γ
 /// candidate: ψ
 /// ctx.abstraction_types: is used for handling types appeared in derivations
+/// assumption: candidate has a beta-normal form of type *.
 fn type_check_top(ctx: &mut Context, tenv: &Env, candidate: &G) -> bool {
+    // we assume conjunction normal form and has the form (θ => a₁ a₂ ⋯) ∧ ⋯
+    fn go(ctx: &mut Context, tenv: &Env, ienv: &HashSet<Ident>, c: &G) -> PossibleType {
+        match c.kind() {
+            formula::hes::GoalKind::Constr(c) => Ty::mk_prop_ty(c.clone().into()).into(),
+            formula::hes::GoalKind::Var(x) => match tenv.get(x) {
+                Some(t) => t.iter().into(),
+                None => {
+                    panic!("{} is not found in env", x)
+                }
+            },
+            formula::hes::GoalKind::App(g1, g2) => {
+                let pt1 = go(ctx, tenv, ienv, g1);
+                let pt2 = go(ctx, tenv, ienv, g2);
+                let mut types = Stack::new();
+                for t1 in pt1.types.iter() {
+                    for t2 in pt2.types.iter() {
+                        // generates t1 <= t2 -> t' and constraints on the subsumption
+                        unimplemented!()
+                    }
+                }
+                PossibleType::new(types)
+            }
+            formula::hes::GoalKind::Conj(_, _)
+            | formula::hes::GoalKind::Disj(_, _)
+            | formula::hes::GoalKind::Univ(_, _) => panic!("go only accepts atom formulas"),
+            formula::hes::GoalKind::Abs(v, g) => panic!("c is not a beta-normal form"),
+            formula::hes::GoalKind::Op(_) => panic!("fatal error"),
+        }
+    }
+    // 1. collects integers of universal quantifiers
+    // 2. calculates cnf
+    // 3. formats element of cnf to be (θ => ψ)
+    // 4. pt = go(ψ) for each ψ
+    // 5. check if for some tc in pt, tc.t <= *<θ> and tc.constraints hold, and returns the result
     unimplemented!()
 }
 
