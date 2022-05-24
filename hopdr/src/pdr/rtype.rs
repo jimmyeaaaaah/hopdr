@@ -148,6 +148,43 @@ impl<C: Refinement> TyKind<C> {
     }
 }
 
+impl<C: Refinement> Rename for Tau<C> {
+    fn rename(&self, x: &Ident, y: &Ident) -> Self {
+        match self.kind() {
+            TauKind::Proposition(c) => Self::mk_prop_ty(c.rename(x, y)),
+            TauKind::IArrow(z, _) if x == z => self.clone(),
+            TauKind::IArrow(z, t) if y == z => {
+                let z2 = Ident::fresh();
+                let t = t.rename(z, &z2);
+                Self::mk_iarrow(z2, t.rename(x, y))
+            }
+            TauKind::IArrow(z, t) => Self::mk_iarrow(*z, t.rename(x, y)),
+            TauKind::Arrow(ts, t) => {
+                let ts = ts.iter().map(|t| t.rename(x, y)).collect();
+                Self::mk_arrow(ts, t.rename(x, y))
+            }
+        }
+    }
+}
+
+impl<C: Refinement> Subst for Tau<C> {
+    type Id = Ident;
+    type Item = Op;
+
+    fn subst(&self, x: &Self::Id, v: &Self::Item) -> Self {
+        match self.kind() {
+            TauKind::Proposition(c) => Self::mk_prop_ty(c.subst(x, v)),
+            TauKind::IArrow(y, _) if y == x => self.clone(),
+            TauKind::IArrow(y, t) => Self::mk_iarrow(*y, t.subst(x, v)),
+            TauKind::Arrow(ts, t) => {
+                let ts = ts.iter().map(|t| t.subst(x, v)).collect();
+                let t = t.subst(x, v);
+                Self::mk_arrow(ts, t)
+            }
+        }
+    }
+}
+
 impl From<Tau<Constraint>> for Tau<fofml::Atom> {
     fn from(t: Tau<Constraint>) -> Self {
         match t.kind() {

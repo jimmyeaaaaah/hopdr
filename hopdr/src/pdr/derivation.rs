@@ -336,6 +336,41 @@ impl From<Ty> for PossibleType {
     }
 }
 
+fn rename_integer_variable(t1: &Ty, t2: &Ty) -> Ty {
+    use crate::pdr::rtype::TauKind;
+    match (t1.kind(), t2.kind()) {
+        (TauKind::Proposition(_), TauKind::Proposition(_)) => t2.clone(),
+        (TauKind::IArrow(x, tx), TauKind::IArrow(y, ty)) => {
+            let t = rename_integer_variable(tx, &ty.rename(y, x));
+            Tau::mk_iarrow(*x, t)
+        }
+        (TauKind::Arrow(s1, t1), TauKind::Arrow(s2, t2)) => {
+            let mut args = Vec::new();
+            for (s1, s2) in s1.iter().zip(s2.iter()) {
+                let s2 = rename_integer_variable(s1, s2);
+                args.push(s2);
+            }
+            let t2 = rename_integer_variable(t1, t2);
+            Tau::mk_arrow(args, t2)
+        }
+        _ => panic!("program error"),
+    }
+}
+
+fn check_int_expr(ienv: &HashSet<Ident>, g: &G) -> Option<Op> {
+    match g.kind() {
+        formula::hes::GoalKind::Op(o) => Some(o.clone()),
+        formula::hes::GoalKind::Var(x) if ienv.contains(x) => Some(Op::mk_var(x)),
+        formula::hes::GoalKind::Var(_)
+        | formula::hes::GoalKind::Constr(_)
+        | formula::hes::GoalKind::Abs(_, _)
+        | formula::hes::GoalKind::App(_, _)
+        | formula::hes::GoalKind::Conj(_, _)
+        | formula::hes::GoalKind::Disj(_, _)
+        | formula::hes::GoalKind::Univ(_, _) => None,
+    }
+}
+
 /// Γ ⊢ ψ : •〈⊤〉
 ///
 /// tenv: Γ
@@ -343,6 +378,7 @@ impl From<Ty> for PossibleType {
 /// ctx.abstraction_types: is used for handling types appeared in derivations
 /// assumption: candidate has a beta-normal form of type *.
 fn type_check_top(ctx: &mut Context, tenv: &Env, candidate: &G) -> bool {
+    use crate::pdr::rtype::TauKind;
     // we assume conjunction normal form and has the form (θ => a₁ a₂ ⋯) ∧ ⋯
     fn go(ctx: &mut Context, tenv: &Env, ienv: &HashSet<Ident>, c: &G) -> PossibleType {
         match c.kind() {
@@ -355,12 +391,31 @@ fn type_check_top(ctx: &mut Context, tenv: &Env, candidate: &G) -> bool {
             },
             formula::hes::GoalKind::App(g1, g2) => {
                 let pt1 = go(ctx, tenv, ienv, g1);
+                match check_int_expr(ienv, g2) {
+                    Some(op) => {
+                        let types = pt1
+                            .types
+                            .into_iter()
+                            .map(|t| match t.t.kind() {
+                                TauKind::IArrow(x, t2) => TypeCandidate {
+                                    t: t2.subst(x, &op),
+                                    constraints: t.constraints.clone(),
+                                },
+                                _ => panic!("fatal"),
+                            })
+                            .collect();
+                        return PossibleType::new(types);
+                    }
+                    None => (),
+                };
                 let pt2 = go(ctx, tenv, ienv, g2);
                 let mut types = Stack::new();
                 for t1 in pt1.types.iter() {
                     for t2 in pt2.types.iter() {
                         // generates t1 <= t2 -> t' and constraints on the subsumption
-                        unimplemented!()
+                        match t1.t.kind() {
+                            TauKind::Arrow(_, _) => todo!(),
+                        }
                     }
                 }
                 PossibleType::new(types)
