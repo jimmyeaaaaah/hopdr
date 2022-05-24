@@ -5,9 +5,9 @@ use crate::formula::{
 use crate::pdr::rtype::Refinement;
 use crate::util::P;
 use std::collections::HashSet;
-use std::convert::TryFrom;
+
 use std::fmt;
-use std::hash::Hash;
+
 
 use super::{fofml, Subst};
 

@@ -55,7 +55,7 @@ impl Into<ITy> for Ty {
 // }
 
 fn vec2ity(v: &[Ty]) -> ITy {
-    let mut s = ITy::new();
+    let s = ITy::new();
     for t in v {
         s.push(t.clone());
     }
@@ -322,7 +322,7 @@ impl PossibleType {
                     let t2 = t2.rename(x2, x1);
                     go(constraint, t1, &t2)
                 }
-                (TauKind::Arrow(ts1, t1), TauKind::Arrow(ts2, t2)) => {
+                (TauKind::Arrow(ts1, _t1), TauKind::Arrow(ts2, _t2)) => {
                     let mut result_constraint = Constraint::mk_true();
                     // ⋀ᵢ tᵢ ≺ ⋀ⱼt'ⱼ ⇔∀ tᵢ. ∃ t'ⱼ. tᵢ ≺ t'ⱼ
                     for tx in ts1 {
@@ -403,7 +403,7 @@ fn format_cnf_clause(g: G) -> G {
         | formula::hes::GoalKind::Var(_)
         | formula::hes::GoalKind::Abs(_, _)
         | formula::hes::GoalKind::App(_, _) => g.clone(),
-        formula::hes::GoalKind::Disj(c, _) => todo!(),
+        formula::hes::GoalKind::Disj(_c, _) => todo!(),
         formula::hes::GoalKind::Conj(_, _)
         | formula::hes::GoalKind::Univ(_, _)
         | formula::hes::GoalKind::Op(_) => panic!("fatal"),
@@ -416,7 +416,7 @@ fn format_cnf_clause(g: G) -> G {
 /// candidate: ψ
 /// ctx.abstraction_types: is used for handling types appeared in derivations
 /// assumption: candidate has a beta-normal form of type *.
-fn type_check_top(ctx: &mut Context, tenv: &Env, candidate: &G) -> bool {
+fn type_check_top(_ctx: &mut Context, _tenv: &Env, candidate: &G) -> bool {
     use crate::pdr::rtype::TauKind;
     // we assume conjunction normal form and has the form (θ => a₁ a₂ ⋯) ∧ ⋯
     // constraint: Θ
@@ -470,15 +470,15 @@ fn type_check_top(ctx: &mut Context, tenv: &Env, candidate: &G) -> bool {
             formula::hes::GoalKind::Conj(_, _)
             | formula::hes::GoalKind::Disj(_, _)
             | formula::hes::GoalKind::Univ(_, _) => panic!("go only accepts atom formulas"),
-            formula::hes::GoalKind::Abs(v, g) => panic!("c is not a beta-normal form"),
+            formula::hes::GoalKind::Abs(_v, _g) => panic!("c is not a beta-normal form"),
             formula::hes::GoalKind::Op(_) => panic!("fatal error"),
         }
     }
     // 1. collects integers of universal quantifiers
-    let (vars, g) = candidate.prenex_normal_form_raw(&mut HashSet::new());
+    let (_vars, g) = candidate.prenex_normal_form_raw(&mut HashSet::new());
     // 2. calculates cnf
     let cnf = g.to_cnf_inner();
-    for clause in cnf {}
+    for _clause in cnf {}
     // 3. formats element of cnf to be (θ => ψ)
     // 4. pt = go(ψ) for each ψ
     // 5. check if for some tc in pt, tc.t <= *<θ> and tc.constraints hold, and returns the result
@@ -530,7 +530,7 @@ pub fn generate_constraint(
     crate::title!("model from CHC solver");
     // TODO: Display model
     debug!("{}", m);
-    let model = solver::interpolation::solve(&clauses);
+    let _model = solver::interpolation::solve(&clauses);
     debug!("interpolated:");
     debug!("{}", m);
 

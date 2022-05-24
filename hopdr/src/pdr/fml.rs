@@ -4,7 +4,7 @@ use std::fmt::Display;
 use crate::formula::fofml;
 use crate::formula::hes::Problem;
 use crate::formula::hes::{Goal, GoalKind};
-use crate::formula::{Constraint, Fv, Ident, Logic, Rename, Subst, Variable};
+use crate::formula::{Constraint, Ident, Logic};
 use crate::pdr::rtype::{
     least_fml, types_check, tys_check, Refinement, Tau, TyEnv, TypeEnvironment,
 };

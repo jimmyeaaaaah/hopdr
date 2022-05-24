@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 use super::{
-    Bot, Constraint, FirstOrderLogic, Fv, Ident, Logic, Negation, Op, QuantifierKind, Rename,
+    Bot, Constraint, Fv, Ident, Logic, Negation, Op, QuantifierKind, Rename,
     Subst, Top, Type, Variable,
 };
 use crate::util::P;
