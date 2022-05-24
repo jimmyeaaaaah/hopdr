@@ -235,6 +235,19 @@ impl<C> Tau<C> {
         Tau::new(TauKind::Arrow(vec![t], s))
     }
 }
+impl Tau<Constraint> {
+    pub fn constraint_rty(&self) -> Constraint {
+        match self.kind() {
+            TauKind::Proposition(c) => c.clone(),
+            TauKind::IArrow(x, t) => Constraint::mk_quantifier_int(
+                crate::formula::QuantifierKind::Existential,
+                *x,
+                t.constraint_rty(),
+            ),
+            TauKind::Arrow(_, t) => t.constraint_rty(),
+        }
+    }
+}
 
 // Type environment
 pub struct TypeEnvironment<Type> {

@@ -1,17 +1,16 @@
-use super::rtype::{Tau, TyEnv, TypeEnvironment};
-use crate::formula;
+use super::rtype::{Tau, TypeEnvironment};
 use crate::formula::hes::{Goal, GoalBase, Problem as ProblemBase};
+use crate::formula::{self, Fv};
 use crate::formula::{
-    chc, fofml, pcsp, Bot, Constraint, Ident, Logic, Op, Rename, Subst, Top, Type as Sty, Variable,
+    chc, fofml, pcsp, Bot, Constraint, Ident, Logic, Op, Rename, Subst, Top, Variable,
 };
 use crate::solver;
 
 use rpds::Stack;
 
 use std::collections::{HashMap, HashSet};
-use std::iter::FromIterator;
 
-type Atom = fofml::Atom;
+type Atom = Constraint;
 type Candidate = Goal<Atom>;
 type Ty = Tau<Atom>;
 type Env = TypeEnvironment<Ty>;
@@ -29,31 +28,31 @@ impl Into<ITy> for Ty {
     }
 }
 
-impl Sty {
-    fn generate_template(&self, env: &mut HashSet<Ident>) -> Ty {
-        match self.kind() {
-            formula::TypeKind::Proposition => {
-                let args: Vec<Op> = env.iter().map(|x| x.clone().into()).collect();
-                let p = fofml::Atom::mk_fresh_pred(args);
-                Ty::mk_prop_ty(p)
-            }
-            formula::TypeKind::Arrow(s, t) if s.is_int() => {
-                let arg = Ident::fresh();
-                env.insert(arg);
-                let t = self.generate_template(env);
-                let exists = env.remove(&arg);
-                debug_assert!(exists);
-                Ty::mk_iarrow(arg, t)
-            }
-            formula::TypeKind::Arrow(t1, t2) => {
-                let v = vec![t1.generate_template(env)];
-                let t = t2.generate_template(env);
-                Ty::mk_arrow(v, t)
-            }
-            formula::TypeKind::Integer => panic!("program error"),
-        }
-    }
-}
+// impl Sty {
+//     fn generate_template(&self, env: &mut HashSet<Ident>) -> Ty {
+//         match self.kind() {
+//             formula::TypeKind::Proposition => {
+//                 let args: Vec<Op> = env.iter().map(|x| x.clone().into()).collect();
+//                 let p = fofml::Atom::mk_fresh_pred(args);
+//                 Ty::mk_prop_ty(p)
+//             }
+//             formula::TypeKind::Arrow(s, t) if s.is_int() => {
+//                 let arg = Ident::fresh();
+//                 env.insert(arg);
+//                 let t = self.generate_template(env);
+//                 let exists = env.remove(&arg);
+//                 debug_assert!(exists);
+//                 Ty::mk_iarrow(arg, t)
+//             }
+//             formula::TypeKind::Arrow(t1, t2) => {
+//                 let v = vec![t1.generate_template(env)];
+//                 let t = t2.generate_template(env);
+//                 Ty::mk_arrow(v, t)
+//             }
+//             formula::TypeKind::Integer => panic!("program error"),
+//         }
+//     }
+// }
 
 fn vec2ity(v: &[Ty]) -> ITy {
     let mut s = ITy::new();
@@ -282,39 +281,17 @@ fn reduce_until_normal_form(candidate: &Candidate, problem: &Problem) -> Context
     Context::new(normal_form, track_idents, reduction_sequence)
 }
 
-#[derive(Clone, Debug)]
-struct TypeCandidate {
-    t: Ty,
-    constraints: Stack<PCSP>,
-}
-
-impl From<Ty> for TypeCandidate {
-    fn from(t: Ty) -> Self {
-        TypeCandidate {
-            t,
-            constraints: Stack::new(),
-        }
-    }
-}
-
-impl TypeCandidate {
-    fn new(t: Ty, constraints: Stack<PCSP>) -> TypeCandidate {
-        TypeCandidate { t, constraints }
-    }
-}
-
 /// Since type environment can contain multiple candidate types,
 /// we make sure that which one is suitable by considering them parallely.
 #[derive(Clone, Debug)]
 struct PossibleType {
-    types: Stack<TypeCandidate>,
+    types: Stack<Ty>,
 }
 impl<'a, T: IntoIterator<Item = &'a Ty>> From<T> for PossibleType {
     fn from(ts: T) -> Self {
         let mut types = Stack::new();
         for t in ts.into_iter() {
             let t: Ty = t.clone().into();
-            let t = t.into();
             types.push_mut(t);
         }
         PossibleType { types }
@@ -322,8 +299,51 @@ impl<'a, T: IntoIterator<Item = &'a Ty>> From<T> for PossibleType {
 }
 
 impl PossibleType {
-    fn new(types: Stack<TypeCandidate>) -> PossibleType {
+    fn new(types: Stack<Ty>) -> PossibleType {
         PossibleType { types }
+    }
+
+    // check if ts' ⊂ self exists where ts' <: ts holds.
+    fn check_subtype(&self, ts: &[Ty], constraint: &Constraint) -> bool {
+        use crate::pdr::rtype::TauKind;
+        fn go(constraint: Constraint, t: &Ty, s: &Ty) -> Constraint {
+            match (t.kind(), s.kind()) {
+                (TauKind::Proposition(c1), TauKind::Proposition(c2)) => Constraint::mk_implies(
+                    Constraint::mk_conj(constraint.clone(), c2.clone()),
+                    c1.clone(),
+                ),
+                (TauKind::IArrow(x1, t1), TauKind::IArrow(x2, t2)) => {
+                    let t2 = t2.rename(x2, x1);
+                    go(constraint, t1, &t2)
+                }
+                (TauKind::Arrow(ts1, t1), TauKind::Arrow(ts2, t2)) => {
+                    let mut result_constraint = Constraint::mk_true();
+                    // ⋀ᵢ tᵢ ≺ ⋀ⱼt'ⱼ ⇔∀ tᵢ. ∃ t'ⱼ. tᵢ ≺ t'ⱼ
+                    for tx in ts1 {
+                        let mut tmpc = Constraint::mk_false();
+                        for ty in ts2 {
+                            let c = Constraint::mk_conj(constraint.clone(), ty.constraint_rty());
+                            tmpc = Constraint::mk_disj(tmpc, go(c, tx, ty));
+                        }
+                        result_constraint = Constraint::mk_conj(result_constraint, tmpc);
+                    }
+                    result_constraint
+                }
+                (_, _) => panic!("fatal"),
+            }
+        }
+        // is there possible derivation for each t in ts
+        for t in ts {
+            for s in self.types.iter() {
+                let c = go(constraint.clone(), s, t);
+                // check by smt solver
+                let fvs = c.fv();
+                if solver::smt::default_solver().solve(&c, &fvs).is_sat() {
+                    return true;
+                }
+            }
+        }
+        false
     }
 }
 
@@ -360,7 +380,7 @@ fn rename_integer_variable(t1: &Ty, t2: &Ty) -> Ty {
 fn check_int_expr(ienv: &HashSet<Ident>, g: &G) -> Option<Op> {
     match g.kind() {
         formula::hes::GoalKind::Op(o) => Some(o.clone()),
-        formula::hes::GoalKind::Var(x) if ienv.contains(x) => Some(Op::mk_var(x)),
+        formula::hes::GoalKind::Var(x) if ienv.contains(x) => Some(Op::mk_var(*x)),
         formula::hes::GoalKind::Var(_)
         | formula::hes::GoalKind::Constr(_)
         | formula::hes::GoalKind::Abs(_, _)
@@ -371,7 +391,7 @@ fn check_int_expr(ienv: &HashSet<Ident>, g: &G) -> Option<Op> {
     }
 }
 
-/// Γ ⊢ ψ : •〈⊤〉
+/// Γ ⊢ ψ : •<T>
 ///
 /// tenv: Γ
 /// candidate: ψ
@@ -380,7 +400,15 @@ fn check_int_expr(ienv: &HashSet<Ident>, g: &G) -> Option<Op> {
 fn type_check_top(ctx: &mut Context, tenv: &Env, candidate: &G) -> bool {
     use crate::pdr::rtype::TauKind;
     // we assume conjunction normal form and has the form (θ => a₁ a₂ ⋯) ∧ ⋯
-    fn go(ctx: &mut Context, tenv: &Env, ienv: &HashSet<Ident>, c: &G) -> PossibleType {
+    // constraint: Θ
+    // Γ; Θ ⊢ ψ : •
+    fn go(
+        ctx: &mut Context,
+        constraint: &Constraint,
+        tenv: &Env,
+        ienv: &HashSet<Ident>,
+        c: &G,
+    ) -> PossibleType {
         match c.kind() {
             formula::hes::GoalKind::Constr(c) => Ty::mk_prop_ty(c.clone().into()).into(),
             formula::hes::GoalKind::Var(x) => match tenv.get(x) {
@@ -390,17 +418,14 @@ fn type_check_top(ctx: &mut Context, tenv: &Env, candidate: &G) -> bool {
                 }
             },
             formula::hes::GoalKind::App(g1, g2) => {
-                let pt1 = go(ctx, tenv, ienv, g1);
+                let pt1 = go(ctx, constraint, tenv, ienv, g1);
                 match check_int_expr(ienv, g2) {
                     Some(op) => {
                         let types = pt1
                             .types
                             .into_iter()
-                            .map(|t| match t.t.kind() {
-                                TauKind::IArrow(x, t2) => TypeCandidate {
-                                    t: t2.subst(x, &op),
-                                    constraints: t.constraints.clone(),
-                                },
+                            .map(|t| match t.kind() {
+                                TauKind::IArrow(x, t2) => t2.subst(x, &op),
                                 _ => panic!("fatal"),
                             })
                             .collect();
@@ -408,14 +433,17 @@ fn type_check_top(ctx: &mut Context, tenv: &Env, candidate: &G) -> bool {
                     }
                     None => (),
                 };
-                let pt2 = go(ctx, tenv, ienv, g2);
+                let pt2 = go(ctx, constraint, tenv, ienv, g2);
                 let mut types = Stack::new();
                 for t1 in pt1.types.iter() {
-                    for t2 in pt2.types.iter() {
-                        // generates t1 <= t2 -> t' and constraints on the subsumption
-                        match t1.t.kind() {
-                            TauKind::Arrow(_, _) => todo!(),
-                        }
+                    // check if t1 <= t2 -> t' holds
+                    let (ts, ret_ty) = match t1.kind() {
+                        TauKind::Arrow(ts, ret_ty) => (ts, ret_ty),
+                        _ => panic!("fatal"),
+                    };
+                    // check if there is a possible type derivation; if so, mark ret_ty as PossibleType; otherwise, do nothing.
+                    if pt2.check_subtype(ts, constraint) {
+                        types.push_mut(ret_ty.clone());
                     }
                 }
                 PossibleType::new(types)
@@ -484,12 +512,13 @@ pub fn generate_constraint(
     debug!("interpolated:");
     debug!("{}", m);
 
-    let model = model.model;
-    let mut result_env = TypeEnvironment::new();
-    for (k, ts) in tenv.map.iter() {
-        for t in ts {
-            result_env.add(*k, t.assign(&model));
-        }
-    }
-    Some(result_env)
+    //let model = model.model;
+    //let mut result_env = TypeEnvironment::new();
+    //for (k, ts) in tenv.map.iter() {
+    //    for t in ts {
+    //        result_env.add(*k, t.assign(&model));
+    //    }
+    //}
+    //Some(result_env)
+    unimplemented!()
 }
