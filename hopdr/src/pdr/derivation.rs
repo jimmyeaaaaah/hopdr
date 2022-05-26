@@ -331,7 +331,7 @@ impl From<Ty> for CandidateType {
 struct PossibleType {
     types: Vec<CandidateType>,
 }
-impl<'a, T: IntoIterator<Item = &'a Ty>> From<T> for PossibleType {
+impl<'a, T: IntoIterator<Item = Ty>> From<T> for PossibleType {
     fn from(ts: T) -> Self {
         let mut types = Vec::new();
         for t in ts.into_iter() {
@@ -342,9 +342,14 @@ impl<'a, T: IntoIterator<Item = &'a Ty>> From<T> for PossibleType {
     }
 }
 
+
 impl PossibleType {
     fn new(types: Vec<CandidateType>) -> PossibleType {
         PossibleType { types }
+    }
+
+    fn empty() -> PossibleType {
+        PossibleType::new(Vec::new())
     }
 
     // check if ts' ⊂ self exists where ts' <: ts holds.
@@ -489,21 +494,28 @@ fn type_check_top(
     ) -> PossibleType {
         fn go_inner(
             ctx: &mut Context,
+            constraint: &Constraint,
             t: &Ty,
             tenv: &Env,
             ienv: &HashSet<Ident>,
             c: &G,
         ) -> PossibleType {
             match c.kind() {
-                formula::hes::GoalKind::Constr(c) => Ty::mk_prop_ty(c.clone().into()).into(),
+                formula::hes::GoalKind::Constr(c) => {
+                    if solver::smt::default_solver().solve_with_universal_quantifiers(Constraint::mk_implies(constraint.clone(), c.clone())).is_sat() {
+                        Ty::mk_prop_ty(c.clone().into()).into()
+                    } else {
+                        PossibleType::empty()
+                    }
+                },
                 formula::hes::GoalKind::Var(x) => match tenv.get(x) {
-                    Some(t) => t.iter().into(),
+                    Some(t) => t.iter().map(|t| t.add_context(constraint)).into(),
                     None => {
                         panic!("{} is not found in env", x)
                     }
                 },
                 formula::hes::GoalKind::App(g1, g2) => {
-                    let pt1 = go(ctx, t, tenv, ienv, g1);
+                    let pt1 = go(ctx, constraint, t, tenv, ienv, g1);
                     match check_int_expr(ienv, g2) {
                         // Case: the type of argument is int
                         Some(op) => {
@@ -523,7 +535,7 @@ fn type_check_top(
                         None => (),
                     };
                     // we calculate the
-                    let pt2 = go(ctx, t, tenv, ienv, g2);
+                    let pt2 = go(ctx, constraint, t, tenv, ienv, g2);
                     let mut types = Vec::new();
                     for t1 in pt1.types.iter() {
                         // check if t1 <= t2 -> t' holds
@@ -538,7 +550,7 @@ fn type_check_top(
                     }
                     PossibleType::new(types)
                 }
-                formula::hes::GoalKind::Conj(_, _)
+                formula::hes::GoalKind::Conj(, _)
                 | formula::hes::GoalKind::Disj(_, _)
                 | formula::hes::GoalKind::Univ(_, _) => panic!("go only accepts atom formulas"),
                 formula::hes::GoalKind::Abs(_v, _g) => panic!("c is not a beta-normal form"),

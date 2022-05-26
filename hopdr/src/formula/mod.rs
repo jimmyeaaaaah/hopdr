@@ -543,7 +543,7 @@ impl Constraint {
     pub fn mk_quantifier(q: QuantifierKind, v: Variable, c: Constraint) -> Constraint {
         Constraint::new(ConstraintExpr::Quantifier(q, v, c))
     }
-    fn mk_implies(x: Self, y: Self) -> Self {
+    pub fn mk_implies(x: Self, y: Self) -> Self {
         x.negate().map(|x| Self::mk_disj(x, y)).unwrap()
     }
 

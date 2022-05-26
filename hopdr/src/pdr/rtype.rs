@@ -193,7 +193,7 @@ impl<C: Refinement> Tau<C> {
         }
     }
     // coarse the rty(self) to be `constraint`
-    fn add_context(&self, constraint: &C) -> Tau<C> {
+    pub fn add_context(&self, constraint: &C) -> Tau<C> {
         fn go<C: Refinement>(t: &Tau<C>, constraint: &C, polarity: Polarity) -> Tau<C> {
             match t.kind() {
                 // *[c] <: *[?] under constraint <=> constraint /\ ? => c. so ? = constraint => c
