@@ -140,16 +140,21 @@ impl Reduction {
 
 #[derive(Clone)]
 struct Level {
-    level: Stack<usize>,
+    level_arg: Stack<usize>,
+    level_ret: Stack<usize>,
 }
 impl Level {
     fn new() -> Level {
         Level {
-            level: Stack::new(),
+            level_arg: Stack::new(),
+            level_ret: Stack::new(),
         }
     }
-    fn add_level(&mut self, level: usize) {
-        self.level = self.level.push(level)
+    fn add_arg_level(&mut self, level: usize) {
+        self.level_arg = self.level_arg.push(level)
+    }
+    fn add_ret_level(&mut self, level: usize) {
+        self.level_ret = self.level_ret.push(level)
     }
 }
 
@@ -201,14 +206,15 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
                             go_(arg, level)
                                 .map(|arg| G::mk_app_t(g.clone(), arg, goal.aux.clone()))
                                 .or_else(|| {
-                                    let mut g = g.clone();
-                                    g.aux.add_level(level);
+                                    let mut arg = arg.clone();
+                                    // track the type of argument
+                                    arg.aux.add_arg_level(level);
                                     match g.kind() {
                                         GoalKind::Abs(x, g) => {
-                                            let g2 = g.subst(x, &arg);
-                                            // debug
-                                            // println!("app: [{}/{}]{} ---> {}", arg, x.id, g, g2);
-                                            Some(g2)
+                                            let mut ret = g.subst(x, &arg);
+                                            // track the result type
+                                            ret.aux.add_ret_level(level);
+                                            Some(ret)
                                         }
                                         _ => None,
                                     }
@@ -274,6 +280,9 @@ impl Context {
     }
     /// infer types by subject expansion along with reduction sequence
     fn infer_type(&mut self, map: HashMap<usize, Vec<Ty>>) {
+        for reduction in self.reduction_sequence.iter().rev() {
+            let ty = map.get(&reduction.level).unwrap();
+        }
         unimplemented!()
     }
 }
@@ -489,6 +498,7 @@ fn type_check_top(ctx: &mut Context, tenv: &Env, candidate: &G) -> Option<HashMa
                 formula::hes::GoalKind::App(g1, g2) => {
                     let pt1 = go(ctx, constraint, tenv, ienv, g1);
                     match check_int_expr(ienv, g2) {
+                        // Case: the type of argument is int
                         Some(op) => {
                             let types = pt1
                                 .types
@@ -502,8 +512,10 @@ fn type_check_top(ctx: &mut Context, tenv: &Env, candidate: &G) -> Option<HashMa
                                 .collect();
                             return PossibleType::new(types);
                         }
+                        // Otherwise, we continue.
                         None => (),
                     };
+                    // we calculate the
                     let pt2 = go(ctx, constraint, tenv, ienv, g2);
                     let mut types = Vec::new();
                     for t1 in pt1.types.iter() {
@@ -527,13 +539,18 @@ fn type_check_top(ctx: &mut Context, tenv: &Env, candidate: &G) -> Option<HashMa
             }
         }
         let mut pt = go_inner(ctx, constraint, tenv, ienv, c);
-        for level in c.aux.level.iter() {
+        for level in c.aux.level_arg.iter() {
             for ct in pt.types.iter_mut() {
                 ct.memorize(*level);
             }
         }
         pt
     }
+    // これが嘘だなあ
+    // prenex normal formすら取れるかわからん
+    // F (λx.∀y.x >= y) ∧ F (∀x.∀y.x <= y)
+    // のような例が普通にあるので
+
     // 1. collects integers of universal quantifiers
     let (vars, g) = candidate.prenex_normal_form_raw(&mut HashSet::new());
     // 2. calculates cnf
