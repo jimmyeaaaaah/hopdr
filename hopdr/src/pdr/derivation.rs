@@ -462,6 +462,107 @@ fn format_cnf_clause(g: G) -> (Constraint, G) {
     }
 }
 
+fn translate(candidate: &G) -> G {
+    // handle candidate of type *
+    // (Atom, G) represents a \/ g for each a: Atom and g: G
+    fn cnf(candidate: &G) -> Vec<(Atom, G)> {
+        match candidate.kind() {
+            formula::hes::GoalKind::Constr(c) => vec![(c.clone(), G::mk_false())],
+            formula::hes::GoalKind::Var(_) | formula::hes::GoalKind::App(_, _) => {
+                vec![(Atom::mk_false(), candidate.clone())]
+            }
+            formula::hes::GoalKind::Conj(c1, c2) => {
+                let mut c1 = cnf(c1);
+                let mut c2 = cnf(c2);
+                c1.append(&mut c2);
+                c1
+            }
+            formula::hes::GoalKind::Disj(c1, c2) => {
+                let c: Option<Atom> = c1.clone().into();
+                let (theta, phi) = match c {
+                    Some(c) => (c, c2),
+                    None => (c2.clone().into(), c1),
+                };
+                cnf(phi)
+                    .into_iter()
+                    .map(|(constr, clause)| match clause.kind() {
+                        formula::hes::GoalKind::Constr(c) => (
+                            Atom::mk_disj(constr, Atom::mk_disj(c.clone(), theta.clone())),
+                            G::mk_false(),
+                        ),
+                        formula::hes::GoalKind::Var(_) | formula::hes::GoalKind::App(_, _) => {
+                            (Atom::mk_disj(constr, theta.clone()), clause.clone())
+                        }
+                        formula::hes::GoalKind::Disj(_, _)
+                        | formula::hes::GoalKind::Univ(_, _)
+                        | formula::hes::GoalKind::Abs(_, _)
+                        | formula::hes::GoalKind::Op(_)
+                        | formula::hes::GoalKind::Conj(_, _) => panic!("fatal"),
+                    })
+                    .collect()
+            }
+            // assume we don't have univ since it's been already handled.
+            formula::hes::GoalKind::Univ(_, _) => panic!("no univ!"),
+            formula::hes::GoalKind::Op(_) | formula::hes::GoalKind::Abs(_, _) => panic!("fatal"),
+        }
+    }
+    fn prenex(candidate: &G, variables: &mut Vec<Variable>) -> G {
+        match candidate.kind() {
+            formula::hes::GoalKind::Constr(_)
+            | formula::hes::GoalKind::Var(_)
+            | formula::hes::GoalKind::Op(_)
+            | formula::hes::GoalKind::App(_, _)
+            | formula::hes::GoalKind::Abs(_, _) => candidate.clone(),
+            formula::hes::GoalKind::Conj(g1, g2) => {
+                let g1 = prenex(g1, variables);
+                let g2 = prenex(g2, variables);
+                G::mk_conj_t(g1, g2, candidate.aux.clone())
+            }
+            formula::hes::GoalKind::Disj(g1, g2) => {
+                let g1 = prenex(g1, variables);
+                let g2 = prenex(g2, variables);
+                G::mk_disj_t(g1, g2, candidate.aux.clone())
+            }
+            formula::hes::GoalKind::Univ(x, g) => {
+                let id = Ident::fresh();
+                let var = Variable::mk(id, x.ty.clone());
+                let g = g.rename(&x.id, &id);
+                let g = prenex(&g, variables);
+                variables.push(var);
+                g
+            }
+        }
+    }
+    fn search_for_bool_expr_and_go(candidate: &G) -> G {
+        match candidate.kind() {
+            formula::hes::GoalKind::Abs(v, g) => {
+                let g = search_for_bool_expr_and_go(g);
+                G::mk_abs_t(v.clone(), g.clone(), candidate.aux.clone())
+            }
+            formula::hes::GoalKind::App(g1, g2) => {
+                let g1 = search_for_bool_expr_and_go(g1);
+                let g2 = search_for_bool_expr_and_go(g2);
+                G::mk_app_t(g1, g2, candidate.aux.clone())
+            }
+            formula::hes::GoalKind::Constr(_)
+            | formula::hes::GoalKind::Var(_)
+            | formula::hes::GoalKind::Op(_) => candidate.clone(),
+            formula::hes::GoalKind::Conj(_, _)
+            | formula::hes::GoalKind::Disj(_, _)
+            | formula::hes::GoalKind::Univ(_, _) => go(candidate),
+        }
+    }
+    fn go(candidate: &G) -> G {
+        let mut variables = Vec::new();
+        let g = prenex(candidate, &mut variables);
+        let phis = cnf(&g);
+        for (constr, phi) in phis {
+            let phi = search_for_bool_expr_and_go(&phi);
+        }
+    }
+    unimplemented!()
+}
+
 /// Γ ⊢ ψ : •<T>
 ///
 /// tenv: Γ
@@ -473,16 +574,13 @@ fn type_check_top(ctx: &mut Context, tenv: &Env, candidate: &G) -> Option<HashMa
     // we assume conjunction normal form and has the form (θ => a₁ a₂ ⋯) ∧ ⋯
     // constraint: Θ
     // Γ; Θ ⊢ ψ : •
-    fn go(
-        ctx: &mut Context,
-        constraint: &Constraint,
-        tenv: &Env,
-        ienv: &HashSet<Ident>,
-        c: &G,
-    ) -> PossibleType {
+    // function go constructs possible derivation trees by induction on the structure of c(ψ)
+    //
+    fn go(ctx: &mut Context, t: &Ty, tenv: &Env, ienv: &HashSet<Ident>, c: &G) -> PossibleType {
+        // con
         fn go_inner(
             ctx: &mut Context,
-            constraint: &Constraint,
+            t: &Ty,
             tenv: &Env,
             ienv: &HashSet<Ident>,
             c: &G,
@@ -496,7 +594,7 @@ fn type_check_top(ctx: &mut Context, tenv: &Env, candidate: &G) -> Option<HashMa
                     }
                 },
                 formula::hes::GoalKind::App(g1, g2) => {
-                    let pt1 = go(ctx, constraint, tenv, ienv, g1);
+                    let pt1 = go(ctx, t, tenv, ienv, g1);
                     match check_int_expr(ienv, g2) {
                         // Case: the type of argument is int
                         Some(op) => {
@@ -516,7 +614,7 @@ fn type_check_top(ctx: &mut Context, tenv: &Env, candidate: &G) -> Option<HashMa
                         None => (),
                     };
                     // we calculate the
-                    let pt2 = go(ctx, constraint, tenv, ienv, g2);
+                    let pt2 = go(ctx, t, tenv, ienv, g2);
                     let mut types = Vec::new();
                     for t1 in pt1.types.iter() {
                         // check if t1 <= t2 -> t' holds
@@ -525,7 +623,7 @@ fn type_check_top(ctx: &mut Context, tenv: &Env, candidate: &G) -> Option<HashMa
                             _ => panic!("fatal"),
                         };
                         // check if there is a possible type derivation; if so, mark ret_ty as PossibleType; otherwise, do nothing.
-                        if pt2.check_subtype(ts, constraint) {
+                        if pt2.check_subtype(ts, unimplemented!()) {
                             types.push(CandidateType::new(ret_ty.clone(), t1.derivation.clone()));
                         }
                     }
@@ -538,7 +636,7 @@ fn type_check_top(ctx: &mut Context, tenv: &Env, candidate: &G) -> Option<HashMa
                 formula::hes::GoalKind::Op(_) => panic!("fatal error"),
             }
         }
-        let mut pt = go_inner(ctx, constraint, tenv, ienv, c);
+        let mut pt = go_inner(ctx, t, tenv, ienv, c);
         for level in c.aux.level_arg.iter() {
             for ct in pt.types.iter_mut() {
                 ct.memorize(*level);
@@ -550,6 +648,9 @@ fn type_check_top(ctx: &mut Context, tenv: &Env, candidate: &G) -> Option<HashMa
     // prenex normal formすら取れるかわからん
     // F (λx.∀y.x >= y) ∧ F (∀x.∀y.x <= y)
     // のような例が普通にあるので
+    // 必要なのは、**各bool型の式について** prenex normal formであり、(Θ => ψ) /\ ...の形の論理式に変換すること
+    // これは既存関数ではできないので、新しくそういう関数を作るべき
+    // 加えて、変換したときに、reductionのときに作っていたlevelの情報を保存するように変換できるはず
 
     // 1. collects integers of universal quantifiers
     let (vars, g) = candidate.prenex_normal_form_raw(&mut HashSet::new());
@@ -563,7 +664,7 @@ fn type_check_top(ctx: &mut Context, tenv: &Env, candidate: &G) -> Option<HashMa
         // 4. pt = go(ψ) for each ψ
         let pt = go(
             ctx,
-            &theta,
+            &Ty::mk_prop_ty(theta),
             tenv,
             &vars
                 .iter()

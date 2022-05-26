@@ -109,7 +109,7 @@ impl<C: fmt::Display, T> fmt::Display for GoalBase<C, T> {
         }
     }
 }
-impl<C: Top> Top for Goal<C> {
+impl<C: Top, T: Default> Top for GoalBase<C, T> {
     fn mk_true() -> Self {
         GoalBase::mk_constr(C::mk_true())
     }
@@ -121,7 +121,7 @@ impl<C: Top> Top for Goal<C> {
         }
     }
 }
-impl<C: Bot> Bot for GoalBase<C, ()> {
+impl<C: Bot, T: Default> Bot for GoalBase<C, T> {
     fn mk_false() -> Self {
         GoalBase::mk_constr(C::mk_false())
     }
