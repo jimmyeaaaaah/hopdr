@@ -468,15 +468,25 @@ fn format_cnf_clause(g: G) -> (Constraint, G) {
 /// candidate: ψ
 /// ctx.abstraction_types: is used for handling types appeared in derivations
 /// assumption: candidate has a beta-normal form of type *.
-fn type_check_top(ctx: &mut Context, tenv: &Env, candidate: &G) -> Option<HashMap<usize, Vec<Ty>>> {
+fn type_check_top(
+    ctx: &mut Context,
+    tenv: &Env,
+    candidate: &G,
+) -> Option<HashTrieMap<usize, Stack<Ty>>> {
     use crate::pdr::rtype::TauKind;
     // we assume conjunction normal form and has the form (θ => a₁ a₂ ⋯) ∧ ⋯
     // constraint: Θ
-    // Γ; Θ ⊢ ψ : •
+    // Γ; Θ ⊢ c : t
     // function go constructs possible derivation trees by induction on the structure of c(ψ)
     //
-    fn go(ctx: &mut Context, t: &Ty, tenv: &Env, ienv: &HashSet<Ident>, c: &G) -> PossibleType {
-        // con
+    fn go(
+        ctx: &mut Context,
+        constraint: &Constraint,
+        t: &Ty,
+        tenv: &Env,
+        ienv: &HashSet<Ident>,
+        c: &G,
+    ) -> PossibleType {
         fn go_inner(
             ctx: &mut Context,
             t: &Ty,
@@ -552,61 +562,25 @@ fn type_check_top(ctx: &mut Context, tenv: &Env, candidate: &G) -> Option<HashMa
     // 加えて、変換したときに、reductionのときに作っていたlevelの情報を保存するように変換できるはず
 
     // 1. collects integers of universal quantifiers
-    let (vars, g) = candidate.prenex_normal_form_raw(&mut HashSet::new());
-    // 2. calculates cnf
-    let cnf = g.to_cnf_inner();
+    // prenex normal formだけ考える
+    let (vars, candidate) = candidate.prenex_normal_form_raw(&mut HashSet::new());
+    let ienv = vars
+        .iter()
+        .map(|v| {
+            debug_assert!(v.ty.is_int());
+            v.id
+        })
+        .collect();
 
-    let mut result_map: HashMap<usize, Vec<Ty>> = HashMap::new();
-    for clause in cnf {
-        // 3. formats element of cnf to be (θ => ψ)
-        let (theta, phi) = format_cnf_clause(clause);
-        // 4. pt = go(ψ) for each ψ
-        let pt = go(
-            ctx,
-            &Ty::mk_prop_ty(theta),
-            tenv,
-            &vars
-                .iter()
-                .map(|v| {
-                    debug_assert!(v.ty.is_int());
-                    v.id
-                })
-                .collect(),
-            &phi,
-        );
-        // 5. check if for some tc in pt, tc.t <= *<θ> and tc.constraints hold, and returns the result
-        let mut flag = None;
-        for t in pt.types.iter() {
-            match t.ty.kind() {
-                TauKind::Proposition(c) => {
-                    if solver::smt::default_solver()
-                        .solve_with_universal_quantifiers(&c)
-                        .is_sat()
-                    {
-                        flag = Some(t.derivation.clone());
-                        break;
-                    }
-                }
-                _ => panic!("fatal"),
-            }
-        }
-        let map = flag?;
-        // 6. merge map
-        for (k, ts) in map.into_iter() {
-            match result_map.get_mut(k) {
-                Some(elem) => {
-                    for t in ts {
-                        elem.push(t.clone());
-                    }
-                }
-                None => {
-                    let ts = ts.iter().map(|t| t.clone()).collect();
-                    result_map.insert(*k, ts);
-                }
-            }
-        }
-    }
-    Some(result_map)
+    let pt = go(
+        ctx,
+        &Constraint::mk_true(),
+        &Ty::mk_prop_ty(Constraint::mk_true()),
+        tenv,
+        &ienv,
+        &candidate,
+    );
+    pt.types.pop().map(|t| t.derivation)
 }
 
 pub fn generate_constraint(

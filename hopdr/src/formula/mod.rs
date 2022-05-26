@@ -543,9 +543,8 @@ impl Constraint {
     pub fn mk_quantifier(q: QuantifierKind, v: Variable, c: Constraint) -> Constraint {
         Constraint::new(ConstraintExpr::Quantifier(q, v, c))
     }
-
-    pub fn mk_implies(x: Constraint, y: Constraint) -> Constraint {
-        x.negate().map(|x| Constraint::mk_disj(x, y)).unwrap()
+    fn mk_implies(x: Self, y: Self) -> Self {
+        x.negate().map(|x| Self::mk_disj(x, y)).unwrap()
     }
 
     pub fn mk_pred(k: PredKind, v: Vec<Op>) -> Constraint {
@@ -745,4 +744,19 @@ impl Variable {
 pub enum Fixpoint {
     Greatest,
     Least,
+}
+
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub enum Polarity {
+    Positive,
+    Negative,
+}
+impl Polarity {
+    pub fn rev(self) -> Polarity {
+        if self == Positive {
+            Negative
+        } else {
+            Positive
+        }
+    }
 }

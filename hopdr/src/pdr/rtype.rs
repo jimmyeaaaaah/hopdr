@@ -5,8 +5,8 @@ use std::{
 
 use crate::formula::{fofml, Variable};
 use crate::formula::{
-    Constraint, FirstOrderLogic, Fv, Ident, Negation, Op, Rename, Subst, Top, Type as SType,
-    TypeKind as STypeKind,
+    Constraint, FirstOrderLogic, Fv, Ident, Negation, Op, Polarity, Rename, Subst, Top,
+    Type as SType, TypeKind as STypeKind,
 };
 use crate::{formula::hes::Goal, solver, solver::smt};
 
@@ -34,6 +34,9 @@ pub trait Refinement:
     + From<Goal<Self>>
     + fmt::Display
 {
+    fn mk_implies_opt(x: Self, y: Self) -> Option<Self> {
+        x.negate().map(|x| Self::mk_disj(x, y))
+    }
 }
 impl<T> Refinement for T where
     T: Clone
@@ -178,6 +181,45 @@ impl<C: Refinement> Subst for Tau<C> {
                 Self::mk_arrow(ts, t)
             }
         }
+    }
+}
+
+impl<C: Refinement> Tau<C> {
+    fn rty(&self) -> C {
+        match self.kind() {
+            TauKind::Proposition(c) => c.clone(),
+            TauKind::IArrow(_, t) => t.rty(),
+            TauKind::Arrow(_, t) => t.rty(),
+        }
+    }
+    // coarse the rty(self) to be `constraint`
+    fn add_context(&self, constraint: &C) -> Tau<C> {
+        fn go<C: Refinement>(t: &Tau<C>, constraint: &C, polarity: Polarity) -> Tau<C> {
+            match t.kind() {
+                // *[c] <: *[?] under constraint <=> constraint /\ ? => c. so ? = constraint => c
+                TauKind::Proposition(c) if polarity == Polarity::Positive => {
+                    Tau::mk_prop_ty(C::mk_implies_opt(constraint.clone(), c.clone()).unwrap())
+                }
+                // *[?] <: *[c] under constraint <=> constraint /\ c => ?. so ? = constraint /\ c
+                TauKind::Proposition(c) => {
+                    Tau::mk_prop_ty(C::mk_conj(constraint.clone(), c.clone()))
+                }
+                TauKind::IArrow(x, t) => {
+                    let t = go(t, constraint, polarity);
+                    Tau::mk_iarrow(*x, t)
+                }
+                TauKind::Arrow(ts, t) => {
+                    let t = go(t, constraint, polarity);
+                    let constraint = C::mk_conj(constraint.clone(), t.rty());
+                    let ts = ts
+                        .iter()
+                        .map(|s| go(s, &constraint, polarity.rev()))
+                        .collect();
+                    Tau::mk_arrow(ts, t)
+                }
+            }
+        }
+        go(self, constraint, Polarity::Positive)
     }
 }
 
