@@ -753,10 +753,10 @@ pub enum Polarity {
 }
 impl Polarity {
     pub fn rev(self) -> Polarity {
-        if self == Positive {
-            Negative
+        if self == Polarity::Positive {
+            Polarity::Negative
         } else {
-            Positive
+            Polarity::Positive
         }
     }
 }
