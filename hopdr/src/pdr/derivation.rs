@@ -555,7 +555,6 @@ fn type_check_top(
     // function go constructs possible derivation trees by induction on the structure of c(ψ)
     //
     fn go(
-        ctx: &mut Context,
         constraint: &Constraint,
         t: &Ty,
         tenv: &Env,
@@ -563,7 +562,6 @@ fn type_check_top(
         c: &G,
     ) -> PossibleType {
         fn go_inner(
-            ctx: &mut Context,
             constraint: &Constraint,
             t: &Ty,
             tenv: &Env,
@@ -591,8 +589,8 @@ fn type_check_top(
                     }
                 },
                 formula::hes::GoalKind::Conj(g1, g2) => {
-                    let t1 = go(ctx, constraint, t, tenv, ienv, g1);
-                    let t2 = go(ctx, constraint, t, tenv, ienv, g2);
+                    let t1 = go(constraint, t, tenv, ienv, g1);
+                    let t2 = go(constraint, t, tenv, ienv, g2);
                     PossibleType::disjoin(t1, t2)
                 }
                 formula::hes::GoalKind::Disj(g1, g2) => {
@@ -602,16 +600,9 @@ fn type_check_top(
                         None => (g2.clone().into(), g1, g2),
                     };
                     let c_neg = c.negate().unwrap();
-                    let pt1 = go(
-                        ctx,
-                        &Atom::mk_conj(c_neg, constraint.clone()),
-                        t,
-                        tenv,
-                        ienv,
-                        g,
-                    );
+                    let pt1 = go(&Atom::mk_conj(c_neg, constraint.clone()), t, tenv, ienv, g);
                     // type check of constraints (to track the type derivation, checking g2 is necessary)
-                    let pt2 = go(ctx, constraint, t, tenv, ienv, g_);
+                    let pt2 = go(constraint, t, tenv, ienv, g_);
                     PossibleType::disjoin(pt1, pt2)
                 }
                 formula::hes::GoalKind::Univ(x, g) => {
@@ -619,13 +610,13 @@ fn type_check_top(
                     let id = Ident::fresh();
                     let g = g.rename(&x.id, &id);
                     ienv.insert(id);
-                    let mut pt = go(ctx, constraint, t, tenv, ienv, &g);
+                    let mut pt = go(constraint, t, tenv, ienv, &g);
                     // quantify all the constraint.
                     pt.quantify(&id);
                     pt
                 }
                 formula::hes::GoalKind::App(g1, g2) => {
-                    let pt1 = go(ctx, constraint, t, tenv, ienv, g1);
+                    let pt1 = go(constraint, t, tenv, ienv, g1);
                     match check_int_expr(ienv, g2) {
                         // Case: the type of argument is int
                         Some(op) => {
@@ -646,7 +637,7 @@ fn type_check_top(
                     };
                     // we calculate the argument's type. we have to enumerate all the possible type of pt1.
                     todo!();
-                    let pt2 = go(ctx, constraint, t /* this is wrong */, tenv, ienv, g2);
+                    let pt2 = go(constraint, t /* this is wrong */, tenv, ienv, g2);
                     let mut types = Vec::new();
                     for t1 in pt1.types.iter() {
                         // check if t1 <= t2 -> t' holds
@@ -670,7 +661,7 @@ fn type_check_top(
                 formula::hes::GoalKind::Op(_) => panic!("fatal error"),
             }
         }
-        let mut pt = go_inner(ctx, constraint, t, tenv, ienv, c);
+        let mut pt = go_inner(constraint, t, tenv, ienv, c);
         for level in c.aux.level_arg.iter() {
             for ct in pt.types.iter_mut() {
                 ct.memorize(*level);
@@ -698,7 +689,6 @@ fn type_check_top(
         .collect();
 
     let mut pt = go(
-        ctx,
         &Constraint::mk_true(),
         &Ty::mk_prop_ty(Constraint::mk_true()),
         tenv,
