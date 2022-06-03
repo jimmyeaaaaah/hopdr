@@ -295,12 +295,12 @@ fn reduce_until_normal_form(candidate: &Candidate, problem: &Problem) -> Context
     let (reduction_sequence, normal_form) = generate_reduction_sequence(&goal);
     Context::new(normal_form, track_idents, reduction_sequence)
 }
-
+type Derivation = HashTrieMap<usize, Stack<Ty>>;
 #[derive(Clone, Debug)]
 struct CandidateType {
     ty: Ty,
     // level -> type map appeared in the derivation of ty so far.
-    derivation: HashTrieMap<usize, Stack<Ty>>,
+    derivation: Derivation,
 }
 
 // inner purpose
@@ -319,16 +319,8 @@ impl CandidateType {
         };
         self.derivation = self.derivation.insert(level, st.push(self.ty.clone()))
     }
-    fn merge_inner(&mut self, c: &CandidateType, method: Method) {
-        self.ty = match (self.ty.kind(), c.ty.kind()) {
-            (TauKind::Proposition(c1), TauKind::Proposition(c2)) => match method {
-                Method::Conj => Ty::mk_prop_ty(Atom::mk_conj(c1.clone(), c2.clone())),
-                Method::Disj => Ty::mk_prop_ty(Atom::mk_disj(c1.clone(), c2.clone())),
-            },
-            (_, _) => panic!("fatal"),
-        };
-
-        for (k, vs) in c.derivation.iter() {
+    fn merge_derivation(&mut self, derivation: &Derivation) {
+        for (k, vs) in derivation.iter() {
             let stack = match self.derivation.get(k) {
                 Some(s) => {
                     let mut s = s.clone();
@@ -342,12 +334,26 @@ impl CandidateType {
             self.derivation.insert_mut(*k, stack);
         }
     }
-    // only for bool type
-    fn conjoin(&mut self, c: &CandidateType) {
-        self.merge_inner(c, Method::Conj)
+    fn merge_inner(&mut self, c: &CandidateType, method: Method) {
+        self.ty = match (self.ty.kind(), c.ty.kind()) {
+            (TauKind::Proposition(c1), TauKind::Proposition(c2)) => match method {
+                Method::Conj => Ty::mk_prop_ty(Atom::mk_conj(c1.clone(), c2.clone())),
+                Method::Disj => Ty::mk_prop_ty(Atom::mk_disj(c1.clone(), c2.clone())),
+            },
+            (_, _) => panic!("fatal"),
+        };
+        self.merge_derivation(&c.derivation)
     }
-    fn disjoin(&mut self, c: &CandidateType) {
-        self.merge_inner(c, Method::Disj)
+    // only for bool type
+    fn conjoin(c1: &CandidateType, c2: &CandidateType) -> CandidateType {
+        let mut c1 = c1.clone();
+        c1.merge_inner(c2, Method::Conj);
+        c1
+    }
+    fn disjoin(c1: &CandidateType, c2: &CandidateType) -> CandidateType {
+        let mut c1 = c1.clone();
+        c1.merge_inner(c2, Method::Disj);
+        c1
     }
     fn quantify(&mut self, x: Ident) {
         let t = match self.ty.kind() {
@@ -397,12 +403,15 @@ impl PossibleType {
         PossibleType::new(Vec::new())
     }
 
+    fn push(&mut self, ty: CandidateType) {
+        self.types.push(ty);
+    }
+
     fn conjoin(pt1: PossibleType, pt2: PossibleType) -> PossibleType {
         let mut ts = Vec::new();
         for pt1 in pt1.types.iter() {
             for pt2 in pt2.types.iter() {
-                let mut pt1 = pt1.clone();
-                pt1.conjoin(pt2);
+                let pt1 = CandidateType::conjoin(pt1, pt2);
                 ts.push(pt1);
             }
         }
@@ -412,8 +421,7 @@ impl PossibleType {
         let mut ts = Vec::new();
         for pt1 in pt1.types.iter() {
             for pt2 in pt2.types.iter() {
-                let mut pt1 = pt1.clone();
-                pt1.disjoin(pt2);
+                let pt1 = CandidateType::disjoin(pt1, pt2);
                 ts.push(pt1);
             }
         }
@@ -427,36 +435,10 @@ impl PossibleType {
 
     // check if ts' ⊂ self exists where ts' <: ts holds.
     fn check_subtype(&self, ts: &[Ty], constraint: &Constraint) -> bool {
-        fn go(constraint: Constraint, t: &Ty, s: &Ty) -> Constraint {
-            match (t.kind(), s.kind()) {
-                (TauKind::Proposition(c1), TauKind::Proposition(c2)) => Constraint::mk_implies(
-                    Constraint::mk_conj(constraint.clone(), c2.clone()),
-                    c1.clone(),
-                ),
-                (TauKind::IArrow(x1, t1), TauKind::IArrow(x2, t2)) => {
-                    let t2 = t2.rename(x2, x1);
-                    go(constraint, t1, &t2)
-                }
-                (TauKind::Arrow(ts1, _t1), TauKind::Arrow(ts2, _t2)) => {
-                    let mut result_constraint = Constraint::mk_true();
-                    // ⋀ᵢ tᵢ ≺ ⋀ⱼt'ⱼ ⇔∀ tᵢ. ∃ t'ⱼ. tᵢ ≺ t'ⱼ
-                    for tx in ts1 {
-                        let mut tmpc = Constraint::mk_false();
-                        for ty in ts2 {
-                            let c = Constraint::mk_conj(constraint.clone(), ty.constraint_rty());
-                            tmpc = Constraint::mk_disj(tmpc, go(c, tx, ty));
-                        }
-                        result_constraint = Constraint::mk_conj(result_constraint, tmpc);
-                    }
-                    result_constraint
-                }
-                (_, _) => panic!("fatal"),
-            }
-        }
         // is there possible derivation for each t in ts
         for t in ts {
             for s in self.types.iter() {
-                let c = go(constraint.clone(), &s.ty, t);
+                let c = Ty::check_subtype(constraint, &s.ty, t);
                 // check by smt solver
                 if solver::smt::default_solver()
                     .solve_with_universal_quantifiers(&c)
@@ -546,81 +528,36 @@ fn format_cnf_clause(g: G) -> (Constraint, G) {
 /// assumption: candidate has a beta-normal form of type *.
 fn type_check_top(
     ctx: &mut Context,
-    tenv: &Env,
+    tenv: &mut Env,
     candidate: &G,
 ) -> Option<HashTrieMap<usize, Stack<Ty>>> {
-    // we assume conjunction normal form and has the form (θ => a₁ a₂ ⋯) ∧ ⋯
-    // constraint: Θ
-    // Γ; Θ ⊢ c : t
-    // function go constructs possible derivation trees by induction on the structure of c(ψ)
-    //
-    fn go(
+    // tenv+ienv; constraint |- App(arg, ret): t
+    fn handle_app(
         constraint: &Constraint,
         t: &Ty,
-        tenv: &Env,
+        tenv: &mut Env,
         ienv: &mut HashSet<Ident>,
-        c: &G,
+        app_expr: &G,
     ) -> PossibleType {
-        fn go_inner(
+        fn handle_inner(
             constraint: &Constraint,
             t: &Ty,
-            tenv: &Env,
+            tenv: &mut Env,
             ienv: &mut HashSet<Ident>,
-            c: &G,
+            pred: &G,
         ) -> PossibleType {
-            match c.kind() {
-                formula::hes::GoalKind::Constr(c) => {
-                    if solver::smt::default_solver()
-                        .solve_with_universal_quantifiers(&Atom::mk_implies(
-                            constraint.clone(),
-                            c.clone(),
-                        ))
-                        .is_sat()
-                    {
-                        Ty::mk_prop_ty(c.clone().into()).into()
-                    } else {
-                        PossibleType::empty()
-                    }
-                }
+            match pred.kind() {
                 formula::hes::GoalKind::Var(x) => match tenv.get(x) {
-                    Some(t) => t.iter().map(|t| t.add_context(constraint)).into(),
-                    None => {
-                        panic!("{} is not found in env", x)
-                    }
+                    Some(ts) => ts.iter().map(|t| t.add_context(constraint)).into(),
+                    None => PossibleType::empty(),
                 },
-                formula::hes::GoalKind::Conj(g1, g2) => {
-                    let t1 = go(constraint, t, tenv, ienv, g1);
-                    let t2 = go(constraint, t, tenv, ienv, g2);
-                    PossibleType::disjoin(t1, t2)
-                }
-                formula::hes::GoalKind::Disj(g1, g2) => {
-                    let c1: Option<Atom> = g1.clone().into();
-                    let (c, g, g_) = match c1 {
-                        Some(c) => (c, g2, g1),
-                        None => (g2.clone().into(), g1, g2),
-                    };
-                    let c_neg = c.negate().unwrap();
-                    let pt1 = go(&Atom::mk_conj(c_neg, constraint.clone()), t, tenv, ienv, g);
-                    // type check of constraints (to track the type derivation, checking g2 is necessary)
-                    let pt2 = go(constraint, t, tenv, ienv, g_);
-                    PossibleType::disjoin(pt1, pt2)
-                }
-                formula::hes::GoalKind::Univ(x, g) => {
-                    // to avoid the collision, we rename the variable.
-                    let id = Ident::fresh();
-                    let g = g.rename(&x.id, &id);
-                    ienv.insert(id);
-                    let mut pt = go(constraint, t, tenv, ienv, &g);
-                    // quantify all the constraint.
-                    pt.quantify(&id);
-                    pt
-                }
-                formula::hes::GoalKind::App(g1, g2) => {
-                    let pt1 = go(constraint, t, tenv, ienv, g1);
-                    match check_int_expr(ienv, g2) {
+                formula::hes::GoalKind::App(predg, argg) => {
+                    let pred_pt = handle_inner(constraint, t, tenv, ienv, predg);
+                    // Case: the argument is integer
+                    match check_int_expr(ienv, argg) {
                         // Case: the type of argument is int
                         Some(op) => {
-                            let types = pt1
+                            let types = pred_pt
                                 .types
                                 .into_iter()
                                 .map(|t| match t.ty.kind() {
@@ -630,78 +567,188 @@ fn type_check_top(
                                     _ => panic!("fatal"),
                                 })
                                 .collect();
-                            return PossibleType::new(types);
+                            return PossibleType::new(types); // eary return
                         }
                         // Otherwise, we continue.
                         None => (),
                     };
+
+                    // Case: the argument is not integer
+                    let mut result_cts = Vec::new();
                     // we calculate the argument's type. we have to enumerate all the possible type of pt1.
-                    todo!();
-                    let pt2 = go(constraint, t /* this is wrong */, tenv, ienv, g2);
-                    let mut types = Vec::new();
-                    for t1 in pt1.types.iter() {
-                        // check if t1 <= t2 -> t' holds
-                        let (ts, ret_ty) = match t1.ty.kind() {
-                            TauKind::Arrow(ts, ret_ty) => (ts, ret_ty),
-                            _ => panic!("fatal"),
+                    'pt_iter: for ty in pred_pt.types {
+                        let (arg_t, result_t) = match ty.ty.kind() {
+                            TauKind::Arrow(arg, result) => (arg, result),
+                            TauKind::Proposition(_) | TauKind::IArrow(_, _) => panic!("fatal"),
                         };
-                        // check if there is a possible type derivation; if so, mark ret_ty as PossibleType; otherwise, do nothing.
-                        if pt2.check_subtype(ts, unimplemented!()) {
-                            types.push(CandidateType::new(ret_ty.clone(), t1.derivation.clone()));
+                        let arg_constraint =
+                            Constraint::mk_conj(result_t.constraint_rty(), constraint.clone());
+                        let mut result_ct: CandidateType = result_t.clone().into();
+                        // check if there exists a derivation for all types in the intersection type.
+                        for t in arg_t {
+                            // check if arg_constraint |- argg: arg_t
+                            match go(&arg_constraint, t, tenv, ienv, argg) {
+                                Some(ct) => {
+                                    result_ct.merge_derivation(&ct.derivation);
+                                }
+                                // if there exists a type in the intersection type that cannot be derived,
+                                // we filter out this possible type.
+                                None => continue 'pt_iter,
+                            }
                         }
+                        // Now that all the argument for `pred_pt` can be derived, we have candidatetype `result_t`
+                        // with the derivations of `ct`s
+                        result_cts.push(result_ct);
                     }
-                    PossibleType::new(types)
+                    PossibleType::new(result_cts)
                 }
-                formula::hes::GoalKind::Abs(v, g) => {
-                    // 1. check t and calculate the argument's type.
-                    // 2.
-                    unimplemented!()
-                }
-                // op is always handled by App(x, op)
-                formula::hes::GoalKind::Op(_) => panic!("fatal error"),
+                formula::hes::GoalKind::Constr(_)
+                | formula::hes::GoalKind::Op(_)
+                | formula::hes::GoalKind::Abs(_, _)
+                | formula::hes::GoalKind::Conj(_, _)
+                | formula::hes::GoalKind::Disj(_, _)
+                | formula::hes::GoalKind::Univ(_, _) => panic!("fatal"),
             }
         }
-        let mut pt = go_inner(constraint, t, tenv, ienv, c);
-        for level in c.aux.level_arg.iter() {
+        let mut pt = handle_inner(constraint, t, tenv, ienv, app_expr);
+        for level in app_expr.aux.level_arg.iter() {
             for ct in pt.types.iter_mut() {
                 ct.memorize(*level);
             }
         }
         pt
     }
-    // これが嘘だなあ
-    // prenex normal formすら取れるかわからん
-    // F (λx.∀y.x >= y) ∧ F (∀x.∀y.x <= y)
-    // のような例が普通にあるので
-    // 必要なのは、**各bool型の式について** prenex normal formであり、(Θ => ψ) /\ ...の形の論理式に変換すること
-    // これは既存関数ではできないので、新しくそういう関数を作るべき
-    // 加えて、変換したときに、reductionのときに作っていたlevelの情報を保存するように変換できるはず
-
-    // 1. collects integers of universal quantifiers
-    // prenex normal formだけ考える
-    let (vars, candidate) = candidate.prenex_normal_form_raw(&mut HashSet::new());
-    let mut ienv = vars
-        .iter()
-        .map(|v| {
-            debug_assert!(v.ty.is_int());
-            v.id
+    // we assume conjunction normal form and has the form (θ => a₁ a₂ ⋯) ∧ ⋯
+    // constraint: Θ
+    // Γ; Θ ⊢ c : t
+    // function go constructs possible derivation trees by induction on the structure of c(ψ)
+    //
+    fn go(
+        constraint: &Constraint,
+        t: &Ty,
+        tenv: &mut Env,
+        ienv: &mut HashSet<Ident>,
+        c: &G,
+    ) -> Option<CandidateType> {
+        fn go_inner(
+            constraint: &Constraint,
+            t: &Ty,
+            tenv: &mut Env,
+            ienv: &mut HashSet<Ident>,
+            c: &G,
+        ) -> Option<CandidateType> {
+            match c.kind() {
+                formula::hes::GoalKind::Constr(c) => {
+                    if solver::smt::default_solver()
+                        .solve_with_universal_quantifiers(&Atom::mk_implies(
+                            constraint.clone(),
+                            c.clone(),
+                        ))
+                        .is_sat()
+                    {
+                        Some(Ty::mk_prop_ty(c.clone().into()).into())
+                    } else {
+                        None
+                    }
+                }
+                formula::hes::GoalKind::Var(x) => match tenv.get(x) {
+                    Some(ts) => {
+                        for s in ts {
+                            // check if constraint |- s <: t
+                            let c = Ty::check_subtype(constraint, s, t);
+                            if solver::smt::default_solver()
+                                .solve_with_universal_quantifiers(&c)
+                                .is_sat()
+                            {
+                                return Some(t.clone().into());
+                            }
+                        }
+                        None
+                    }
+                    None => {
+                        panic!("{} is not found in env", x)
+                    }
+                },
+                formula::hes::GoalKind::Conj(g1, g2) => {
+                    let t1 = go(constraint, t, tenv, ienv, g1)?;
+                    let t2 = go(constraint, t, tenv, ienv, g2)?;
+                    Some(CandidateType::conjoin(&t1, &t2))
+                }
+                formula::hes::GoalKind::Disj(g1, g2) => {
+                    let c1: Option<Atom> = g1.clone().into();
+                    let (c, g, g_) = match c1 {
+                        Some(c) => (c, g2, g1),
+                        None => (g2.clone().into(), g1, g2),
+                    };
+                    let c_neg = c.negate().unwrap();
+                    let t1 = go(&Atom::mk_conj(c_neg, constraint.clone()), t, tenv, ienv, g)?;
+                    // type check of constraints (to track the type derivation, checking g2 is necessary)
+                    let t2 = go(constraint, t, tenv, ienv, g_)?;
+                    Some(CandidateType::disjoin(&t1, &t2))
+                }
+                formula::hes::GoalKind::Univ(x, g) => {
+                    // to avoid the collision, we rename the variable.
+                    assert!(!ienv.insert(x.id));
+                    let mut pt = go(constraint, t, tenv, ienv, &g)?;
+                    // quantify all the constraint.
+                    pt.quantify(x.id);
+                    ienv.remove(&x.id);
+                    Some(pt)
+                }
+                formula::hes::GoalKind::App(_, _) => {
+                    handle_app(constraint, t, tenv, ienv, c).types.pop()
+                }
+                formula::hes::GoalKind::Abs(v, g) => {
+                    // 1. check t and calculate the argument's type.
+                    // 2.
+                    match t.kind() {
+                        TauKind::IArrow(id, t) if v.ty.is_int() => {
+                            assert!(!ienv.insert(v.id));
+                            let ct = go(constraint, t, tenv, ienv, g)?;
+                            ienv.remove(&v.id);
+                            let ty = Ty::mk_iarrow(v.id, ct.ty);
+                            Some(CandidateType::new(ty, ct.derivation))
+                        }
+                        TauKind::Arrow(ts, t) if !v.ty.is_int() => {
+                            for t in ts {
+                                tenv.add(v.id, t.clone());
+                            }
+                            let ct = go(constraint, t, tenv, ienv, g)?;
+                            let ret_ty = ct.ty;
+                            let ty = Ty::mk_arrow(ts.clone(), ret_ty);
+                            Some(CandidateType::new(ty, ct.derivation))
+                        }
+                        _ => panic!("fatal"),
+                    }
+                }
+                // op is always handled by App(x, op)
+                formula::hes::GoalKind::Op(_) => panic!("fatal error"),
+            }
+        }
+        go_inner(constraint, t, tenv, ienv, c).map(|mut ct| {
+            // memorize the type assignment to each expr
+            for level in c.aux.level_arg.iter() {
+                ct.memorize(*level);
+            }
+            ct
         })
-        .collect();
+    }
 
-    let mut pt = go(
+    let mut ienv = HashSet::new();
+    go(
         &Constraint::mk_true(),
         &Ty::mk_prop_ty(Constraint::mk_true()),
         tenv,
         &mut ienv,
         &candidate,
-    );
-    pt.types.pop().map(|t| t.derivation)
+    )
+    .map(|t| t.derivation)
 }
 
 pub fn generate_constraint(
     candidate: &Candidate,
     problem: &Problem,
-    tenv: &Env,
+    tenv: &mut Env,
 ) -> Option<TypeEnvironment<Tau<Constraint>>> {
     let mut ctx = reduce_until_normal_form(candidate, problem);
     let candidate = ctx.normal_form.clone();

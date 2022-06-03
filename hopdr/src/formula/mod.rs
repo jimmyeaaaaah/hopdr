@@ -295,6 +295,12 @@ pub trait Logic: Top + Bot + Clone {
 
 pub trait FirstOrderLogic: Logic {
     fn mk_quantifier_int(q: QuantifierKind, v: Ident, c: Self) -> Self;
+    fn mk_exists_int(v: Ident, c: Self) -> Self {
+        Self::mk_quantifier_int(QuantifierKind::Existential, v, c)
+    }
+    fn mk_univ_int(v: Ident, c: Self) -> Self {
+        Self::mk_quantifier_int(QuantifierKind::Universal, v, c)
+    }
 }
 
 pub trait Subst: Sized + Clone {

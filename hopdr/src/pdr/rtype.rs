@@ -188,7 +188,7 @@ impl<C: Refinement> Tau<C> {
     fn rty(&self) -> C {
         match self.kind() {
             TauKind::Proposition(c) => c.clone(),
-            TauKind::IArrow(_, t) => t.rty(),
+            TauKind::IArrow(x, t) => C::mk_exists_int(*x, t.rty()),
             TauKind::Arrow(_, t) => t.rty(),
         }
     }
@@ -220,6 +220,32 @@ impl<C: Refinement> Tau<C> {
             }
         }
         go(self, constraint, Polarity::Positive)
+    }
+    // returns the constraint that is equivalent to hold constraint |- t <= s
+    pub fn check_subtype(constraint: &C, t: &Tau<C>, s: &Tau<C>) -> C {
+        match (t.kind(), s.kind()) {
+            (TauKind::Proposition(c1), TauKind::Proposition(c2)) => {
+                C::mk_implies_opt(C::mk_conj(constraint.clone(), c2.clone()), c1.clone()).unwrap()
+            }
+            (TauKind::IArrow(x1, t1), TauKind::IArrow(x2, t2)) => {
+                let t2 = t2.rename(x2, x1);
+                Tau::check_subtype(constraint, t1, &t2)
+            }
+            (TauKind::Arrow(ts1, t1), TauKind::Arrow(ts2, t2)) => {
+                let mut result_constraint = Tau::check_subtype(constraint, t1, t2);
+                // ⋀ᵢ tᵢ ≺ ⋀ⱼt'ⱼ ⇔∀ tᵢ. ∃ t'ⱼ. tᵢ ≺ t'ⱼ
+                let arg_constraint = C::mk_conj(constraint.clone(), t2.rty());
+                for tx in ts1 {
+                    let mut tmpc = C::mk_false();
+                    for ty in ts2 {
+                        tmpc = C::mk_disj(tmpc, Tau::check_subtype(&arg_constraint, tx, ty));
+                    }
+                    result_constraint = C::mk_conj(result_constraint, tmpc);
+                }
+                result_constraint
+            }
+            (_, _) => panic!("fatal"),
+        }
     }
 }
 
@@ -275,15 +301,7 @@ impl<C> Tau<C> {
 }
 impl Tau<Constraint> {
     pub fn constraint_rty(&self) -> Constraint {
-        match self.kind() {
-            TauKind::Proposition(c) => c.clone(),
-            TauKind::IArrow(x, t) => Constraint::mk_quantifier_int(
-                crate::formula::QuantifierKind::Existential,
-                *x,
-                t.constraint_rty(),
-            ),
-            TauKind::Arrow(_, t) => t.constraint_rty(),
-        }
+        self.rty()
     }
 }
 
@@ -341,6 +359,9 @@ impl<T> TypeEnvironment<T> {
     }
     pub fn add(&mut self, v: Ident, t: T) {
         self.add_(v, t);
+    }
+    pub fn remove(&mut self, key: &Ident) {
+        self.map.remove(&key);
     }
     pub fn exists(&self, v: &Ident) -> bool {
         self.map.get(v).is_some()
