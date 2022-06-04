@@ -1,6 +1,6 @@
 use super::rtype::{Tau, TauKind, TypeEnvironment};
 use crate::formula::hes::{Goal, GoalBase, Problem as ProblemBase};
-use crate::formula::{self, FirstOrderLogic, Fv};
+use crate::formula::{self, FirstOrderLogic};
 use crate::formula::{
     chc, fofml, pcsp, Bot, Constraint, Ident, Logic, Negation, Op, Rename, Subst, Top, Variable,
 };
@@ -243,7 +243,7 @@ impl Context {
     /// infer types by subject expansion along with reduction sequence
     fn infer_type(&mut self, map: Derivation) {
         for reduction in self.reduction_sequence.iter().rev() {
-            let ty = map.get(&reduction.level).unwrap();
+            let _ty = map.get(&reduction.level).unwrap();
         }
         unimplemented!()
     }
@@ -488,7 +488,7 @@ fn format_cnf_clause(g: G) -> (Constraint, G) {
 /// candidate: ψ
 /// ctx.abstraction_types: is used for handling types appeared in derivations
 /// assumption: candidate has a beta-normal form of type *.
-fn type_check_top(ctx: &mut Context, tenv: &mut Env, candidate: &G) -> Option<Derivation> {
+fn type_check_top(_ctx: &mut Context, tenv: &mut Env, candidate: &G) -> Option<Derivation> {
     // tenv+ienv; constraint |- App(arg, ret): t
     fn handle_app(
         constraint: &Constraint,
@@ -661,8 +661,9 @@ fn type_check_top(ctx: &mut Context, tenv: &mut Env, candidate: &G) -> Option<De
                     // 2.
                     match t.kind() {
                         TauKind::IArrow(id, t) if v.ty.is_int() => {
+                            let t = t.rename(id, &v.id);
                             assert!(!ienv.insert(v.id));
-                            let ct = go(constraint, t, tenv, ienv, g)?;
+                            let ct = go(constraint, &t, tenv, ienv, g)?;
                             ienv.remove(&v.id);
                             let ty = Ty::mk_iarrow(v.id, ct.ty);
                             Some(CandidateType::new(ty, ct.derivation))
