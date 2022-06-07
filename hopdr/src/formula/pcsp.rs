@@ -2,8 +2,8 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 use super::{
-    Bot, Constraint, Fv, Ident, Logic, Negation, Op, QuantifierKind, Rename, Subst, Top, Type,
-    Variable,
+    Bot, Constraint, FirstOrderLogic, Fv, Ident, Logic, Negation, Op, QuantifierKind, Rename,
+    Subst, Top, Type, Variable,
 };
 use crate::util::P;
 
@@ -50,6 +50,12 @@ impl fmt::Display for Atom {
     }
 }
 
+impl From<Constraint> for Atom {
+    fn from(c: Constraint) -> Atom {
+        Atom::mk_constraint(c)
+    }
+}
+
 impl Negation for Atom {
     fn negate(&self) -> Option<Self> {
         match self.kind() {
@@ -73,6 +79,11 @@ impl Negation for Atom {
             }
             AtomKind::Predicate(_, _) | AtomKind::Quantifier(_, _, _) => None,
         }
+    }
+}
+impl FirstOrderLogic for Atom {
+    fn mk_quantifier_int(q: QuantifierKind, v: Ident, c: Self) -> Self {
+        Atom::mk_quantifier(q, v, c)
     }
 }
 impl Atom {
@@ -190,12 +201,6 @@ impl Atom {
             }
             AtomKind::Quantifier(_, _, a) => a.collect_predicates(predicates),
         }
-    }
-}
-
-impl From<Constraint> for Atom {
-    fn from(from: Constraint) -> Atom {
-        Atom::mk_constraint(from)
     }
 }
 

@@ -10,12 +10,12 @@ use rpds::{HashTrieMap, Stack};
 
 use std::collections::{HashMap, HashSet};
 
-type Atom = Constraint;
-type Candidate = Goal<Atom>;
+type Atom = pcsp::Atom;
+type Candidate = Goal<Constraint>;
 type Ty = Tau<Atom>;
 type Env = TypeEnvironment<Ty>;
-type Problem = ProblemBase<Atom>;
-type CHC = chc::CHC<chc::Atom, Constraint>;
+type Problem = ProblemBase<Constraint>;
+type CHC = chc::CHC<chc::Atom, Atom>;
 type PCSP = pcsp::PCSP<fofml::Atom>;
 
 /// track_idents maps predicate in Problem to the idents of lambda abstractions used for substitution
@@ -124,7 +124,7 @@ impl Default for TypeMemory {
 ///
 /// Level is used for tracking when this candidate is used
 /// as the argument of beta-reduction.
-type G = GoalBase<Atom, TypeMemory>;
+type G = GoalBase<Constraint, TypeMemory>;
 
 impl From<Candidate> for G {
     fn from(c: Candidate) -> Self {
@@ -254,9 +254,15 @@ fn infer_type(normal_form: G, derivation: Derivation, reduction_sequence: Vec<Re
         // 1. get the corresponding types
         let arg_ty = derivation.get_arg(&level);
         let ret_ty = derivation.get_ret(&level);
-        // 2. generate template type from arg_ty -> ret_ty
+        // 2. generate template type t from arg_ty -> ret_ty
         unimplemented!()
+        // 3. generate constraint from subtyping t <: arg_ty -> ret_ty, and append them to constraints
+
+        // 4. for each `level` in reduction.candidate.aux, we add t to Derivation
     }
+    // 4. solve the constraints by using the interpolation solver
+
+    // 5. from the model,
 }
 
 fn reduce_until_normal_form(candidate: &Candidate, problem: &Problem) -> Context {
