@@ -248,7 +248,13 @@ impl Context {
 
 fn infer_type(normal_form: G, derivation: Derivation, reduction_sequence: Vec<Reduction>) {
     let mut current = normal_form;
+    //let mut constraints = Vec::new();
     for reduction in reduction_sequence.iter().rev() {
+        let level = reduction.level;
+        // 1. get the corresponding types
+        let arg_ty = derivation.get_arg(&level);
+        let ret_ty = derivation.get_ret(&level);
+        // 2. generate template type from arg_ty -> ret_ty
         unimplemented!()
     }
 }
@@ -290,6 +296,9 @@ impl DerivationMap {
         };
         self.0 = self.0.insert(level, st.push(ty.clone()))
     }
+    fn get(&self, level: &usize) -> Stack<Ty> {
+        self.0.get(level).cloned().unwrap_or(Stack::new())
+    }
 }
 #[derive(Clone, Debug)]
 struct Derivation {
@@ -308,6 +317,12 @@ impl Derivation {
     }
     fn insert_ret(&mut self, level: usize, ty: Ty) {
         self.ret.insert(level, ty);
+    }
+    fn get_arg(&self, level: &usize) -> Stack<Ty> {
+        self.arg.get(level)
+    }
+    fn get_ret(&self, level: &usize) -> Stack<Ty> {
+        self.ret.get(level)
     }
     fn merge(&mut self, derivation: &Derivation) {
         self.arg.merge_derivation_map(derivation.arg.clone());
@@ -332,6 +347,9 @@ impl CandidateType {
     }
     fn memorize_arg(&mut self, level: usize) {
         self.derivation.insert_arg(level, self.ty.clone())
+    }
+    fn memorize_ret(&mut self, level: usize) {
+        self.derivation.insert_ret(level, self.ty.clone())
     }
     fn merge_derivation(&mut self, derivation: &Derivation) {
         self.derivation.merge(derivation);
@@ -614,6 +632,11 @@ fn type_check_top(_ctx: &mut Context, tenv: &mut Env, candidate: &G) -> Option<D
                 ct.memorize_arg(*level);
             }
         }
+        for level in app_expr.aux.level_ret.iter() {
+            for ct in pt.types.iter_mut() {
+                ct.memorize_ret(*level);
+            }
+        }
         pt
     }
     // we assume conjunction normal form and has the form (θ => a₁ a₂ ⋯) ∧ ⋯
@@ -728,6 +751,9 @@ fn type_check_top(_ctx: &mut Context, tenv: &mut Env, candidate: &G) -> Option<D
             // memorize the type assignment to each expr
             for level in c.aux.level_arg.iter() {
                 ct.memorize_arg(*level);
+            }
+            for level in c.aux.level_ret.iter() {
+                ct.memorize_ret(*level);
             }
             ct
         })
