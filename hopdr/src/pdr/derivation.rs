@@ -1,4 +1,4 @@
-use super::rtype::{Tau, TauKind, TypeEnvironment};
+use super::rtype::{Refinement, Tau, TauKind, TypeEnvironment};
 use crate::formula::hes::{Goal, GoalBase, Problem as ProblemBase};
 use crate::formula::{self, FirstOrderLogic};
 use crate::formula::{
@@ -10,7 +10,7 @@ use rpds::{HashTrieMap, Stack};
 
 use std::collections::{HashMap, HashSet};
 
-type Atom = pcsp::Atom;
+type Atom = fofml::Atom;
 type Candidate = Goal<Constraint>;
 type Ty = Tau<Atom>;
 type Env = TypeEnvironment<Ty>;
@@ -458,24 +458,6 @@ impl PossibleType {
             pt1.quantify(*x);
         }
     }
-
-    // check if ts' ⊂ self exists where ts' <: ts holds.
-    fn check_subtype(&self, ts: &[Ty], constraint: &Constraint) -> bool {
-        // is there possible derivation for each t in ts
-        for t in ts {
-            for s in self.types.iter() {
-                let c = Ty::check_subtype(constraint, &s.ty, t);
-                // check by smt solver
-                if solver::smt::default_solver()
-                    .solve_with_universal_quantifiers(&c)
-                    .is_sat()
-                {
-                    return true;
-                }
-            }
-        }
-        false
-    }
 }
 
 impl From<Ty> for PossibleType {
@@ -528,11 +510,11 @@ fn format_cnf_clause(g: G) -> (Constraint, G) {
         | formula::hes::GoalKind::Abs(_, _)
         | formula::hes::GoalKind::App(_, _) => (Constraint::mk_true(), g.clone()),
         formula::hes::GoalKind::Disj(g1, g2) => {
-            let c: Option<Atom> = g1.clone().into();
+            let c: Option<Constraint> = g1.clone().into();
             match c {
                 Some(c) => (c.negate().unwrap(), g2.clone()),
                 None => {
-                    let c: Option<Atom> = g2.clone().into();
+                    let c: Option<Constraint> = g2.clone().into();
                     match c {
                         Some(c) => (c.negate().unwrap(), g1.clone()),
                         None => panic!("fatal: candidate is non-linear."),
@@ -555,14 +537,14 @@ fn format_cnf_clause(g: G) -> (Constraint, G) {
 fn type_check_top(_ctx: &mut Context, tenv: &mut Env, candidate: &G) -> Option<Derivation> {
     // tenv+ienv; constraint |- App(arg, ret): t
     fn handle_app(
-        constraint: &Constraint,
+        constraint: &Atom,
         t: &Ty,
         tenv: &mut Env,
         ienv: &mut HashSet<Ident>,
         app_expr: &G,
     ) -> PossibleType {
         fn handle_inner(
-            constraint: &Constraint,
+            constraint: &Atom,
             t: &Ty,
             tenv: &mut Env,
             ienv: &mut HashSet<Ident>,
@@ -603,8 +585,7 @@ fn type_check_top(_ctx: &mut Context, tenv: &mut Env, candidate: &G) -> Option<D
                             TauKind::Arrow(arg, result) => (arg, result),
                             TauKind::Proposition(_) | TauKind::IArrow(_, _) => panic!("fatal"),
                         };
-                        let arg_constraint =
-                            Constraint::mk_conj(result_t.constraint_rty(), constraint.clone());
+                        let arg_constraint = Atom::mk_conj(result_t.rty(), constraint.clone());
                         let mut result_ct: CandidateType = result_t.clone().into();
                         // check if there exists a derivation for all types in the intersection type.
                         for t in arg_t {
@@ -651,14 +632,14 @@ fn type_check_top(_ctx: &mut Context, tenv: &mut Env, candidate: &G) -> Option<D
     // function go constructs possible derivation trees by induction on the structure of c(ψ)
     //
     fn go(
-        constraint: &Constraint,
+        constraint: &Atom,
         t: &Ty,
         tenv: &mut Env,
         ienv: &mut HashSet<Ident>,
         c: &G,
     ) -> Option<CandidateType> {
         fn go_inner(
-            constraint: &Constraint,
+            constraint: &Atom,
             t: &Ty,
             tenv: &mut Env,
             ienv: &mut HashSet<Ident>,
@@ -666,9 +647,10 @@ fn type_check_top(_ctx: &mut Context, tenv: &mut Env, candidate: &G) -> Option<D
         ) -> Option<CandidateType> {
             match c.kind() {
                 formula::hes::GoalKind::Constr(c) => {
+                    let constraint = constraint.clone().into();
                     if solver::smt::default_solver()
-                        .solve_with_universal_quantifiers(&Atom::mk_implies(
-                            constraint.clone(),
+                        .solve_with_universal_quantifiers(&Constraint::mk_implies(
+                            constraint,
                             c.clone(),
                         ))
                         .is_sat()
@@ -683,6 +665,7 @@ fn type_check_top(_ctx: &mut Context, tenv: &mut Env, candidate: &G) -> Option<D
                         for s in ts {
                             // check if constraint |- s <: t
                             let c = Ty::check_subtype(constraint, s, t);
+                            let c = c.into();
                             if solver::smt::default_solver()
                                 .solve_with_universal_quantifiers(&c)
                                 .is_sat()
@@ -702,13 +685,19 @@ fn type_check_top(_ctx: &mut Context, tenv: &mut Env, candidate: &G) -> Option<D
                     Some(CandidateType::conjoin(&t1, &t2))
                 }
                 formula::hes::GoalKind::Disj(g1, g2) => {
-                    let c1: Option<Atom> = g1.clone().into();
+                    let c1: Option<Constraint> = g1.clone().into();
                     let (c, g, g_) = match c1 {
                         Some(c) => (c, g2, g1),
                         None => (g2.clone().into(), g1, g2),
                     };
                     let c_neg = c.negate().unwrap();
-                    let t1 = go(&Atom::mk_conj(c_neg, constraint.clone()), t, tenv, ienv, g)?;
+                    let t1 = go(
+                        &Atom::mk_conj(c_neg.into(), constraint.clone()),
+                        t,
+                        tenv,
+                        ienv,
+                        g,
+                    )?;
                     // type check of constraints (to track the type derivation, checking g2 is necessary)
                     let t2 = go(constraint, t, tenv, ienv, g_)?;
                     Some(CandidateType::disjoin(&t1, &t2))
@@ -767,8 +756,8 @@ fn type_check_top(_ctx: &mut Context, tenv: &mut Env, candidate: &G) -> Option<D
 
     let mut ienv = HashSet::new();
     go(
-        &Constraint::mk_true(),
-        &Ty::mk_prop_ty(Constraint::mk_true()),
+        &Atom::mk_true(),
+        &Ty::mk_prop_ty(Atom::mk_true()),
         tenv,
         &mut ienv,
         &candidate,

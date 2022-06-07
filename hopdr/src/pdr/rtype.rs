@@ -185,7 +185,7 @@ impl<C: Refinement> Subst for Tau<C> {
 }
 
 impl<C: Refinement> Tau<C> {
-    fn rty(&self) -> C {
+    pub fn rty(&self) -> C {
         match self.kind() {
             TauKind::Proposition(c) => c.clone(),
             TauKind::IArrow(x, t) => C::mk_exists_int(*x, t.rty()),
