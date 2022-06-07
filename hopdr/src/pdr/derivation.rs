@@ -242,9 +242,13 @@ impl Context {
     }
     /// infer types by subject expansion along with reduction sequence
     fn infer_type(&mut self, map: Derivation) {
-        for reduction in self.reduction_sequence.iter().rev() {
-            let _ty = map.get(&reduction.level).unwrap();
-        }
+        unimplemented!()
+    }
+}
+
+fn infer_type(normal_form: G, derivation: Derivation, reduction_sequence: Vec<Reduction>) {
+    let mut current = normal_form;
+    for reduction in reduction_sequence.iter().rev() {
         unimplemented!()
     }
 }
@@ -257,7 +261,59 @@ fn reduce_until_normal_form(candidate: &Candidate, problem: &Problem) -> Context
     let (reduction_sequence, normal_form) = generate_reduction_sequence(&goal);
     Context::new(normal_form, track_idents, reduction_sequence)
 }
-type Derivation = HashTrieMap<usize, Stack<Ty>>;
+
+#[derive(Clone, Debug)]
+struct DerivationMap(HashTrieMap<usize, Stack<Ty>>);
+impl DerivationMap {
+    fn new() -> DerivationMap {
+        DerivationMap(HashTrieMap::new())
+    }
+    fn merge_derivation_map(&mut self, mut y: DerivationMap) {
+        for (k, vs) in y.0.iter() {
+            let stack = match self.0.get(k) {
+                Some(s) => {
+                    let mut s = s.clone();
+                    for v in vs {
+                        s.push_mut(v.clone())
+                    }
+                    s
+                }
+                None => vs.clone(),
+            };
+            self.0.insert_mut(*k, stack);
+        }
+    }
+    fn insert(&mut self, level: usize, ty: Ty) {
+        let st = match self.0.get(&level) {
+            Some(st) => st.clone(),
+            None => Stack::new(),
+        };
+        self.0 = self.0.insert(level, st.push(ty.clone()))
+    }
+}
+#[derive(Clone, Debug)]
+struct Derivation {
+    arg: DerivationMap,
+    ret: DerivationMap,
+}
+
+impl Derivation {
+    fn new() -> Derivation {
+        let arg = DerivationMap::new();
+        let ret = DerivationMap::new();
+        Derivation { arg, ret }
+    }
+    fn insert_arg(&mut self, level: usize, ty: Ty) {
+        self.arg.insert(level, ty);
+    }
+    fn insert_ret(&mut self, level: usize, ty: Ty) {
+        self.ret.insert(level, ty);
+    }
+    fn merge(&mut self, derivation: &Derivation) {
+        self.arg.merge_derivation_map(derivation.arg.clone());
+        self.ret.merge_derivation_map(derivation.ret.clone());
+    }
+}
 #[derive(Clone, Debug)]
 struct CandidateType {
     ty: Ty,
@@ -275,26 +331,10 @@ impl CandidateType {
         CandidateType { ty, derivation }
     }
     fn memorize_arg(&mut self, level: usize) {
-        let st = match self.derivation.get(&level) {
-            Some(st) => st.clone(),
-            None => Stack::new(),
-        };
-        self.derivation = self.derivation.insert(level, st.push(self.ty.clone()))
+        self.derivation.insert_arg(level, self.ty.clone())
     }
     fn merge_derivation(&mut self, derivation: &Derivation) {
-        for (k, vs) in derivation.iter() {
-            let stack = match self.derivation.get(k) {
-                Some(s) => {
-                    let mut s = s.clone();
-                    for v in vs {
-                        s.push_mut(v.clone())
-                    }
-                    s
-                }
-                None => vs.clone(),
-            };
-            self.derivation.insert_mut(*k, stack);
-        }
+        self.derivation.merge(derivation);
     }
     fn merge_inner(&mut self, c: &CandidateType, method: Method) {
         self.ty = match (self.ty.kind(), c.ty.kind()) {
