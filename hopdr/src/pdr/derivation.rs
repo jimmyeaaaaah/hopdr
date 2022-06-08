@@ -86,31 +86,40 @@ struct Reduction {
     // this is `expr1` in the above example.
     // at the inference phase, we utilize G's memory to assign the inferred types to G.
     predicate: G,
+    // the result of beta reduction; predicate expr -> result
+    result: G,
+    // predicate's free variables of type int
+    fvints: HashSet<Ident>,
+    // constraint of the redux where this reduction happens
+    constraint: Constraint,
 }
 
 impl Reduction {
-    fn new(predicate: G, level: usize) -> Reduction {
-        Reduction { predicate, level }
+    fn new(predicate: G, result: G, level: usize, fvints: HashSet<Ident>, constraint: Constraint) -> Reduction {
+        Reduction {
+            predicate,
+            result,
+            level,
+            fvints,
+            constraint
+        }
     }
 }
 
 #[derive(Clone)]
 struct TypeMemory {
     level_arg: Stack<usize>,
-    level_ret: Stack<usize>,
+    id: Ident,
 }
 impl TypeMemory {
     fn new() -> TypeMemory {
         TypeMemory {
             level_arg: Stack::new(),
-            level_ret: Stack::new(),
+            id: Ident::fresh(),
         }
     }
     fn add_arg_level(&mut self, level: usize) {
         self.level_arg = self.level_arg.push(level)
-    }
-    fn add_ret_level(&mut self, level: usize) {
-        self.level_ret = self.level_ret.push(level)
     }
 }
 
@@ -151,17 +160,21 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
     // None: not yet
     use formula::hes::GoalKind;
 
-    fn go(goal: &G, level: &mut usize) -> Option<(G, G)> {
+    fn go(goal: &G, level: &mut usize) -> Option<(G, (G, HashSet<Ident>))> {
         // left of the return value: the reduced term
         // right of the return value: the abstraction in the redux.
-        fn go_(goal: &G, level: usize) -> Option<(G, G)> {
+        fn go_(
+            goal: &G,
+            level: usize,
+            fvints: &mut HashSet<Ident>,
+        ) -> Option<(G, (G, HashSet<Ident>))> {
             match goal.kind() {
                 GoalKind::App(predicate, arg) => {
                     // g must be have form \x. phi
-                    go_(predicate, level)
+                    go_(predicate, level, fvints)
                         .map(|(g, pred)| (G::mk_app_t(g, arg.clone(), goal.aux.clone()), pred))
                         .or_else(|| {
-                            go_(arg, level)
+                            go_(arg, level, fvints)
                                 .map(|(arg, pred)| {
                                     (G::mk_app_t(predicate.clone(), arg, goal.aux.clone()), pred)
                                 })
@@ -172,48 +185,76 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
                                     match predicate.kind() {
                                         GoalKind::Abs(x, g) => {
                                             let mut ret = g.subst(x, &arg);
+                                            // introduce a new fresh variable to identify this expr
+                                            ret.aux.id = Ident::fresh();
                                             // track the result type
-                                            ret.aux.add_ret_level(level);
-                                            Some((ret, predicate.clone()))
+                                            if x.ty.is_int() {
+                                                fvints.insert(x.id);
+                                            }
+                                            Some((
+                                                ret.clone(),
+                                                (predicate.clone(), ret.clone(), fvints.clone()),
+                                            ))
                                         }
                                         _ => None,
                                     }
                                 })
                         })
                 }
-                GoalKind::Conj(g1, g2) => go_(g1, level)
+                GoalKind::Conj(g1, g2) => go_(g1, level, fvints)
                     .map(|(g1, p)| (G::mk_conj_t(g1, g2.clone(), goal.aux.clone()), p))
                     .or_else(|| {
-                        go_(g2, level)
+                        go_(g2, level, fvints)
                             .map(|(g2, p)| (G::mk_conj_t(g1.clone(), g2, goal.aux.clone()), p))
                     }),
-                GoalKind::Disj(g1, g2) => go_(g1, level)
+                GoalKind::Disj(g1, g2) => go_(g1, level, fvints)
                     .map(|(g1, p)| (G::mk_disj_t(g1, g2.clone(), goal.aux.clone()), p))
                     .or_else(|| {
-                        go_(g2, level)
+                        go_(g2, level, fvints)
                             .map(|(g2, p)| (G::mk_disj_t(g1.clone(), g2, goal.aux.clone()), p))
                     }),
                 GoalKind::Univ(x, g) => {
-                    go_(g, level).map(|(g, p)| (G::mk_univ_t(x.clone(), g, goal.aux.clone()), p))
+                    let mut saved = false;
+                    if x.ty.is_int() && fvints.insert(x.id) {
+                        // x is type int and fvints already has x.id
+                        saved = true;
+                    }
+                    let r = go_(g, level, fvints)
+                        .map(|(g, p)| (G::mk_univ_t(x.clone(), g, goal.aux.clone()), p));
+                    if x.ty.is_int() && !saved {
+                        fvints.remove(&x.id);
+                    }
+                    r
                 }
                 GoalKind::Abs(x, g) => {
-                    go_(g, level).map(|(g, p)| (G::mk_abs_t(x.clone(), g, goal.aux.clone()), p))
+                    let mut saved = false;
+                    if x.ty.is_int() && fvints.insert(x.id) {
+                        // x is type int and fvints already has x.id
+                        saved = true;
+                    }
+
+                    let r = go_(g, level, fvints)
+                        .map(|(g, p)| (G::mk_abs_t(x.clone(), g, goal.aux.clone()), p));
+                    if x.ty.is_int() && !saved {
+                        fvints.remove(&x.id);
+                    }
+                    r
                 }
                 GoalKind::Constr(_) | GoalKind::Var(_) | GoalKind::Op(_) => None,
             }
         }
         *level += 1;
-        go_(goal, *level)
+        go_(goal, *level, &mut HashSet::new())
     }
     let mut level = 0usize;
     let mut seq = Vec::new();
     let mut reduced = goal.clone();
 
     debug!("{}", reduced);
-    while let Some((g, p)) = go(&reduced, &mut level) {
+    while let Some((g, (p, result, fvints))) = go(&reduced, &mut level) {
         reduced = g.clone();
         debug!("-> {}", reduced);
-        seq.push(Reduction::new(p, level));
+        seq.push(Reduction::new(p, result, level, fvints));
     }
     (seq, reduced)
 }
@@ -240,25 +281,29 @@ impl Context {
             clauses: Vec::new(),
         }
     }
-    /// infer types by subject expansion along with reduction sequence
-    fn infer_type(&mut self, map: Derivation) {
-        unimplemented!()
-    }
 }
 
-fn infer_type(normal_form: G, derivation: Derivation, reduction_sequence: Vec<Reduction>) {
+fn infer_type(normal_form: G, mut derivation: Derivation, reduction_sequence: Vec<Reduction>) {
     let mut current = normal_form;
     //let mut constraints = Vec::new();
     for reduction in reduction_sequence.iter().rev() {
         let level = reduction.level;
         // 1. get the corresponding types
-        let arg_ty = derivation.get_arg(&level);
-        let ret_ty = derivation.get_ret(&level);
-        // 2. generate template type t from arg_ty -> ret_ty
-        unimplemented!()
-        // 3. generate constraint from subtyping t <: arg_ty -> ret_ty, and append them to constraints
-
-        // 4. for each `level` in reduction.candidate.aux, we add t to Derivation
+        let arg_ty: Vec<Ty> = derivation.get_arg(&level).iter().cloned().collect();
+        let ret_tys = derivation.get_expr_ty(&reduction.result.aux.id);
+        for ret_ty in ret_tys.iter() {
+            let ty = Ty::mk_arrow(arg_ty, ret_ty.clone());
+            // 2. create a template type from `ty` and free variables `fvints`
+            let tmp_ty = ty.clone_with_template(&mut reduction.fvints);
+            // 3. generate constraint from subtyping t <: arg_ty -> ret_ty, and append them to constraints
+            let constraint = Ty::check_subtype(, tmp_ty, ty);
+            // 4. for each `level` in reduction.candidate.aux, we add t to Derivation
+            for level in reduction.predicate.aux.level_arg.iter() {
+                derivation.arg.insert(*level, tmp_ty);
+            }
+            derivation.expr.set(reduction.predicate.aux.id, tmp_ty);
+            unimplemented!()
+        }
     }
     // 4. solve the constraints by using the interpolation solver
 
@@ -275,12 +320,12 @@ fn reduce_until_normal_form(candidate: &Candidate, problem: &Problem) -> Context
 }
 
 #[derive(Clone, Debug)]
-struct DerivationMap(HashTrieMap<usize, Stack<Ty>>);
-impl DerivationMap {
-    fn new() -> DerivationMap {
+struct DerivationMap<ID: Eq + std::hash::Hash + Copy>(HashTrieMap<ID, Stack<Ty>>);
+impl<ID: Eq + std::hash::Hash + Copy> DerivationMap<ID> {
+    fn new() -> DerivationMap<ID> {
         DerivationMap(HashTrieMap::new())
     }
-    fn merge_derivation_map(&mut self, mut y: DerivationMap) {
+    fn merge_derivation_map(&mut self, mut y: DerivationMap<ID>) {
         for (k, vs) in y.0.iter() {
             let stack = match self.0.get(k) {
                 Some(s) => {
@@ -295,44 +340,56 @@ impl DerivationMap {
             self.0.insert_mut(*k, stack);
         }
     }
-    fn insert(&mut self, level: usize, ty: Ty) {
+    fn insert(&mut self, level: ID, ty: Ty) {
         let st = match self.0.get(&level) {
             Some(st) => st.clone(),
             None => Stack::new(),
         };
         self.0 = self.0.insert(level, st.push(ty.clone()))
     }
-    fn get(&self, level: &usize) -> Stack<Ty> {
+    fn set(&mut self, ident: ID, ty: Ty) {
+        // overwrite the current assignment
+        // the expr with `level` id can be copied.
+        // however, for the purpose of tracking the type of the result expr
+        // of beta-reduction, what we want to know is the latest type assignment.
+        // By going back along with the reduction sequence, this can be achieved.
+        self.0 = self.0.insert(ident, Stack::new().push(ty))
+    }
+    fn get(&self, level: &ID) -> Stack<Ty> {
         self.0.get(level).cloned().unwrap_or(Stack::new())
     }
 }
 #[derive(Clone, Debug)]
 struct Derivation {
-    arg: DerivationMap,
-    ret: DerivationMap,
+    arg: DerivationMap<usize>,
+    expr: DerivationMap<Ident>,
 }
 
 impl Derivation {
     fn new() -> Derivation {
         let arg = DerivationMap::new();
-        let ret = DerivationMap::new();
-        Derivation { arg, ret }
+        let expr = DerivationMap::new();
+        Derivation { arg, expr }
     }
-    fn insert_arg(&mut self, level: usize, ty: Ty) {
+    fn memorize(&mut self, level: usize, ty: Ty) {
         self.arg.insert(level, ty);
     }
-    fn insert_ret(&mut self, level: usize, ty: Ty) {
-        self.ret.insert(level, ty);
+    // memorize expr : ty in a derivation
+    fn memorize_type_judgement(&mut self, expr: &G, ty: Ty) {
+        self.expr.set(expr.aux.id, ty);
+    }
+    fn insert_expr(&mut self, level: Ident, ty: Ty) {
+        self.expr.insert(level, ty);
     }
     fn get_arg(&self, level: &usize) -> Stack<Ty> {
         self.arg.get(level)
     }
-    fn get_ret(&self, level: &usize) -> Stack<Ty> {
-        self.ret.get(level)
+    fn get_expr_ty(&self, level: &Ident) -> Stack<Ty> {
+        self.expr.get(level)
     }
     fn merge(&mut self, derivation: &Derivation) {
         self.arg.merge_derivation_map(derivation.arg.clone());
-        self.ret.merge_derivation_map(derivation.ret.clone());
+        self.expr.merge_derivation_map(derivation.expr.clone());
     }
 }
 #[derive(Clone, Debug)]
@@ -351,11 +408,12 @@ impl CandidateType {
     fn new(ty: Ty, derivation: Derivation) -> CandidateType {
         CandidateType { ty, derivation }
     }
-    fn memorize_arg(&mut self, level: usize) {
-        self.derivation.insert_arg(level, self.ty.clone())
+    fn memorize(&mut self, level: usize) {
+        self.derivation.memorize(level, self.ty.clone())
     }
-    fn memorize_ret(&mut self, level: usize) {
-        self.derivation.insert_ret(level, self.ty.clone())
+    fn set_types(&mut self, expr: &G) {
+        self.derivation
+            .memorize_type_judgement(expr, self.ty.clone())
     }
     fn merge_derivation(&mut self, derivation: &Derivation) {
         self.derivation.merge(derivation);
@@ -616,13 +674,11 @@ fn type_check_top(_ctx: &mut Context, tenv: &mut Env, candidate: &G) -> Option<D
         let mut pt = handle_inner(constraint, t, tenv, ienv, app_expr);
         for level in app_expr.aux.level_arg.iter() {
             for ct in pt.types.iter_mut() {
-                ct.memorize_arg(*level);
+                ct.memorize(*level);
             }
         }
-        for level in app_expr.aux.level_ret.iter() {
-            for ct in pt.types.iter_mut() {
-                ct.memorize_ret(*level);
-            }
+        for ct in pt.types.iter_mut() {
+            ct.set_types(app_expr);
         }
         pt
     }
@@ -745,11 +801,9 @@ fn type_check_top(_ctx: &mut Context, tenv: &mut Env, candidate: &G) -> Option<D
         go_inner(constraint, t, tenv, ienv, c).map(|mut ct| {
             // memorize the type assignment to each expr
             for level in c.aux.level_arg.iter() {
-                ct.memorize_arg(*level);
+                ct.memorize(*level);
             }
-            for level in c.aux.level_ret.iter() {
-                ct.memorize_ret(*level);
-            }
+            ct.set_types(c);
             ct
         })
     }
@@ -772,8 +826,8 @@ pub fn generate_constraint(
 ) -> Option<TypeEnvironment<Tau<Constraint>>> {
     let mut ctx = reduce_until_normal_form(candidate, problem);
     let candidate = ctx.normal_form.clone();
-    let map = type_check_top(&mut ctx, tenv, &candidate)?;
-    ctx.infer_type(map);
+    let derivation = type_check_top(&mut ctx, tenv, &candidate)?;
+    let m = infer_type(candidate, derivation, ctx.reduction_sequence);
 
     // TODO: cnf/dnf
     // solve constraints

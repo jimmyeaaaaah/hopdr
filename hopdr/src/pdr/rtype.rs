@@ -247,8 +247,33 @@ impl<C: Refinement> Tau<C> {
             (_, _) => panic!("fatal"),
         }
     }
+    pub fn clone_with_template(&self, fvs: &mut HashSet<Ident>) -> Tau<fofml::Atom> {
+        match self.kind() {
+            TauKind::Proposition(_) => {
+                let args = fvs.iter().map(|x| Op::mk_var(*x)).collect();
+                let pred = fofml::Atom::mk_fresh_pred(args);
+                Tau::mk_prop_ty(pred)
+            }
+            TauKind::IArrow(x, t) => {
+                let (x, t) = if fvs.contains(x) {
+                    let y = Ident::fresh();
+                    (y, t.rename(x, &y))
+                } else {
+                    (*x, t.clone())
+                };
+                fvs.insert(x);
+                let t_temp = t.clone_with_template(fvs);
+                fvs.remove(&x);
+                Tau::mk_iarrow(x, t_temp)
+            }
+            TauKind::Arrow(ts, t) => {
+                let ts = ts.iter().map(|s| s.clone_with_template(fvs)).collect();
+                let t = t.clone_with_template(fvs);
+                Tau::mk_arrow(ts, t)
+            }
+        }
+    }
 }
-
 impl From<Tau<Constraint>> for Tau<fofml::Atom> {
     fn from(t: Tau<Constraint>) -> Self {
         match t.kind() {
