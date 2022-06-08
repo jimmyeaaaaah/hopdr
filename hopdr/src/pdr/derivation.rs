@@ -441,9 +441,6 @@ impl Derivation {
     fn memorize_type_judgement(&mut self, expr: &G, ty: Ty) {
         self.expr.set(expr.aux.id, ty);
     }
-    fn insert_expr(&mut self, level: Ident, ty: Ty) {
-        self.expr.insert(level, ty);
-    }
     fn get_arg(&self, level: &usize) -> Stack<Ty> {
         self.arg.get(level)
     }
@@ -882,7 +879,7 @@ fn type_check_top(_ctx: &mut Context, tenv: &mut Env, candidate: &G) -> Option<D
     .map(|t| t.derivation)
 }
 
-pub fn generate_constraint(
+pub fn search_for_type(
     candidate: &Candidate,
     problem: &Problem,
     tenv: &mut Env,
@@ -890,52 +887,5 @@ pub fn generate_constraint(
     let mut ctx = reduce_until_normal_form(candidate, problem);
     let candidate = ctx.normal_form.clone();
     let derivation = type_check_top(&mut ctx, tenv, &candidate)?;
-    let m = infer_type(candidate, derivation, ctx.reduction_sequence);
-
-    // TODO: cnf/dnf
-    // solve constraints
-    let clauses = ctx.clauses.into_iter().map(|c| {
-        let head = match c.head.kind() {
-            fofml::AtomKind::Predicate(p, l) => {
-                chc::CHCHead::Predicate(chc::Atom::new(*p, l.clone()))
-            }
-            _ if c.head.is_false() => chc::CHCHead::Constraint(Constraint::mk_false()),
-            _ => panic!("program error"),
-        };
-        (c.body.into(), head)
-    });
-    let clauses = chc::generate_chcs(clauses);
-    crate::title!("generated CHC");
-    for c in clauses.iter() {
-        debug!("{}", c);
-    }
-
-    let m = match solver::chc::default_solver().solve(&clauses) {
-        solver::chc::CHCResult::Sat(m) => m,
-        solver::chc::CHCResult::Unsat => panic!("PDR fails to solve the given constraint"),
-        solver::chc::CHCResult::Unknown => {
-            panic!("PDR fails to infer a refinement type due to the background CHC solver's error")
-        }
-
-        solver::chc::CHCResult::Timeout => panic!(
-            "PDR fails to infer a refinement type due to timeout of the background CHC solver"
-        ),
-    };
-
-    crate::title!("model from CHC solver");
-    // TODO: Display model
-    debug!("{}", m);
-    let _model = solver::interpolation::solve(&clauses);
-    debug!("interpolated:");
-    debug!("{}", m);
-
-    //let model = model.model;
-    //let mut result_env = TypeEnvironment::new();
-    //for (k, ts) in tenv.map.iter() {
-    //    for t in ts {
-    //        result_env.add(*k, t.assign(&model));
-    //    }
-    //}
-    //Some(result_env)
-    unimplemented!()
+    infer_type(candidate, derivation, ctx.reduction_sequence)
 }

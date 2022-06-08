@@ -331,6 +331,7 @@ impl Tau<Constraint> {
 }
 
 // Type environment
+#[derive(Clone, Debug)]
 pub struct TypeEnvironment<Type> {
     pub map: HashMap<Ident, Vec<Type>>,
 }

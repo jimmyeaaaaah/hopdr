@@ -3,6 +3,7 @@ use super::rtype::{Refinement, Tau, TyEnv, TypeEnvironment};
 use super::VerificationResult;
 use crate::formula::hes::Problem;
 use crate::formula::{fofml, hes, Constraint};
+use crate::pdr::derivation;
 use crate::pdr::infer;
 
 use colored::Colorize;
@@ -156,15 +157,15 @@ impl HoPDR {
                     return Ok(false);
                 }
             };
-            let env_i_ty = self.get_current_target_approx();
-            // ⌊Γ⌋
-            let env_i = fml::Env::from_type_environment(env_i_ty);
-            // ℱ(⌊Γ⌋)
-            let f_env_i = self.problem.transform(&env_i);
-            if fml::env_models(&f_env_i, &cand) {
-                self.conflict()?;
-            } else {
-                self.decide();
+            let mut tyenv_i = self.get_current_target_approx().into();
+            match derivation::search_for_type(&cand, &self.problem, &mut tyenv_i) {
+                Some(tyenv) => {
+                    todo!("conflict by tyenv");
+                    self.conflict()?
+                }
+                None => {
+                    self.decide();
+                }
             }
         }
     }
