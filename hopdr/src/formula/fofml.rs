@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
+use super::chc;
 use super::pcsp;
 use super::{
     hes, Bot, Constraint, FirstOrderLogic, Fv, Ident, Logic, Negation, Op, OpKind, PredKind,
@@ -576,6 +577,83 @@ impl Atom {
             a = Atom::mk_quantifier(q, x, a);
         }
         a
+    }
+
+    pub fn to_chcs_or_pcsps(
+        &self,
+    ) -> either::Either<Vec<chc::CHC<chc::Atom, Constraint>>, Vec<pcsp::PCSP<pcsp::Atom>>> {
+        let constraint = self.reduce_not();
+        let (quantifiers, pnf) = constraint.prenex_normal_form_raw(&mut HashSet::new());
+        let mut ienv = HashSet::new();
+        for (q, x) in quantifiers {
+            match q {
+                QuantifierKind::Universal => {
+                    ienv.insert(x);
+                }
+                QuantifierKind::Existential => panic!("program error"),
+            }
+        }
+        let cnf = pnf.to_cnf();
+        let mut is_chc = true;
+        let mut clauses = Vec::new();
+        crate::title!("PNF");
+        debug!("{}", pnf);
+        crate::title!("CNF");
+        for c in cnf.iter() {
+            debug!("{}", c);
+        }
+
+        for c in cnf {
+            let dnf = c.to_dnf();
+            let mut body = pcsp::Atom::mk_true();
+            let mut head = pcsp::Atom::mk_false();
+            for atom in dnf {
+                match atom.kind() {
+                    AtomKind::True | AtomKind::Constraint(_) => {
+                        body = pcsp::Atom::mk_conj(atom.negate().into(), body);
+                    }
+                    AtomKind::Predicate(_, _) => {
+                        if !head.is_false() {
+                            is_chc = false;
+                        }
+                        head = pcsp::Atom::mk_disj(atom.clone().into(), head);
+                    }
+                    AtomKind::Not(a) => {
+                        match a.kind() {
+                            AtomKind::Predicate(_, _) => {
+                                body = pcsp::Atom::mk_conj(a.clone().into(), body)
+                            }
+                            _ => debug_assert!(false),
+                        };
+                    }
+                    AtomKind::Quantifier(_, _, _) | AtomKind::Conj(_, _) | AtomKind::Disj(_, _) => {
+                        panic!("program error")
+                    }
+                }
+            }
+            clauses.push(pcsp::PCSP::new(body, head));
+        }
+        if is_chc {
+            let clauses = clauses.into_iter().map(|c| {
+                let head = match c.head.kind() {
+                    pcsp::AtomKind::Predicate(p, l) => {
+                        chc::CHCHead::Predicate(chc::Atom::new(*p, l.clone()))
+                    }
+                    _ if c.head.is_false() => chc::CHCHead::Constraint(Constraint::mk_false()),
+                    _ => panic!("program error"),
+                };
+                (c.body, head)
+            });
+            let clauses = chc::generate_chcs(clauses);
+            //debug!("{}", "[generated CHC]".bold());
+            crate::title!("generated CHC");
+            for c in clauses.iter() {
+                debug!("{}", c);
+            }
+            either::Left(clauses)
+        } else {
+            either::Right(clauses)
+        }
     }
 }
 

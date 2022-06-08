@@ -190,129 +190,64 @@ pub(super) fn infer(
 
     // 4. solve constraints by CHC (or a template-based method)
     // 4.1 translate constraint to CHC or extended chc
-    let constraint = constraint.reduce_not();
-    let (quantifiers, pnf) = constraint.prenex_normal_form_raw(&mut HashSet::new());
-    let mut ienv = HashSet::new();
-    for (q, x) in quantifiers {
-        match q {
-            formula::QuantifierKind::Universal => {
-                ienv.insert(x);
-            }
-            formula::QuantifierKind::Existential => panic!("program error"),
-        }
-    }
-    let cnf = pnf.to_cnf();
-    let mut is_chc = true;
-    let mut clauses = Vec::new();
-    title!("PNF");
-    debug!("{}", pnf);
-    title!("CNF");
-    for c in cnf.iter() {
-        debug!("{}", c);
-    }
+    let model = match constraint.to_chcs_or_pcsps() {
+        either::Left(clauses) => {
+            //let clauses: Vec<chc::CHC<pcsp::Atom>> =
+            //    clauses.iter().map(|x| x.to_trivial_recursive()).collect();
+            //for c in clauses.iter() {
+            //    debug!("{}", c);
+            //}
 
-    for c in cnf {
-        let dnf = c.to_dnf();
-        let mut body = pcsp::Atom::mk_true();
-        let mut head = pcsp::Atom::mk_false();
-        for atom in dnf {
-            match atom.kind() {
-                fofml::AtomKind::True | fofml::AtomKind::Constraint(_) => {
-                    body = pcsp::Atom::mk_conj(atom.negate().into(), body);
-                }
-                fofml::AtomKind::Predicate(_, _) => {
-                    if !head.is_false() {
-                        is_chc = false;
-                    }
-                    head = pcsp::Atom::mk_disj(atom.clone().into(), head);
-                }
-                fofml::AtomKind::Not(a) => {
-                    match a.kind() {
-                        fofml::AtomKind::Predicate(_, _) => {
-                            body = pcsp::Atom::mk_conj(a.clone().into(), body)
-                        }
-                        _ => debug_assert!(false),
-                    };
-                }
-                fofml::AtomKind::Quantifier(_, _, _)
-                | fofml::AtomKind::Conj(_, _)
-                | fofml::AtomKind::Disj(_, _) => {
-                    panic!("program error")
-                }
-            }
-        }
-        clauses.push(pcsp::PCSP::new(body, head));
-    }
-    let model = if is_chc {
-        let clauses = clauses.into_iter().map(|c| {
-            let head = match c.head.kind() {
-                pcsp::AtomKind::Predicate(p, l) => {
-                    chc::CHCHead::Predicate(chc::Atom::new(*p, l.clone()))
-                }
-                _ if c.head.is_false() => chc::CHCHead::Constraint(Constraint::mk_false()),
-                _ => panic!("program error"),
-            };
-            (c.body, head)
-        });
-        let clauses = chc::generate_chcs(clauses);
-        //debug!("{}", "[generated CHC]".bold());
-        title!("generated CHC");
-        for c in clauses.iter() {
-            debug!("{}", c);
-        }
-        //let clauses: Vec<chc::CHC<pcsp::Atom>> =
-        //    clauses.iter().map(|x| x.to_trivial_recursive()).collect();
-        //for c in clauses.iter() {
-        //    debug!("{}", c);
-        //}
-
-        let m = match solver::chc::default_solver().solve(&clauses) {
-            solver::chc::CHCResult::Sat(m) => m,
-            solver::chc::CHCResult::Unsat => return None,
-            solver::chc::CHCResult::Unknown => panic!(
-                "PDR fails to infer a refinement type due to the background CHC solver's error"
-            ),
-            solver::chc::CHCResult::Timeout => panic!(
+            let m = match solver::chc::default_solver().solve(&clauses) {
+                solver::chc::CHCResult::Sat(m) => m,
+                solver::chc::CHCResult::Unsat => return None,
+                solver::chc::CHCResult::Unknown => panic!(
+                    "PDR fails to infer a refinement type due to the background CHC solver's error"
+                ),
+                solver::chc::CHCResult::Timeout => panic!(
                 "PDR fails to infer a refinement type due to timeout of the background CHC solver"
             ),
-        };
-
-        title!("model from CHC solver");
-        // TODO: Display model
-        debug!("{}", m);
-        let m = solver::interpolation::solve(&clauses);
-        debug!("interpolated:");
-        debug!("{}", m);
-        m
-    } else {
-        // the algorithm for solving disjunctive CHC
-        fn aux(c: &pcsp::Atom, heads: &mut Vec<chc::Atom>) {
-            match c.kind() {
-                pcsp::AtomKind::Disj(x, y) => {
-                    aux(x, heads);
-                    aux(y, heads);
-                }
-                pcsp::AtomKind::Predicate(p, l) => {
-                    heads.push(chc::Atom::new(*p, l.clone()));
-                }
-                _ => panic!("program error"),
-            }
-        }
-        // first translates the clause into the desired format by the disjunctive solver.
-        let clauses = clauses.into_iter().map(|c| {
-            let head = if c.head.is_false() {
-                solver::disj::Head::Constraint(Constraint::mk_false())
-            } else {
-                let mut heads = Vec::new();
-                aux(&c.head, &mut heads);
-                solver::disj::Head::Predicates(heads)
             };
-            (c.body, head)
-        });
 
-        let clauses = solver::disj::generate_clauses(clauses);
-        solver::disj::solve(&clauses)
+            title!("model from CHC solver");
+            // TODO: Display model
+            debug!("{}", m);
+            let m = solver::interpolation::solve(&clauses);
+            debug!("interpolated:");
+            debug!("{}", m);
+            m
+        }
+        either::Right(clauses) => {
+            // the algorithm for solving disjunctive CHC
+            fn aux(c: &pcsp::Atom, heads: &mut Vec<chc::Atom>) {
+                match c.kind() {
+                    pcsp::AtomKind::Disj(x, y) => {
+                        aux(x, heads);
+                        aux(y, heads);
+                    }
+                    pcsp::AtomKind::Predicate(p, l) => {
+                        heads.push(chc::Atom::new(*p, l.clone()));
+                    }
+                    _ => panic!("program error"),
+                }
+            }
+            // first translates the clause into the desired format by the disjunctive solver.
+            let clauses = clauses.into_iter().map(|c| {
+                let head = if c.head.is_false() {
+                    solver::disj::Head::Constraint(Constraint::mk_false())
+                } else {
+                    let mut heads = Vec::new();
+                    aux(&c.head, &mut heads);
+                    solver::disj::Head::Predicates(heads)
+                };
+                (c.body, head)
+            });
+
+            let clauses = solver::disj::generate_clauses(clauses);
+            solver::disj::solve(&clauses)
+        }
     };
+
     let model = model.model;
     let mut result_env = TypeEnvironment::new();
     for (k, ts) in tenv.map.iter() {

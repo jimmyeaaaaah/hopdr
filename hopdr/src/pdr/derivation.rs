@@ -95,13 +95,19 @@ struct Reduction {
 }
 
 impl Reduction {
-    fn new(predicate: G, result: G, level: usize, fvints: HashSet<Ident>, constraint: Constraint) -> Reduction {
+    fn new(
+        predicate: G,
+        result: G,
+        level: usize,
+        fvints: HashSet<Ident>,
+        constraint: Constraint,
+    ) -> Reduction {
         Reduction {
             predicate,
             result,
             level,
             fvints,
-            constraint
+            constraint,
         }
     }
 }
@@ -160,21 +166,22 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
     // None: not yet
     use formula::hes::GoalKind;
 
-    fn go(goal: &G, level: &mut usize) -> Option<(G, (G, HashSet<Ident>))> {
+    fn go(goal: &G, level: &mut usize) -> Option<(G, (G, G, HashSet<Ident>, Constraint))> {
         // left of the return value: the reduced term
         // right of the return value: the abstraction in the redux.
         fn go_(
             goal: &G,
             level: usize,
             fvints: &mut HashSet<Ident>,
-        ) -> Option<(G, (G, HashSet<Ident>))> {
+            constraint: Constraint,
+        ) -> Option<(G, (G, G, HashSet<Ident>, Constraint))> {
             match goal.kind() {
                 GoalKind::App(predicate, arg) => {
                     // g must be have form \x. phi
-                    go_(predicate, level, fvints)
+                    go_(predicate, level, fvints, constraint.clone())
                         .map(|(g, pred)| (G::mk_app_t(g, arg.clone(), goal.aux.clone()), pred))
                         .or_else(|| {
-                            go_(arg, level, fvints)
+                            go_(arg, level, fvints, constraint.clone())
                                 .map(|(arg, pred)| {
                                     (G::mk_app_t(predicate.clone(), arg, goal.aux.clone()), pred)
                                 })
@@ -193,7 +200,12 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
                                             }
                                             Some((
                                                 ret.clone(),
-                                                (predicate.clone(), ret.clone(), fvints.clone()),
+                                                (
+                                                    predicate.clone(),
+                                                    ret.clone(),
+                                                    fvints.clone(),
+                                                    constraint.clone(),
+                                                ),
                                             ))
                                         }
                                         _ => None,
@@ -201,25 +213,45 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
                                 })
                         })
                 }
-                GoalKind::Conj(g1, g2) => go_(g1, level, fvints)
+                GoalKind::Conj(g1, g2) => go_(g1, level, fvints, constraint.clone())
                     .map(|(g1, p)| (G::mk_conj_t(g1, g2.clone(), goal.aux.clone()), p))
                     .or_else(|| {
-                        go_(g2, level, fvints)
+                        go_(g2, level, fvints, constraint.clone())
                             .map(|(g2, p)| (G::mk_conj_t(g1.clone(), g2, goal.aux.clone()), p))
                     }),
-                GoalKind::Disj(g1, g2) => go_(g1, level, fvints)
-                    .map(|(g1, p)| (G::mk_disj_t(g1, g2.clone(), goal.aux.clone()), p))
-                    .or_else(|| {
-                        go_(g2, level, fvints)
-                            .map(|(g2, p)| (G::mk_disj_t(g1.clone(), g2, goal.aux.clone()), p))
-                    }),
+                GoalKind::Disj(g1, g2) => {
+                    let c1: Option<Constraint> = g1.clone().into();
+                    match c1 {
+                        Some(c1) => {
+                            let constraint = Constraint::mk_conj(c1.negate().unwrap(), constraint);
+                            go_(g2, level, fvints, constraint).map(|(g2, p)| {
+                                (G::mk_disj_t(g1.clone(), g2.clone(), goal.aux.clone()), p)
+                            })
+                        }
+                        None => {
+                            let c2: Option<Constraint> = g2.clone().into();
+                            match c2 {
+                                Some(c2) => {
+                                    let constraint =
+                                        Constraint::mk_conj(c2.negate().unwrap(), constraint);
+                                    go_(g1, level, fvints, constraint).map(|(g1, p)| {
+                                        (G::mk_disj_t(g1.clone(), g2.clone(), goal.aux.clone()), p)
+                                    })
+                                }
+                                None => {
+                                    panic!("fatal")
+                                }
+                            }
+                        }
+                    }
+                }
                 GoalKind::Univ(x, g) => {
                     let mut saved = false;
                     if x.ty.is_int() && fvints.insert(x.id) {
                         // x is type int and fvints already has x.id
                         saved = true;
                     }
-                    let r = go_(g, level, fvints)
+                    let r = go_(g, level, fvints, constraint)
                         .map(|(g, p)| (G::mk_univ_t(x.clone(), g, goal.aux.clone()), p));
                     if x.ty.is_int() && !saved {
                         fvints.remove(&x.id);
@@ -233,7 +265,7 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
                         saved = true;
                     }
 
-                    let r = go_(g, level, fvints)
+                    let r = go_(g, level, fvints, constraint)
                         .map(|(g, p)| (G::mk_abs_t(x.clone(), g, goal.aux.clone()), p));
                     if x.ty.is_int() && !saved {
                         fvints.remove(&x.id);
@@ -244,17 +276,17 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
             }
         }
         *level += 1;
-        go_(goal, *level, &mut HashSet::new())
+        go_(goal, *level, &mut HashSet::new(), Constraint::mk_true())
     }
     let mut level = 0usize;
     let mut seq = Vec::new();
     let mut reduced = goal.clone();
 
     debug!("{}", reduced);
-    while let Some((g, (p, result, fvints))) = go(&reduced, &mut level) {
+    while let Some((g, (p, result, fvints, constraint))) = go(&reduced, &mut level) {
         reduced = g.clone();
         debug!("-> {}", reduced);
-        seq.push(Reduction::new(p, result, level, fvints));
+        seq.push(Reduction::new(p, result, level, fvints, constraint));
     }
     (seq, reduced)
 }
@@ -283,31 +315,62 @@ impl Context {
     }
 }
 
-fn infer_type(normal_form: G, mut derivation: Derivation, reduction_sequence: Vec<Reduction>) {
+fn infer_type(
+    normal_form: G,
+    mut derivation: Derivation,
+    reduction_sequence: Vec<Reduction>,
+) -> Option<TypeEnvironment<Tau<Constraint>>> {
     let mut current = normal_form;
     //let mut constraints = Vec::new();
+    let mut clauses = Vec::new();
     for reduction in reduction_sequence.iter().rev() {
         let level = reduction.level;
         // 1. get the corresponding types
         let arg_ty: Vec<Ty> = derivation.get_arg(&level).iter().cloned().collect();
         let ret_tys = derivation.get_expr_ty(&reduction.result.aux.id);
         for ret_ty in ret_tys.iter() {
-            let ty = Ty::mk_arrow(arg_ty, ret_ty.clone());
+            let ty = Ty::mk_arrow(arg_ty.clone(), ret_ty.clone());
             // 2. create a template type from `ty` and free variables `fvints`
-            let tmp_ty = ty.clone_with_template(&mut reduction.fvints);
+            let mut fvints = reduction.fvints.clone();
+            let tmp_ty = ty.clone_with_template(&mut fvints);
             // 3. generate constraint from subtyping t <: arg_ty -> ret_ty, and append them to constraints
-            let constraint = Ty::check_subtype(, tmp_ty, ty);
+            let constraint = Ty::check_subtype(&reduction.constraint.clone().into(), &tmp_ty, &ty);
+            for c in constraint.to_chcs_or_pcsps().unwrap_left() {
+                clauses.push(c);
+            }
             // 4. for each `level` in reduction.candidate.aux, we add t to Derivation
             for level in reduction.predicate.aux.level_arg.iter() {
-                derivation.arg.insert(*level, tmp_ty);
+                derivation.arg.insert(*level, tmp_ty.clone());
             }
             derivation.expr.set(reduction.predicate.aux.id, tmp_ty);
-            unimplemented!()
         }
     }
     // 4. solve the constraints by using the interpolation solver
+    let m = match solver::chc::default_solver().solve(&clauses) {
+        solver::chc::CHCResult::Sat(m) => m,
+        solver::chc::CHCResult::Unsat => return None,
+        solver::chc::CHCResult::Unknown => {
+            panic!("PDR fails to infer a refinement type due to the background CHC solver's error")
+        }
+        solver::chc::CHCResult::Timeout => panic!(
+            "PDR fails to infer a refinement type due to timeout of the background CHC solver"
+        ),
+    };
 
-    // 5. from the model,
+    crate::title!("model from CHC solver");
+    // TODO: Display model
+    debug!("{}", m);
+    let model = solver::interpolation::solve(&clauses);
+    debug!("interpolated:");
+    debug!("{}", m);
+
+    let model = model.model;
+    let mut result_env = TypeEnvironment::new();
+
+    // collect needed predicate
+    // 5. from the model, generate a type environment
+    unimplemented!();
+    Some(result_env)
 }
 
 fn reduce_until_normal_form(candidate: &Candidate, problem: &Problem) -> Context {
