@@ -356,10 +356,6 @@ impl<C: Rename, T: Clone> Rename for GoalBase<C, T> {
         }
     }
 }
-trait SubstClone {
-    fn subst_clone(&self) -> Self;
-}
-
 impl<C: Subst<Item = Op, Id = Ident> + Rename + Fv<Id = Ident> + fmt::Display, T: Clone> Subst
     for GoalBase<C, T>
 {

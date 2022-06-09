@@ -315,14 +315,22 @@ impl Context {
             reduction_sequence,
         }
     }
-    fn retrieve_from_track_idents(&self, model: &chc::Model) -> TypeEnvironment<Tau<Constraint>> {
+    fn retrieve_from_track_idents(
+        &self,
+        model: &chc::Model,
+        derivation: &Derivation,
+    ) -> TypeEnvironment<Tau<Constraint>> {
         // TODO NEXT: we can retrieve it from context.track_idents
         let model = &model.model;
         let mut result_env = TypeEnvironment::new();
         for (pred_name, ids) in self.track_idents.iter() {
-            for id in ids {}
+            for id in ids {
+                let tys = derivation.expr.get_opt(id).unwrap();
+                for ty in tys.iter() {
+                    result_env.add(*pred_name, ty.assign(&model));
+                }
+            }
         }
-        unimplemented!();
         result_env
     }
     /// Γ ⊢ ψ : •<T>
@@ -610,7 +618,7 @@ impl Context {
 
         // collect needed predicate
         // 5. from the model, generate a type environment
-        Some(self.retrieve_from_track_idents(&model))
+        Some(self.retrieve_from_track_idents(&model, &derivation))
     }
 }
 
@@ -661,6 +669,9 @@ impl<ID: Eq + std::hash::Hash + Copy> DerivationMap<ID> {
     }
     fn get(&self, level: &ID) -> Stack<Ty> {
         self.0.get(level).cloned().unwrap_or(Stack::new())
+    }
+    fn get_opt(&self, level: &ID) -> Option<Stack<Ty>> {
+        self.0.get(level).cloned()
     }
 }
 #[derive(Clone, Debug)]
