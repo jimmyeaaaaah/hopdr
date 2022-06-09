@@ -171,6 +171,10 @@ impl HoPDR {
     // Assumption 2: ℱ(⌊Γ⌋) ⊧ ψ
     // Assumption 3: self.get_current_cex_level() < N
     fn conflict(&mut self, tyenv_new: TypeEnvironment<Tau<Constraint>>) -> Result<(), Error> {
+        debug!("{}", "conflict".blue());
+        debug!("{}", tyenv_new);
+        // refute the top model in self.models.
+        self.models.pop().unwrap();
         // conjoin
         for i in 0..(self.get_current_cex_level() + 1) {
             self.envs[i].append(&tyenv_new);

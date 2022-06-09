@@ -1,8 +1,9 @@
-use super::rtype::{Refinement, Tau, TauKind, TypeEnvironment};
+use super::rtype::{Refinement, TBot, Tau, TauKind, TypeEnvironment};
 use crate::formula::hes::{Goal, GoalBase, Problem as ProblemBase};
 use crate::formula::{self, FirstOrderLogic};
 use crate::formula::{
-    chc, fofml, pcsp, Bot, Constraint, Ident, Logic, Negation, Op, Rename, Subst, Top, Variable,
+    chc, fofml, pcsp, Bot, Constraint, Ident, Logic, Negation, Op, Rename, Subst, Top, Type as Sty,
+    Variable,
 };
 use crate::solver;
 
@@ -93,6 +94,7 @@ struct Reduction {
     // this is `expr1` in the above example.
     // at the inference phase, we utilize G's memory to assign the inferred types to G.
     predicate: G,
+    arg_sty: Sty,
     // the result of beta reduction; predicate expr -> result
     result: G,
     // predicate's free variables of type int
@@ -118,6 +120,7 @@ impl Reduction {
         level: usize,
         fvints: HashSet<Ident>,
         constraint: Constraint,
+        arg_sty: Sty,
     ) -> Reduction {
         Reduction {
             predicate,
@@ -125,6 +128,7 @@ impl Reduction {
             level,
             fvints,
             constraint,
+            arg_sty,
         }
     }
 }
@@ -183,7 +187,7 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
     // None: not yet
     use formula::hes::GoalKind;
 
-    fn go(goal: &G, level: &mut usize) -> Option<(G, (G, G, HashSet<Ident>, Constraint))> {
+    fn go(goal: &G, level: &mut usize) -> Option<(G, Reduction)> {
         // left of the return value: the reduced term
         // right of the return value: the abstraction in the redux.
         fn go_(
@@ -191,7 +195,7 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
             level: usize,
             fvints: &mut HashSet<Ident>,
             constraint: Constraint,
-        ) -> Option<(G, (G, G, HashSet<Ident>, Constraint))> {
+        ) -> Option<(G, Reduction)> {
             match goal.kind() {
                 GoalKind::App(predicate, arg) => {
                     // g must be have form \x. phi
@@ -217,11 +221,13 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
                                             }
                                             Some((
                                                 ret.clone(),
-                                                (
+                                                Reduction::new(
                                                     predicate.clone(),
                                                     ret.clone(),
+                                                    level,
                                                     fvints.clone(),
                                                     constraint.clone(),
+                                                    x.ty.clone(),
                                                 ),
                                             ))
                                         }
@@ -300,10 +306,10 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
     let mut reduced = goal.clone();
 
     debug!("{}", reduced);
-    while let Some((g, (p, result, fvints, constraint))) = go(&reduced, &mut level) {
+    while let Some((g, r)) = go(&reduced, &mut level) {
         reduced = g.clone();
         debug!("-> {}", reduced);
-        seq.push(Reduction::new(p, result, level, fvints, constraint));
+        seq.push(r);
     }
     (seq, reduced)
 }
@@ -588,6 +594,11 @@ impl Context {
             let level = reduction.level;
             // 1. get the corresponding types
             let arg_ty: Vec<Ty> = derivation.get_arg(&level).iter().cloned().collect();
+            let arg_ty = if arg_ty.len() == 0 {
+                vec![Ty::mk_bot(&reduction.arg_sty)]
+            } else {
+                arg_ty
+            };
             let ret_tys = derivation.get_expr_ty(&reduction.result.aux.id);
             for ret_ty in ret_tys.iter() {
                 let ty = Ty::mk_arrow(arg_ty.clone(), ret_ty.clone());
