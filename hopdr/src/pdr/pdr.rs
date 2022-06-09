@@ -159,10 +159,7 @@ impl HoPDR {
             };
             let mut tyenv_i = self.get_current_target_approx().into();
             match derivation::search_for_type(&cand, &self.problem, &mut tyenv_i) {
-                Some(tyenv) => {
-                    todo!("conflict by tyenv");
-                    self.conflict()?
-                }
+                Some(tyenv) => self.conflict(tyenv)?,
                 None => {
                     self.decide();
                 }
@@ -173,27 +170,12 @@ impl HoPDR {
     // Assumption 1: self.models.len() > 0
     // Assumption 2: ℱ(⌊Γ⌋) ⊧ ψ
     // Assumption 3: self.get_current_cex_level() < N
-    fn conflict(&mut self) -> Result<(), Error> {
-        debug!("{}", "conflict".blue());
-        //debug!("[PDR]conflict: {} <-> {}", &c.label, &refute_ty);
-        let level = self.get_current_cex_level();
-        let env_i = (&self.envs[level]).into();
-        let env_i1 = (&self.envs[level + 1]).into();
-        match infer::infer(
-            &self.problem_atom_cache,
-            &env_i,
-            &env_i1,
-            &self.models.pop().unwrap().clone().into(),
-        ) {
-            Some(tyenv_new) => {
-                // conjoin
-                for i in 0..(self.get_current_cex_level() + 1) {
-                    self.envs[i].append(&tyenv_new);
-                }
-                Ok(())
-            }
-            None => Err(Error::TypeInference),
+    fn conflict(&mut self, tyenv_new: TypeEnvironment<Tau<Constraint>>) -> Result<(), Error> {
+        // conjoin
+        for i in 0..(self.get_current_cex_level() + 1) {
+            self.envs[i].append(&tyenv_new);
         }
+        Ok(())
     }
 
     // Assumption: ℱ(⌊Γ⌋) not⊧ ψ

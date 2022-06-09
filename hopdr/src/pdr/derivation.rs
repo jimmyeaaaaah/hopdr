@@ -9,6 +9,7 @@ use crate::solver;
 use rpds::{HashTrieMap, Stack};
 
 use std::collections::{HashMap, HashSet};
+use std::fmt;
 
 type Atom = fofml::Atom;
 type Candidate = Goal<Constraint>;
@@ -98,6 +99,16 @@ struct Reduction {
     fvints: HashSet<Ident>,
     // constraint of the redux where this reduction happens
     constraint: Constraint,
+}
+
+impl fmt::Display for Reduction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Reduction [level{}] {} x -> {}",
+            self.level, self.predicate, self.result
+        )
+    }
 }
 
 impl Reduction {
@@ -573,6 +584,7 @@ impl Context {
         //let mut constraints = Vec::new();
         let mut clauses = Vec::new();
         for reduction in self.reduction_sequence.iter().rev() {
+            debug!("{}", reduction);
             let level = reduction.level;
             // 1. get the corresponding types
             let arg_ty: Vec<Ty> = derivation.get_arg(&level).iter().cloned().collect();
@@ -582,6 +594,8 @@ impl Context {
                 // 2. create a template type from `ty` and free variables `fvints`
                 let mut fvints = reduction.fvints.clone();
                 let tmp_ty = ty.clone_with_template(&mut fvints);
+                debug!("- ty: {}", ty);
+                debug!("- tmp_ty: {}", tmp_ty);
                 // 3. generate constraint from subtyping t <: arg_ty -> ret_ty, and append them to constraints
                 let constraint =
                     Ty::check_subtype(&reduction.constraint.clone().into(), &tmp_ty, &ty);
@@ -595,6 +609,7 @@ impl Context {
                 derivation.expr.set(reduction.predicate.aux.id, tmp_ty);
             }
         }
+        clauses.iter().for_each(|c| debug!("- {}", c));
         // 4. solve the constraints by using the interpolation solver
         let m = match solver::chc::default_solver().solve(&clauses) {
             solver::chc::CHCResult::Sat(m) => m,
@@ -903,8 +918,11 @@ pub fn search_for_type(
     problem: &Problem,
     tenv: &mut Env,
 ) -> Option<TypeEnvironment<Tau<Constraint>>> {
+    crate::title!("search_for_type");
+    debug!("{}", candidate);
     // TODO: expand candidate once based on problem.
     let mut ctx = reduce_until_normal_form(candidate, problem);
+    debug!("{}", ctx.normal_form);
     //let candidate = ctx.normal_form.clone();
     let derivation = ctx.type_check_top(tenv)?;
     ctx.infer_type(derivation)
