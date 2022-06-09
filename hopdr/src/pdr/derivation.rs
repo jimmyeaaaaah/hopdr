@@ -18,31 +18,37 @@ type Problem = ProblemBase<Constraint>;
 type CHC = chc::CHC<chc::Atom, Atom>;
 type PCSP = pcsp::PCSP<fofml::Atom>;
 
-/// track_idents maps predicate in Problem to the idents of lambda abstractions used for substitution
+/// track_idents maps predicate in Problem to the idents of lambda abstraction exprs
 ///
+/// we can name each expr by using `aux.id`. for each expansion of a predicate, we memorize
+/// this id.
 /// example:
 ///  F x f = φ₁
 ///  ψ = F ... /\ F ...
 /// then:
-///  ψ = (λx1. λf. [x1/x]φ₁) ... /\ (λx2. λf. [x2/x]φ₁) ...
+///  ψ = (λx1. λf. [x1/x]φ₁)ˣ ... /\ (λx2. λf. [x2/x]φ₁)ʸ ...
 /// and track_idents
-///  - F = [x1, x2]
+///  - F = [x, y]
 fn subst_predicate(
-    candidate: &Candidate,
+    candidate: &G,
     problem: &Problem,
     track_idents: &mut HashMap<Ident, Vec<Ident>>,
-) -> Candidate {
+) -> G {
     match candidate.kind() {
         formula::hes::GoalKind::Constr(_) | formula::hes::GoalKind::Op(_) => candidate.clone(),
         formula::hes::GoalKind::Var(x) => match problem.get_clause(x) {
             Some(clause) => {
-                let body = &clause.body;
+                let body: G = clause.body.clone().into(); // assign a fresh id translating Candidate -> G
+                track_idents
+                    .entry(*x)
+                    .or_insert_with(|| Vec::new())
+                    .push(body.aux.id);
                 match body.kind() {
                     formula::hes::GoalKind::Abs(v, g) => {
                         let id = v.id;
                         let new_id = Ident::fresh();
                         let g = g.rename(&id, &new_id);
-                        Goal::mk_abs(Variable::mk(new_id, v.ty.clone()), g)
+                        G::mk_abs_t(Variable::mk(new_id, v.ty.clone()), g, body.aux.clone())
                     }
                     _ => panic!("body must be a lambda abstraction but got {}", body),
                 }
@@ -51,26 +57,26 @@ fn subst_predicate(
         },
         formula::hes::GoalKind::Abs(v, g) => {
             let g = subst_predicate(g, problem, track_idents);
-            Candidate::mk_abs(v.clone(), g)
+            G::mk_abs_t(v.clone(), g, candidate.aux.clone())
         }
         formula::hes::GoalKind::App(x, y) => {
             let x = subst_predicate(x, problem, track_idents);
             let y = subst_predicate(y, problem, track_idents);
-            Candidate::mk_app(x, y)
+            G::mk_app_t(x, y, candidate.aux.clone())
         }
         formula::hes::GoalKind::Conj(x, y) => {
             let x = subst_predicate(x, problem, track_idents);
             let y = subst_predicate(y, problem, track_idents);
-            Candidate::mk_app(x, y)
+            G::mk_app_t(x, y, candidate.aux.clone())
         }
         formula::hes::GoalKind::Disj(x, y) => {
             let x = subst_predicate(x, problem, track_idents);
             let y = subst_predicate(y, problem, track_idents);
-            Candidate::mk_app(x, y)
+            G::mk_app_t(x, y, candidate.aux.clone())
         }
         formula::hes::GoalKind::Univ(v, g) => {
             let g = subst_predicate(g, problem, track_idents);
-            Candidate::mk_univ(v.clone(), g)
+            G::mk_univ_t(v.clone(), g, candidate.aux.clone())
         }
     }
 }
@@ -311,7 +317,13 @@ impl Context {
     }
     fn retrieve_from_track_idents(&self, model: &chc::Model) -> TypeEnvironment<Tau<Constraint>> {
         // TODO NEXT: we can retrieve it from context.track_idents
-        unimplemented!()
+        let model = &model.model;
+        let mut result_env = TypeEnvironment::new();
+        for (pred_name, ids) in self.track_idents.iter() {
+            for id in ids {}
+        }
+        unimplemented!();
+        result_env
     }
     /// Γ ⊢ ψ : •<T>
     ///
@@ -596,21 +608,17 @@ impl Context {
         debug!("interpolated:");
         debug!("{}", m);
 
-        let model = model.model;
-        let mut result_env = TypeEnvironment::new();
-
         // collect needed predicate
         // 5. from the model, generate a type environment
-        unimplemented!();
-        Some(result_env)
+        Some(self.retrieve_from_track_idents(&model))
     }
 }
 
 fn reduce_until_normal_form(candidate: &Candidate, problem: &Problem) -> Context {
     let mut track_idents = HashMap::new();
-    let goal = subst_predicate(candidate, problem, &mut track_idents);
-    // track idents must not be renamed since we have already assigned new idents.
-    let goal = goal.alpha_renaming().into();
+    let candidate = candidate.clone().into(); // assign `aux` to candidate.
+    let goal = subst_predicate(&candidate, problem, &mut track_idents);
+    let goal = goal.alpha_renaming();
     let (reduction_sequence, normal_form) = generate_reduction_sequence(&goal);
     Context::new(normal_form, track_idents, reduction_sequence)
 }
