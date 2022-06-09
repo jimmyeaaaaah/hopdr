@@ -247,6 +247,31 @@ impl<C: Refinement> Tau<C> {
             (_, _) => panic!("fatal"),
         }
     }
+    // this subtyping is different in that for the argument of τ₁ ∧ τ₂ → τ₃ < τ₁' ∧ τ₂' → τ₃'
+    // we do τ₁ < τ₁' and τ₂ < τ₂'
+    pub fn check_subtype_structural(constraint: &C, t: &Tau<C>, s: &Tau<C>) -> C {
+        match (t.kind(), s.kind()) {
+            (TauKind::Proposition(c1), TauKind::Proposition(c2)) => {
+                C::mk_implies_opt(C::mk_conj(constraint.clone(), c2.clone()), c1.clone()).unwrap()
+            }
+            (TauKind::IArrow(x1, t1), TauKind::IArrow(x2, t2)) => {
+                let t2 = t2.rename(x2, x1);
+                Tau::check_subtype_structural(constraint, t1, &t2)
+            }
+            (TauKind::Arrow(ts1, t1), TauKind::Arrow(ts2, t2)) => {
+                assert!(ts1.len() == ts2.len());
+                let mut result_constraint = Tau::check_subtype_structural(constraint, t1, t2);
+                // ⋀ᵢ tᵢ ≺ ⋀ⱼt'ⱼ ⇔∀ tᵢ. ∃ t'ⱼ. tᵢ ≺ t'ⱼ
+                let arg_constraint = C::mk_conj(constraint.clone(), t2.rty());
+                for (tx, ty) in ts1.iter().zip(ts2.iter()) {
+                    let tmpc = Tau::check_subtype_structural(&arg_constraint, tx, ty);
+                    result_constraint = C::mk_conj(result_constraint, tmpc);
+                }
+                result_constraint
+            }
+            (_, _) => panic!("fatal"),
+        }
+    }
     pub fn clone_with_template(&self, fvs: &mut HashSet<Ident>) -> Tau<fofml::Atom> {
         match self.kind() {
             TauKind::Proposition(_) => {

@@ -6,6 +6,7 @@ use crate::formula::{
     Variable,
 };
 use crate::solver;
+use crate::title;
 
 use rpds::{HashTrieMap, Stack};
 
@@ -459,6 +460,7 @@ impl Context {
             ienv: &mut HashSet<Ident>,
             c: &G,
         ) -> Option<CandidateType> {
+            debug!("type_check_go: {} |- {} : {}", constraint, c, t);
             fn go_inner(
                 constraint: &Atom,
                 t: &Ty,
@@ -469,9 +471,13 @@ impl Context {
                 match c.kind() {
                     formula::hes::GoalKind::Constr(c) => {
                         let constraint = constraint.clone().into();
+                        let type_constr = match t.kind() {
+                            TauKind::Proposition(type_constr) => type_constr.clone().into(),
+                            TauKind::IArrow(_, _) | TauKind::Arrow(_, _) => panic!("fatal"),
+                        };
                         if solver::smt::default_solver()
                             .solve_with_universal_quantifiers(&Constraint::mk_implies(
-                                constraint,
+                                Constraint::mk_conj(constraint, type_constr),
                                 c.clone(),
                             ))
                             .is_sat()
@@ -520,12 +526,18 @@ impl Context {
                             g,
                         )?;
                         // type check of constraints (to track the type derivation, checking g2 is necessary)
-                        let t2 = go(constraint, t, tenv, ienv, g_)?;
+                        let t2 = go(
+                            &Atom::mk_conj(c.into(), constraint.clone()),
+                            t,
+                            tenv,
+                            ienv,
+                            g_,
+                        )?;
                         Some(CandidateType::disjoin(&t1, &t2))
                     }
                     formula::hes::GoalKind::Univ(x, g) => {
                         // to avoid the collision, we rename the variable.
-                        assert!(!ienv.insert(x.id));
+                        assert!(ienv.insert(x.id));
                         let mut pt = go(constraint, t, tenv, ienv, &g)?;
                         // quantify all the constraint.
                         pt.quantify(x.id);
@@ -541,7 +553,7 @@ impl Context {
                         match t.kind() {
                             TauKind::IArrow(id, t) if v.ty.is_int() => {
                                 let t = t.rename(id, &v.id);
-                                assert!(!ienv.insert(v.id));
+                                assert!(ienv.insert(v.id));
                                 let ct = go(constraint, &t, tenv, ienv, g)?;
                                 ienv.remove(&v.id);
                                 let ty = Ty::mk_iarrow(v.id, ct.ty);
@@ -572,7 +584,8 @@ impl Context {
                 ct
             })
         }
-
+        title!("type_check_top");
+        debug!("{}", self.normal_form);
         let mut ienv = HashSet::new();
         go(
             &Atom::mk_true(),
@@ -592,26 +605,49 @@ impl Context {
         for reduction in self.reduction_sequence.iter().rev() {
             debug!("{}", reduction);
             let level = reduction.level;
-            // 1. get the corresponding types
-            let arg_ty: Vec<Ty> = derivation.get_arg(&level).iter().cloned().collect();
-            let arg_ty = if arg_ty.len() == 0 {
-                vec![Ty::mk_bot(&reduction.arg_sty)]
-            } else {
-                arg_ty
-            };
             let ret_tys = derivation.get_expr_ty(&reduction.result.aux.id);
+            let arg_ty = if reduction.arg_sty.is_int() {
+                either::Left(reduction.predicate.abs_var().id)
+            } else {
+                // 1. get the corresponding types
+                let arg_ty: Vec<Ty> = derivation.get_arg(&level).iter().cloned().collect();
+                let arg_ty = if arg_ty.len() == 0 {
+                    vec![Ty::mk_bot(&reduction.arg_sty)]
+                } else {
+                    arg_ty
+                };
+                either::Right(arg_ty)
+            };
             for ret_ty in ret_tys.iter() {
-                let ty = Ty::mk_arrow(arg_ty.clone(), ret_ty.clone());
+                let ty = match &arg_ty {
+                    either::Left(ident) => Ty::mk_iarrow(*ident, ret_ty.clone()),
+                    either::Right(arg_ty) => Ty::mk_arrow(arg_ty.clone(), ret_ty.clone()),
+                };
                 // 2. create a template type from `ty` and free variables `fvints`
                 let mut fvints = reduction.fvints.clone();
                 let tmp_ty = ty.clone_with_template(&mut fvints);
                 debug!("- ty: {}", ty);
                 debug!("- tmp_ty: {}", tmp_ty);
                 // 3. generate constraint from subtyping t <: arg_ty -> ret_ty, and append them to constraints
-                let constraint =
-                    Ty::check_subtype(&reduction.constraint.clone().into(), &tmp_ty, &ty);
-                for c in constraint.to_chcs_or_pcsps().unwrap_left() {
-                    clauses.push(c);
+                let constraint = Ty::check_subtype_structural(
+                    &reduction.constraint.clone().into(),
+                    &tmp_ty,
+                    &ty,
+                );
+                debug!("constriant: {}", constraint);
+                match constraint.to_chcs_or_pcsps() {
+                    either::Left(chcs) => {
+                        for c in chcs {
+                            clauses.push(c);
+                        }
+                    }
+                    either::Right(pcsps) => {
+                        debug!("failed to translate the constraint to chcs");
+                        for c in pcsps {
+                            debug!("{}", c)
+                        }
+                        panic!("fatal")
+                    }
                 }
                 // 4. for each `level` in reduction.candidate.aux, we add t to Derivation
                 for level in reduction.predicate.aux.level_arg.iter() {

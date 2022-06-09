@@ -685,7 +685,7 @@ impl<C: Refinement, T: Clone + Default> GoalBase<C, T> {
     }
 }
 
-impl<C> Goal<C> {
+impl<C, T> GoalBase<C, T> {
     pub fn order(&self) -> usize {
         match self.kind() {
             // if order(Var(_)) > 0, then \x. ... has bigger order than that.
@@ -695,6 +695,13 @@ impl<C> Goal<C> {
                 std::cmp::max(x.order(), y.order())
             }
             GoalKind::Univ(_, y) => y.order(),
+        }
+    }
+    // returns ident of Abs(ident, x). If self is not Abs(_), abs_var panics.
+    pub fn abs_var<'a>(&'a self) -> &'a Variable {
+        match self.kind() {
+            GoalKind::Abs(x, _) => x,
+            _ => panic!("abs_var assumes that self.kind() is Abs(_, _)."),
         }
     }
 }

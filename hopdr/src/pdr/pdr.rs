@@ -4,7 +4,6 @@ use super::VerificationResult;
 use crate::formula::hes::Problem;
 use crate::formula::{fofml, hes, Constraint};
 use crate::pdr::derivation;
-use crate::pdr::infer;
 
 use colored::Colorize;
 
@@ -146,6 +145,8 @@ impl HoPDR {
     fn check_feasible(&mut self) -> Result<bool, Error> {
         debug!("[PDR]check feasible");
         loop {
+            debug!("model size: {}", self.models.len());
+            debug!("env size: {}", self.envs.len());
             if self.models.len() == self.envs.len() {
                 // the trace of cex is feasible
                 return Ok(true);
@@ -195,6 +196,7 @@ impl HoPDR {
         let cex_next = cex_next.reduce_goal();
         debug!("cex_next reduced: {}", cex_next);
         let cnf = cex_next.to_cnf();
+        debug!("{}", gamma_i);
         let env = fml::Env::from_type_environment(gamma_i);
         for x in cnf {
             if !fml::env_models(&env, &x) {
@@ -204,7 +206,7 @@ impl HoPDR {
             }
         }
 
-        unimplemented!()
+        //unimplemented!()
     }
 
     fn run(&mut self) -> Result<PDRResult, Error> {
