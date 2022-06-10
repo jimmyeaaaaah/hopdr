@@ -70,12 +70,12 @@ fn subst_predicate(
         formula::hes::GoalKind::Conj(x, y) => {
             let x = subst_predicate(x, problem, track_idents);
             let y = subst_predicate(y, problem, track_idents);
-            G::mk_app_t(x, y, candidate.aux.clone())
+            G::mk_conj_t(x, y, candidate.aux.clone())
         }
         formula::hes::GoalKind::Disj(x, y) => {
             let x = subst_predicate(x, problem, track_idents);
             let y = subst_predicate(y, problem, track_idents);
-            G::mk_app_t(x, y, candidate.aux.clone())
+            G::mk_disj_t(x, y, candidate.aux.clone())
         }
         formula::hes::GoalKind::Univ(v, g) => {
             let g = subst_predicate(g, problem, track_idents);
@@ -108,8 +108,8 @@ impl fmt::Display for Reduction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "Reduction [level{}] {} x -> {}",
-            self.level, self.predicate, self.result
+            "Reduction [level{} fvints={:?} constraint={}] {} x -> {}",
+            self.level, self.fvints, self.constraint, self.predicate, self.result
         )
     }
 }
@@ -309,6 +309,8 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
     debug!("{}", reduced);
     while let Some((g, r)) = go(&reduced, &mut level) {
         reduced = g.clone();
+        //debug!("-> {}", reduced);
+        //debug!("-> {}", r);
         debug!("-> {}", reduced);
         seq.push(r);
     }
@@ -361,14 +363,12 @@ impl Context {
         // tenv+ienv; constraint |- App(arg, ret): t
         fn handle_app(
             constraint: &Atom,
-            t: &Ty,
             tenv: &mut Env,
             ienv: &mut HashSet<Ident>,
             app_expr: &G,
         ) -> PossibleType {
             fn handle_inner(
                 constraint: &Atom,
-                t: &Ty,
                 tenv: &mut Env,
                 ienv: &mut HashSet<Ident>,
                 pred: &G,
@@ -379,7 +379,8 @@ impl Context {
                         None => PossibleType::empty(),
                     },
                     formula::hes::GoalKind::App(predg, argg) => {
-                        let pred_pt = handle_inner(constraint, t, tenv, ienv, predg);
+                        let pred_pt = handle_inner(constraint, tenv, ienv, predg);
+                        debug!("handle_inner: {} |- {} : {} ", constraint, pred, pred_pt);
                         // Case: the argument is integer
                         match check_int_expr(ienv, argg) {
                             // Case: the type of argument is int
@@ -413,6 +414,7 @@ impl Context {
                             let mut result_ct: CandidateType = result_t.clone().into();
                             // check if there exists a derivation for all types in the intersection type.
                             for t in arg_t {
+                                debug!("t: {}", t);
                                 // check if arg_constraint |- argg: arg_t
                                 match go(&arg_constraint, t, tenv, ienv, argg) {
                                     Some(ct) => {
@@ -437,7 +439,7 @@ impl Context {
                     | formula::hes::GoalKind::Univ(_, _) => panic!("fatal"),
                 }
             }
-            let mut pt = handle_inner(constraint, t, tenv, ienv, app_expr);
+            let mut pt = handle_inner(constraint, tenv, ienv, app_expr);
             for level in app_expr.aux.level_arg.iter() {
                 for ct in pt.types.iter_mut() {
                     ct.memorize(*level);
@@ -538,14 +540,15 @@ impl Context {
                     formula::hes::GoalKind::Univ(x, g) => {
                         // to avoid the collision, we rename the variable.
                         assert!(ienv.insert(x.id));
-                        let mut pt = go(constraint, t, tenv, ienv, &g)?;
+                        let pt = go(constraint, t, tenv, ienv, &g);
+                        ienv.remove(&x.id);
+                        let mut pt = pt?;
                         // quantify all the constraint.
                         pt.quantify(x.id);
-                        ienv.remove(&x.id);
                         Some(pt)
                     }
                     formula::hes::GoalKind::App(_, _) => {
-                        handle_app(constraint, t, tenv, ienv, c).types.pop()
+                        handle_app(constraint, tenv, ienv, c).types.pop()
                     }
                     formula::hes::GoalKind::Abs(v, g) => {
                         // 1. check t and calculate the argument's type.
@@ -553,9 +556,12 @@ impl Context {
                         match t.kind() {
                             TauKind::IArrow(id, t) if v.ty.is_int() => {
                                 let t = t.rename(id, &v.id);
+                                debug!("v.id = {}", v.id);
+                                debug!("{:?}", ienv);
                                 assert!(ienv.insert(v.id));
-                                let ct = go(constraint, &t, tenv, ienv, g)?;
+                                let ct = go(constraint, &t, tenv, ienv, g);
                                 ienv.remove(&v.id);
+                                let ct = ct?;
                                 let ty = Ty::mk_iarrow(v.id, ct.ty);
                                 Some(CandidateType::new(ty, ct.derivation))
                             }
@@ -634,14 +640,16 @@ impl Context {
                     &tmp_ty,
                     &ty,
                 );
-                debug!("constriant: {}", constraint);
                 match constraint.to_chcs_or_pcsps() {
                     either::Left(chcs) => {
+                        debug!("constraints");
                         for c in chcs {
+                            debug!("- {}", c);
                             clauses.push(c);
                         }
                     }
                     either::Right(pcsps) => {
+                        debug!("constriant: {}", constraint);
                         debug!("failed to translate the constraint to chcs");
                         for c in pcsps {
                             debug!("{}", c)
@@ -687,8 +695,10 @@ impl Context {
 fn reduce_until_normal_form(candidate: &Candidate, problem: &Problem) -> Context {
     let mut track_idents = HashMap::new();
     let candidate = candidate.clone().into(); // assign `aux` to candidate.
+    debug!("yosasou: {}", candidate);
     let goal = subst_predicate(&candidate, problem, &mut track_idents);
     let goal = goal.alpha_renaming();
+    debug!("uouo: {}", goal);
     let (reduction_sequence, normal_form) = generate_reduction_sequence(&goal);
     Context::new(normal_form, track_idents, reduction_sequence)
 }
@@ -835,6 +845,12 @@ impl From<Ty> for CandidateType {
     }
 }
 
+impl fmt::Display for CandidateType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.ty)
+    }
+}
+
 /// Since type environment can contain multiple candidate types,
 /// we make sure that which one is suitable by considering them parallely.
 #[derive(Debug)]
@@ -849,6 +865,25 @@ impl<'a, T: IntoIterator<Item = Ty>> From<T> for PossibleType {
             types.push(t);
         }
         PossibleType::new(types)
+    }
+}
+impl From<Ty> for PossibleType {
+    fn from(t: Ty) -> Self {
+        let t = t.into();
+        let mut types = Vec::new();
+        types.push(t);
+        PossibleType::new(types)
+    }
+}
+impl fmt::Display for PossibleType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.types.len() > 0 {
+            write!(f, "{}", self.types[0])?;
+            for t in self.types[1..].iter() {
+                write!(f, " /\\ {}", t)?;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -889,15 +924,6 @@ impl PossibleType {
         for pt1 in self.types.iter_mut() {
             pt1.quantify(*x);
         }
-    }
-}
-
-impl From<Ty> for PossibleType {
-    fn from(t: Ty) -> Self {
-        let t = t.into();
-        let mut types = Vec::new();
-        types.push(t);
-        PossibleType::new(types)
     }
 }
 

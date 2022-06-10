@@ -280,16 +280,10 @@ impl<C: Refinement> Tau<C> {
                 Tau::mk_prop_ty(pred)
             }
             TauKind::IArrow(x, t) => {
-                let (x, t) = if fvs.contains(x) {
-                    let y = Ident::fresh();
-                    (y, t.rename(x, &y))
-                } else {
-                    (*x, t.clone())
-                };
-                fvs.insert(x);
+                fvs.insert(*x);
                 let t_temp = t.clone_with_template(fvs);
-                fvs.remove(&x);
-                Tau::mk_iarrow(x, t_temp)
+                fvs.remove(x);
+                Tau::mk_iarrow(*x, t_temp)
             }
             TauKind::Arrow(ts, t) => {
                 let ts = ts.iter().map(|s| s.clone_with_template(fvs)).collect();
