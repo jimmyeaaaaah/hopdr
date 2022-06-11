@@ -311,7 +311,7 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
         reduced = g.clone();
         //debug!("-> {}", reduced);
         //debug!("-> {}", r);
-        debug!("-> {}", reduced);
+        debug!("->  {}", reduced);
         seq.push(r);
     }
     (seq, reduced)
@@ -626,10 +626,8 @@ impl Context {
             };
             for ret_ty in ret_tys.iter() {
                 let ty = match &arg_ty {
-                    either::Left(ident) => Ty::mk_iarrow(*ident, ret_ty.clone()),
-                    either::Right(arg_ty) => Ty::mk_arrow(arg_ty.clone(), ret_ty.clone()),
-                };
-                // 2. create a template type from `ty` and free variables `fvints`
+                    either::Left(ident) => {
+                        let tmp_ty = 
                 let mut fvints = reduction.fvints.clone();
                 let tmp_ty = ty.clone_with_template(&mut fvints);
                 debug!("- ty: {}", ty);
@@ -640,6 +638,10 @@ impl Context {
                     &tmp_ty,
                     &ty,
                 );
+                    },
+                    either::Right(arg_ty) => Ty::mk_arrow(arg_ty.clone(), ret_ty.clone()),
+                };
+                // 2. create a template type from `ty` and free variables `fvints`
                 match constraint.to_chcs_or_pcsps() {
                     either::Left(chcs) => {
                         debug!("constraints");
