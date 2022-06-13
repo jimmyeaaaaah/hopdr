@@ -625,21 +625,24 @@ impl Context {
                 either::Right(arg_ty)
             };
             for ret_ty in ret_tys.iter() {
-                let ty = match &arg_ty {
+                let (tmp_ty, constraint) = match &arg_ty {
                     either::Left(ident) => {
-                        let tmp_ty = 
-                let mut fvints = reduction.fvints.clone();
-                let tmp_ty = ty.clone_with_template(&mut fvints);
-                debug!("- ty: {}", ty);
-                debug!("- tmp_ty: {}", tmp_ty);
-                // 3. generate constraint from subtyping t <: arg_ty -> ret_ty, and append them to constraints
-                let constraint = Ty::check_subtype_structural(
-                    &reduction.constraint.clone().into(),
-                    &tmp_ty,
-                    &ty,
-                );
-                    },
-                    either::Right(arg_ty) => Ty::mk_arrow(arg_ty.clone(), ret_ty.clone()),
+                        unimplemented!()
+                    }
+                    either::Right(arg_ty) => {
+                        let mut fvints = reduction.fvints.clone();
+                        let tmp_ret_ty = ret_ty.clone_with_template(&mut fvints);
+
+                        debug!("- ty: {}", ret_ty);
+                        debug!("- tmp_ty: {}", tmp_ret_ty);
+                        // 3. generate constraint from subtyping t <: arg_ty -> ret_ty, and append them to constraints
+                        let constraint = Ty::check_subtype_structural(
+                            &reduction.constraint.clone().into(),
+                            &tmp_ret_ty,
+                            &ret_ty,
+                        );
+                        (Ty::mk_arrow(arg_ty.clone(), ret_ty.clone()), constraint)
+                    }
                 };
                 // 2. create a template type from `ty` and free variables `fvints`
                 match constraint.to_chcs_or_pcsps() {
