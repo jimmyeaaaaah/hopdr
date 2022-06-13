@@ -106,14 +106,28 @@ impl QuantifierKind {
 }
 
 #[derive(Debug, PartialEq)]
-pub enum OpExpr {
-    Op(OpKind, Op, Op),
+pub enum OpExpr<T> {
+    Op(OpKind, OpBase<T>, OpBase<T>),
     Var(Ident),
     Const(i64),
 }
 
-pub type Op = P<OpExpr>;
-impl fmt::Display for Op {
+impl<T> OpBase<T> {
+    pub fn kind<'a>(&'a self) -> &'a OpExpr<T> {
+        &*self.ptr
+    }
+}
+
+
+#[derive(Debug)]
+pub struct OpBase<T> {
+    ptr: P<OpExpr<T>>,
+    pub aux: T,
+}
+
+pub type Op = OpBase<()>;
+
+impl <T>fmt::Display for OpBase<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use OpExpr::*;
         match self.kind() {
@@ -124,7 +138,16 @@ impl fmt::Display for Op {
     }
 }
 
-impl Fv for Op {
+impl<T: Clone> Clone for OpBase<T> {
+    fn clone(&self) -> OpBase<T> {
+        OpBase {
+            ptr: self.ptr.clone(),
+            aux: self.aux.clone(),
+        }
+    }
+}
+
+impl <T>Fv for OpBase<T> {
     type Id = Ident;
     fn fv_with_vec(&self, fvs: &mut HashSet<Self::Id>) {
         match self.kind() {
@@ -137,6 +160,12 @@ impl Fv for Op {
             }
             OpExpr::Const(_) => {}
         }
+    }
+}
+
+impl<T> PartialEq for OpBase<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.ptr == other.ptr
     }
 }
 
@@ -178,6 +207,9 @@ impl IntegerEnvironment {
 }
 
 impl Op {
+    pub fn new(expr: OpExpr<()>) -> Op {
+        OpBase{ ptr: P::new(expr), aux: () }
+    }
     pub fn mk_bin_op(op: OpKind, x: Op, y: Op) -> Op {
         Op::new(OpExpr::Op(op, x, y))
     }
@@ -192,6 +224,27 @@ impl Op {
 
     pub fn mk_var(x: Ident) -> Op {
         Op::new(OpExpr::Var(x))
+    }
+}
+
+impl <T>OpBase<T> {
+    pub fn new_t(op: OpExpr<T>, aux: T) -> OpBase<T> {
+        OpBase{ptr: P::new(op), aux }
+    }
+    pub fn mk_bin_op_t(op: OpKind, x: OpBase<T>, y: OpBase<T>, aux: T) -> OpBase<T> {
+        Op::new_t(OpExpr::Op(op, x, y), aux)
+    }
+
+    pub fn mk_add_t(x: OpBase<T>, y: OpBase<T>, aux: T) -> OpBase<T> {
+        Op::new_t(OpExpr::Op(OpKind::Add, x, y), aux)
+    }
+
+    pub fn mk_const_t(x: i64, aux: T) -> OpBase<T> {
+        Op::new_t(OpExpr::Const(x), aux)
+    }
+
+    pub fn mk_var_t(x: Ident, aux: T) -> OpBase<T> {
+        Op::new_t(OpExpr::Var(x), aux)
     }
 }
 
