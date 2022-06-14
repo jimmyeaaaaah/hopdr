@@ -4,27 +4,26 @@ use std::fmt;
 use super::chc;
 use super::pcsp;
 use super::{
-    hes, Arithmetic, Bot, Constraint, ConstraintBase, FirstOrderLogic, Fv, Ident, Logic, Negation,
-    Op, OpKind, PredKind, QuantifierKind, Rename, Subst, Top, Type, Variable,
+    hes, Bot, Constraint, FirstOrderLogic, Fv, Ident, Logic, Negation, Op, OpKind, PredKind,
+    QuantifierKind, Rename, Subst, Top, Type, Variable,
 };
 use crate::solver;
 use crate::solver::smt;
 use crate::util::P;
 
 #[derive(Debug, PartialEq)]
-pub enum AtomKind<Op> {
+pub enum AtomKind {
     True, // equivalent to Constraint(True). just for optimization purpose
-    Constraint(ConstraintBase<Op>),
+    Constraint(Constraint),
     Predicate(Ident, Vec<Op>),
-    Conj(AtomBase<Op>, AtomBase<Op>),
-    Disj(AtomBase<Op>, AtomBase<Op>),
-    Not(AtomBase<Op>),
-    Quantifier(QuantifierKind, Ident, AtomBase<Op>),
+    Conj(Atom, Atom),
+    Disj(Atom, Atom),
+    Not(Atom),
+    Quantifier(QuantifierKind, Ident, Atom),
 }
-pub type AtomBase<Op> = P<AtomKind<Op>>;
-pub type Atom = AtomBase<Op>;
+pub type Atom = P<AtomKind>;
 
-impl<Op: Arithmetic> fmt::Display for AtomBase<Op> {
+impl fmt::Display for Atom {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.kind() {
             AtomKind::True => write!(f, "true"),
@@ -44,7 +43,7 @@ impl<Op: Arithmetic> fmt::Display for AtomBase<Op> {
     }
 }
 
-impl<Op: Arithmetic> Fv for AtomBase<Op> {
+impl Fv for Atom {
     type Id = Ident;
     fn fv_with_vec(&self, fvs: &mut HashSet<Self::Id>) {
         match self.kind() {
@@ -67,76 +66,76 @@ impl<Op: Arithmetic> Fv for AtomBase<Op> {
     }
 }
 
-impl<O: Arithmetic> Rename for AtomBase<O> {
+impl Rename for Atom {
     fn rename(&self, x: &Ident, y: &Ident) -> Self {
         match self.kind() {
             AtomKind::True => self.clone(),
-            AtomKind::Constraint(c) => AtomBase::mk_constraint(c.rename(x, y)),
+            AtomKind::Constraint(c) => Atom::mk_constraint(c.rename(x, y)),
             AtomKind::Predicate(p, l) => {
-                let l2: Vec<O> = l.iter().map(|id| id.rename(x, y)).collect();
-                AtomBase::mk_pred(*p, l2)
+                let l2: Vec<Op> = l.iter().map(|id| id.rename(x, y)).collect();
+                Atom::mk_pred(*p, l2)
             }
-            AtomKind::Conj(a1, a2) => AtomBase::mk_conj(a1.rename(x, y), a2.rename(x, y)),
-            AtomKind::Disj(a1, a2) => AtomBase::mk_disj(a1.rename(x, y), a2.rename(x, y)),
-            AtomKind::Not(a) => AtomBase::mk_not(a.rename(x, y)),
-            AtomKind::Quantifier(q, x, a) => AtomBase::mk_quantifier(*q, *x, a.rename(x, y)),
+            AtomKind::Conj(a1, a2) => Atom::mk_conj(a1.rename(x, y), a2.rename(x, y)),
+            AtomKind::Disj(a1, a2) => Atom::mk_disj(a1.rename(x, y), a2.rename(x, y)),
+            AtomKind::Not(a) => Atom::mk_not(a.rename(x, y)),
+            AtomKind::Quantifier(q, x, a) => Atom::mk_quantifier(*q, *x, a.rename(x, y)),
         }
     }
 }
 
-impl<O: Arithmetic> From<ConstraintBase<O>> for AtomBase<O> {
-    fn from(from: ConstraintBase<O>) -> AtomBase<O> {
-        AtomBase::mk_constraint(from)
+impl From<Constraint> for Atom {
+    fn from(from: Constraint) -> Atom {
+        Atom::mk_constraint(from)
     }
 }
-impl<O: Arithmetic> From<AtomBase<O>> for ConstraintBase<O> {
-    fn from(from: AtomBase<O>) -> ConstraintBase<O> {
+impl From<Atom> for Constraint {
+    fn from(from: Atom) -> Constraint {
         match from.kind() {
-            AtomKind::True => ConstraintBase::mk_true(),
+            AtomKind::True => Constraint::mk_true(),
             AtomKind::Constraint(c) => c.clone(),
             AtomKind::Conj(a1, a2) => {
                 let c1 = a1.clone().into();
                 let c2 = a2.clone().into();
-                ConstraintBase::mk_conj(c1, c2)
+                Constraint::mk_conj(c1, c2)
             }
             AtomKind::Disj(a1, a2) => {
                 let c1 = a1.clone().into();
                 let c2 = a2.clone().into();
-                ConstraintBase::mk_disj(c1, c2)
+                Constraint::mk_disj(c1, c2)
             }
             AtomKind::Not(a) => {
-                let c: ConstraintBase<O> = a.clone().into();
+                let c: Constraint = a.clone().into();
                 c.negate().unwrap()
             }
             AtomKind::Quantifier(q, x, a) => {
-                let c: ConstraintBase<O> = a.clone().into();
-                ConstraintBase::mk_quantifier_int(*q, *x, c)
+                let c: Constraint = a.clone().into();
+                Constraint::mk_quantifier_int(*q, *x, c)
             }
             AtomKind::Predicate(_, _) => panic!("program error"),
         }
     }
 }
 
-impl From<pcsp::Atom> for AtomBase<Op> {
-    fn from(from: pcsp::Atom) -> AtomBase<Op> {
+impl From<pcsp::Atom> for Atom {
+    fn from(from: pcsp::Atom) -> Atom {
         match from.kind() {
-            pcsp::AtomKind::True => AtomBase::mk_true(),
-            pcsp::AtomKind::Constraint(c) => AtomBase::mk_constraint(c.clone().into()),
-            pcsp::AtomKind::Predicate(p, l) => AtomBase::mk_pred(*p, l.clone()),
-            pcsp::AtomKind::Conj(x, y) => AtomBase::mk_conj(x.clone().into(), y.clone().into()),
-            pcsp::AtomKind::Disj(x, y) => AtomBase::mk_disj(x.clone().into(), y.clone().into()),
+            pcsp::AtomKind::True => Atom::mk_true(),
+            pcsp::AtomKind::Constraint(c) => Atom::mk_constraint(c.clone()),
+            pcsp::AtomKind::Predicate(p, l) => Atom::mk_pred(*p, l.clone()),
+            pcsp::AtomKind::Conj(x, y) => Atom::mk_conj(x.clone().into(), y.clone().into()),
+            pcsp::AtomKind::Disj(x, y) => Atom::mk_disj(x.clone().into(), y.clone().into()),
             pcsp::AtomKind::Quantifier(q, x, c) if *q == QuantifierKind::Universal => {
-                AtomBase::mk_univq(*x, c.clone().into())
+                Atom::mk_univq(*x, c.clone().into())
             }
             pcsp::AtomKind::Quantifier(q, x, c) if *q == QuantifierKind::Existential => {
-                AtomBase::mk_existq(*x, c.clone().into())
+                Atom::mk_existq(*x, c.clone().into())
             }
             pcsp::AtomKind::Quantifier(_q, _x, _c) => panic!("fail"),
         }
     }
 }
-impl From<AtomBase<Op>> for pcsp::Atom {
-    fn from(from: AtomBase<Op>) -> pcsp::Atom {
+impl From<Atom> for pcsp::Atom {
+    fn from(from: Atom) -> pcsp::Atom {
         match from.kind() {
             AtomKind::True => pcsp::Atom::mk_true(),
             AtomKind::Constraint(c) => pcsp::Atom::mk_constraint(c.clone()),
@@ -165,19 +164,19 @@ impl From<AtomBase<Op>> for pcsp::Atom {
 
 impl From<pcsp::PCSP<pcsp::Atom>> for Atom {
     fn from(from: pcsp::PCSP<pcsp::Atom>) -> Atom {
-        AtomBase::mk_disj(AtomBase::mk_not(from.body.into()), from.head.into())
+        Atom::mk_disj(Atom::mk_not(from.body.into()), from.head.into())
     }
 }
 
-impl<O: Arithmetic> From<pcsp::PCSP<AtomBase<O>>> for AtomBase<O> {
-    fn from(from: pcsp::PCSP<AtomBase<O>>) -> AtomBase<O> {
-        AtomBase::mk_disj(AtomBase::mk_not(from.body), from.head)
+impl From<pcsp::PCSP<Atom>> for Atom {
+    fn from(from: pcsp::PCSP<Atom>) -> Atom {
+        Atom::mk_disj(Atom::mk_not(from.body), from.head)
     }
 }
 
-impl<O: Arithmetic> Top for AtomBase<O> {
+impl Top for Atom {
     fn mk_true() -> Self {
-        AtomBase::new(AtomKind::True)
+        Atom::new(AtomKind::True)
     }
 
     fn is_true(&self) -> bool {
@@ -192,9 +191,9 @@ impl<O: Arithmetic> Top for AtomBase<O> {
     }
 }
 
-impl<O: Arithmetic> Bot for AtomBase<O> {
+impl Bot for Atom {
     fn mk_false() -> Self {
-        AtomBase::new(AtomKind::Constraint(ConstraintBase::mk_false()))
+        Atom::new(AtomKind::Constraint(Constraint::mk_false()))
     }
 
     fn is_false(&self) -> bool {
@@ -208,138 +207,138 @@ impl<O: Arithmetic> Bot for AtomBase<O> {
     }
 }
 
-impl<O: Arithmetic> Logic for AtomBase<O> {
-    fn is_conj<'a>(&'a self) -> Option<(&'a Self, &'a Self)> {
+impl Logic for Atom {
+    fn is_conj<'a>(&'a self) -> Option<(&'a Atom, &'a Atom)> {
         match self.kind() {
             AtomKind::Conj(x, y) => Some((x, y)),
             _ => None,
         }
     }
-    fn mk_conj(x: Self, y: Self) -> Self {
+    fn mk_conj(x: Self, y: Self) -> Atom {
         use AtomKind::*;
         if x.is_false() || y.is_false() {
-            AtomBase::mk_false()
+            Atom::mk_false()
         } else if x.is_true() {
             y
         } else if y.is_true() {
             x
         } else {
-            AtomBase::new(Conj(x, y))
+            Atom::new(Conj(x, y))
         }
     }
-    fn is_disj<'a>(&'a self) -> Option<(&'a Self, &'a Self)> {
+    fn is_disj<'a>(&'a self) -> Option<(&'a Atom, &'a Atom)> {
         match self.kind() {
             AtomKind::Disj(x, y) => Some((x, y)),
             _ => None,
         }
     }
-    fn mk_disj(x: Self, y: Self) -> Self {
+    fn mk_disj(x: Self, y: Self) -> Atom {
         if x.is_true() || y.is_true() {
-            AtomBase::mk_true()
+            Atom::mk_true()
         } else if x.is_false() {
             y
         } else if y.is_false() {
             x
         } else {
-            AtomBase::new(AtomKind::Disj(x, y))
+            Atom::new(AtomKind::Disj(x, y))
         }
     }
 }
 
-// For AtomBase, negation always succeeds
-impl<O: Arithmetic> Negation for AtomBase<O> {
-    fn negate(&self) -> Option<Self> {
+// For Atom, negation always succeeds
+impl Negation for Atom {
+    fn negate(&self) -> Option<Atom> {
         match self.kind() {
-            AtomKind::True => Some(AtomBase::mk_false()),
-            AtomKind::Constraint(c) => c.negate().map(|c| AtomBase::mk_constraint(c)),
-            AtomKind::Predicate(_, _) => Some(AtomBase::mk_not(self.clone())),
+            AtomKind::True => Some(Atom::mk_false()),
+            AtomKind::Constraint(c) => c.negate().map(|c| Atom::mk_constraint(c)),
+            AtomKind::Predicate(_, _) => Some(Atom::mk_not(self.clone())),
             AtomKind::Conj(c1, c2) => c1
                 .negate()
-                .map(|c1| c2.negate().map(|c2| AtomBase::mk_disj(c1, c2)))
+                .map(|c1| c2.negate().map(|c2| Atom::mk_disj(c1, c2)))
                 .flatten(),
             AtomKind::Disj(c1, c2) => c1
                 .negate()
-                .map(|c1| c2.negate().map(|c2| AtomBase::mk_conj(c1, c2)))
+                .map(|c1| c2.negate().map(|c2| Atom::mk_conj(c1, c2)))
                 .flatten(),
             AtomKind::Not(a) => Some(a.clone()),
             AtomKind::Quantifier(q, x, a) => {
                 let q = q.negate();
-                a.negate().map(|a| AtomBase::mk_quantifier(q, *x, a))
+                a.negate().map(|a| Atom::mk_quantifier(q, *x, a))
             }
         }
     }
 }
 
-impl<O: Arithmetic> Subst for AtomBase<O> {
-    type Item = O;
+impl Subst for Atom {
+    type Item = super::Op;
     type Id = Ident;
-    fn subst(&self, x: &Ident, v: &O) -> Self {
+    fn subst(&self, x: &Ident, v: &super::Op) -> Self {
         match self.kind() {
             AtomKind::True => self.clone(),
-            AtomKind::Constraint(c) => AtomBase::mk_constraint(c.subst(x, v)),
+            AtomKind::Constraint(c) => Atom::mk_constraint(c.subst(x, v)),
             AtomKind::Predicate(p, l) => {
-                let l2: Vec<O> = l.iter().map(|id| id.subst(x, v)).collect();
-                AtomBase::mk_pred(*p, l2)
+                let l2: Vec<Op> = l.iter().map(|id| id.subst(x, v)).collect();
+                Atom::mk_pred(*p, l2)
             }
             AtomKind::Conj(a1, a2) => {
                 let a1 = a1.subst(x, v);
                 let a2 = a2.subst(x, v);
-                AtomBase::mk_conj(a1, a2)
+                Atom::mk_conj(a1, a2)
             }
             AtomKind::Disj(a1, a2) => {
                 let a1 = a1.subst(x, v);
                 let a2 = a2.subst(x, v);
-                AtomBase::mk_disj(a1, a2)
+                Atom::mk_disj(a1, a2)
             }
             AtomKind::Not(a) => {
                 let a = a.subst(x, v);
-                AtomBase::mk_not(a)
+                Atom::mk_not(a)
             }
             AtomKind::Quantifier(q, y, a) => {
                 if x == y {
-                    AtomBase::mk_quantifier(*q, *y, a.clone())
+                    Atom::mk_quantifier(*q, *y, a.clone())
                 } else {
-                    AtomBase::mk_quantifier(*q, *y, a.subst(x, v))
+                    Atom::mk_quantifier(*q, *y, a.subst(x, v))
                 }
             }
         }
     }
 }
-impl<O: Arithmetic> FirstOrderLogic for AtomBase<O> {
-    fn mk_quantifier_int(q: QuantifierKind, x: Ident, c: Self) -> Self {
-        AtomBase::mk_quantifier(q, x, c)
+impl FirstOrderLogic for Atom {
+    fn mk_quantifier_int(q: QuantifierKind, x: Ident, c: Atom) -> Atom {
+        Atom::mk_quantifier(q, x, c)
     }
 }
 
-impl From<Constraint> for hes::Goal<AtomBase<Op>> {
+impl From<Constraint> for hes::Goal<Atom> {
     fn from(c: Constraint) -> Self {
-        let a: AtomBase<Op> = c.into();
+        let a: Atom = c.into();
         a.into()
     }
 }
 
-impl AtomBase<Op> {
+impl Atom {
     fn replace_by_template(&self, map: &HashMap<Ident, Template>) -> Constraint {
         match self.kind() {
-            AtomKind::True => ConstraintBase::mk_true(),
+            AtomKind::True => Constraint::mk_true(),
             AtomKind::Constraint(c) => c.clone(),
             AtomKind::Conj(x, y) => {
-                ConstraintBase::mk_conj(x.replace_by_template(map), y.replace_by_template(map))
+                Constraint::mk_conj(x.replace_by_template(map), y.replace_by_template(map))
             }
             AtomKind::Disj(x, y) => {
-                ConstraintBase::mk_disj(x.replace_by_template(map), y.replace_by_template(map))
+                Constraint::mk_disj(x.replace_by_template(map), y.replace_by_template(map))
             }
             AtomKind::Not(c) => c.replace_by_template(map).negate().unwrap(),
             AtomKind::Quantifier(q, v, x) => {
-                ConstraintBase::mk_quantifier_int(*q, *v, x.replace_by_template(map))
+                Constraint::mk_quantifier_int(*q, *v, x.replace_by_template(map))
             }
             AtomKind::Predicate(p, l) => map.get(p).unwrap().apply(l),
         }
     }
     /// check the satisfiability of the given fofml formula
     pub fn check_satisfiability(&self) -> Option<HashMap<Ident, (Vec<Ident>, Constraint)>> {
-        fn collect_templates<O>(
-            a: &AtomBase<O>,
+        fn collect_templates(
+            a: &Atom,
             map: &mut HashMap<Ident, Template>,
             fvs: &mut HashSet<Ident>,
         ) {
@@ -382,6 +381,202 @@ impl AtomBase<Op> {
             .map(|(p, t)| (p, t.to_constraint(&model)))
             .collect();
         Some(h)
+    }
+    pub fn mk_false() -> Atom {
+        Atom::mk_constraint(Constraint::mk_false())
+    }
+    pub fn mk_not(x: Self) -> Atom {
+        Atom::new(AtomKind::Not(x))
+    }
+    //pub fn mk_var(x: Ident) -> Atom {
+    //    Atom::new(AtomKind::)
+    //}
+    // auxiliary function for generating constraint
+    pub fn mk_constraint(c: Constraint) -> Atom {
+        Atom::new(AtomKind::Constraint(c))
+    }
+    pub fn mk_pred(p: Ident, l: impl Into<Vec<Op>>) -> Atom {
+        Atom::new(AtomKind::Predicate(p, l.into()))
+    }
+    pub fn mk_fresh_pred(l: Vec<Op>) -> Atom {
+        let p = Ident::fresh();
+        Atom::mk_pred(p, l)
+    }
+    pub fn mk_quantifier(q: QuantifierKind, x: Ident, c: Atom) -> Atom {
+        Atom::new(AtomKind::Quantifier(q, x, c))
+    }
+    pub fn mk_univq(x: Ident, c: Atom) -> Atom {
+        Atom::mk_quantifier(QuantifierKind::Universal, x, c)
+    }
+    pub fn mk_existq(x: Ident, c: Atom) -> Atom {
+        Atom::mk_quantifier(QuantifierKind::Existential, x, c)
+    }
+    pub fn negate(self) -> Atom {
+        Atom::mk_not(self)
+    }
+    pub fn integer_fv(&self) -> HashSet<Ident> {
+        fn inner(atom: &Atom, fvs: &mut HashSet<Ident>) {
+            match atom.kind() {
+                AtomKind::True => (),
+                AtomKind::Constraint(c) => {
+                    c.fv_with_vec(fvs);
+                }
+                AtomKind::Predicate(_, args) => {
+                    for a in args {
+                        a.fv_with_vec(fvs);
+                    }
+                }
+                AtomKind::Conj(x, y) | AtomKind::Disj(x, y) => {
+                    inner(x, fvs);
+                    inner(y, fvs);
+                }
+                AtomKind::Quantifier(_, x, c) => {
+                    inner(c, fvs);
+                    fvs.remove(x);
+                }
+                AtomKind::Not(x) => inner(x, fvs),
+            }
+        }
+        let mut fvs = HashSet::new();
+        inner(self, &mut fvs);
+        fvs
+    }
+    pub fn to_constraint(&self) -> Option<Constraint> {
+        match self.kind() {
+            AtomKind::True => Some(Constraint::mk_true()),
+            AtomKind::Constraint(c) => Some(c.clone()),
+            AtomKind::Predicate(_, _) => None,
+            AtomKind::Conj(x, y) => x
+                .to_constraint()
+                .map(|x| y.to_constraint().map(|y| Constraint::mk_conj(x, y)))
+                .flatten(),
+            AtomKind::Disj(x, y) => x
+                .to_constraint()
+                .map(|x| y.to_constraint().map(|y| Constraint::mk_disj(x, y)))
+                .flatten(),
+            AtomKind::Quantifier(q, x, c) => c
+                .to_constraint()
+                .map(|c| Constraint::mk_quantifier(*q, Variable::mk(*x, Type::mk_type_int()), c)),
+            AtomKind::Not(x) => x.to_constraint().map(|x| x.negate()).flatten(),
+        }
+    }
+    pub fn assign(&self, model: &HashMap<Ident, (Vec<Ident>, Constraint)>) -> Constraint {
+        match self.kind() {
+            AtomKind::True => Constraint::mk_true(),
+            AtomKind::Constraint(c) => c.clone(),
+            AtomKind::Predicate(p, l) => match model.get(p) {
+                Some((r, c)) => {
+                    c.subst_multi(r.iter().zip(l.iter()).map(|(x, y)| (x.clone(), y.clone())))
+                }
+                None => {
+                    // TODO: is it true?
+                    // there is no entry in p
+                    Constraint::mk_false()
+                }
+            },
+            AtomKind::Conj(x, y) => Constraint::mk_conj(x.assign(model), y.assign(model)),
+            AtomKind::Disj(x, y) => Constraint::mk_disj(x.assign(model), y.assign(model)),
+            AtomKind::Quantifier(q, x, c) => Constraint::mk_quantifier(
+                *q,
+                Variable::mk(*x, Type::mk_type_int()),
+                c.assign(model),
+            ),
+            AtomKind::Not(x) => x.assign(&model).negate().unwrap(),
+        }
+    }
+    // reduces Atom a to a' where all the occurences of not
+    // are of the form `Not(Predicate(...))`.
+    pub fn reduce_not(&self) -> Atom {
+        fn negate(x: &Atom) -> Atom {
+            match x.kind() {
+                AtomKind::True => Atom::mk_false(),
+                AtomKind::Constraint(c) => Atom::mk_constraint(c.negate().unwrap()),
+                AtomKind::Predicate(_, _) => Atom::mk_not(x.clone()),
+                AtomKind::Conj(a1, a2) => {
+                    let a1 = negate(a1);
+                    let a2 = negate(a2);
+                    Atom::mk_disj(a1, a2)
+                }
+                AtomKind::Disj(a1, a2) => {
+                    let a1 = negate(a1);
+                    let a2 = negate(a2);
+                    Atom::mk_conj(a1, a2)
+                }
+                AtomKind::Quantifier(q, x, c) => Atom::mk_quantifier(q.negate(), *x, negate(c)),
+                AtomKind::Not(x) => x.clone(),
+            }
+        }
+        match self.kind() {
+            AtomKind::True | AtomKind::Constraint(_) | AtomKind::Predicate(_, _) => self.clone(),
+            AtomKind::Conj(a1, a2) => {
+                let a1 = a1.reduce_not();
+                let a2 = a2.reduce_not();
+                Atom::mk_conj(a1, a2)
+            }
+            AtomKind::Disj(a1, a2) => {
+                let a1 = a1.reduce_not();
+                let a2 = a2.reduce_not();
+                Atom::mk_disj(a1, a2)
+            }
+            AtomKind::Quantifier(q, x, c) => Atom::mk_quantifier(*q, *x, c.reduce_not()),
+            AtomKind::Not(x) => negate(x),
+        }
+    }
+    // Assumption: Not is already reduced by `reduce_not`
+    pub fn prenex_normal_form_raw(
+        self: &Atom,
+        env: &mut HashSet<Ident>,
+    ) -> (Vec<(QuantifierKind, Ident)>, Atom) {
+        match self.kind() {
+            AtomKind::True | AtomKind::Constraint(_) | AtomKind::Predicate(_, _) => {
+                (Vec::new(), self.clone())
+            }
+            AtomKind::Conj(a1, a2) => {
+                let (mut v1, a1) = a1.prenex_normal_form_raw(env);
+                let (mut v2, a2) = a2.prenex_normal_form_raw(env);
+                v1.append(&mut v2);
+                (v1, Atom::mk_conj(a1, a2))
+            }
+            AtomKind::Disj(a1, a2) => {
+                let (mut v1, a1) = a1.prenex_normal_form_raw(env);
+                let (mut v2, a2) = a2.prenex_normal_form_raw(env);
+                v1.append(&mut v2);
+                (v1, Atom::mk_disj(a1, a2))
+            }
+            AtomKind::Quantifier(q, x, a) => {
+                let (x, a) = if env.contains(x) {
+                    // if env already contains the ident to be bound,
+                    // we rename it to a fresh one.
+                    let x2 = Ident::fresh();
+                    let a = a.rename(x, &x2);
+                    (x2, a)
+                } else {
+                    (*x, a.clone())
+                };
+                env.insert(x);
+                let (mut v, a) = a.prenex_normal_form_raw(env);
+                debug_assert!(v.iter().find(|(_, y)| { x == *y }).is_none());
+                v.push((*q, x));
+                env.remove(&x);
+                (v, a)
+            }
+            AtomKind::Not(x) => {
+                // Not is already reduced, so x must be Predicate
+                // this match is just to make sure this.
+                match x.kind() {
+                    AtomKind::Predicate(_, _) => (Vec::new(), self.clone()),
+                    _ => panic!("program error"),
+                }
+            }
+        }
+    }
+    // Assumption: Not is already reduced by `reduce_not`
+    pub fn prenex_normal_form(&self) -> Atom {
+        let (v, mut a) = self.prenex_normal_form_raw(&mut HashSet::new());
+        for (q, x) in v.into_iter().rev() {
+            a = Atom::mk_quantifier(q, x, a);
+        }
+        a
     }
 
     pub fn to_chcs_or_pcsps(
@@ -459,207 +654,6 @@ impl AtomBase<Op> {
         } else {
             either::Right(clauses)
         }
-    }
-}
-impl<O: Arithmetic> AtomBase<O> {
-    pub fn mk_false() -> AtomBase<O> {
-        AtomBase::mk_constraint(ConstraintBase::mk_false())
-    }
-    pub fn mk_not(x: Self) -> AtomBase<O> {
-        AtomBase::new(AtomKind::Not(x))
-    }
-    //pub fn mk_var(x: Ident) -> AtomBase {
-    //    AtomBase::new(AtomBaseKind::)
-    //}
-    // auxiliary function for generating constraint
-    pub fn mk_constraint(c: ConstraintBase<O>) -> AtomBase<O> {
-        AtomBase::new(AtomKind::Constraint(c))
-    }
-    pub fn mk_pred(p: Ident, l: impl Into<Vec<O>>) -> AtomBase<O> {
-        AtomBase::new(AtomKind::Predicate(p, l.into()))
-    }
-    pub fn mk_fresh_pred(l: Vec<O>) -> AtomBase<O> {
-        let p = Ident::fresh();
-        AtomBase::mk_pred(p, l)
-    }
-    pub fn mk_quantifier(q: QuantifierKind, x: Ident, c: AtomBase<O>) -> AtomBase<O> {
-        AtomBase::new(AtomKind::Quantifier(q, x, c))
-    }
-    pub fn mk_univq(x: Ident, c: AtomBase<O>) -> AtomBase<O> {
-        AtomBase::mk_quantifier(QuantifierKind::Universal, x, c)
-    }
-    pub fn mk_existq(x: Ident, c: Self) -> Self {
-        AtomBase::mk_quantifier(QuantifierKind::Existential, x, c)
-    }
-    pub fn negate(self) -> Self {
-        AtomBase::mk_not(self)
-    }
-    pub fn integer_fv(&self) -> HashSet<Ident> {
-        fn inner<O: Arithmetic>(atom: &AtomBase<O>, fvs: &mut HashSet<Ident>) {
-            match atom.kind() {
-                AtomKind::True => (),
-                AtomKind::Constraint(c) => {
-                    c.fv_with_vec(fvs);
-                }
-                AtomKind::Predicate(_, args) => {
-                    for a in args {
-                        a.fv_with_vec(fvs);
-                    }
-                }
-                AtomKind::Conj(x, y) | AtomKind::Disj(x, y) => {
-                    inner(x, fvs);
-                    inner(y, fvs);
-                }
-                AtomKind::Quantifier(_, x, c) => {
-                    inner(c, fvs);
-                    fvs.remove(x);
-                }
-                AtomKind::Not(x) => inner(x, fvs),
-            }
-        }
-        let mut fvs = HashSet::new();
-        inner(self, &mut fvs);
-        fvs
-    }
-    pub fn to_constraint(&self) -> Option<ConstraintBase<O>> {
-        match self.kind() {
-            AtomKind::True => Some(ConstraintBase::mk_true()),
-            AtomKind::Constraint(c) => Some(c.clone()),
-            AtomKind::Predicate(_, _) => None,
-            AtomKind::Conj(x, y) => x
-                .to_constraint()
-                .map(|x| y.to_constraint().map(|y| ConstraintBase::mk_conj(x, y)))
-                .flatten(),
-            AtomKind::Disj(x, y) => x
-                .to_constraint()
-                .map(|x| y.to_constraint().map(|y| ConstraintBase::mk_disj(x, y)))
-                .flatten(),
-            AtomKind::Quantifier(q, x, c) => c.to_constraint().map(|c| {
-                ConstraintBase::mk_quantifier(*q, Variable::mk(*x, Type::mk_type_int()), c)
-            }),
-            AtomKind::Not(x) => x.to_constraint().map(|x| x.negate()).flatten(),
-        }
-    }
-    pub fn assign(
-        &self,
-        model: &HashMap<Ident, (Vec<Ident>, ConstraintBase<O>)>,
-    ) -> ConstraintBase<O> {
-        match self.kind() {
-            AtomKind::True => ConstraintBase::mk_true(),
-            AtomKind::Constraint(c) => c.clone(),
-            AtomKind::Predicate(p, l) => match model.get(p) {
-                Some((r, c)) => {
-                    c.subst_multi(r.iter().zip(l.iter()).map(|(x, y)| (x.clone(), y.clone())))
-                }
-                None => {
-                    // TODO: is it true?
-                    // there is no entry in p
-                    ConstraintBase::mk_false()
-                }
-            },
-            AtomKind::Conj(x, y) => ConstraintBase::mk_conj(x.assign(model), y.assign(model)),
-            AtomKind::Disj(x, y) => ConstraintBase::mk_disj(x.assign(model), y.assign(model)),
-            AtomKind::Quantifier(q, x, c) => ConstraintBase::mk_quantifier(
-                *q,
-                Variable::mk(*x, Type::mk_type_int()),
-                c.assign(model),
-            ),
-            AtomKind::Not(x) => x.assign(&model).negate().unwrap(),
-        }
-    }
-    // reduces AtomBase a to a' where all the occurences of not
-    // are of the form `Not(Predicate(...))`.
-    pub fn reduce_not(&self) -> AtomBase<O> {
-        fn negate<O: Arithmetic>(x: &AtomBase<O>) -> AtomBase<O> {
-            match x.kind() {
-                AtomKind::True => AtomBase::mk_false(),
-                AtomKind::Constraint(c) => AtomBase::mk_constraint(c.negate().unwrap()),
-                AtomKind::Predicate(_, _) => AtomBase::mk_not(x.clone()),
-                AtomKind::Conj(a1, a2) => {
-                    let a1 = negate(a1);
-                    let a2 = negate(a2);
-                    AtomBase::mk_disj(a1, a2)
-                }
-                AtomKind::Disj(a1, a2) => {
-                    let a1 = negate(a1);
-                    let a2 = negate(a2);
-                    AtomBase::mk_conj(a1, a2)
-                }
-                AtomKind::Quantifier(q, x, c) => AtomBase::mk_quantifier(q.negate(), *x, negate(c)),
-                AtomKind::Not(x) => x.clone(),
-            }
-        }
-        match self.kind() {
-            AtomKind::True | AtomKind::Constraint(_) | AtomKind::Predicate(_, _) => self.clone(),
-            AtomKind::Conj(a1, a2) => {
-                let a1 = a1.reduce_not();
-                let a2 = a2.reduce_not();
-                AtomBase::mk_conj(a1, a2)
-            }
-            AtomKind::Disj(a1, a2) => {
-                let a1 = a1.reduce_not();
-                let a2 = a2.reduce_not();
-                AtomBase::mk_disj(a1, a2)
-            }
-            AtomKind::Quantifier(q, x, c) => AtomBase::mk_quantifier(*q, *x, c.reduce_not()),
-            AtomKind::Not(x) => negate(x),
-        }
-    }
-    // Assumption: Not is already reduced by `reduce_not`
-    pub fn prenex_normal_form_raw(
-        self: &AtomBase<O>,
-        env: &mut HashSet<Ident>,
-    ) -> (Vec<(QuantifierKind, Ident)>, AtomBase<O>) {
-        match self.kind() {
-            AtomKind::True | AtomKind::Constraint(_) | AtomKind::Predicate(_, _) => {
-                (Vec::new(), self.clone())
-            }
-            AtomKind::Conj(a1, a2) => {
-                let (mut v1, a1) = a1.prenex_normal_form_raw(env);
-                let (mut v2, a2) = a2.prenex_normal_form_raw(env);
-                v1.append(&mut v2);
-                (v1, AtomBase::mk_conj(a1, a2))
-            }
-            AtomKind::Disj(a1, a2) => {
-                let (mut v1, a1) = a1.prenex_normal_form_raw(env);
-                let (mut v2, a2) = a2.prenex_normal_form_raw(env);
-                v1.append(&mut v2);
-                (v1, AtomBase::mk_disj(a1, a2))
-            }
-            AtomKind::Quantifier(q, x, a) => {
-                let (x, a) = if env.contains(x) {
-                    // if env already contains the ident to be bound,
-                    // we rename it to a fresh one.
-                    let x2 = Ident::fresh();
-                    let a = a.rename(x, &x2);
-                    (x2, a)
-                } else {
-                    (*x, a.clone())
-                };
-                env.insert(x);
-                let (mut v, a) = a.prenex_normal_form_raw(env);
-                debug_assert!(v.iter().find(|(_, y)| { x == *y }).is_none());
-                v.push((*q, x));
-                env.remove(&x);
-                (v, a)
-            }
-            AtomKind::Not(x) => {
-                // Not is already reduced, so x must be Predicate
-                // this match is just to make sure this.
-                match x.kind() {
-                    AtomKind::Predicate(_, _) => (Vec::new(), self.clone()),
-                    _ => panic!("program error"),
-                }
-            }
-        }
-    }
-    // Assumption: Not is already reduced by `reduce_not`
-    pub fn prenex_normal_form(&self) -> AtomBase<O> {
-        let (v, mut a) = self.prenex_normal_form_raw(&mut HashSet::new());
-        for (q, x) in v.into_iter().rev() {
-            a = AtomBase::mk_quantifier(q, x, a);
-        }
-        a
     }
 }
 
