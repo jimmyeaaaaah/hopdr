@@ -60,6 +60,15 @@ pub enum OpKind {
     Div,
     Mod,
 }
+pub trait Arithmetic:
+    Clone + PartialEq + Rename + Fv<Id = Ident> + Subst<Id = Ident, Item = Self> + fmt::Display
+{
+}
+
+impl<T> Arithmetic for T where
+    T: Clone + PartialEq + Rename + Fv<Id = Ident> + Subst<Id = Ident, Item = Self> + fmt::Display
+{
+}
 
 impl fmt::Display for OpKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
