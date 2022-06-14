@@ -18,7 +18,7 @@ type Atom = fofml::Atom;
 type Candidate = Goal<ConstraintOrig>;
 type Ty = Tau<Atom>;
 type Env = TypeEnvironment<Ty>;
-type Problem = ProblemBase<Constraint>;
+type Problem = ProblemBase<ConstraintOrig>;
 type CHC = chc::CHC<chc::Atom, Atom>;
 type PCSP = pcsp::PCSP<fofml::Atom>;
 
@@ -341,7 +341,7 @@ impl Context {
         &self,
         model: &chc::Model,
         derivation: &Derivation,
-    ) -> TypeEnvironment<Tau<Constraint>> {
+    ) -> TypeEnvironment<Tau<ConstraintOrig>> {
         // TODO NEXT: we can retrieve it from context.track_idents
         let model = &model.model;
         let mut result_env = TypeEnvironment::new();

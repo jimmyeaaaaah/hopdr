@@ -3,7 +3,7 @@
 
 use super::rtype::{Refinement, TBot, Tau, TauKind, TypeEnvironment};
 use crate::formula::hes::{Goal, GoalBase, Problem as ProblemBase};
-use crate::formula::{self, FirstOrderLogic};
+use crate::formula::{self, Arithmetic, FirstOrderLogic};
 use crate::formula::{
     chc, fofml, pcsp, Bot, Constraint, ConstraintBase, Ident, Logic, Negation, Op, OpBase, Rename,
     Subst, Top, Type as Sty, Variable,
@@ -19,6 +19,12 @@ use std::fmt;
 #[derive(Clone, Debug)]
 pub(crate) struct OpTrace {}
 
+impl fmt::Display for OpTrace {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        unimplemented!()
+    }
+}
+
 impl OpTrace {
     pub(crate) fn new() -> Self {
         unimplemented!()
@@ -26,6 +32,7 @@ impl OpTrace {
 }
 // Op with trace
 pub(crate) type OpWT = OpBase<OpTrace>;
+
 impl From<Op> for OpWT {
     fn from(c: Op) -> Self {
         let trace = OpTrace::new();
