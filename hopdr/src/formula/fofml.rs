@@ -7,7 +7,6 @@ use super::{
     hes, Arithmetic, Bot, Constraint, ConstraintBase, FirstOrderLogic, Fv, Ident, Logic, Negation,
     Op, OpKind, PredKind, QuantifierKind, Rename, Subst, Top, Type, Variable,
 };
-use crate::pdr::rtype::Refinement;
 use crate::solver;
 use crate::solver::smt;
 use crate::util::P;
@@ -320,33 +319,6 @@ impl From<Constraint> for hes::Goal<AtomBase<Op>> {
 }
 
 impl AtomBase<Op> {
-    pub fn assign(
-        &self,
-        model: &HashMap<Ident, (Vec<Ident>, Constraint)>,
-    ) -> Constraint {
-        match self.kind() {
-            AtomKind::True => ConstraintBase::mk_true(),
-            AtomKind::Constraint(c) => c.clone().into(),
-            AtomKind::Predicate(p, l) => match model.get(p) {
-                Some((r, c)) => {
-                    c.subst_multi(r.iter().zip(l.iter()).map(|(x, y)| (x.clone(), y.clone())))
-                }
-                None => {
-                    // TODO: is it true?
-                    // there is no entry in p
-                    ConstraintBase::mk_false()
-                }
-            },
-            AtomKind::Conj(x, y) => ConstraintBase::mk_conj(x.assign(model), y.assign(model)),
-            AtomKind::Disj(x, y) => ConstraintBase::mk_disj(x.assign(model), y.assign(model)),
-            AtomKind::Quantifier(q, x, c) => ConstraintBase::mk_quantifier(
-                *q,
-                Variable::mk(*x, Type::mk_type_int()),
-                c.assign(model),
-            ),
-            AtomKind::Not(x) => x.assign(&model).negate().unwrap(),
-        }
-    }
     fn replace_by_template(&self, map: &HashMap<Ident, Template>) -> Constraint {
         match self.kind() {
             AtomKind::True => ConstraintBase::mk_true(),
@@ -568,7 +540,33 @@ impl<O: Arithmetic> AtomBase<O> {
             AtomKind::Not(x) => x.to_constraint().map(|x| x.negate()).flatten(),
         }
     }
-
+    pub fn assign(
+        &self,
+        model: &HashMap<Ident, (Vec<Ident>, ConstraintBase<O>)>,
+    ) -> ConstraintBase<O> {
+        match self.kind() {
+            AtomKind::True => ConstraintBase::mk_true(),
+            AtomKind::Constraint(c) => c.clone(),
+            AtomKind::Predicate(p, l) => match model.get(p) {
+                Some((r, c)) => {
+                    c.subst_multi(r.iter().zip(l.iter()).map(|(x, y)| (x.clone(), y.clone())))
+                }
+                None => {
+                    // TODO: is it true?
+                    // there is no entry in p
+                    ConstraintBase::mk_false()
+                }
+            },
+            AtomKind::Conj(x, y) => ConstraintBase::mk_conj(x.assign(model), y.assign(model)),
+            AtomKind::Disj(x, y) => ConstraintBase::mk_disj(x.assign(model), y.assign(model)),
+            AtomKind::Quantifier(q, x, c) => ConstraintBase::mk_quantifier(
+                *q,
+                Variable::mk(*x, Type::mk_type_int()),
+                c.assign(model),
+            ),
+            AtomKind::Not(x) => x.assign(&model).negate().unwrap(),
+        }
+    }
     // reduces AtomBase a to a' where all the occurences of not
     // are of the form `Not(Predicate(...))`.
     pub fn reduce_not(&self) -> AtomBase<O> {

@@ -14,7 +14,7 @@ use rpds::{HashTrieMap, Stack};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
-type Atom = fofml::AtomBase<OpWT>;
+type Atom = fofml::Atom;
 type Candidate = Goal<ConstraintOrig>;
 type Ty = Tau<Atom>;
 type Env = TypeEnvironment<Ty>;
@@ -349,7 +349,7 @@ impl Context {
             for id in ids {
                 let tys = derivation.expr.get_opt(id).unwrap();
                 for ty in tys.iter() {
-                    result_env.add(*pred_name, ty.assign(&model).into());
+                    result_env.add(*pred_name, ty.assign(&model));
                 }
             }
         }
@@ -499,9 +499,9 @@ impl Context {
                             for s in ts {
                                 // check if constraint |- s <: t
                                 let c = Ty::check_subtype(constraint, s, t);
-                                let c: Constraint = c.into();
+                                let c = c.into();
                                 if solver::smt::default_solver()
-                                    .solve_with_universal_quantifiers(&c.into())
+                                    .solve_with_universal_quantifiers(&c)
                                     .is_sat()
                                 {
                                     return Some(t.clone().into());
@@ -650,7 +650,6 @@ impl Context {
                     }
                 };
                 // 2. create a template type from `ty` and free variables `fvints`
-                let constraint: fofml::Atom = constraint.into();
                 match constraint.to_chcs_or_pcsps() {
                     either::Left(chcs) => {
                         debug!("constraints");

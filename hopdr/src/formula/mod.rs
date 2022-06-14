@@ -388,7 +388,7 @@ pub trait FirstOrderLogic: Logic {
 }
 
 pub trait Subst: Sized + Clone {
-    type Item: Clone + fmt::Display;
+    type Item;
     type Id;
     fn subst_multi(&self, substs: impl IntoIterator<Item = (Self::Id, Self::Item)>) -> Self {
         let mut itr = substs.into_iter();
@@ -552,7 +552,7 @@ impl<O> FirstOrderLogic for ConstraintBase<O> {
     }
 }
 
-impl<Op: Arithmetic> Subst for ConstraintBase<Op> {
+impl<Op: Subst<Item = Op, Id = Ident>> Subst for ConstraintBase<Op> {
     type Item = Op;
     type Id = Ident;
     // \theta[v/x]
