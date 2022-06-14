@@ -1,7 +1,6 @@
 use crate::formula::ty::Type;
 use crate::formula::{
-    Arithmetic, Bot, Constraint, ConstraintBase, FirstOrderLogic, Fv, Ident, Logic, Op, Rename,
-    Top, Variable,
+    Bot, Constraint, ConstraintBase, FirstOrderLogic, Fv, Ident, Logic, Op, Rename, Top, Variable,
 };
 use crate::pdr::rtype::Refinement;
 use crate::util::P;
@@ -140,7 +139,9 @@ impl<C, O> From<C> for GoalBase<C, (), O> {
     }
 }
 
-impl<T: Clone, O: Arithmetic> From<GoalBase<ConstraintBase<O>, T, O>> for ConstraintBase<O> {
+impl<T: Clone, O: Clone + fmt::Display> From<GoalBase<ConstraintBase<O>, T, O>>
+    for ConstraintBase<O>
+{
     // even though g has type *, and it can be beta-reduced to a constraint,
     // we cannot convert g to the constraint.
     // This is a naive way of translating Goal to Constraint.
@@ -360,8 +361,12 @@ impl<C: Rename, T: Clone, O: Rename> Rename for GoalBase<C, T, O> {
 impl<
         C: Subst<Item = O, Id = Ident> + Rename + Fv<Id = Ident> + fmt::Display,
         T: Clone,
-        O: Arithmetic + From<GoalBase<C, T, O>>,
-    > Subst for GoalBase<C, T, O>
+        O: Subst<Item = O, Id = Ident>
+            + Rename
+            + Fv<Id = Ident>
+            + fmt::Display
+            + From<GoalBase<C, T, Op>>,
+    > Subst for GoalBase<C, T, Op>
 {
     type Item = Self;
     type Id = Variable;
@@ -371,13 +376,17 @@ impl<
         fn subst_inner<
             C: Subst<Item = O, Id = Ident> + Rename + Fv<Id = Ident> + fmt::Display,
             T: Clone,
-            O: Arithmetic + From<GoalBase<C, T, O>>,
+            O: Subst<Item = O, Id = Ident>
+                + Rename
+                + Fv<Id = Ident>
+                + fmt::Display
+                + From<GoalBase<C, T, Op>>,
         >(
-            target: &GoalBase<C, T, O>,
+            target: &GoalBase<C, T, Op>,
             x: &Variable,
-            v: &GoalBase<C, T, O>,
+            v: &GoalBase<C, T, Op>,
             fv: &HashSet<Ident>,
-        ) -> GoalBase<C, T, O> {
+        ) -> GoalBase<C, T, Op> {
             // tmp debug
             //debug!("subst_inner: [{}/{}]{}", v, x, target);
             match target.kind() {
@@ -457,9 +466,9 @@ impl<
     }
 }
 
-impl<C: Rename + Fv<Id = Ident>, T: Clone, O: Arithmetic> GoalBase<C, T, O> {
+impl<C: Rename + Fv<Id = Ident>, T: Clone, O: Rename + Fv<Id = Ident>> GoalBase<C, T, O> {
     pub fn alpha_renaming(&self) -> Self {
-        pub fn go<C: Rename, T: Clone, O: Arithmetic>(
+        pub fn go<C: Rename, T: Clone, O: Rename + Fv<Id = Ident>>(
             goal: &GoalBase<C, T, O>,
             vars: &mut HashSet<Ident>,
         ) -> GoalBase<C, T, O> {
@@ -711,7 +720,7 @@ impl<C, T, O> GoalBase<C, T, O> {
     }
 }
 
-impl<C: Clone + FirstOrderLogic, T: Clone, O: Arithmetic> Into<Option<C>> for GoalBase<C, T, O> {
+impl<C: Refinement, T: Clone, O> Into<Option<C>> for GoalBase<C, T, O> {
     fn into(self) -> Option<C> {
         match self.kind() {
             GoalKind::Constr(c) => Some(c.clone()),
