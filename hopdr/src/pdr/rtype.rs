@@ -23,28 +23,26 @@ pub type Tau<C> = P<TauKind<C>>;
 pub type TyKind<C> = TauKind<C>;
 pub type Ty = Tau<Constraint>;
 
-pub trait Refinement<O>:
+pub trait Refinement:
     Clone
     + Negation
     + FirstOrderLogic
-    + Subst<Id = Ident, Item = O>
+    + Subst<Id = Ident, Item = Op>
     + Fv<Id = Ident>
     + PartialEq
     + Rename
     + From<Goal<Self>>
     + fmt::Display
-where
-    O: Arithmetic,
 {
     fn mk_implies_opt(x: Self, y: Self) -> Option<Self> {
         x.negate().map(|x| Self::mk_disj(x, y))
     }
 }
-impl<T, O: Arithmetic> Refinement<O> for T where
+impl<T> Refinement for T where
     T: Clone
         + Negation
         + FirstOrderLogic
-        + Subst<Id = Ident, Item = O>
+        + Subst<Id = Ident, Item = Op>
         + Fv<Id = Ident>
         + PartialEq
         + Rename
@@ -107,18 +105,18 @@ pub trait TBot {
     fn mk_bot(st: &SType) -> Self;
 }
 
-impl<C: Refinement<O>, O: Arithmetic> TTop for Tau<C> {
+impl<C: Refinement> TTop for Tau<C> {
     fn mk_top(st: &SType) -> Self {
         Tau::new(TyKind::new_top(st))
     }
 }
 
-impl<C: Refinement<O>, O: Arithmetic> TBot for Tau<C> {
+impl<C: Refinement> TBot for Tau<C> {
     fn mk_bot(st: &SType) -> Self {
         Tau::new(TyKind::new_bot(st))
     }
 }
-impl<C: Refinement<O>, O: Arithmetic> TyKind<C> {
+impl<C: Refinement> TyKind<C> {
     fn new_top(st: &SType) -> TyKind<C> {
         use STypeKind::*;
         match st.kind() {

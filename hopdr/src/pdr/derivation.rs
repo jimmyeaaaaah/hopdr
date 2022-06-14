@@ -610,7 +610,7 @@ impl Context {
     fn infer_type(
         &mut self,
         mut derivation: Derivation,
-    ) -> Option<TypeEnvironment<Tau<Constraint>>> {
+    ) -> Option<TypeEnvironment<Tau<ConstraintOrig>>> {
         //let mut constraints = Vec::new();
         let mut clauses = Vec::new();
         for reduction in self.reduction_sequence.iter().rev() {
@@ -1000,7 +1000,7 @@ pub fn search_for_type(
     candidate: &Candidate,
     problem: &Problem,
     tenv: &mut Env,
-) -> Option<TypeEnvironment<Tau<Constraint>>> {
+) -> Option<TypeEnvironment<Tau<ConstraintOrig>>> {
     crate::title!("search_for_type");
     debug!("{}", candidate);
     // TODO: expand candidate once based on problem.
