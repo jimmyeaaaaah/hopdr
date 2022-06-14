@@ -290,10 +290,13 @@ impl From<CHCBody<Atom, pcsp::Atom>> for pcsp::Atom {
     }
 }
 
-impl<A: fmt::Display, C: fmt::Display> fmt::Display for CHCBody<A, C> {
+impl<A: fmt::Display, C: fmt::Display + Top> fmt::Display for CHCBody<A, C> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut first = true;
-        write!(f, "{}", self.constraint)?;
+        if !self.constraint.is_true() {
+            first = false;
+            write!(f, "{}", self.constraint)?;
+        }
         for b in &self.predicates {
             if !first {
                 write!(f, "/\\ ")?;
