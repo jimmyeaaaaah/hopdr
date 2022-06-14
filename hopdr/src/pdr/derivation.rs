@@ -2,8 +2,8 @@ use super::rtype::{Refinement, TBot, Tau, TauKind, TypeEnvironment};
 use crate::formula::hes::{Goal, GoalBase, Problem as ProblemBase};
 use crate::formula::{self, FirstOrderLogic};
 use crate::formula::{
-    chc, fofml, pcsp, Bot, Constraint, ConstraintBase, Ident, Logic, Negation, OpBase, Rename,
-    Subst, Top, Type as Sty, Variable,
+    chc, fofml, pcsp, Bot, Constraint, Ident, Logic, Negation, Op, Rename, Subst, Top, Type as Sty,
+    Variable,
 };
 use crate::solver;
 use crate::title;
@@ -157,41 +157,18 @@ impl Default for TypeMemory {
     }
 }
 
-#[derive(Clone, Debug)]
-struct OpTrace {}
-
-impl OpTrace {
-    fn new() -> Self {
-        unimplemented!()
-    }
-}
-
-type Op = OpBase<OpTrace>;
-impl From<OpBase<()>> for Op {
-    fn from(c: OpBase<()>) -> Self {
-        let trace = OpTrace::new();
-        match c.kind() {
-            formula::OpExpr::Op(o, x, y) => {
-                Self::mk_bin_op_t(*o, x.clone().into(), y.clone().into(), trace)
-            }
-            formula::OpExpr::Var(x) => Self::mk_var_t(*x, trace),
-            formula::OpExpr::Const(c) => Self::mk_const_t(*c, trace),
-        }
-    }
-}
-
 /// internal representation of candidate terms.
 ///
 /// Level is used for tracking when this candidate is used
 /// as the argument of beta-reduction.
-type G = GoalBase<ConstraintBase<Op>, TypeMemory, Op>;
+type G = GoalBase<Constraint, TypeMemory>;
 
 impl From<Candidate> for G {
     fn from(c: Candidate) -> Self {
         let l = TypeMemory::new();
         match c.kind() {
             formula::hes::GoalKind::Constr(c) => G::mk_constr_t(c.clone(), l),
-            formula::hes::GoalKind::Op(op) => G::mk_op_t(op.clone().into(), l),
+            formula::hes::GoalKind::Op(op) => G::mk_op_t(op.clone(), l),
             formula::hes::GoalKind::Var(id) => G::mk_var_t(*id, l),
             formula::hes::GoalKind::Abs(v, g) => G::mk_abs_t(v.clone(), g.clone().into(), l),
             formula::hes::GoalKind::App(x, y) => G::mk_app_t(x.clone().into(), y.clone().into(), l),

@@ -105,7 +105,7 @@ impl QuantifierKind {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum OpExpr<T> {
     Op(OpKind, OpBase<T>, OpBase<T>),
     Var(Ident),
@@ -118,6 +118,7 @@ impl<T> OpBase<T> {
     }
 }
 
+
 #[derive(Debug)]
 pub struct OpBase<T> {
     ptr: P<OpExpr<T>>,
@@ -126,7 +127,7 @@ pub struct OpBase<T> {
 
 pub type Op = OpBase<()>;
 
-impl<T> fmt::Display for OpBase<T> {
+impl <T>fmt::Display for OpBase<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use OpExpr::*;
         match self.kind() {
@@ -146,7 +147,7 @@ impl<T: Clone> Clone for OpBase<T> {
     }
 }
 
-impl<T> Fv for OpBase<T> {
+impl <T>Fv for OpBase<T> {
     type Id = Ident;
     fn fv_with_vec(&self, fvs: &mut HashSet<Self::Id>) {
         match self.kind() {
@@ -162,20 +163,7 @@ impl<T> Fv for OpBase<T> {
     }
 }
 
-impl<T> PartialEq for OpExpr<T> {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (OpExpr::Op(op1, x1, y1), OpExpr::Op(op2, x2, y2)) => {
-                op1 == op2 && x1 == x2 && y1 == y2
-            }
-            (OpExpr::Var(x), OpExpr::Var(y)) => x == y,
-            (OpExpr::Const(x), OpExpr::Const(y)) => x == y,
-            (_, _) => false,
-        }
-    }
-}
-
-impl<T> PartialEq for OpBase<T> {
+impl<T: PartialEq> PartialEq for OpBase<T> {
     fn eq(&self, other: &Self) -> bool {
         self.ptr == other.ptr
     }
@@ -220,10 +208,7 @@ impl IntegerEnvironment {
 
 impl Op {
     pub fn new(expr: OpExpr<()>) -> Op {
-        OpBase {
-            ptr: P::new(expr),
-            aux: (),
-        }
+        OpBase{ ptr: P::new(expr), aux: () }
     }
     pub fn mk_bin_op(op: OpKind, x: Op, y: Op) -> Op {
         Op::new(OpExpr::Op(op, x, y))
@@ -242,12 +227,9 @@ impl Op {
     }
 }
 
-impl<T> OpBase<T> {
+impl <T>OpBase<T> {
     pub fn new_t(op: OpExpr<T>, aux: T) -> OpBase<T> {
-        OpBase {
-            ptr: P::new(op),
-            aux,
-        }
+        OpBase{ptr: P::new(op), aux }
     }
     pub fn mk_bin_op_t(op: OpKind, x: OpBase<T>, y: OpBase<T>, aux: T) -> OpBase<T> {
         OpBase::new_t(OpExpr::Op(op, x, y), aux)
@@ -266,14 +248,13 @@ impl<T> OpBase<T> {
     }
 }
 
-impl<T: Clone> Subst for OpBase<T> {
+impl <T: Clone>Subst for OpBase<T> {
     type Item = OpBase<T>;
     type Id = Ident;
     fn subst(&self, id: &Ident, v: &Self) -> Self {
         match self.kind() {
-            OpExpr::Op(k, x, y) => {
-                Self::mk_bin_op_t(*k, x.subst(id, v), y.subst(id, v), self.aux.clone())
-            }
+            OpExpr::Op(k, x, y) => Self::mk_bin_op_t(*k, x.subst(id, v),
+                    y.subst(id, v), self.aux.clone()),
 
             OpExpr::Var(id2) if id == id2 => v.clone(),
             _ => self.clone(),
@@ -281,14 +262,12 @@ impl<T: Clone> Subst for OpBase<T> {
     }
 }
 
-impl<T: Clone> Rename for OpBase<T> {
-    fn rename(&self, id: &Ident, id2: &Ident) -> Self {
+impl Rename for Op {
+    fn rename(&self, id: &Ident, id2: &Ident) -> Op {
         match self.kind() {
-            OpExpr::Op(k, x, y) => {
-                Self::mk_bin_op_t(*k, x.rename(id, id2), y.rename(id, id2), self.aux.clone())
-            }
+            OpExpr::Op(k, x, y) => Op::mk_bin_op(*k, x.rename(id, id2), y.rename(id, id2)),
 
-            OpExpr::Var(id3) if id == id3 => Self::mk_var_t(*id2, self.aux.clone()),
+            OpExpr::Var(id3) if id == id3 => Op::mk_var(*id2),
             _ => self.clone(),
         }
     }
@@ -444,7 +423,7 @@ pub type ConstraintBase<Op> = P<ConstraintExpr<Op>>;
 
 pub type Constraint = ConstraintBase<Op>;
 
-impl<O: fmt::Display> fmt::Display for ConstraintBase<O> {
+impl <O: fmt::Display>fmt::Display for ConstraintBase<O> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use ConstraintExpr::*;
         match self.kind() {
@@ -470,7 +449,7 @@ impl<O: fmt::Display> fmt::Display for ConstraintBase<O> {
     }
 }
 
-impl<O> Top for ConstraintBase<O> {
+impl <O>Top for ConstraintBase<O> {
     fn mk_true() -> Self {
         Self::new(ConstraintExpr::True)
     }
@@ -484,7 +463,7 @@ impl<O> Top for ConstraintBase<O> {
         }
     }
 }
-impl<O> Bot for ConstraintBase<O> {
+impl <O> Bot for ConstraintBase<O> {
     fn mk_false() -> Self {
         Self::new(ConstraintExpr::False)
     }
@@ -499,7 +478,7 @@ impl<O> Bot for ConstraintBase<O> {
     }
 }
 
-impl<O> Logic for ConstraintBase<O> {
+impl <O>Logic for ConstraintBase<O> {
     fn mk_conj(x: Self, y: Self) -> Self {
         if x.is_true() {
             y
@@ -515,7 +494,7 @@ impl<O> Logic for ConstraintBase<O> {
             _ => None,
         }
     }
-    fn mk_disj(x: Self, y: Self) -> Self {
+    fn mk_disj(x: Self, y: Self) -> Self{
         if x.is_true() || y.is_true() {
             Self::mk_true()
         } else if x.is_false() {
@@ -533,9 +512,9 @@ impl<O> Logic for ConstraintBase<O> {
         }
     }
 }
-impl<O> FirstOrderLogic for ConstraintBase<O> {
-    fn mk_quantifier_int(q: QuantifierKind, v: Ident, c: Self) -> Self {
-        Self::new(ConstraintExpr::Quantifier(
+impl FirstOrderLogic for Constraint {
+    fn mk_quantifier_int(q: QuantifierKind, v: Ident, c: Constraint) -> Constraint {
+        Constraint::new(ConstraintExpr::Quantifier(
             q,
             Variable::mk(v, Type::mk_type_int()),
             c,
@@ -543,11 +522,11 @@ impl<O> FirstOrderLogic for ConstraintBase<O> {
     }
 }
 
-impl<Op: Subst<Item = Op, Id = Ident>> Subst for ConstraintBase<Op> {
+impl <Op: Subst<Item=Op, Id=Ident>>Subst for ConstraintBase<Op> {
     type Item = Op;
     type Id = Ident;
     // \theta[v/x]
-    fn subst(&self, x: &Ident, v: &Op) -> Self {
+    fn subst(&self, x: &Ident, v: &Op) -> Self{
         use ConstraintExpr::*;
         match self.kind() {
             True | False => self.clone(),
@@ -561,12 +540,14 @@ impl<Op: Subst<Item = Op, Id = Ident>> Subst for ConstraintBase<Op> {
             Conj(r, l) => Self::mk_conj(r.subst(x, v), l.subst(x, v)),
             Disj(r, l) => Self::mk_disj(r.subst(x, v), l.subst(x, v)),
             // assumption: vars are different each other ?
-            Quantifier(q, var, cstr) => Self::mk_quantifier(*q, var.clone(), cstr.subst(x, v)),
+            Quantifier(q, var, cstr) => {
+                Self::mk_quantifier(*q, var.clone(), cstr.subst(x, v))
+            }
         }
     }
 }
 
-impl<Op: PartialEq + Clone + Rename> Rename for ConstraintBase<Op> {
+impl <Op: PartialEq + Clone + Rename>Rename for ConstraintBase<Op> {
     // \theta[v/x]
     fn rename(&self, x: &Ident, y: &Ident) -> Self {
         use ConstraintExpr::*;
@@ -595,7 +576,7 @@ pub trait Negation {
     where
         Self: Sized;
 }
-impl<Op: PartialEq + Clone> Negation for ConstraintBase<Op> {
+impl <Op: PartialEq + Clone>Negation for ConstraintBase<Op> {
     // negation sometimes cannot be performed (e.g. \not x)
     fn negate(&self) -> Option<Self> {
         match self.kind() {
@@ -620,7 +601,7 @@ impl<Op: PartialEq + Clone> Negation for ConstraintBase<Op> {
     }
 }
 
-impl<Op: Clone> ConstraintBase<Op> {
+impl <Op: Clone>ConstraintBase<Op> {
     pub fn mk_quantifier(q: QuantifierKind, v: Variable, c: Self) -> Self {
         Self::new(ConstraintExpr::Quantifier(q, v, c))
     }
@@ -628,15 +609,17 @@ impl<Op: Clone> ConstraintBase<Op> {
     pub fn mk_pred(k: PredKind, v: Vec<Op>) -> Self {
         Self::new(ConstraintExpr::Pred(k, v))
     }
+
 }
-impl<Op: Clone + PartialEq> ConstraintBase<Op> {
+impl <Op: Clone+ PartialEq>ConstraintBase<Op> {
     pub fn mk_implies(x: Self, y: Self) -> Self {
         x.negate().map(|x| Self::mk_disj(x, y)).unwrap()
     }
     // these methods are useful for generating constraints to make tests
     pub fn mk_bin_pred(k: PredKind, left: Op, right: Op) -> Self {
         match k {
-            PredKind::Eq | PredKind::Leq | PredKind::Geq if left == right => Self::mk_true(),
+            PredKind::Eq | PredKind::Leq | PredKind::Geq if left == right =>
+                Self::mk_true(),
             PredKind::Neq | PredKind::Lt | PredKind::Gt if left == right => Self::mk_false(),
             _ => Self::mk_pred(k, vec![left, right]),
         }
@@ -650,11 +633,12 @@ impl<Op: Clone + PartialEq> ConstraintBase<Op> {
     pub fn mk_eq(left: Op, right: Op) -> Self {
         Self::mk_bin_pred(PredKind::Eq, left, right)
     }
-    pub fn mk_neq(left: Op, right: Op) -> Self {
+    pub fn mk_neq(left: Op, right: Op) -> Self{
         Self::mk_bin_pred(PredKind::Neq, left, right)
     }
 
-    pub fn remove_quantifier(self) -> Self {
+
+    pub fn remove_quantifier(self) -> Self{
         match self.kind() {
             ConstraintExpr::True | ConstraintExpr::False | ConstraintExpr::Pred(_, _) => {
                 self.clone()
@@ -671,7 +655,7 @@ impl<Op: Clone + PartialEq> ConstraintBase<Op> {
         }
     }
 }
-impl<Op: Clone + PartialEq + Rename> ConstraintBase<Op> {
+impl <Op: Clone + PartialEq+ Rename>ConstraintBase<Op> {
     fn prenex_normal_form_raw(
         &self,
         env: &mut HashSet<Ident>,
@@ -718,12 +702,12 @@ impl<Op: Clone + PartialEq + Rename> ConstraintBase<Op> {
     }
 }
 impl Constraint {
-    pub fn variable_guard(v: Ident, op: Op) -> Self {
+    pub fn variable_guard(v: Ident, op: Op) -> Self{
         let v = Op::mk_var(v);
         Self::mk_pred(PredKind::Eq, vec![v, op])
     }
 }
-impl<Op: PartialEq + Fv<Id = Ident>> Fv for ConstraintBase<Op> {
+impl <Op: PartialEq + Fv<Id = Ident>> Fv for ConstraintBase<Op> {
     type Id = Ident;
 
     fn fv_with_vec(&self, fvs: &mut HashSet<Self::Id>) {
