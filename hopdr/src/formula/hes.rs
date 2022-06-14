@@ -1,6 +1,6 @@
 use crate::formula::ty::Type;
 use crate::formula::{
-    Bot, Constraint, FirstOrderLogic, Fv, Ident, Logic, Op, OpBase, Rename, Top, Variable,
+    Bot, Constraint, FirstOrderLogic, Fv, Ident, Logic, Op, Rename, Top, Variable,
 };
 use crate::pdr::rtype::Refinement;
 use crate::util::P;
@@ -47,7 +47,7 @@ impl Const {
 #[derive(Debug)]
 pub enum GoalKind<C, T> {
     Constr(C),
-    Op(OpBase<T>),
+    Op(Op),
     Var(Ident),
     Abs(Variable, GoalBase<C, T>),
     App(GoalBase<C, T>, GoalBase<C, T>),
@@ -113,10 +113,24 @@ impl<C: Top, T: Default> Top for GoalBase<C, T> {
     fn mk_true() -> Self {
         GoalBase::mk_constr(C::mk_true())
     }
+
+    fn is_true(&self) -> bool {
+        match self.kind() {
+            GoalKind::Constr(c) if c.is_true() => true,
+            _ => false,
+        }
+    }
 }
 impl<C: Bot, T: Default> Bot for GoalBase<C, T> {
     fn mk_false() -> Self {
         GoalBase::mk_constr(C::mk_false())
+    }
+
+    fn is_false(&self) -> bool {
+        match self.kind() {
+            GoalKind::Constr(c) if c.is_false() => true,
+            _ => false,
+        }
     }
 }
 impl<C> From<C> for GoalBase<C, ()> {
@@ -152,11 +166,11 @@ impl<T: Clone> From<GoalBase<Constraint, T>> for Constraint {
         }
     }
 }
-impl<C, T: Default + Clone> From<GoalBase<C, T>> for OpBase<T> {
+impl<C, T> From<GoalBase<C, T>> for Op {
     fn from(g: GoalBase<C, T>) -> Self {
         match g.kind() {
             GoalKind::Op(o) => o.clone(),
-            GoalKind::Var(x) => OpBase::mk_var_t(*x, T::default()),
+            GoalKind::Var(x) => Op::mk_var(*x),
             GoalKind::Constr(_)
             | GoalKind::Abs(_, _)
             | GoalKind::App(_, _)
@@ -183,7 +197,7 @@ impl<C, T: Default> GoalBase<C, T> {
     pub fn mk_abs(x: Variable, g: GoalBase<C, T>) -> GoalBase<C, T> {
         GoalBase::mk_abs_t(x, g, T::default())
     }
-    pub fn mk_op(op: OpBase<T>) -> GoalBase<C, T> {
+    pub fn mk_op(op: Op) -> GoalBase<C, T> {
         GoalBase::mk_op_t(op, T::default())
     }
     pub fn mk_conj(lhs: GoalBase<C, T>, rhs: GoalBase<C, T>) -> GoalBase<C, T> {
@@ -224,7 +238,7 @@ impl<C, T> GoalBase<C, T> {
             aux,
         }
     }
-    pub fn mk_op_t(op: OpBase<T>, aux: T) -> GoalBase<C, T> {
+    pub fn mk_op_t(op: Op, aux: T) -> GoalBase<C, T> {
         GoalBase {
             ptr: P::new(GoalKind::Op(op)),
             aux,
@@ -243,7 +257,7 @@ impl<C, T> GoalBase<C, T> {
         }
     }
 }
-impl<T> GoalBase<Constraint, T> {
+impl<C, T> GoalBase<C, T> {
     pub fn is_conj(&self) -> bool {
         match self.kind() {
             GoalKind::Conj(_, _) => true,
@@ -253,18 +267,6 @@ impl<T> GoalBase<Constraint, T> {
     pub fn is_disj(&self) -> bool {
         match self.kind() {
             GoalKind::Disj(_, _) => true,
-            _ => false,
-        }
-    }
-    fn is_true(&self) -> bool {
-        match self.kind() {
-            GoalKind::Constr(c) if c.is_true() => true,
-            _ => false,
-        }
-    }
-    fn is_false(&self) -> bool {
-        match self.kind() {
-            GoalKind::Constr(c) if c.is_false() => true,
             _ => false,
         }
     }
