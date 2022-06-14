@@ -202,14 +202,7 @@ impl Atom {
             AtomKind::Quantifier(_, _, a) => a.collect_predicates(predicates),
         }
     }
-}
-
-impl Top for Atom {
-    fn mk_true() -> Self {
-        Atom::new(AtomKind::True)
-    }
-
-    fn is_true(&self) -> bool {
+    pub fn is_true(&self) -> bool {
         match self.kind() {
             AtomKind::True => true,
             AtomKind::Constraint(x) => x.is_true(),
@@ -219,14 +212,7 @@ impl Top for Atom {
             _ => false,
         }
     }
-}
-
-impl Bot for Atom {
-    fn mk_false() -> Self {
-        Atom::new(AtomKind::Constraint(Constraint::mk_false()))
-    }
-
-    fn is_false(&self) -> bool {
+    pub fn is_false(&self) -> bool {
         match self.kind() {
             AtomKind::Constraint(x) => x.is_false(),
             AtomKind::Quantifier(QuantifierKind::Universal, _, a) => a.is_false(),
@@ -234,6 +220,18 @@ impl Bot for Atom {
             AtomKind::Disj(a1, a2) => a1.is_false() && a2.is_false(),
             _ => false,
         }
+    }
+}
+
+impl Top for Atom {
+    fn mk_true() -> Self {
+        Atom::new(AtomKind::True)
+    }
+}
+
+impl Bot for Atom {
+    fn mk_false() -> Self {
+        Atom::new(AtomKind::Constraint(Constraint::mk_false()))
     }
 }
 
