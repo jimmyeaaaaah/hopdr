@@ -112,3 +112,35 @@ impl From<ConstraintBase<OpWT>> for ConstraintBase<Op> {
         }
     }
 }
+
+impl From<fofml::AtomBase<OpWT>> for fofml::Atom {
+    fn from(c: fofml::AtomBase<OpWT>) -> Self {
+        use fofml::AtomKind;
+        match c.kind() {
+            AtomKind::True => Self::mk_true(),
+            AtomKind::Constraint(c) => Self::mk_constraint(c.clone().into()),
+            AtomKind::Conj(a1, a2) => {
+                let c1 = a1.clone().into();
+                let c2 = a2.clone().into();
+                Self::mk_conj(c1, c2)
+            }
+            AtomKind::Disj(a1, a2) => {
+                let c1 = a1.clone().into();
+                let c2 = a2.clone().into();
+                Self::mk_disj(c1, c2)
+            }
+            AtomKind::Not(a) => {
+                let c = a.clone().into();
+                Self::mk_not(c)
+            }
+            AtomKind::Quantifier(q, x, a) => {
+                let c = a.clone().into();
+                Self::mk_quantifier(*q, *x, c)
+            }
+            AtomKind::Predicate(p, l) => {
+                let l: Vec<Op> = l.iter().map(|x| x.clone().into()).collect();
+                Self::mk_pred(*p, l)
+            }
+        }
+    }
+}

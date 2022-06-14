@@ -251,10 +251,11 @@ pub(super) fn infer(
 
     let model = model.model;
     let mut result_env = TypeEnvironment::new();
-    for (k, ts) in tenv.map.iter() {
-        for t in ts {
-            result_env.add(*k, t.assign(&model));
-        }
-    }
+    unimplemented!();
+    //for (k, ts) in tenv.map.iter() {
+    //    for t in ts {
+    //        result_env.add(*k, t.assign(&model));
+    //    }
+    //}
     Some(result_env)
 }

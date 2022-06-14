@@ -140,6 +140,30 @@ impl<C, O> From<C> for GoalBase<C, (), O> {
     }
 }
 
+impl<T: Clone, O: Arithmetic> From<GoalBase<fofml::AtomBase<O>, T, O>> for fofml::AtomBase<O> {
+    fn from(g: GoalBase<fofml::AtomBase<O>, T, O>) -> Self {
+        match g.kind() {
+            GoalKind::Constr(c) => c.clone(),
+            GoalKind::Conj(g1, g2) => {
+                let c1 = g1.clone().into();
+                let c2 = g2.clone().into();
+                Self::mk_conj(c1, c2)
+            }
+            GoalKind::Disj(g1, g2) => {
+                let c1 = g1.clone().into();
+                let c2 = g2.clone().into();
+                Self::mk_disj(c1, c2)
+            }
+            GoalKind::Univ(x, g) => {
+                let c = g.clone().into();
+                Self::mk_quantifier_int(super::QuantifierKind::Universal, x.id, c)
+            }
+            GoalKind::Op(_) | GoalKind::Var(_) | GoalKind::Abs(_, _) | GoalKind::App(_, _) => {
+                panic!("program error: {} cannot be translated to Constraint", g)
+            }
+        }
+    }
+}
 impl<T: Clone, O: Arithmetic> From<GoalBase<ConstraintBase<O>, T, O>> for ConstraintBase<O> {
     // even though g has type *, and it can be beta-reduced to a constraint,
     // we cannot convert g to the constraint.
@@ -534,7 +558,7 @@ impl<C: Refinement, T, O: PartialEq> PartialEq for GoalBase<C, T, O> {
 }
 
 // TODO: fix not to use Refinement
-impl<C: Refinement> Goal<C> {
+impl<C: Refinement + Subst<Item = Op> + From<Goal<C>>> Goal<C> {
     fn reduce_inner(&self) -> Goal<C> {
         match self.kind() {
             GoalKind::App(g, arg) => {

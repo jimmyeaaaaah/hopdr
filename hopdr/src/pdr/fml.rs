@@ -1,9 +1,9 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
 
-use crate::formula::fofml;
 use crate::formula::hes::Problem;
 use crate::formula::hes::{Goal, GoalKind};
+use crate::formula::{fofml, Op, Subst};
 use crate::formula::{Constraint, Ident, Logic};
 use crate::pdr::rtype::{
     least_fml, types_check, tys_check, Refinement, Tau, TyEnv, TypeEnvironment,
@@ -26,29 +26,29 @@ impl From<Goal<Constraint>> for Goal<fofml::Atom> {
     }
 }
 
-impl From<Goal<fofml::Atom>> for fofml::Atom {
-    // Assumption: the frm formula has type *
-    fn from(frm: Goal<fofml::Atom>) -> Self {
-        match frm.kind() {
-            GoalKind::Constr(c) => c.clone(),
-            GoalKind::Conj(g1, g2) => {
-                let c1 = g1.clone().into();
-                let c2 = g2.clone().into();
-                fofml::Atom::mk_conj(c1, c2)
-            }
-            GoalKind::Disj(g1, g2) => {
-                let c1 = g1.clone().into();
-                let c2 = g2.clone().into();
-                fofml::Atom::mk_disj(c1, c2)
-            }
-            GoalKind::Univ(x, g) => fofml::Atom::mk_univq(x.id, g.clone().into()),
-            // the following must not happen
-            GoalKind::Abs(_, _) | GoalKind::App(_, _) | GoalKind::Var(_) | GoalKind::Op(_) => {
-                panic!("impossible to transform: {}", frm)
-            }
-        }
-    }
-}
+// impl From<Goal<fofml::Atom>> for fofml::Atom {
+//     // Assumption: the frm formula has type *
+//     fn from(frm: Goal<fofml::Atom>) -> Self {
+//         match frm.kind() {
+//             GoalKind::Constr(c) => c.clone(),
+//             GoalKind::Conj(g1, g2) => {
+//                 let c1 = g1.clone().into();
+//                 let c2 = g2.clone().into();
+//                 fofml::Atom::mk_conj(c1, c2)
+//             }
+//             GoalKind::Disj(g1, g2) => {
+//                 let c1 = g1.clone().into();
+//                 let c2 = g2.clone().into();
+//                 fofml::Atom::mk_disj(c1, c2)
+//             }
+//             GoalKind::Univ(x, g) => fofml::Atom::mk_univq(x.id, g.clone().into()),
+//             // the following must not happen
+//             GoalKind::Abs(_, _) | GoalKind::App(_, _) | GoalKind::Var(_) | GoalKind::Op(_) => {
+//                 panic!("impossible to transform: {}", frm)
+//             }
+//         }
+//     }
+// }
 // check if it is completely the same form
 // in other words, even if f1 and f2 are alpha-equivalent,
 // they are the different formulas.
@@ -131,7 +131,10 @@ impl<C: Refinement> Problem<C> {
     }
 }
 
-pub fn env_models_constraint<C: Refinement>(env: &Env<C>, g: &Goal<C>) -> C {
+pub fn env_models_constraint<C: Refinement + Subst<Item = Op> + From<Goal<C>>>(
+    env: &Env<C>,
+    g: &Goal<C>,
+) -> C {
     // debug
     debug!("env_models env: {}", env);
     let f = env.eval(g.clone());
@@ -151,7 +154,10 @@ pub fn env_models(env: &Env<Constraint>, g: &Goal<Constraint>) -> bool {
     }
 }
 
-pub fn env_types<C: Refinement>(env: &Env<C>, tenv: &TypeEnvironment<Tau<C>>) -> C {
+pub fn env_types<C: Refinement + Subst<Item = Op> + From<Goal<C>>>(
+    env: &Env<C>,
+    tenv: &TypeEnvironment<Tau<C>>,
+) -> C {
     let mut result_constraint = C::mk_true();
     crate::title!("env_types");
     for (x, g) in env.map.iter() {

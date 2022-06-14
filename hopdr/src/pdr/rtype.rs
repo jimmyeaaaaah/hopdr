@@ -5,12 +5,14 @@ use std::{
 
 use crate::formula::{fofml, Arithmetic, Variable};
 use crate::formula::{
-    Constraint, FirstOrderLogic, Fv, Ident, Negation, Op, Polarity, Rename, Subst, Top,
-    Type as SType, TypeKind as STypeKind,
+    Constraint, ConstraintBase, FirstOrderLogic, Fv, Ident, Negation, Op, Polarity, Rename, Subst,
+    Top, Type as SType, TypeKind as STypeKind,
 };
 use crate::{formula::hes::Goal, solver, solver::smt};
 
 use crate::util::P;
+
+use super::sandbox::OpWT;
 
 #[derive(Debug)]
 pub enum TauKind<C> {
@@ -27,11 +29,10 @@ pub trait Refinement:
     Clone
     + Negation
     + FirstOrderLogic
-    + Subst<Id = Ident, Item = Op>
+    + Subst<Id = Ident>
     + Fv<Id = Ident>
     + PartialEq
     + Rename
-    + From<Goal<Self>>
     + fmt::Display
 {
     fn mk_implies_opt(x: Self, y: Self) -> Option<Self> {
@@ -42,11 +43,10 @@ impl<T> Refinement for T where
     T: Clone
         + Negation
         + FirstOrderLogic
-        + Subst<Id = Ident, Item = Op>
+        + Subst<Id = Ident>
         + Fv<Id = Ident>
         + PartialEq
         + Rename
-        + From<Goal<Self>>
         + fmt::Display
 {
 }
@@ -168,7 +168,7 @@ impl<C: Refinement> Rename for Tau<C> {
 
 impl<C: Refinement> Subst for Tau<C> {
     type Id = Ident;
-    type Item = Op;
+    type Item = <C as Subst>::Item;
 
     fn subst(&self, x: &Self::Id, v: &Self::Item) -> Self {
         match self.kind() {
@@ -272,11 +272,11 @@ impl<C: Refinement> Tau<C> {
             (_, _) => panic!("fatal"),
         }
     }
-    pub fn clone_with_template(&self, fvs: &mut HashSet<Ident>) -> Tau<fofml::Atom> {
+    pub fn clone_with_template(&self, fvs: &mut HashSet<Ident>) -> Tau<fofml::AtomBase<OpWT>> {
         match self.kind() {
             TauKind::Proposition(_) => {
-                let args = fvs.iter().map(|x| Op::mk_var(*x)).collect();
-                let pred = fofml::Atom::mk_fresh_pred(args);
+                let args: Vec<OpWT> = fvs.iter().map(|x| Op::mk_var(*x).into()).collect();
+                let pred = fofml::AtomBase::mk_fresh_pred(args);
                 Tau::mk_prop_ty(pred)
             }
             TauKind::IArrow(x, t) => {
@@ -306,10 +306,13 @@ impl From<Tau<Constraint>> for Tau<fofml::Atom> {
     }
 }
 
-impl Tau<fofml::Atom> {
-    pub fn assign(&self, model: &HashMap<Ident, (Vec<Ident>, Constraint)>) -> Tau<Constraint> {
+impl Tau<fofml::AtomBase<OpWT>> {
+    pub fn assign(
+        &self,
+        model: &HashMap<Ident, (Vec<Ident>, Constraint)>,
+    ) -> Tau<ConstraintBase<OpWT>> {
         match self.kind() {
-            TauKind::Proposition(p) => Tau::mk_prop_ty(p.assign(model)),
+            TauKind::Proposition(p) => Tau::mk_prop_ty(p.assign(model).into()),
             TauKind::IArrow(v, x) => Tau::mk_iarrow(*v, x.assign(model)),
             TauKind::Arrow(x, y) => {
                 let ts = x.iter().map(|t| t.assign(model)).collect();
@@ -523,12 +526,15 @@ fn types<C: Refinement>(fml: Goal<C>, t: Tau<C>) -> Goal<C> {
 }
 
 // g ↑ t
-pub fn type_check<C: Refinement>(g: &Goal<C>, t: &Tau<C>) -> C {
+pub fn type_check<C: Refinement + Subst<Item = Op> + From<Goal<C>>>(g: &Goal<C>, t: &Tau<C>) -> C {
     types_check(g, vec![t.clone()])
 }
 
 // g ↑ ti where t = t1 ∧ ⋯ ∧ t2
-pub fn types_check<C: Refinement>(g: &Goal<C>, ts: impl IntoIterator<Item = Tau<C>>) -> C {
+pub fn types_check<C: Refinement + Subst<Item = Op> + From<Goal<C>>>(
+    g: &Goal<C>,
+    ts: impl IntoIterator<Item = Tau<C>>,
+) -> C {
     let f = g;
     let cnstr = ts
         .into_iter()
