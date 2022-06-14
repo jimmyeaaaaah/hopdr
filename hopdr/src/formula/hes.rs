@@ -358,30 +358,15 @@ impl<C: Rename, T: Clone, O: Rename> Rename for GoalBase<C, T, O> {
         }
     }
 }
-impl<
-        C: Subst<Item = O, Id = Ident> + Rename + Fv<Id = Ident> + fmt::Display,
-        T: Clone,
-        O: Subst<Item = O, Id = Ident>
-            + Rename
-            + Fv<Id = Ident>
-            + fmt::Display
-            + From<GoalBase<C, T, Op>>,
-    > Subst for GoalBase<C, T, Op>
+impl<C: Subst<Item = Op, Id = Ident> + Rename + Fv<Id = Ident> + fmt::Display, T: Clone> Subst
+    for GoalBase<C, T, Op>
 {
     type Item = Self;
     type Id = Variable;
     // we assume formula has already been alpha-renamed
     // TODO: where? We will not assume alpha-renamed
     fn subst(&self, x: &Variable, v: &Self) -> Self {
-        fn subst_inner<
-            C: Subst<Item = O, Id = Ident> + Rename + Fv<Id = Ident> + fmt::Display,
-            T: Clone,
-            O: Subst<Item = O, Id = Ident>
-                + Rename
-                + Fv<Id = Ident>
-                + fmt::Display
-                + From<GoalBase<C, T, Op>>,
-        >(
+        fn subst_inner<C: Subst<Item = Op, Id = Ident> + Rename + fmt::Display, T: Clone>(
             target: &GoalBase<C, T, Op>,
             x: &Variable,
             v: &GoalBase<C, T, Op>,

@@ -3,7 +3,6 @@ pub mod fml;
 mod infer;
 pub mod pdr;
 pub mod rtype;
-mod sandbox;
 
 pub use pdr::run;
 use std::fmt;

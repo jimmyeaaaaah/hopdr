@@ -1,10 +1,9 @@
 use super::rtype::{Refinement, TBot, Tau, TauKind, TypeEnvironment};
-use super::sandbox::{OpTrace, OpWT};
 use crate::formula::hes::{Goal, GoalBase, Problem as ProblemBase};
-use crate::formula::{self, FirstOrderLogic, Op};
+use crate::formula::{self, FirstOrderLogic};
 use crate::formula::{
-    chc, fofml, pcsp, Bot, Constraint as ConstraintOrig, ConstraintBase, Ident, Logic, Negation,
-    OpBase, Rename, Subst, Top, Type as Sty, Variable,
+    chc, fofml, pcsp, Bot, Constraint, ConstraintBase, Ident, Logic, Negation, OpBase, Rename,
+    Subst, Top, Type as Sty, Variable,
 };
 use crate::solver;
 use crate::title;
@@ -15,7 +14,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 type Atom = fofml::Atom;
-type Candidate = Goal<ConstraintOrig>;
+type Candidate = Goal<Constraint>;
 type Ty = Tau<Atom>;
 type Env = TypeEnvironment<Ty>;
 type Problem = ProblemBase<Constraint>;
@@ -158,18 +157,40 @@ impl Default for TypeMemory {
     }
 }
 
+#[derive(Clone, Debug)]
+struct OpTrace {}
+
+impl OpTrace {
+    fn new() -> Self {
+        unimplemented!()
+    }
+}
+
+type Op = OpBase<OpTrace>;
+impl From<OpBase<()>> for Op {
+    fn from(c: OpBase<()>) -> Self {
+        let trace = OpTrace::new();
+        match c.kind() {
+            formula::OpExpr::Op(o, x, y) => {
+                Self::mk_bin_op_t(*o, x.clone().into(), y.clone().into(), trace)
+            }
+            formula::OpExpr::Var(x) => Self::mk_var_t(*x, trace),
+            formula::OpExpr::Const(c) => Self::mk_const_t(*c, trace),
+        }
+    }
+}
+
 /// internal representation of candidate terms.
 ///
 /// Level is used for tracking when this candidate is used
 /// as the argument of beta-reduction.
-type Constraint = ConstraintBase<OpWT>;
-type G = GoalBase<Constraint, TypeMemory, OpWT>;
+type G = GoalBase<ConstraintBase<Op>, TypeMemory, Op>;
 
 impl From<Candidate> for G {
     fn from(c: Candidate) -> Self {
         let l = TypeMemory::new();
         match c.kind() {
-            formula::hes::GoalKind::Constr(c) => G::mk_constr_t(c.clone().into(), l),
+            formula::hes::GoalKind::Constr(c) => G::mk_constr_t(c.clone(), l),
             formula::hes::GoalKind::Op(op) => G::mk_op_t(op.clone().into(), l),
             formula::hes::GoalKind::Var(id) => G::mk_var_t(*id, l),
             formula::hes::GoalKind::Abs(v, g) => G::mk_abs_t(v.clone(), g.clone().into(), l),
@@ -480,13 +501,10 @@ impl Context {
                             TauKind::IArrow(_, _) | TauKind::Arrow(_, _) => panic!("fatal"),
                         };
                         if solver::smt::default_solver()
-                            .solve_with_universal_quantifiers(
-                                &Constraint::mk_implies(
-                                    Constraint::mk_conj(constraint, type_constr),
-                                    c.clone(),
-                                )
-                                .into(),
-                            )
+                            .solve_with_universal_quantifiers(&Constraint::mk_implies(
+                                Constraint::mk_conj(constraint, type_constr),
+                                c.clone(),
+                            ))
                             .is_sat()
                         {
                             Some(Ty::mk_prop_ty(c.clone().into()).into())
@@ -957,10 +975,10 @@ fn rename_integer_variable(t1: &Ty, t2: &Ty) -> Ty {
     }
 }
 
-fn check_int_expr(ienv: &HashSet<Ident>, g: &G) -> Option<OpWT> {
+fn check_int_expr(ienv: &HashSet<Ident>, g: &G) -> Option<Op> {
     match g.kind() {
         formula::hes::GoalKind::Op(o) => Some(o.clone()),
-        formula::hes::GoalKind::Var(x) if ienv.contains(x) => Some(Op::mk_var(*x).into()),
+        formula::hes::GoalKind::Var(x) if ienv.contains(x) => Some(Op::mk_var(*x)),
         formula::hes::GoalKind::Var(_)
         | formula::hes::GoalKind::Constr(_)
         | formula::hes::GoalKind::Abs(_, _)
