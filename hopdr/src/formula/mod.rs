@@ -110,6 +110,8 @@ pub enum OpExpr {
     Op(OpKind, Op, Op),
     Var(Ident),
     Const(i64),
+    // for tracking substitution, we memorize the old ident and replaced op
+    Ptr(Ident, Op)
 }
 
 pub type Op = P<OpExpr>;
@@ -120,6 +122,7 @@ impl fmt::Display for Op {
             Op(k, o1, o2) => write!(f, "{} {} {}", o1, k, o2),
             Var(i) => write!(f, "{}", i),
             Const(c) => write!(f, "{}", c),
+            Ptr(_, o) => write!(f, "{}", o),
         }
     }
 }
@@ -136,6 +139,7 @@ impl Fv for Op {
                 fvs.insert(*x);
             }
             OpExpr::Const(_) => {}
+            OpExpr::Ptr(_, o) => o.fv_with_vec(fvs),
         }
     }
 }
@@ -193,6 +197,9 @@ impl Op {
     pub fn mk_var(x: Ident) -> Op {
         Op::new(OpExpr::Var(x))
     }
+    fn mk_ptr(x: Ident, o: Op) -> Op {
+        Op::new(OpExpr::Ptr(x, o))
+    }
 }
 
 impl Subst for Op {
@@ -202,7 +209,8 @@ impl Subst for Op {
         match self.kind() {
             OpExpr::Op(k, x, y) => Op::mk_bin_op(*k, x.subst(id, v), y.subst(id, v)),
 
-            OpExpr::Var(id2) if id == id2 => v.clone(),
+            OpExpr::Var(id2) if id == id2 => Op::mk_ptr(*id, v.clone()),
+            OpExpr::Ptr(x, o) => Op::mk_ptr(*x, o.subst(id, v)),
             _ => self.clone(),
         }
     }
@@ -214,6 +222,7 @@ impl Rename for Op {
             OpExpr::Op(k, x, y) => Op::mk_bin_op(*k, x.rename(id, id2), y.rename(id, id2)),
 
             OpExpr::Var(id3) if id == id3 => Op::mk_var(*id2),
+            OpExpr::Ptr(x, o) => Op::mk_ptr(*x, o.rename(id, id2)),
             _ => self.clone(),
         }
     }

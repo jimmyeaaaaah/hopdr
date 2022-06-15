@@ -244,35 +244,36 @@ fn type_check_e() {
     assert!(!pdr::fml::check_inductive(&env, &vc))
 }
 
-#[test]
-fn test_pdr() {
-    let (_, f) = parse::parse::<VerboseError<&str>>(
-        "
-        %HES
-        M =v ∀ x. S x (\\r. r >= x).
-        S n k =v (n > 0 || k n) && (n <= 0 || S (n - 1) (\\r. k (r + n))).
-         ",
-    )
-    .unwrap();
-    match &f {
-        parse::Problem::NuHFLZValidityChecking(vc) => {
-            for fml in vc.formulas.iter() {
-                println!("{}", fml);
-            }
-            println!("TOP={}", vc.toplevel);
-        }
-    }
-    let (vc, _ctx) = preprocess::hes::preprocess(f);
-
-    match pdr::run(vc) {
-        pdr::VerificationResult::Valid => {
-            assert!(true);
-        }
-        pdr::VerificationResult::Invalid => {
-            assert!(false);
-        }
-        pdr::VerificationResult::Unknown => {
-            assert!(false);
-        }
-    }
-}
+// #[test]
+// fn test_pdr() {
+//     let (_, f) = parse::parse::<VerboseError<&str>>(
+//         "
+//         %HES
+//         M =v ∀ x. S x (\\r. r >= x).
+//         S n k =v (n > 0 || k n) && (n <= 0 || S (n - 1) (\\r. k (r + n))).
+//          ",
+//     )
+//     .unwrap();
+//     match &f {
+//         parse::Problem::NuHFLZValidityChecking(vc) => {
+//             for fml in vc.formulas.iter() {
+//                 println!("{}", fml);
+//             }
+//             println!("TOP={}", vc.toplevel);
+//         }
+//     }
+//     let (vc, _ctx) = preprocess::hes::preprocess(f);
+//
+//     match pdr::run(vc) {
+//         pdr::VerificationResult::Valid => {
+//             assert!(true);
+//         }
+//         pdr::VerificationResult::Invalid => {
+//             assert!(false);
+//         }
+//         pdr::VerificationResult::Unknown => {
+//             assert!(false);
+//         }
+//     }
+// }
+//

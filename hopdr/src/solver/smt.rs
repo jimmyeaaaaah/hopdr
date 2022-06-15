@@ -167,6 +167,7 @@ pub(super) fn op_to_smt2(op: &Op) -> String {
         OpExpr::Var(x) => ident_2_smt2(x),
         OpExpr::Const(c) if *c >= 0 => format!("{}", c),
         OpExpr::Const(c) => format!("(- {})", -c),
+        OpExpr::Ptr(_, o) => op_to_smt2(o),
     }
 }
 

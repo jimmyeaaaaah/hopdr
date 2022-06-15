@@ -274,7 +274,7 @@ fn parse_op_cons(v: &lexpr::Cons, env: &HashMap<&str, Ident>, letenv: LetEnv) ->
     if kind == OpKind::Sub && v.len() == 1 {
         match v[0].kind() {
             crate::formula::OpExpr::Const(c) => Op::mk_const(-c),
-            crate::formula::OpExpr::Var(_) | crate::formula::OpExpr::Op(_, _, _) => {
+            crate::formula::OpExpr::Var(_) | crate::formula::OpExpr::Op(_, _, _) | crate::formula::OpExpr::Ptr(_, _) => {
                 panic!("program error")
             }
         }
