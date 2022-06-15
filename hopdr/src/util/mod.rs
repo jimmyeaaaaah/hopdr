@@ -24,6 +24,18 @@ impl<T> P<T> {
     pub fn kind<'a>(&'a self) -> &'a T {
         &*self.ptr
     }
+    pub fn ptr_id(&self) -> usize {
+        self.ptr.as_ref() as *const T as usize
+    }
+}
+
+#[test]
+fn test_id() {
+    let x = P::new(1);
+    let y = x.clone();
+    let z = P::new(1);
+    assert_eq!(x.ptr_id(), y.ptr_id());
+    assert_ne!(x.ptr_id(), z.ptr_id())
 }
 
 impl<T> P<T> {
