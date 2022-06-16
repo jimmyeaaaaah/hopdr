@@ -5,8 +5,8 @@ use std::{
 
 use crate::formula::{fofml, Variable};
 use crate::formula::{
-    Constraint, FirstOrderLogic, Fv, Ident, Negation, Op, Polarity, Rename, Subst, Top,
-    Type as SType, TypeKind as STypeKind, DerefPtr
+    Constraint, DerefPtr, FirstOrderLogic, Fv, Ident, Negation, Op, Polarity, Rename, Subst, Top,
+    Type as SType, TypeKind as STypeKind,
 };
 use crate::{formula::hes::Goal, solver, solver::smt};
 
@@ -47,7 +47,8 @@ impl<T> Refinement for T where
         + Fv<Id = Ident>
         + PartialEq
         + Rename
-        + From<Goal<Self>> + DerefPtr
+        + From<Goal<Self>>
+        + DerefPtr
         + fmt::Display
 {
 }
@@ -185,7 +186,7 @@ impl<C: Refinement> Subst for Tau<C> {
     }
 }
 
-impl <C: Refinement> DerefPtr for Tau<C>  {
+impl<C: Refinement> DerefPtr for Tau<C> {
     fn deref_ptr(&self, id: &Ident) -> Self {
         match self.kind() {
             TauKind::Proposition(c) => Tau::mk_prop_ty(c.deref_ptr(id)),
@@ -207,24 +208,24 @@ fn test_tau_deref_ptr() {
     let o = Op::mk_add(Op::mk_const(1), Op::mk_var(x));
     let o2 = Op::mk_const(4);
     let c = Constraint::mk_lt(o, o2.clone());
-    let a = Atom::mk_conj(Atom::mk_pred(p, vec![Op::mk_var(x)]), Atom::mk_constraint(c));
+    let a = Atom::mk_conj(
+        Atom::mk_pred(p, vec![Op::mk_var(x)]),
+        Atom::mk_constraint(c),
+    );
     let t = Tau::mk_prop_ty(a.clone());
     let t = Tau::mk_iarrow(Ident::fresh(), t);
     let t2 = t.subst(&x, &o2);
     let t3 = t2.deref_ptr(&x);
     match t3.kind() {
-        TauKind::IArrow(_, t4) => {
-            match t4.kind() {
-                TauKind::Proposition(a2) => {
-                    assert_eq!(&a, a2)
-                }
-                _ => panic!("fatal")
+        TauKind::IArrow(_, t4) => match t4.kind() {
+            TauKind::Proposition(a2) => {
+                assert_eq!(&a, a2)
             }
+            _ => panic!("fatal"),
         },
         _ => panic!("fatal"),
     }
 }
-
 
 impl<C: Refinement> Tau<C> {
     pub fn rty(&self) -> C {
@@ -303,7 +304,6 @@ impl<C: Refinement> Tau<C> {
             (TauKind::Arrow(ts1, t1), TauKind::Arrow(ts2, t2)) => {
                 assert!(ts1.len() == ts2.len());
                 let mut result_constraint = Tau::check_subtype_structural(constraint, t1, t2);
-                // ⋀ᵢ tᵢ ≺ ⋀ⱼt'ⱼ ⇔∀ tᵢ. ∃ t'ⱼ. tᵢ ≺ t'ⱼ
                 let arg_constraint = C::mk_conj(constraint.clone(), t2.rty());
                 for (tx, ty) in ts1.iter().zip(ts2.iter()) {
                     let tmpc = Tau::check_subtype_structural(&arg_constraint, tx, ty);

@@ -95,6 +95,7 @@ struct Reduction {
     // this is `expr1` in the above example.
     // at the inference phase, we utilize G's memory to assign the inferred types to G.
     predicate: G,
+    arg: G,
     arg_var: Variable,
     // the result of beta reduction; predicate expr -> result
     result: G,
@@ -108,8 +109,8 @@ impl fmt::Display for Reduction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "Reduction [level{} fvints={:?} constraint={}] {} x -> {}",
-            self.level, self.fvints, self.constraint, self.predicate, self.result
+            "Reduction [level{} fvints={:?} constraint={}] {} {} -> {}",
+            self.level, self.fvints, self.constraint, self.predicate, self.arg, self.result
         )
     }
 }
@@ -117,6 +118,7 @@ impl fmt::Display for Reduction {
 impl Reduction {
     fn new(
         predicate: G,
+        arg: G,
         result: G,
         level: usize,
         fvints: HashSet<Ident>,
@@ -125,6 +127,7 @@ impl Reduction {
     ) -> Reduction {
         Reduction {
             predicate,
+            arg,
             result,
             level,
             fvints,
@@ -215,17 +218,18 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
                                         GoalKind::Abs(x, g) => {
                                             let new_var = Variable::fresh(x.ty.clone());
                                             let new_g = g.rename(&x.id, &new_var.id);
-                                            let mut ret = new_g.subst(x, &arg);
+                                            let mut ret = new_g.subst(&new_var, &arg);
                                             // introduce a new fresh variable to identify this expr
                                             ret.aux.id = Ident::fresh();
                                             // track the result type
                                             if x.ty.is_int() {
-                                                fvints.insert(x.id);
+                                                fvints.insert(new_var.id);
                                             }
                                             Some((
                                                 ret.clone(),
                                                 Reduction::new(
                                                     predicate.clone(),
+                                                    arg.clone(),
                                                     ret.clone(),
                                                     level,
                                                     fvints.clone(),
@@ -628,17 +632,15 @@ impl Context {
             };
             for ret_ty in ret_tys.iter() {
                 let ret_ty = match &arg_ty {
-                     either::Left(ident) => {
-                        ret_ty.deref_ptr(ident)
-                    }
-                    either::Right(arg_ty) => {
-                        ret_ty.clone()
-                    }};
+                    either::Left(ident) => ret_ty.deref_ptr(ident),
+                    either::Right(_) => ret_ty.clone(),
+                };
                 let mut fvints = reduction.fvints.clone();
                 let tmp_ret_ty = ret_ty.clone_with_template(&mut fvints);
 
-                debug!("- ty: {}", ret_ty);
-                debug!("- tmp_ty: {}", tmp_ret_ty);
+                debug!("constraint1");
+                debug!("- ret_ty: {}", ret_ty);
+                debug!("- tmp_ret_ty: {}", tmp_ret_ty);
                 // 3. generate constraint from subtyping t <: arg_ty -> ret_ty, and append them to constraints
                 // TODO!
                 // constrain by `old <= new_tmpty <= top`
@@ -647,18 +649,24 @@ impl Context {
                     &ret_ty,
                     &tmp_ret_ty,
                 );
+                let tmp_ret_ty = match &arg_ty {
+                    either::Left(ident) => {
+                        let op: Op = reduction.arg.clone().into();
+                        tmp_ret_ty.subst(&ident, &op)
+                    }
+                    either::Right(_) => tmp_ret_ty,
+                };
+                debug!("constraint2");
+                debug!("- tmp_ret_ty: {}", tmp_ret_ty);
                 let constraint2 = Ty::check_subtype_structural(
                     &reduction.constraint.clone().into(),
-                        &tmp_ret_ty,
+                    &tmp_ret_ty,
                     &Tau::mk_prop_ty(Atom::mk_true()),
                 );
+                let constraint = Atom::mk_conj(constraint, constraint2);
                 let tmp_ty = match &arg_ty {
-                    either::Left(ident) => {
-                        Tau::mk_iarrow(*ident, tmp_ret_ty)
-                    },
-                    either::Right(arg_ty) => {
-                        Ty::mk_arrow(arg_ty.clone(), ret_ty.clone())
-                    }
+                    either::Left(ident) => Tau::mk_iarrow(*ident, tmp_ret_ty),
+                    either::Right(arg_ty) => Ty::mk_arrow(arg_ty.clone(), tmp_ret_ty),
                 };
                 // 2. create a template type from `ty` and free variables `fvints`
                 match constraint.to_chcs_or_pcsps() {
