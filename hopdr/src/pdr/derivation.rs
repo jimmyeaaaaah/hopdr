@@ -291,7 +291,7 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
                 }
                 GoalKind::Univ(x, g) => {
                     let mut saved = false;
-                    if x.ty.is_int() && fvints.insert(x.id) {
+                    if x.ty.is_int() && !fvints.insert(x.id) {
                         // x is type int and fvints already has x.id
                         saved = true;
                     }
@@ -304,7 +304,7 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
                 }
                 GoalKind::Abs(x, g) => {
                     let mut saved = false;
-                    if x.ty.is_int() && fvints.insert(x.id) {
+                    if x.ty.is_int() && !fvints.insert(x.id) {
                         // x is type int and fvints already has x.id
                         saved = true;
                     }
@@ -725,13 +725,7 @@ impl Context {
                 for level in reduction.predicate.aux.level_arg.iter() {
                     derivation.arg.insert(*level, tmp_ty.clone());
                 }
-                debug!("saved ty: id = {}", reduction.predicate.aux.id);
-                debug!("predicate = {}", reduction.predicate);
                 derivation.expr.set(reduction.predicate.aux.id, tmp_ty);
-                debug!(
-                    "saved ty: id = {} :: {}",
-                    reduction.app_expr.aux.id, tmp_ret_ty
-                );
                 for level in reduction.app_expr.aux.level_arg.iter() {
                     derivation.arg.insert(*level, tmp_ret_ty.clone());
                 }
