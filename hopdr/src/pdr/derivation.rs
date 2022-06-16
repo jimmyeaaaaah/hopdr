@@ -94,7 +94,9 @@ struct Reduction {
     level: Level,
     // this is `expr1` in the above example.
     // at the inference phase, we utilize G's memory to assign the inferred types to G.
+    app_expr: G,
     predicate: G,
+    body: G,
     arg: G,
     arg_var: Variable,
     // the result of beta reduction; predicate expr -> result
@@ -109,7 +111,7 @@ impl fmt::Display for Reduction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "Reduction [level{} fvints={:?} constraint={}] {} {} -> {}",
+            "Reduction [level{} fvints={:?} constraint={}]\n {} {} ==> {}",
             self.level, self.fvints, self.constraint, self.predicate, self.arg, self.result
         )
     }
@@ -117,7 +119,9 @@ impl fmt::Display for Reduction {
 
 impl Reduction {
     fn new(
+        app_expr: G,
         predicate: G,
+        body: G,
         arg: G,
         result: G,
         level: usize,
@@ -126,7 +130,9 @@ impl Reduction {
         arg_var: Variable,
     ) -> Reduction {
         Reduction {
+            app_expr,
             predicate,
+            body,
             arg,
             result,
             level,
@@ -192,8 +198,9 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
     use formula::hes::GoalKind;
 
     fn go(goal: &G, level: &mut usize) -> Option<(G, Reduction)> {
-        // left of the return value: the reduced term
-        // right of the return value: the abstraction in the redux.
+        /// returns Some(_) if reduction happens in goal; otherwise None
+        /// left of the return value: the reduced term
+        /// right of the return value: the abstraction in the redux.
         fn go_(
             goal: &G,
             level: usize,
@@ -219,16 +226,23 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
                                             let new_var = Variable::fresh(x.ty.clone());
                                             let new_g = g.rename(&x.id, &new_var.id);
                                             let mut ret = new_g.subst(&new_var, &arg);
+                                            let predicate = G::mk_abs_t(
+                                                new_var.clone(),
+                                                new_g.clone(),
+                                                predicate.aux.clone(),
+                                            );
                                             // introduce a new fresh variable to identify this expr
                                             ret.aux.id = Ident::fresh();
                                             // track the result type
-                                            if x.ty.is_int() {
+                                            if new_var.ty.is_int() {
                                                 fvints.insert(new_var.id);
                                             }
                                             Some((
                                                 ret.clone(),
                                                 Reduction::new(
+                                                    goal.clone(),
                                                     predicate.clone(),
+                                                    g.clone(), // body of the predicate
                                                     arg.clone(),
                                                     ret.clone(),
                                                     level,
@@ -645,7 +659,7 @@ impl Context {
                 // 3. generate constraint from subtyping t <: arg_ty -> ret_ty, and append them to constraints
                 // TODO!
                 // constrain by `old <= new_tmpty <= top`
-                let tmp_ty = if ret_ty.is_proposition() {
+                let (tmp_ty, tmp_ret_ty, tmp_ret_ty_body) = if ret_ty.is_proposition() {
                     let mut fvints = reduction.fvints.clone();
                     let tmp_ret_ty = ret_ty.clone_with_template(&mut fvints);
 
@@ -674,8 +688,8 @@ impl Context {
                     );
                     let constraint = Atom::mk_conj(constraint, constraint2);
                     let tmp_ty = match &arg_ty {
-                        either::Left(ident) => Tau::mk_iarrow(*ident, tmp_ret_ty),
-                        either::Right(arg_ty) => Ty::mk_arrow(arg_ty.clone(), tmp_ret_ty),
+                        either::Left(ident) => Tau::mk_iarrow(*ident, tmp_ret_ty.clone()),
+                        either::Right(arg_ty) => Ty::mk_arrow(arg_ty.clone(), tmp_ret_ty.clone()),
                     };
                     // 2. create a template type from `ty` and free variables `fvints`
                     match constraint.to_chcs_or_pcsps() {
@@ -695,12 +709,16 @@ impl Context {
                             panic!("fatal")
                         }
                     }
-                    tmp_ty
+                    (tmp_ty, tmp_ret_ty_body.clone(), tmp_ret_ty.clone())
                 } else {
-                    match &arg_ty {
-                        either::Left(ident) => Tau::mk_iarrow(*ident, ret_ty.clone()),
-                        either::Right(arg_ty) => Ty::mk_arrow(arg_ty.clone(), ret_ty.clone()),
-                    }
+                    (
+                        match &arg_ty {
+                            either::Left(ident) => Tau::mk_iarrow(*ident, ret_ty.clone()),
+                            either::Right(arg_ty) => Ty::mk_arrow(arg_ty.clone(), ret_ty.clone()),
+                        },
+                        ret_ty.clone(),
+                        ret_ty.clone(),
+                    )
                 };
                 debug!("inferred type: {}", tmp_ty);
                 // 4. for each `level` in reduction.candidate.aux, we add t to Derivation
@@ -708,7 +726,20 @@ impl Context {
                     derivation.arg.insert(*level, tmp_ty.clone());
                 }
                 debug!("saved ty: id = {}", reduction.predicate.aux.id);
+                debug!("predicate = {}", reduction.predicate);
                 derivation.expr.set(reduction.predicate.aux.id, tmp_ty);
+                debug!(
+                    "saved ty: id = {} :: {}",
+                    reduction.app_expr.aux.id, tmp_ret_ty
+                );
+                for level in reduction.app_expr.aux.level_arg.iter() {
+                    derivation.arg.insert(*level, tmp_ret_ty.clone());
+                }
+                derivation.expr.set(reduction.app_expr.aux.id, tmp_ret_ty);
+                for level in reduction.body.aux.level_arg.iter() {
+                    derivation.arg.insert(*level, tmp_ret_ty_body.clone())
+                }
+                derivation.expr.set(reduction.body.aux.id, tmp_ret_ty_body);
             }
             debug!("");
         }

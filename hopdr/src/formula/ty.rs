@@ -12,8 +12,8 @@ pub type Type = P<TypeKind>;
 impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.kind() {
-            TypeKind::Proposition => write!(f, "bool"),
-            TypeKind::Integer => write!(f, "integer"),
+            TypeKind::Proposition => write!(f, "b"),
+            TypeKind::Integer => write!(f, "i"),
             TypeKind::Arrow(x, y) => write!(f, "({} -> {})", x, y),
         }
     }
