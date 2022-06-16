@@ -99,6 +99,7 @@ struct Reduction {
     body: G,
     arg: G,
     arg_var: Variable,
+    old_id: Ident,
     // the result of beta reduction; predicate expr -> result
     result: G,
     // predicate's free variables of type int
@@ -128,6 +129,7 @@ impl Reduction {
         fvints: HashSet<Ident>,
         constraint: Constraint,
         arg_var: Variable,
+        old_id: Ident,
     ) -> Reduction {
         Reduction {
             app_expr,
@@ -139,6 +141,7 @@ impl Reduction {
             fvints,
             constraint,
             arg_var,
+            old_id,
         }
     }
 }
@@ -225,6 +228,7 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
                                         GoalKind::Abs(x, g) => {
                                             let new_var = Variable::fresh(x.ty.clone());
                                             let new_g = g.rename(&x.id, &new_var.id);
+                                            let old_id = x.id;
                                             let mut ret = new_g.subst(&new_var, &arg);
                                             let predicate = G::mk_abs_t(
                                                 new_var.clone(),
@@ -235,7 +239,7 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
                                             ret.aux.id = Ident::fresh();
                                             // track the result type
                                             if new_var.ty.is_int() {
-                                                fvints.insert(new_var.id);
+                                                fvints.insert(old_id);
                                             }
                                             Some((
                                                 ret.clone(),
@@ -249,6 +253,7 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
                                                     fvints.clone(),
                                                     constraint.clone(),
                                                     new_var,
+                                                    old_id,
                                                 ),
                                             ))
                                         }
@@ -631,7 +636,6 @@ impl Context {
         for reduction in self.reduction_sequence.iter().rev() {
             debug!("{}", reduction);
             let level = reduction.level;
-            debug!("reduction result id {}", reduction.result.aux.id);
             let ret_tys = derivation.get_expr_ty(&reduction.result.aux.id);
             let arg_ty = if reduction.arg_var.ty.is_int() {
                 either::Left(reduction.arg_var.id)
@@ -652,7 +656,7 @@ impl Context {
                 let ret_ty = match &arg_ty {
                     either::Left(ident) => {
                         debug!("ret_ty: {}, ident: {}", ret_ty, ident);
-                        ret_ty.deref_ptr(ident)
+                        ret_ty.deref_ptr(ident).rename(&ident, &reduction.old_id)
                     }
                     either::Right(_) => ret_ty.clone(),
                 };
@@ -672,9 +676,9 @@ impl Context {
                         &tmp_ret_ty,
                     );
                     let tmp_ret_ty_body = match &arg_ty {
-                        either::Left(ident) => {
+                        either::Left(_) => {
                             let op: Op = reduction.arg.clone().into();
-                            tmp_ret_ty.subst(&ident, &op)
+                            tmp_ret_ty.subst(&reduction.old_id, &op)
                         }
                         either::Right(_) => tmp_ret_ty.clone(),
                     };
@@ -688,7 +692,7 @@ impl Context {
                     );
                     let constraint = Atom::mk_conj(constraint, constraint2);
                     let tmp_ty = match &arg_ty {
-                        either::Left(ident) => Tau::mk_iarrow(*ident, tmp_ret_ty.clone()),
+                        either::Left(_) => Tau::mk_iarrow(reduction.old_id, tmp_ret_ty.clone()),
                         either::Right(arg_ty) => Ty::mk_arrow(arg_ty.clone(), tmp_ret_ty.clone()),
                     };
                     // 2. create a template type from `ty` and free variables `fvints`
@@ -713,7 +717,7 @@ impl Context {
                 } else {
                     (
                         match &arg_ty {
-                            either::Left(ident) => Tau::mk_iarrow(*ident, ret_ty.clone()),
+                            either::Left(_) => Tau::mk_iarrow(reduction.old_id, ret_ty.clone()),
                             either::Right(arg_ty) => Ty::mk_arrow(arg_ty.clone(), ret_ty.clone()),
                         },
                         ret_ty.clone(),
