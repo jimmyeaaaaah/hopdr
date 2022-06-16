@@ -617,6 +617,7 @@ impl Context {
         for reduction in self.reduction_sequence.iter().rev() {
             debug!("{}", reduction);
             let level = reduction.level;
+            debug!("reduction result id {}", reduction.result.aux.id);
             let ret_tys = derivation.get_expr_ty(&reduction.result.aux.id);
             let arg_ty = if reduction.arg_var.ty.is_int() {
                 either::Left(reduction.arg_var.id)
@@ -630,9 +631,15 @@ impl Context {
                 };
                 either::Right(arg_ty)
             };
+            if ret_tys.iter().len() == 0 {
+                title!("no ret_tys");
+            }
             for ret_ty in ret_tys.iter() {
                 let ret_ty = match &arg_ty {
-                    either::Left(ident) => ret_ty.deref_ptr(ident),
+                    either::Left(ident) => {
+                        debug!("ret_ty: {}, ident: {}", ret_ty, ident);
+                        ret_ty.deref_ptr(ident)
+                    }
                     either::Right(_) => ret_ty.clone(),
                 };
                 // 3. generate constraint from subtyping t <: arg_ty -> ret_ty, and append them to constraints
@@ -650,18 +657,18 @@ impl Context {
                         &ret_ty,
                         &tmp_ret_ty,
                     );
-                    let tmp_ret_ty = match &arg_ty {
+                    let tmp_ret_ty_body = match &arg_ty {
                         either::Left(ident) => {
                             let op: Op = reduction.arg.clone().into();
                             tmp_ret_ty.subst(&ident, &op)
                         }
-                        either::Right(_) => tmp_ret_ty,
+                        either::Right(_) => tmp_ret_ty.clone(),
                     };
                     debug!("constraint2");
-                    debug!("- tmp_ret_ty: {}", tmp_ret_ty);
+                    debug!("- tmp_ret_ty: {}", tmp_ret_ty_body);
                     let constraint2 = Ty::check_subtype_structural(
                         &reduction.constraint.clone().into(),
-                        &tmp_ret_ty,
+                        &tmp_ret_ty_body,
                         // this is wrong; what type should the return type be?
                         &Tau::mk_prop_ty(Atom::mk_true()),
                     );
@@ -690,19 +697,20 @@ impl Context {
                     }
                     tmp_ty
                 } else {
-                    let t = match &arg_ty {
+                    match &arg_ty {
                         either::Left(ident) => Tau::mk_iarrow(*ident, ret_ty.clone()),
                         either::Right(arg_ty) => Ty::mk_arrow(arg_ty.clone(), ret_ty.clone()),
-                    };
-                    debug!("just returns {}", t);
-                    t
+                    }
                 };
+                debug!("inferred type: {}", tmp_ty);
                 // 4. for each `level` in reduction.candidate.aux, we add t to Derivation
                 for level in reduction.predicate.aux.level_arg.iter() {
                     derivation.arg.insert(*level, tmp_ty.clone());
                 }
+                debug!("saved ty: id = {}", reduction.predicate.aux.id);
                 derivation.expr.set(reduction.predicate.aux.id, tmp_ty);
             }
+            debug!("");
         }
         clauses.iter().for_each(|c| debug!("- {}", c));
         // 4. solve the constraints by using the interpolation solver

@@ -120,7 +120,13 @@ impl fmt::Display for Op {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use OpExpr::*;
         match self.kind() {
-            Op(k, o1, o2) => write!(f, "{} {} {}", o1, k, o2),
+            Op(k, o1, o2) => {
+                // handle (0 - x)
+                match (*k, o1.kind()) {
+                    (OpKind::Sub, OpExpr::Const(0)) => write!(f, "(-{})", o2),
+                    _ => write!(f, "({} {} {})", o1, k, o2),
+                }
+            }
             Var(i) => write!(f, "{}", i),
             Const(c) => write!(f, "{}", c),
             Ptr(_, o) => write!(f, "{}", o),
@@ -221,11 +227,10 @@ impl DerefPtr for Op {
                 let x = x.deref_ptr(id);
                 let y = y.deref_ptr(id);
                 Op::mk_bin_op(*o, x, y)
-            },
-            OpExpr::Var(_) |
-            OpExpr::Const(_) => self.clone(),
+            }
+            OpExpr::Var(_) | OpExpr::Const(_) => self.clone(),
             OpExpr::Ptr(id2, o) if id == id2 => Op::mk_var(*id),
-            OpExpr::Ptr(id2, o) => Op::mk_ptr(*id2, o.deref_ptr(id))
+            OpExpr::Ptr(id2, o) => Op::mk_ptr(*id2, o.deref_ptr(id)),
         }
     }
 }
@@ -698,8 +703,7 @@ impl Constraint {
 impl DerefPtr for Constraint {
     fn deref_ptr(&self, id: &Ident) -> Constraint {
         match self.kind() {
-            ConstraintExpr::True |
-            ConstraintExpr::False => self.clone(),
+            ConstraintExpr::True | ConstraintExpr::False => self.clone(),
             ConstraintExpr::Pred(p, l) => {
                 let l = l.iter().map(|o| o.deref_ptr(id)).collect();
                 Constraint::mk_pred(*p, l)
