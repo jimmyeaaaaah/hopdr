@@ -111,7 +111,7 @@ pub enum OpExpr {
     Var(Ident),
     Const(i64),
     // for tracking substitution, we memorize the old ident and replaced op
-    Ptr(Ident, Op)
+    Ptr(Ident, Op),
 }
 
 pub type Op = P<OpExpr>;
@@ -209,8 +209,7 @@ impl Op {
                 Op::mk_bin_op(*o, x, y)
             }
             OpExpr::Ptr(_, o) => o.flatten(),
-            OpExpr::Const(_) |
-            OpExpr::Var(x) => self.clone()
+            OpExpr::Const(_) | OpExpr::Var(_) => self.clone(),
         }
     }
 }
