@@ -384,6 +384,12 @@ impl<C> Tau<C> {
     pub fn mk_arrow_single(t: Tau<C>, s: Tau<C>) -> Tau<C> {
         Tau::new(TauKind::Arrow(vec![t], s))
     }
+    pub fn is_proposition(&self) -> bool {
+        match self.kind() {
+            TauKind::Proposition(_) => true,
+            _ => false,
+        }
+    }
 }
 impl Tau<Constraint> {
     pub fn constraint_rty(&self) -> Constraint {

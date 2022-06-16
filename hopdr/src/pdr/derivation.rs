@@ -635,57 +635,68 @@ impl Context {
                     either::Left(ident) => ret_ty.deref_ptr(ident),
                     either::Right(_) => ret_ty.clone(),
                 };
-                let mut fvints = reduction.fvints.clone();
-                let tmp_ret_ty = ret_ty.clone_with_template(&mut fvints);
-
-                debug!("constraint1");
-                debug!("- ret_ty: {}", ret_ty);
-                debug!("- tmp_ret_ty: {}", tmp_ret_ty);
                 // 3. generate constraint from subtyping t <: arg_ty -> ret_ty, and append them to constraints
                 // TODO!
                 // constrain by `old <= new_tmpty <= top`
-                let constraint = Ty::check_subtype_structural(
-                    &reduction.constraint.clone().into(),
-                    &ret_ty,
-                    &tmp_ret_ty,
-                );
-                let tmp_ret_ty = match &arg_ty {
-                    either::Left(ident) => {
-                        let op: Op = reduction.arg.clone().into();
-                        tmp_ret_ty.subst(&ident, &op)
-                    }
-                    either::Right(_) => tmp_ret_ty,
-                };
-                debug!("constraint2");
-                debug!("- tmp_ret_ty: {}", tmp_ret_ty);
-                let constraint2 = Ty::check_subtype_structural(
-                    &reduction.constraint.clone().into(),
-                    &tmp_ret_ty,
-                    &Tau::mk_prop_ty(Atom::mk_true()),
-                );
-                let constraint = Atom::mk_conj(constraint, constraint2);
-                let tmp_ty = match &arg_ty {
-                    either::Left(ident) => Tau::mk_iarrow(*ident, tmp_ret_ty),
-                    either::Right(arg_ty) => Ty::mk_arrow(arg_ty.clone(), tmp_ret_ty),
-                };
-                // 2. create a template type from `ty` and free variables `fvints`
-                match constraint.to_chcs_or_pcsps() {
-                    either::Left(chcs) => {
-                        debug!("constraints");
-                        for c in chcs {
-                            debug!("- {}", c);
-                            clauses.push(c);
+                let tmp_ty = if ret_ty.is_proposition() {
+                    let mut fvints = reduction.fvints.clone();
+                    let tmp_ret_ty = ret_ty.clone_with_template(&mut fvints);
+
+                    debug!("constraint1");
+                    debug!("- ret_ty: {}", ret_ty);
+                    debug!("- tmp_ret_ty: {}", tmp_ret_ty);
+                    let constraint = Ty::check_subtype_structural(
+                        &reduction.constraint.clone().into(),
+                        &ret_ty,
+                        &tmp_ret_ty,
+                    );
+                    let tmp_ret_ty = match &arg_ty {
+                        either::Left(ident) => {
+                            let op: Op = reduction.arg.clone().into();
+                            tmp_ret_ty.subst(&ident, &op)
+                        }
+                        either::Right(_) => tmp_ret_ty,
+                    };
+                    debug!("constraint2");
+                    debug!("- tmp_ret_ty: {}", tmp_ret_ty);
+                    let constraint2 = Ty::check_subtype_structural(
+                        &reduction.constraint.clone().into(),
+                        &tmp_ret_ty,
+                        // this is wrong; what type should the return type be?
+                        &Tau::mk_prop_ty(Atom::mk_true()),
+                    );
+                    let constraint = Atom::mk_conj(constraint, constraint2);
+                    let tmp_ty = match &arg_ty {
+                        either::Left(ident) => Tau::mk_iarrow(*ident, tmp_ret_ty),
+                        either::Right(arg_ty) => Ty::mk_arrow(arg_ty.clone(), tmp_ret_ty),
+                    };
+                    // 2. create a template type from `ty` and free variables `fvints`
+                    match constraint.to_chcs_or_pcsps() {
+                        either::Left(chcs) => {
+                            debug!("constraints");
+                            for c in chcs {
+                                debug!("- {}", c);
+                                clauses.push(c);
+                            }
+                        }
+                        either::Right(pcsps) => {
+                            debug!("constriant: {}", constraint);
+                            debug!("failed to translate the constraint to chcs");
+                            for c in pcsps {
+                                debug!("{}", c)
+                            }
+                            panic!("fatal")
                         }
                     }
-                    either::Right(pcsps) => {
-                        debug!("constriant: {}", constraint);
-                        debug!("failed to translate the constraint to chcs");
-                        for c in pcsps {
-                            debug!("{}", c)
-                        }
-                        panic!("fatal")
-                    }
-                }
+                    tmp_ty
+                } else {
+                    let t = match &arg_ty {
+                        either::Left(ident) => Tau::mk_iarrow(*ident, ret_ty.clone()),
+                        either::Right(arg_ty) => Ty::mk_arrow(arg_ty.clone(), ret_ty.clone()),
+                    };
+                    debug!("just returns {}", t);
+                    t
+                };
                 // 4. for each `level` in reduction.candidate.aux, we add t to Derivation
                 for level in reduction.predicate.aux.level_arg.iter() {
                     derivation.arg.insert(*level, tmp_ty.clone());
