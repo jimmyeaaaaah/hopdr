@@ -6,7 +6,7 @@ use std::{
 use crate::formula::{fofml, Variable};
 use crate::formula::{
     Constraint, FirstOrderLogic, Fv, Ident, Negation, Op, Polarity, Rename, Subst, Top,
-    Type as SType, TypeKind as STypeKind,
+    Type as SType, TypeKind as STypeKind, DerefPtr
 };
 use crate::{formula::hes::Goal, solver, solver::smt};
 
@@ -32,6 +32,7 @@ pub trait Refinement:
     + PartialEq
     + Rename
     + From<Goal<Self>>
+    + DerefPtr
     + fmt::Display
 {
     fn mk_implies_opt(x: Self, y: Self) -> Option<Self> {
@@ -46,7 +47,7 @@ impl<T> Refinement for T where
         + Fv<Id = Ident>
         + PartialEq
         + Rename
-        + From<Goal<Self>>
+        + From<Goal<Self>> + DerefPtr
         + fmt::Display
 {
 }
@@ -183,6 +184,47 @@ impl<C: Refinement> Subst for Tau<C> {
         }
     }
 }
+
+impl <C: Refinement> DerefPtr for Tau<C>  {
+    fn deref_ptr(&self, id: &Ident) -> Self {
+        match self.kind() {
+            TauKind::Proposition(c) => Tau::mk_prop_ty(c.deref_ptr(id)),
+            TauKind::IArrow(x, t) => Tau::mk_iarrow(*x, t.deref_ptr(id)),
+            TauKind::Arrow(ts, s) => {
+                let ts = ts.iter().map(|t| t.deref_ptr(id)).collect();
+                Tau::mk_arrow(ts, s.deref_ptr(id))
+            }
+        }
+    }
+}
+
+#[test]
+fn test_tau_deref_ptr() {
+    use crate::formula::fofml::Atom;
+    use crate::formula::Logic;
+    let x = Ident::fresh();
+    let p = Ident::fresh();
+    let o = Op::mk_add(Op::mk_const(1), Op::mk_var(x));
+    let o2 = Op::mk_const(4);
+    let c = Constraint::mk_lt(o, o2.clone());
+    let a = Atom::mk_conj(Atom::mk_pred(p, vec![Op::mk_var(x)]), Atom::mk_constraint(c));
+    let t = Tau::mk_prop_ty(a.clone());
+    let t = Tau::mk_iarrow(Ident::fresh(), t);
+    let t2 = t.subst(&x, &o2);
+    let t3 = t2.deref_ptr(&x);
+    match t3.kind() {
+        TauKind::IArrow(_, t4) => {
+            match t4.kind() {
+                TauKind::Proposition(a2) => {
+                    assert_eq!(&a, a2)
+                }
+                _ => panic!("fatal")
+            }
+        },
+        _ => panic!("fatal"),
+    }
+}
+
 
 impl<C: Refinement> Tau<C> {
     pub fn rty(&self) -> C {

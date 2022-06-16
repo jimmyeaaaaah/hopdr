@@ -10,7 +10,7 @@ use super::pcsp;
 use super::Bot;
 use super::Negation;
 use super::Subst;
-use super::{Constraint, Fv, Ident, Logic, Op, Rename, Top};
+use super::{Constraint, Fv, Ident, Logic, Op, Rename, Top, DerefPtr};
 
 #[derive(Debug, Clone)]
 pub struct Atom {

@@ -5,7 +5,7 @@ use super::chc;
 use super::pcsp;
 use super::{
     hes, Bot, Constraint, FirstOrderLogic, Fv, Ident, Logic, Negation, Op, OpKind, PredKind,
-    QuantifierKind, Rename, Subst, Top, Type, Variable,
+    QuantifierKind, Rename, Subst, Top, Type, Variable, DerefPtr
 };
 use crate::solver;
 use crate::solver::smt;
@@ -655,6 +655,48 @@ impl Atom {
             either::Right(clauses)
         }
     }
+}
+impl DerefPtr for Atom {
+    fn deref_ptr(&self, id: &Ident) -> Self {
+        match self.kind() {
+            AtomKind::True => self.clone(),
+            AtomKind::Constraint(c) => Atom::mk_constraint(c.deref_ptr(id)),
+            AtomKind::Predicate(p, l) => {
+                let l: Vec<Op> = l.iter().map(|o| o.deref_ptr(id)).collect();
+                Atom::mk_pred(*p, l)
+            }
+            AtomKind::Conj(x, y) => {
+                let x = x.deref_ptr(id);
+                let y = y.deref_ptr(id);
+                Atom::mk_conj(x, y)
+            }
+            AtomKind::Disj(x, y) => {
+                let x = x.deref_ptr(id);
+                let y = y.deref_ptr(id);
+                Atom::mk_disj(x, y)
+            }
+            AtomKind::Not(x) => {
+                let x = x.deref_ptr(id);
+                Atom::mk_not(x)
+            }
+            AtomKind::Quantifier(q, v, x) => {
+                let x = x.deref_ptr(id);
+                Atom::mk_quantifier(*q, v.clone(), x)
+            }
+        }
+    }
+}
+#[test]
+fn test_fofml_atom_deref_ptr() {
+    let x = Ident::fresh();
+    let p = Ident::fresh();
+    let o = Op::mk_add(Op::mk_const(1), Op::mk_var(x));
+    let o2 = Op::mk_const(4);
+    let c = Constraint::mk_lt(o, o2.clone());
+    let a = Atom::mk_conj(Atom::mk_pred(p, vec![Op::mk_var(x)]), Atom::mk_constraint(c));
+    let a2 = a.subst(&x, &o2);
+    let a3 = a2.deref_ptr(&x);
+    assert_eq!(a, a3);
 }
 
 trait TemplateKind {

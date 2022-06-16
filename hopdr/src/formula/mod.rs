@@ -6,6 +6,7 @@ pub mod ty;
 
 use std::collections::HashSet;
 use std::fmt;
+use std::ops::Deref;
 
 use rpds::Stack;
 
@@ -213,6 +214,31 @@ impl Op {
         }
     }
 }
+impl DerefPtr for Op {
+    fn deref_ptr(&self, id: &Ident) -> Op {
+        match self.kind() {
+            OpExpr::Op(o, x, y) => {
+                let x = x.deref_ptr(id);
+                let y = y.deref_ptr(id);
+                Op::mk_bin_op(*o, x, y)
+            },
+            OpExpr::Var(_) |
+            OpExpr::Const(_) => self.clone(),
+            OpExpr::Ptr(id2, o) if id == id2 => Op::mk_var(*id),
+            OpExpr::Ptr(id2, o) => Op::mk_ptr(*id2, o.deref_ptr(id))
+        }
+    }
+}
+
+#[test]
+fn test_op_deref_ptr() {
+    let x = Ident::fresh();
+    let o = Op::mk_add(Op::mk_const(1), Op::mk_var(x));
+    let o2 = Op::mk_const(4);
+    let o3 = o.subst(&x, &o2);
+    let o4 = o3.deref_ptr(&x);
+    assert_eq!(o4, o);
+}
 
 impl Subst for Op {
     type Item = Op;
@@ -374,6 +400,10 @@ pub trait Fv {
         self.fv_with_vec(&mut fvs);
         fvs
     }
+}
+
+pub trait DerefPtr {
+    fn deref_ptr(&self, id: &Ident) -> Self;
 }
 
 #[derive(Debug, PartialEq)]
@@ -664,6 +694,42 @@ impl Constraint {
         let (_, c) = self.prenex_normal_form_raw(&mut HashSet::new());
         c
     }
+}
+impl DerefPtr for Constraint {
+    fn deref_ptr(&self, id: &Ident) -> Constraint {
+        match self.kind() {
+            ConstraintExpr::True |
+            ConstraintExpr::False => self.clone(),
+            ConstraintExpr::Pred(p, l) => {
+                let l = l.iter().map(|o| o.deref_ptr(id)).collect();
+                Constraint::mk_pred(*p, l)
+            }
+            ConstraintExpr::Conj(x, y) => {
+                let x = x.deref_ptr(id);
+                let y = y.deref_ptr(id);
+                Constraint::mk_conj(x, y)
+            }
+            ConstraintExpr::Disj(x, y) => {
+                let x = x.deref_ptr(id);
+                let y = y.deref_ptr(id);
+                Constraint::mk_disj(x, y)
+            }
+            ConstraintExpr::Quantifier(q, v, x) => {
+                let x = x.deref_ptr(id);
+                Constraint::mk_quantifier(*q, v.clone(), x)
+            }
+        }
+    }
+}
+#[test]
+fn test_constraint_deref_ptr() {
+    let x = Ident::fresh();
+    let o = Op::mk_add(Op::mk_const(1), Op::mk_var(x));
+    let o2 = Op::mk_const(4);
+    let c = Constraint::mk_lt(o, o2.clone());
+    let c2 = c.subst(&x, &o2);
+    let c3 = c2.deref_ptr(&x);
+    assert_eq!(c, c3);
 }
 impl Fv for Constraint {
     type Id = Ident;
