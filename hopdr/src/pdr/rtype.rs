@@ -289,8 +289,8 @@ impl<C: Refinement> Tau<C> {
             (_, _) => panic!("fatal"),
         }
     }
-    // this subtyping is different in that for the argument of τ₁ ∧ τ₂ → τ₃ < τ₁' ∧ τ₂' → τ₃'
-    // we do τ₁ < τ₁' and τ₂ < τ₂'
+    /// this subtyping is different in that for the argument of τ₁ ∧ τ₂ → τ₃ < τ₁' ∧ τ₂' → τ₃'
+    /// we do τ₁ < τ₁' and τ₂ < τ₂'
     pub fn check_subtype_structural(constraint: &C, t: &Tau<C>, s: &Tau<C>) -> C {
         match (t.kind(), s.kind()) {
             (TauKind::Proposition(c1), TauKind::Proposition(c2)) => {

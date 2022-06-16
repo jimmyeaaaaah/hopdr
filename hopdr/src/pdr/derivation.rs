@@ -1,6 +1,6 @@
 use super::rtype::{Refinement, TBot, Tau, TauKind, TypeEnvironment};
 use crate::formula::hes::{Goal, GoalBase, Problem as ProblemBase};
-use crate::formula::{self, FirstOrderLogic};
+use crate::formula::{self, DerefPtr, FirstOrderLogic};
 use crate::formula::{
     chc, fofml, pcsp, Bot, Constraint, Ident, Logic, Negation, Op, Rename, Subst, Top, Type as Sty,
     Variable,
@@ -615,7 +615,7 @@ impl Context {
             let level = reduction.level;
             let ret_tys = derivation.get_expr_ty(&reduction.result.aux.id);
             let arg_ty = if reduction.arg_var.ty.is_int() {
-                either::Left(reduction.predicate.abs_var().id)
+                either::Left(reduction.arg_var.id)
             } else {
                 // 1. get the corresponding types
                 let arg_ty: Vec<Ty> = derivation.get_arg(&level).iter().cloned().collect();
@@ -627,23 +627,37 @@ impl Context {
                 either::Right(arg_ty)
             };
             for ret_ty in ret_tys.iter() {
-                let (tmp_ty, constraint) = match &arg_ty {
-                    either::Left(ident) => {
-                        unimplemented!()
+                let ret_ty = match &arg_ty {
+                     either::Left(ident) => {
+                        ret_ty.deref_ptr(ident)
                     }
                     either::Right(arg_ty) => {
-                        let mut fvints = reduction.fvints.clone();
-                        let tmp_ret_ty = ret_ty.clone_with_template(&mut fvints);
+                        ret_ty.clone()
+                    }};
+                let mut fvints = reduction.fvints.clone();
+                let tmp_ret_ty = ret_ty.clone_with_template(&mut fvints);
 
-                        debug!("- ty: {}", ret_ty);
-                        debug!("- tmp_ty: {}", tmp_ret_ty);
-                        // 3. generate constraint from subtyping t <: arg_ty -> ret_ty, and append them to constraints
-                        let constraint = Ty::check_subtype_structural(
-                            &reduction.constraint.clone().into(),
-                            &tmp_ret_ty,
-                            &ret_ty,
-                        );
-                        (Ty::mk_arrow(arg_ty.clone(), ret_ty.clone()), constraint)
+                debug!("- ty: {}", ret_ty);
+                debug!("- tmp_ty: {}", tmp_ret_ty);
+                // 3. generate constraint from subtyping t <: arg_ty -> ret_ty, and append them to constraints
+                // TODO!
+                // constrain by `old <= new_tmpty <= top`
+                let constraint = Ty::check_subtype_structural(
+                    &reduction.constraint.clone().into(),
+                    &ret_ty,
+                    &tmp_ret_ty,
+                );
+                let constraint2 = Ty::check_subtype_structural(
+                    &reduction.constraint.clone().into(),
+                        &tmp_ret_ty,
+                    &Tau::mk_prop_ty(Atom::mk_true()),
+                );
+                let tmp_ty = match &arg_ty {
+                    either::Left(ident) => {
+                        Tau::mk_iarrow(*ident, tmp_ret_ty)
+                    },
+                    either::Right(arg_ty) => {
+                        Ty::mk_arrow(arg_ty.clone(), ret_ty.clone())
                     }
                 };
                 // 2. create a template type from `ty` and free variables `fvints`
