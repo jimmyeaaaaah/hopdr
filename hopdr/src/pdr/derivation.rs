@@ -95,7 +95,7 @@ struct Reduction {
     // this is `expr1` in the above example.
     // at the inference phase, we utilize G's memory to assign the inferred types to G.
     predicate: G,
-    arg_sty: Sty,
+    arg_var: Variable,
     // the result of beta reduction; predicate expr -> result
     result: G,
     // predicate's free variables of type int
@@ -121,7 +121,7 @@ impl Reduction {
         level: usize,
         fvints: HashSet<Ident>,
         constraint: Constraint,
-        arg_sty: Sty,
+        arg_var: Variable,
     ) -> Reduction {
         Reduction {
             predicate,
@@ -129,7 +129,7 @@ impl Reduction {
             level,
             fvints,
             constraint,
-            arg_sty,
+            arg_var,
         }
     }
 }
@@ -213,7 +213,9 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
                                     arg.aux.add_arg_level(level);
                                     match predicate.kind() {
                                         GoalKind::Abs(x, g) => {
-                                            let mut ret = g.subst(x, &arg);
+                                            let new_var = Variable::fresh(x.ty.clone());
+                                            let new_g = g.rename(&x.id, &new_var.id);
+                                            let mut ret = new_g.subst(x, &arg);
                                             // introduce a new fresh variable to identify this expr
                                             ret.aux.id = Ident::fresh();
                                             // track the result type
@@ -228,7 +230,7 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
                                                     level,
                                                     fvints.clone(),
                                                     constraint.clone(),
-                                                    x.ty.clone(),
+                                                    new_var,
                                                 ),
                                             ))
                                         }
@@ -612,13 +614,13 @@ impl Context {
             debug!("{}", reduction);
             let level = reduction.level;
             let ret_tys = derivation.get_expr_ty(&reduction.result.aux.id);
-            let arg_ty = if reduction.arg_sty.is_int() {
+            let arg_ty = if reduction.arg_var.ty.is_int() {
                 either::Left(reduction.predicate.abs_var().id)
             } else {
                 // 1. get the corresponding types
                 let arg_ty: Vec<Ty> = derivation.get_arg(&level).iter().cloned().collect();
                 let arg_ty = if arg_ty.len() == 0 {
-                    vec![Ty::mk_bot(&reduction.arg_sty)]
+                    vec![Ty::mk_bot(&reduction.arg_var.ty)]
                 } else {
                     arg_ty
                 };

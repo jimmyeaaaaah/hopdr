@@ -200,6 +200,19 @@ impl Op {
     fn mk_ptr(x: Ident, o: Op) -> Op {
         Op::new(OpExpr::Ptr(x, o))
     }
+    /// flattens Op expression by removing `OpExpr::Ptr` entry
+    pub fn flatten(&self) -> Self {
+        match self.kind() {
+            OpExpr::Op(o, x, y) => {
+                let x = x.flatten();
+                let y = y.flatten();
+                Op::mk_bin_op(*o, x, y)
+            }
+            OpExpr::Ptr(_, o) => o.flatten(),
+            OpExpr::Const(_) |
+            OpExpr::Var(x) => self.clone()
+        }
+    }
 }
 
 impl Subst for Op {
