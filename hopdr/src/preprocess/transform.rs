@@ -1,19 +1,26 @@
+use std::collections::HashMap;
 use super::hes::ValidityChecking;
 use crate::formula;
 use crate::formula::hes;
-use crate::formula::{Bot, Ident, Logic, Type as SimpleType, Variable};
+use crate::formula::{Bot, Ident, Logic, Type as SimpleType, TypeKind as SimpleTypeKind, Variable, Op};
 
 type In = ValidityChecking<formula::Ident, SimpleType>;
 type Out = hes::Problem<formula::Constraint>;
 
 pub fn transform(input: In) -> Out {
     let mut clauses = Vec::new();
+    let mut env = HashMap::new();
+
+    for clause in input.clauses.iter() {
+        env.insert(clause.id.id, clause.id.ty.clone());
+    }
 
     for clause in input.clauses {
-        let c = transform_clause(clause, &mut clauses);
+        let c = transform_clause(clause, env.clone());
+        env.insert(c.head.id, c.head.ty.clone());
         clauses.push(c);
     }
-    let top = transform_expr(&input.toplevel, &mut clauses);
+    let top = transform_expr(&input.toplevel, &mut env);
     Out { clauses, top }
 }
 
@@ -40,7 +47,6 @@ impl EitherExpr {
     }
     fn op(self) -> formula::Op {
         match self {
-            EitherExpr::Var(c) => formula::Op::mk_var(c),
             EitherExpr::Op(o) => o,
             _ => panic!("program error"),
         }
@@ -83,47 +89,62 @@ impl EitherExpr {
     }
 }
 
-fn transform_expr_inner(input: &InExpr) -> EitherExpr {
+fn transform_expr_inner(input: &InExpr, env: &mut HashMap<Ident, SimpleType>) -> EitherExpr {
     let f = transform_expr_inner;
     use super::hes::ExprKind::*;
     use formula::hes::Goal;
     use formula::Top;
     match input.kind() {
-        Var(x) => EitherExpr::mk_var(*x),
+        Var(x) => {
+            match env.get(x).unwrap_or_else(|| panic!("failed to find: {}", x)).kind() {
+                SimpleTypeKind::Integer => EitherExpr::mk_op(formula::Op::mk_var(*x)),
+                _ => EitherExpr::mk_var(*x)
+            }
+        },
         App(e1, e2) => {
-            let e1 = f(e1).goal();
-            let e2 = f(e2).goal();
+            let e1 = f(e1, env).goal();
+            let e2 = f(e2, env).goal();
             EitherExpr::mk_goal(OutExpr::mk_app(e1, e2))
         }
         Num(x) => EitherExpr::mk_op(formula::Op::mk_const(*x)),
         True => EitherExpr::mk_constraint(formula::Constraint::mk_true()),
         False => EitherExpr::mk_constraint(formula::Constraint::mk_false()),
         Op(x, y, z) => {
-            let e1 = transform_expr_inner(y).op();
-            let e2 = transform_expr_inner(z).op();
+            let e1 = transform_expr_inner(y, env).op();
+            let e2 = transform_expr_inner(z, env).op();
             EitherExpr::mk_op(formula::Op::mk_bin_op(*x, e1, e2))
         }
         Pred(p, x, y) => {
-            let x = transform_expr_inner(x).op();
-            let y = transform_expr_inner(y).op();
+            let x = transform_expr_inner(x, env).op();
+            let y = transform_expr_inner(y, env).op();
             EitherExpr::mk_constraint(formula::Constraint::mk_pred(*p, vec![x, y]))
         }
         And(x, y) => {
-            let x = transform_expr_inner(x);
-            let y = transform_expr_inner(y);
+            let x = transform_expr_inner(x, env);
+            let y = transform_expr_inner(y, env);
             EitherExpr::mk_conj(x, y)
         }
         Or(x, y) => {
-            let x = transform_expr_inner(x);
-            let y = transform_expr_inner(y);
+            let x = transform_expr_inner(x, env);
+            let y = transform_expr_inner(y, env);
             EitherExpr::mk_disj(x, y)
         }
         Univ(x, y) => {
-            let y = transform_expr_inner(y).goal();
+            let old = env.insert(x.id, x.ty.clone());
+            let y = transform_expr_inner(y, env).goal();
+            match old {
+                Some(old) => {env.insert(x.id, old);}
+                None => {env.remove(&x.id);}
+            }
             EitherExpr::mk_goal(Goal::mk_univ(x.clone().into(), y))
         }
         Abs(x, y) => {
-            let y = transform_expr_inner(y).goal();
+            let old = env.insert(x.id, x.ty.clone());
+            let y = transform_expr_inner(y, env).goal();
+            match old {
+                Some(old) => {env.insert(x.id, old);}
+                None => {env.remove(&x.id);}
+            }
             EitherExpr::mk_goal(Goal::mk_abs(x.clone().into(), y))
         }
     }
@@ -131,31 +152,31 @@ fn transform_expr_inner(input: &InExpr) -> EitherExpr {
 
 fn transform_expr(
     expr: &InExpr,
-    _clauses: &mut Vec<OutClause>,
+    env: &mut HashMap<Ident, SimpleType>,
 ) -> formula::hes::Goal<formula::Constraint> {
-    transform_expr_inner(expr).goal()
+    transform_expr_inner(expr, env).goal()
 }
 
-fn append_args(mut body: OutExpr, args: &[Ident], mut t: SimpleType) -> OutExpr {
+fn append_args(mut body: InExpr, args: &[Ident], mut t: SimpleType) -> InExpr{
     let mut variables = Vec::new();
     for arg in args {
         let (arg_ty, ret_t) = match t.kind() {
             formula::TypeKind::Arrow(x, y) => (x.clone(), y.clone()),
             _ => panic!("program error"),
         };
-        let v = Variable::mk(*arg, arg_ty);
+        let v = crate::preprocess::hes::VariableS{ id: *arg, ty: arg_ty.clone() };
         t = ret_t;
         variables.push(v);
     }
     variables.reverse();
     for v in variables {
-        body = OutExpr::mk_abs(v, body);
+        body = InExpr::mk_abs(v, body);
     }
     body
 }
 
-fn transform_clause(input: InClause, clauses: &mut Vec<OutClause>) -> OutClause {
-    let body = transform_expr(&input.expr, clauses);
-    let body = append_args(body, &input.args, input.id.ty.clone());
+fn transform_clause(input: InClause, mut env: HashMap<Ident, SimpleType>) -> OutClause {
+    let input_expr = append_args(input.expr, &input.args, input.id.ty.clone());
+    let body = transform_expr(&input_expr, &mut env);
     OutClause::new(body, input.id.into())
 }
