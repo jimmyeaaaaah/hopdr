@@ -388,7 +388,9 @@ impl<C: Subst<Item = Op, Id = Ident> + Rename + Fv<Id = Ident> + fmt::Display, T
                 }
                 GoalKind::Op(o) if x.ty.is_int() => {
                     let op = v.clone().into();
+                    debug!("op subst {:?}", o);
                     let o = o.subst(&x.id, &op);
+                    debug!("op subst {:?}", o);
                     GoalBase::mk_op_t(o, target.aux.clone())
                 }
                 GoalKind::Constr(_) | GoalKind::Op(_) => target.clone(),

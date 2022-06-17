@@ -104,6 +104,7 @@ struct Reduction {
     result: G,
     // predicate's free variables of type int
     fvints: HashSet<Ident>,
+    argints: HashSet<Ident>,
     // constraint of the redux where this reduction happens
     constraint: Constraint,
 }
@@ -127,6 +128,7 @@ impl Reduction {
         result: G,
         level: usize,
         fvints: HashSet<Ident>,
+        argints: HashSet<Ident>,
         constraint: Constraint,
         arg_var: Variable,
         old_id: Ident,
@@ -139,6 +141,7 @@ impl Reduction {
             result,
             level,
             fvints,
+            argints,
             constraint,
             arg_var,
             old_id,
@@ -146,7 +149,7 @@ impl Reduction {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct TypeMemory {
     level_arg: Stack<usize>,
     id: Ident,
@@ -208,6 +211,7 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
             goal: &G,
             level: usize,
             fvints: &mut HashSet<Ident>,
+            argints: &mut HashSet<Ident>,
             constraint: Constraint,
         ) -> Option<(G, Reduction)> {
 
@@ -233,6 +237,7 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
                             // track the result type
                             if new_var.ty.is_int() {
                                 fvints.insert(old_id);
+                                argints.insert(old_id);
                             }
                             return Some((
                                 ret.clone(),
@@ -244,6 +249,7 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
                                     ret.clone(),
                                     level,
                                     fvints.clone(),
+                                    argints.clone(),
                                     constraint.clone(),
                                     new_var,
                                     old_id,
@@ -253,19 +259,19 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
                         _ => (),
                     };
                     // g must be have form \x. phi
-                    go_(predicate, level, fvints, constraint.clone())
+                    go_(predicate, level, fvints, argints, constraint.clone())
                         .map(|(g, pred)| (G::mk_app_t(g, arg.clone(), goal.aux.clone()), pred))
                         .or_else(|| {
-                            go_(arg, level, fvints, constraint.clone())
+                            go_(arg, level, fvints,argints,  constraint.clone())
                                 .map(|(arg, pred)| {
                                     (G::mk_app_t(predicate.clone(), arg, goal.aux.clone()), pred)
                                 })
                         })
                 }
-                GoalKind::Conj(g1, g2) => go_(g1, level, fvints, constraint.clone())
+                GoalKind::Conj(g1, g2) => go_(g1, level, fvints,argints,  constraint.clone())
                     .map(|(g1, p)| (G::mk_conj_t(g1, g2.clone(), goal.aux.clone()), p))
                     .or_else(|| {
-                        go_(g2, level, fvints, constraint.clone())
+                        go_(g2, level, fvints,argints,  constraint.clone())
                             .map(|(g2, p)| (G::mk_conj_t(g1.clone(), g2, goal.aux.clone()), p))
                     }),
                 GoalKind::Disj(g1, g2) => {
@@ -273,7 +279,7 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
                     match c1 {
                         Some(c1) => {
                             let constraint = Constraint::mk_conj(c1.negate().unwrap(), constraint);
-                            go_(g2, level, fvints, constraint).map(|(g2, p)| {
+                            go_(g2, level, fvints,argints, constraint).map(|(g2, p)| {
                                 (G::mk_disj_t(g1.clone(), g2.clone(), goal.aux.clone()), p)
                             })
                         }
@@ -283,7 +289,7 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
                                 Some(c2) => {
                                     let constraint =
                                         Constraint::mk_conj(c2.negate().unwrap(), constraint);
-                                    go_(g1, level, fvints, constraint).map(|(g1, p)| {
+                                    go_(g1, level, fvints, argints, constraint).map(|(g1, p)| {
                                         (G::mk_disj_t(g1.clone(), g2.clone(), goal.aux.clone()), p)
                                     })
                                 }
@@ -300,7 +306,7 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
                         // x is type int and fvints already has x.id
                         saved = true;
                     }
-                    let r = go_(g, level, fvints, constraint)
+                    let r = go_(g, level, fvints,argints,  constraint)
                         .map(|(g, p)| (G::mk_univ_t(x.clone(), g, goal.aux.clone()), p));
                     if x.ty.is_int() && !saved {
                         fvints.remove(&x.id);
@@ -309,15 +315,23 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
                 }
                 GoalKind::Abs(x, g) => {
                     let mut saved = false;
+                    let mut saved_arg = false;
                     if x.ty.is_int() && !fvints.insert(x.id) {
                         // x is type int and fvints already has x.id
                         saved = true;
                     }
+                    if x.ty.is_int() && !argints.insert(x.id) {
+                        // x is type int and fvints already has x.id
+                        saved_arg = true;
+                    }
 
-                    let r = go_(g, level, fvints, constraint)
+                    let r = go_(g, level, fvints, argints, constraint)
                         .map(|(g, p)| (G::mk_abs_t(x.clone(), g, goal.aux.clone()), p));
                     if x.ty.is_int() && !saved {
                         fvints.remove(&x.id);
+                    }
+                    if x.ty.is_int() && !saved_arg{
+                        argints.remove(&x.id);
                     }
                     r
                 }
@@ -325,7 +339,7 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
             }
         }
         *level += 1;
-        go_(goal, *level, &mut HashSet::new(), Constraint::mk_true())
+        go_(goal, *level, &mut HashSet::new(), &mut HashSet::new(), Constraint::mk_true())
     }
     let mut level = 0usize;
     let mut seq = Vec::new();
@@ -337,6 +351,7 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
         //debug!("-> {}", reduced);
         //debug!("-> {}", r);
         debug!("->  {}", reduced);
+
         seq.push(r);
     }
     (seq, reduced)
@@ -372,6 +387,8 @@ impl Context {
             for id in ids {
                 let tys = derivation.expr.get_opt(id).unwrap();
                 for ty in tys.iter() {
+                    debug!("{}: {}", pred_name, ty);
+                    debug!("{:?}", model);
                     result_env.add(*pred_name, ty.assign(&model));
                 }
             }
@@ -656,6 +673,7 @@ impl Context {
                 let ret_ty = match &arg_ty {
                     either::Left(ident) => {
                         debug!("ret_ty: {}, ident: {}", ret_ty, ident);
+                        debug!("{:?}", ret_ty);
                         ret_ty.deref_ptr(ident).rename(&ident, &reduction.old_id)
                     }
                     either::Right(_) => ret_ty.clone(),
@@ -664,8 +682,8 @@ impl Context {
                 // TODO!
                 // constrain by `old <= new_tmpty <= top`
                 let (tmp_ty, tmp_ret_ty, tmp_ret_ty_body) = if ret_ty.is_proposition() {
-                    let mut fvints = reduction.fvints.clone();
-                    let tmp_ret_ty = ret_ty.clone_with_template(&mut fvints);
+                    let mut argints = reduction.argints.clone();
+                    let tmp_ret_ty = ret_ty.clone_with_template(&mut argints);
 
                     debug!("constraint1");
                     debug!("- ret_ty: {}", ret_ty);
@@ -761,7 +779,7 @@ impl Context {
         debug!("{}", m);
         let model = solver::interpolation::solve(&clauses);
         debug!("interpolated:");
-        debug!("{}", m);
+        debug!("{}", model);
 
         // collect needed predicate
         // 5. from the model, generate a type environment
