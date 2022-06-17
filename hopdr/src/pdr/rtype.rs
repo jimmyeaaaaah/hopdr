@@ -317,7 +317,7 @@ impl<C: Refinement> Tau<C> {
     pub fn clone_with_template(&self, fvs: &mut HashSet<Ident>) -> Tau<fofml::Atom> {
         match self.kind() {
             TauKind::Proposition(_) => {
-                let args = fvs.iter().map(|x| Op::mk_var(*x)).collect();
+                let mut args: Vec<Op> = fvs.iter().map(|x| Op::mk_var(*x)).collect();
                 let pred = fofml::Atom::mk_fresh_pred(args);
                 Tau::mk_prop_ty(pred)
             }

@@ -210,8 +210,48 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
             fvints: &mut HashSet<Ident>,
             constraint: Constraint,
         ) -> Option<(G, Reduction)> {
+
             match goal.kind() {
                 GoalKind::App(predicate, arg) => {
+                    match predicate.kind() {
+                        GoalKind::Abs(x, g) => {
+                            let mut arg = arg.clone();
+                            // track the type of argument
+                            arg.aux.add_arg_level(level);
+
+                            let new_var = Variable::fresh(x.ty.clone());
+                            let new_g = g.rename(&x.id, &new_var.id);
+                            let old_id = x.id;
+                            let mut ret = new_g.subst(&new_var, &arg);
+                            let predicate = G::mk_abs_t(
+                                new_var.clone(),
+                                new_g.clone(),
+                                predicate.aux.clone(),
+                            );
+                            // introduce a new fresh variable to identify this expr
+                            ret.aux.id = Ident::fresh();
+                            // track the result type
+                            if new_var.ty.is_int() {
+                                fvints.insert(old_id);
+                            }
+                            return Some((
+                                ret.clone(),
+                                Reduction::new(
+                                    goal.clone(),
+                                    predicate.clone(),
+                                    g.clone(), // body of the predicate
+                                    arg.clone(),
+                                    ret.clone(),
+                                    level,
+                                    fvints.clone(),
+                                    constraint.clone(),
+                                    new_var,
+                                    old_id,
+                                ),
+                            ))
+                        }
+                        _ => (),
+                    };
                     // g must be have form \x. phi
                     go_(predicate, level, fvints, constraint.clone())
                         .map(|(g, pred)| (G::mk_app_t(g, arg.clone(), goal.aux.clone()), pred))
@@ -219,46 +259,6 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
                             go_(arg, level, fvints, constraint.clone())
                                 .map(|(arg, pred)| {
                                     (G::mk_app_t(predicate.clone(), arg, goal.aux.clone()), pred)
-                                })
-                                .or_else(|| {
-                                    let mut arg = arg.clone();
-                                    // track the type of argument
-                                    arg.aux.add_arg_level(level);
-                                    match predicate.kind() {
-                                        GoalKind::Abs(x, g) => {
-                                            let new_var = Variable::fresh(x.ty.clone());
-                                            let new_g = g.rename(&x.id, &new_var.id);
-                                            let old_id = x.id;
-                                            let mut ret = new_g.subst(&new_var, &arg);
-                                            let predicate = G::mk_abs_t(
-                                                new_var.clone(),
-                                                new_g.clone(),
-                                                predicate.aux.clone(),
-                                            );
-                                            // introduce a new fresh variable to identify this expr
-                                            ret.aux.id = Ident::fresh();
-                                            // track the result type
-                                            if new_var.ty.is_int() {
-                                                fvints.insert(old_id);
-                                            }
-                                            Some((
-                                                ret.clone(),
-                                                Reduction::new(
-                                                    goal.clone(),
-                                                    predicate.clone(),
-                                                    g.clone(), // body of the predicate
-                                                    arg.clone(),
-                                                    ret.clone(),
-                                                    level,
-                                                    fvints.clone(),
-                                                    constraint.clone(),
-                                                    new_var,
-                                                    old_id,
-                                                ),
-                                            ))
-                                        }
-                                        _ => None,
-                                    }
                                 })
                         })
                 }
