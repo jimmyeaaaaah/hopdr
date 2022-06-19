@@ -798,6 +798,12 @@ fn reduce_until_normal_form(candidate: &Candidate, problem: &Problem) -> Context
     Context::new(normal_form, track_idents, reduction_sequence)
 }
 
+#[derive(Clone)]
+struct SavedTy<C: Clone> {
+    ty: Ty,
+    constraint: C,
+}
+
 #[derive(Clone, Debug)]
 struct DerivationMap<ID: Eq + std::hash::Hash + Copy>(HashTrieMap<ID, Stack<Ty>>);
 impl<ID: Eq + std::hash::Hash + Copy> DerivationMap<ID> {
