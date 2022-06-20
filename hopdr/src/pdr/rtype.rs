@@ -359,6 +359,26 @@ impl Tau<fofml::Atom> {
             }
         }
     }
+    pub fn clone_with_rty_template(&self, fvs: &mut HashSet<Ident>) -> Tau<fofml::Atom> {
+        match self.kind() {
+            TauKind::Proposition(_) => {
+                let mut args: Vec<Op> = fvs.iter().map(|x| Op::mk_var(*x)).collect();
+                let pred = fofml::Atom::mk_fresh_pred(args);
+                Tau::mk_prop_ty(pred)
+            }
+            TauKind::IArrow(x, t) => {
+                fvs.insert(*x);
+                let t_temp = t.clone_with_rty_template(fvs);
+                fvs.remove(x);
+                Tau::mk_iarrow(*x, t_temp)
+            }
+            TauKind::Arrow(ts, t) => {
+                let t = t.clone_with_rty_template(fvs);
+                Tau::mk_arrow(ts.clone(), t)
+            }
+        }
+    }
+
 }
 
 impl<C> Tau<C> {

@@ -1,4 +1,4 @@
-use super::rtype::{Refinement, TBot, Tau, TauKind, TypeEnvironment};
+use super::rtype::{Refinement, TBot, Tau, TauKind, TypeEnvironment, TTop};
 use crate::formula::hes::{Goal, GoalBase, Problem as ProblemBase};
 use crate::formula::{self, DerefPtr, FirstOrderLogic};
 use crate::formula::{
@@ -683,17 +683,14 @@ impl Context {
                 // 3. generate constraint from subtyping t <: arg_ty -> ret_ty, and append them to constraints
                 // constrain by `old <= new_tmpty <= top`
                 let mut argints = reduction.argints.clone();
-                let tmp_ret_ty = ret_ty.clone_with_template(&mut argints);
+                let tmp_ret_ty = ret_ty.clone_with_rty_template(&mut argints);
 
                 debug!("constraint1");
                 debug!("- ret_ty: {}", ret_ty);
                 debug!("- tmp_ret_ty: {}", tmp_ret_ty);
-                // TODO! next
-                let constraint = Ty::check_subtype_structural(
-                    &reduction.constraint.clone().into(),
-                    &ret_ty,
-                    &tmp_ret_ty,
-                );
+                // TODO: I think this is ok
+                let constraint = Atom::mk_implies_opt(  tmp_ret_ty.rty(), ret_ty.rty()).unwrap();
+                //let constraint = Atom::mk_implies_opt(Atom::mk_conj(tmp_ret_ty.rty(), ret_ty_constraint.clone()), ret_ty.rty());
                 let tmp_ret_ty_body = match &arg_ty {
                     either::Left(_) => {
                         let op: Op = reduction.arg.clone().into();
@@ -703,12 +700,7 @@ impl Context {
                 };
                 debug!("constraint2");
                 debug!("- tmp_ret_ty: {}", tmp_ret_ty_body);
-                let constraint2 = Ty::check_subtype_structural(
-                    &reduction.constraint.clone().into(),
-                    &tmp_ret_ty_body,
-                    // this is wrong; what type should the return type be?
-                    &Tau::mk_prop_ty(Atom::mk_true()),
-                );
+                let constraint2 = Atom::mk_implies_opt(ret_ty_constraint.clone(), tmp_ret_ty_body.rty()).unwrap();
                 let constraint = Atom::mk_conj(constraint, constraint2);
                 let tmp_ty = match &arg_ty {
                     either::Left(_) => Tau::mk_iarrow(reduction.old_id, tmp_ret_ty.clone()),
