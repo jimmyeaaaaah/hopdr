@@ -12,6 +12,7 @@ use rpds::{HashTrieMap, Stack};
 
 use std::collections::{HashMap, HashSet};
 use std::fmt;
+use std::fmt::Formatter;
 
 type Atom = fofml::Atom;
 type Candidate = Goal<Constraint>;
@@ -432,7 +433,7 @@ impl Context {
                                     .into_iter()
                                     .map(|t| match t.ty.kind() {
                                         TauKind::IArrow(x, t2) => CandidateType::new(
-                                            t2.subst(x, &op),
+                                            SavedTy::mk(t2.subst(x, &op), constraint.clone()),
                                             t.derivation.clone(),
                                         ),
                                         _ => panic!("fatal"),
@@ -670,7 +671,7 @@ impl Context {
                 title!("no ret_tys");
             }
             for ret_ty in ret_tys.iter() {
-                let ret_ty = match &arg_ty {
+                let SavedTy{ty: ret_ty, constraint: ret_ty_constraint} = match &arg_ty {
                     either::Left(ident) => {
                         debug!("ret_ty: {}, ident: {}", ret_ty, ident);
                         debug!("{:?}", ret_ty);
@@ -798,19 +799,47 @@ fn reduce_until_normal_form(candidate: &Candidate, problem: &Problem) -> Context
     Context::new(normal_form, track_idents, reduction_sequence)
 }
 
-#[derive(Clone)]
-struct SavedTy<C: Clone> {
+#[derive(Clone, Debug)]
+struct SavedTy {
     ty: Ty,
-    constraint: C,
+    constraint: Atom,
+}
+
+impl fmt::Display for SavedTy {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}; {}", self.constraint, self.ty)
+    }
+}
+
+impl SavedTy {
+    fn kind<'a>(&'a self) -> &'a TypeKind {
+        self.ty.kind()
+    }
+    fn mk(ty: Ty, constraint: Atom) -> SavedTy {
+        SavedTy { ty, constraint, }
+    }
+    fn deref_ptr(&self, ident: &Ident) -> SavedTy {
+        let ty = self.ty.deref_ptr(ident);
+        let constraint = self.constraint.deref_ptr(ident);
+        SavedTy::mk(ty, constraint)
+    }
+}
+
+impl Rename for SavedTy {
+    fn rename(&self, x: &Ident, y: &Ident) -> Self {
+        let ty = self.ty.rename(x, y);
+        let constraint = self.constraint.rename(x, y);
+        SavedTy::mk(ty, constraint)
+    }
 }
 
 #[derive(Clone, Debug)]
-struct DerivationMap<ID: Eq + std::hash::Hash + Copy>(HashTrieMap<ID, Stack<Ty>>);
-impl<ID: Eq + std::hash::Hash + Copy> DerivationMap<ID> {
-    fn new() -> DerivationMap<ID> {
+struct DerivationMap<ID: Eq + std::hash::Hash + Copy, T>(HashTrieMap<ID, Stack<T>>);
+impl<ID: Eq + std::hash::Hash + Copy, T: Clone> DerivationMap<ID, T> {
+    fn new() -> DerivationMap<ID, T> {
         DerivationMap(HashTrieMap::new())
     }
-    fn merge_derivation_map(&mut self, mut y: DerivationMap<ID>) {
+    fn merge_derivation_map(&mut self, mut y: DerivationMap<ID, T>) {
         for (k, vs) in y.0.iter() {
             let stack = match self.0.get(k) {
                 Some(s) => {
@@ -825,14 +854,14 @@ impl<ID: Eq + std::hash::Hash + Copy> DerivationMap<ID> {
             self.0.insert_mut(*k, stack);
         }
     }
-    fn insert(&mut self, level: ID, ty: Ty) {
+    fn insert(&mut self, level: ID, ty: T) {
         let st = match self.0.get(&level) {
             Some(st) => st.clone(),
             None => Stack::new(),
         };
         self.0 = self.0.insert(level, st.push(ty.clone()))
     }
-    fn set(&mut self, ident: ID, ty: Ty) {
+    fn set(&mut self, ident: ID, ty: T) {
         // overwrite the current assignment
         // the expr with `level` id can be copied.
         // however, for the purpose of tracking the type of the result expr
@@ -840,17 +869,17 @@ impl<ID: Eq + std::hash::Hash + Copy> DerivationMap<ID> {
         // By going back along with the reduction sequence, this can be achieved.
         self.0 = self.0.insert(ident, Stack::new().push(ty))
     }
-    fn get(&self, level: &ID) -> Stack<Ty> {
+    fn get(&self, level: &ID) -> Stack<T> {
         self.0.get(level).cloned().unwrap_or(Stack::new())
     }
-    fn get_opt(&self, level: &ID) -> Option<Stack<Ty>> {
+    fn get_opt(&self, level: &ID) -> Option<Stack<T>> {
         self.0.get(level).cloned()
     }
 }
 #[derive(Clone, Debug)]
 struct Derivation {
-    arg: DerivationMap<usize>,
-    expr: DerivationMap<Ident>,
+    arg: DerivationMap<usize, Ty>,
+    expr: DerivationMap<Ident, SavedTy>,
 }
 
 impl Derivation {
@@ -863,13 +892,13 @@ impl Derivation {
         self.arg.insert(level, ty);
     }
     // memorize expr : ty in a derivation
-    fn memorize_type_judgement(&mut self, expr: &G, ty: Ty) {
+    fn memorize_type_judgement(&mut self, expr: &G, ty: SavedTy) {
         self.expr.set(expr.aux.id, ty);
     }
     fn get_arg(&self, level: &usize) -> Stack<Ty> {
         self.arg.get(level)
     }
-    fn get_expr_ty(&self, level: &Ident) -> Stack<Ty> {
+    fn get_expr_ty(&self, level: &Ident) -> Stack<SavedTy> {
         self.expr.get(level)
     }
     fn merge(&mut self, derivation: &Derivation) {
@@ -879,7 +908,7 @@ impl Derivation {
 }
 #[derive(Clone, Debug)]
 struct CandidateType {
-    ty: Ty,
+    ty: SavedTy,
     // level -> type map appeared in the derivation of ty so far.
     derivation: Derivation,
 }
@@ -890,11 +919,11 @@ enum Method {
     Disj,
 }
 impl CandidateType {
-    fn new(ty: Ty, derivation: Derivation) -> CandidateType {
+    fn new(ty: SavedTy, derivation: Derivation) -> CandidateType {
         CandidateType { ty, derivation }
     }
     fn memorize(&mut self, level: usize) {
-        self.derivation.memorize(level, self.ty.clone())
+        self.derivation.memorize(level, self.ty.ty.clone())
     }
     fn set_types(&mut self, expr: &G) {
         self.derivation
@@ -906,8 +935,16 @@ impl CandidateType {
     fn merge_inner(&mut self, c: &CandidateType, method: Method) {
         self.ty = match (self.ty.kind(), c.ty.kind()) {
             (TauKind::Proposition(c1), TauKind::Proposition(c2)) => match method {
-                Method::Conj => Ty::mk_prop_ty(Atom::mk_conj(c1.clone(), c2.clone())),
-                Method::Disj => Ty::mk_prop_ty(Atom::mk_disj(c1.clone(), c2.clone())),
+                Method::Conj => {
+                    let ty = Ty::mk_prop_ty(Atom::mk_conj(c1.clone(), c2.clone()));
+                    let constraint = Atom::mk_conj(self.ty.constraint.clone(), c.ty.constraint.clone());
+                    SavedTy::mk(ty, constraint)
+                },
+                Method::Disj => {
+                    let ty = Ty::mk_prop_ty(Atom::mk_disj(c1.clone(), c2.clone()));
+                    let constraint = Atom::mk_disj(self.ty.constraint.clone(), c.ty.constraint.clone());
+                    SavedTy::mk(ty, constraint)
+                },
             },
             (_, _) => panic!("fatal"),
         };
@@ -925,7 +962,7 @@ impl CandidateType {
         c1
     }
     fn quantify(&mut self, x: Ident) {
-        let t = match self.ty.kind() {
+        let ty = match self.ty.kind() {
             TauKind::Proposition(c) => Ty::mk_prop_ty(Atom::mk_quantifier_int(
                 crate::formula::QuantifierKind::Universal,
                 x,
@@ -933,12 +970,14 @@ impl CandidateType {
             )),
             TauKind::IArrow(_, _) | TauKind::Arrow(_, _) => panic!("fatal"),
         };
-        self.ty = t;
+        let constraint = Atom::mk_quantifier_int(crate::formula::QuantifierKind::Universal,x, self.ty.constraint.clone());
+        self.ty = SavedTy::mk(ty, constraint);
+
     }
 }
 
-impl From<Ty> for CandidateType {
-    fn from(ty: Ty) -> Self {
+impl From<SavedTy> for CandidateType {
+    fn from(ty: SavedTy) -> Self {
         CandidateType {
             ty,
             derivation: Derivation::new(),
@@ -958,7 +997,7 @@ impl fmt::Display for CandidateType {
 struct PossibleType {
     types: Vec<CandidateType>,
 }
-impl<'a, T: IntoIterator<Item = Ty>> From<T> for PossibleType {
+impl<'a, T: IntoIterator<Item = SavedTy>> From<T> for PossibleType {
     fn from(ts: T) -> Self {
         let mut types = Vec::new();
         for t in ts.into_iter() {
@@ -968,8 +1007,8 @@ impl<'a, T: IntoIterator<Item = Ty>> From<T> for PossibleType {
         PossibleType::new(types)
     }
 }
-impl From<Ty> for PossibleType {
-    fn from(t: Ty) -> Self {
+impl From<SavedTy> for PossibleType {
+    fn from(t: SavedTy) -> Self {
         let t = t.into();
         let mut types = Vec::new();
         types.push(t);
@@ -1047,6 +1086,7 @@ fn rename_integer_variable(t1: &Ty, t2: &Ty) -> Ty {
         _ => panic!("program error"),
     }
 }
+
 
 fn check_int_expr(ienv: &HashSet<Ident>, g: &G) -> Option<Op> {
     match g.kind() {
