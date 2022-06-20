@@ -390,6 +390,7 @@ impl Context {
                 for ty in tys.iter() {
                     debug!("{}: {}", pred_name, ty);
                     debug!("{:?}", model);
+                    let ty = ty.ty.clone();
                     result_env.add(*pred_name, ty.assign(&model));
                 }
             }
@@ -433,7 +434,7 @@ impl Context {
                                     .into_iter()
                                     .map(|t| match t.ty.kind() {
                                         TauKind::IArrow(x, t2) => CandidateType::new(
-                                            SavedTy::mk(t2.subst(x, &op), constraint.clone()),
+                                            t2.subst(x, &op),
                                             t.derivation.clone(),
                                         ),
                                         _ => panic!("fatal"),
@@ -489,7 +490,7 @@ impl Context {
                 }
             }
             for ct in pt.types.iter_mut() {
-                ct.set_types(app_expr);
+                ct.set_types(app_expr, constraint.clone());
             }
             pt
         }
@@ -629,7 +630,7 @@ impl Context {
                 for level in c.aux.level_arg.iter() {
                     ct.memorize(*level);
                 }
-                ct.set_types(c);
+                ct.set_types(c, constraint.clone());
                 ct
             })
         }
@@ -680,83 +681,74 @@ impl Context {
                     either::Right(_) => ret_ty.clone(),
                 };
                 // 3. generate constraint from subtyping t <: arg_ty -> ret_ty, and append them to constraints
-                // TODO!
                 // constrain by `old <= new_tmpty <= top`
-                let (tmp_ty, tmp_ret_ty, tmp_ret_ty_body) = if ret_ty.is_proposition() {
-                    let mut argints = reduction.argints.clone();
-                    let tmp_ret_ty = ret_ty.clone_with_template(&mut argints);
+                let mut argints = reduction.argints.clone();
+                let tmp_ret_ty = ret_ty.clone_with_template(&mut argints);
 
-                    debug!("constraint1");
-                    debug!("- ret_ty: {}", ret_ty);
-                    debug!("- tmp_ret_ty: {}", tmp_ret_ty);
-                    let constraint = Ty::check_subtype_structural(
-                        &reduction.constraint.clone().into(),
-                        &ret_ty,
-                        &tmp_ret_ty,
-                    );
-                    let tmp_ret_ty_body = match &arg_ty {
-                        either::Left(_) => {
-                            let op: Op = reduction.arg.clone().into();
-                            tmp_ret_ty.subst(&reduction.old_id, &op)
-                        }
-                        either::Right(_) => tmp_ret_ty.clone(),
-                    };
-                    debug!("constraint2");
-                    debug!("- tmp_ret_ty: {}", tmp_ret_ty_body);
-                    let constraint2 = Ty::check_subtype_structural(
-                        &reduction.constraint.clone().into(),
-                        &tmp_ret_ty_body,
-                        // this is wrong; what type should the return type be?
-                        &Tau::mk_prop_ty(Atom::mk_true()),
-                    );
-                    let constraint = Atom::mk_conj(constraint, constraint2);
-                    let tmp_ty = match &arg_ty {
-                        either::Left(_) => Tau::mk_iarrow(reduction.old_id, tmp_ret_ty.clone()),
-                        either::Right(arg_ty) => Ty::mk_arrow(arg_ty.clone(), tmp_ret_ty.clone()),
-                    };
-                    // 2. create a template type from `ty` and free variables `fvints`
-                    match constraint.to_chcs_or_pcsps() {
-                        either::Left(chcs) => {
-                            debug!("constraints");
-                            for c in chcs {
-                                debug!("- {}", c);
-                                clauses.push(c);
-                            }
-                        }
-                        either::Right(pcsps) => {
-                            debug!("constriant: {}", constraint);
-                            debug!("failed to translate the constraint to chcs");
-                            for c in pcsps {
-                                debug!("{}", c)
-                            }
-                            panic!("fatal")
+                debug!("constraint1");
+                debug!("- ret_ty: {}", ret_ty);
+                debug!("- tmp_ret_ty: {}", tmp_ret_ty);
+                // TODO! next
+                let constraint = Ty::check_subtype_structural(
+                    &reduction.constraint.clone().into(),
+                    &ret_ty,
+                    &tmp_ret_ty,
+                );
+                let tmp_ret_ty_body = match &arg_ty {
+                    either::Left(_) => {
+                        let op: Op = reduction.arg.clone().into();
+                        tmp_ret_ty.subst(&reduction.old_id, &op)
+                    }
+                    either::Right(_) => tmp_ret_ty.clone(),
+                };
+                debug!("constraint2");
+                debug!("- tmp_ret_ty: {}", tmp_ret_ty_body);
+                let constraint2 = Ty::check_subtype_structural(
+                    &reduction.constraint.clone().into(),
+                    &tmp_ret_ty_body,
+                    // this is wrong; what type should the return type be?
+                    &Tau::mk_prop_ty(Atom::mk_true()),
+                );
+                let constraint = Atom::mk_conj(constraint, constraint2);
+                let tmp_ty = match &arg_ty {
+                    either::Left(_) => Tau::mk_iarrow(reduction.old_id, tmp_ret_ty.clone()),
+                    either::Right(arg_ty) => Ty::mk_arrow(arg_ty.clone(), tmp_ret_ty.clone()),
+                };
+                // 2. create a template type from `ty` and free variables `fvints`
+                match constraint.to_chcs_or_pcsps() {
+                    either::Left(chcs) => {
+                        debug!("constraints");
+                        for c in chcs {
+                            debug!("- {}", c);
+                            clauses.push(c);
                         }
                     }
-                    (tmp_ty, tmp_ret_ty_body.clone(), tmp_ret_ty.clone())
-                } else {
-                    (
-                        match &arg_ty {
-                            either::Left(_) => Tau::mk_iarrow(reduction.old_id, ret_ty.clone()),
-                            either::Right(arg_ty) => Ty::mk_arrow(arg_ty.clone(), ret_ty.clone()),
-                        },
-                        ret_ty.clone(),
-                        ret_ty.clone(),
-                    )
-                };
+                    either::Right(pcsps) => {
+                        debug!("constriant: {}", constraint);
+                        debug!("failed to translate the constraint to chcs");
+                        for c in pcsps {
+                            debug!("{}", c)
+                        }
+                        panic!("fatal")
+                    }
+                }
                 debug!("inferred type: {}", tmp_ty);
                 // 4. for each `level` in reduction.candidate.aux, we add t to Derivation
                 for level in reduction.predicate.aux.level_arg.iter() {
                     derivation.arg.insert(*level, tmp_ty.clone());
                 }
-                derivation.expr.set(reduction.predicate.aux.id, tmp_ty);
+                let tmp_saved_ty = SavedTy::mk(tmp_ty, ret_ty_constraint.clone());
+                derivation.expr.set(reduction.predicate.aux.id, tmp_saved_ty);
                 for level in reduction.app_expr.aux.level_arg.iter() {
                     derivation.arg.insert(*level, tmp_ret_ty.clone());
                 }
-                derivation.expr.set(reduction.app_expr.aux.id, tmp_ret_ty);
+                let tmp_saved_ret_ty = SavedTy::mk(tmp_ret_ty, ret_ty_constraint.clone());
+                derivation.expr.set(reduction.app_expr.aux.id, tmp_saved_ret_ty);
                 for level in reduction.body.aux.level_arg.iter() {
                     derivation.arg.insert(*level, tmp_ret_ty_body.clone())
                 }
-                derivation.expr.set(reduction.body.aux.id, tmp_ret_ty_body);
+                let tmp_saved_ret_ty_body = SavedTy::mk(tmp_ret_ty_body, ret_ty_constraint.clone());
+                derivation.expr.set(reduction.body.aux.id, tmp_saved_ret_ty_body);
             }
             debug!("");
         }
@@ -812,7 +804,7 @@ impl fmt::Display for SavedTy {
 }
 
 impl SavedTy {
-    fn kind<'a>(&'a self) -> &'a TypeKind {
+    fn kind<'a>(&'a self) -> &'a TauKind<Atom>{
         self.ty.kind()
     }
     fn mk(ty: Ty, constraint: Atom) -> SavedTy {
@@ -908,7 +900,7 @@ impl Derivation {
 }
 #[derive(Clone, Debug)]
 struct CandidateType {
-    ty: SavedTy,
+    ty: Ty,
     // level -> type map appeared in the derivation of ty so far.
     derivation: Derivation,
 }
@@ -919,15 +911,17 @@ enum Method {
     Disj,
 }
 impl CandidateType {
-    fn new(ty: SavedTy, derivation: Derivation) -> CandidateType {
+    fn new(ty: Ty, derivation: Derivation) -> CandidateType {
         CandidateType { ty, derivation }
     }
     fn memorize(&mut self, level: usize) {
-        self.derivation.memorize(level, self.ty.ty.clone())
+        self.derivation.memorize(level, self.ty.clone())
     }
-    fn set_types(&mut self, expr: &G) {
+    fn set_types(&mut self, expr: &G, constraint: Atom) {
+        let ty = self.ty.clone();
+        let saved_ty = SavedTy::mk(ty, constraint);
         self.derivation
-            .memorize_type_judgement(expr, self.ty.clone())
+            .memorize_type_judgement(expr, saved_ty);
     }
     fn merge_derivation(&mut self, derivation: &Derivation) {
         self.derivation.merge(derivation);
@@ -935,16 +929,8 @@ impl CandidateType {
     fn merge_inner(&mut self, c: &CandidateType, method: Method) {
         self.ty = match (self.ty.kind(), c.ty.kind()) {
             (TauKind::Proposition(c1), TauKind::Proposition(c2)) => match method {
-                Method::Conj => {
-                    let ty = Ty::mk_prop_ty(Atom::mk_conj(c1.clone(), c2.clone()));
-                    let constraint = Atom::mk_conj(self.ty.constraint.clone(), c.ty.constraint.clone());
-                    SavedTy::mk(ty, constraint)
-                },
-                Method::Disj => {
-                    let ty = Ty::mk_prop_ty(Atom::mk_disj(c1.clone(), c2.clone()));
-                    let constraint = Atom::mk_disj(self.ty.constraint.clone(), c.ty.constraint.clone());
-                    SavedTy::mk(ty, constraint)
-                },
+                Method::Conj => Ty::mk_prop_ty(Atom::mk_conj(c1.clone(), c2.clone())),
+                Method::Disj => Ty::mk_prop_ty(Atom::mk_disj(c1.clone(), c2.clone())),
             },
             (_, _) => panic!("fatal"),
         };
@@ -970,14 +956,12 @@ impl CandidateType {
             )),
             TauKind::IArrow(_, _) | TauKind::Arrow(_, _) => panic!("fatal"),
         };
-        let constraint = Atom::mk_quantifier_int(crate::formula::QuantifierKind::Universal,x, self.ty.constraint.clone());
-        self.ty = SavedTy::mk(ty, constraint);
-
+        self.ty = ty;
     }
 }
 
-impl From<SavedTy> for CandidateType {
-    fn from(ty: SavedTy) -> Self {
+impl From<Ty> for CandidateType {
+    fn from(ty: Ty)-> Self {
         CandidateType {
             ty,
             derivation: Derivation::new(),
@@ -997,7 +981,7 @@ impl fmt::Display for CandidateType {
 struct PossibleType {
     types: Vec<CandidateType>,
 }
-impl<'a, T: IntoIterator<Item = SavedTy>> From<T> for PossibleType {
+impl<'a, T: IntoIterator<Item = Ty>> From<T> for PossibleType {
     fn from(ts: T) -> Self {
         let mut types = Vec::new();
         for t in ts.into_iter() {
@@ -1007,8 +991,8 @@ impl<'a, T: IntoIterator<Item = SavedTy>> From<T> for PossibleType {
         PossibleType::new(types)
     }
 }
-impl From<SavedTy> for PossibleType {
-    fn from(t: SavedTy) -> Self {
+impl From<Ty> for PossibleType {
+    fn from(t: Ty) -> Self {
         let t = t.into();
         let mut types = Vec::new();
         types.push(t);
