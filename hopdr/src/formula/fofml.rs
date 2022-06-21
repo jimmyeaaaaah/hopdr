@@ -4,8 +4,8 @@ use std::fmt;
 use super::chc;
 use super::pcsp;
 use super::{
-    hes, Bot, Constraint, FirstOrderLogic, Fv, Ident, Logic, Negation, Op, OpKind, PredKind,
-    QuantifierKind, Rename, Subst, Top, Type, Variable, DerefPtr
+    hes, Bot, Constraint, DerefPtr, FirstOrderLogic, Fv, Ident, Logic, Negation, Op, OpKind,
+    PredKind, QuantifierKind, Rename, Subst, Top, Type, Variable,
 };
 use crate::solver;
 use crate::solver::smt;
@@ -693,7 +693,10 @@ fn test_fofml_atom_deref_ptr() {
     let o = Op::mk_add(Op::mk_const(1), Op::mk_var(x));
     let o2 = Op::mk_const(4);
     let c = Constraint::mk_lt(o, o2.clone());
-    let a = Atom::mk_conj(Atom::mk_pred(p, vec![Op::mk_var(x)]), Atom::mk_constraint(c));
+    let a = Atom::mk_conj(
+        Atom::mk_pred(p, vec![Op::mk_var(x)]),
+        Atom::mk_constraint(c),
+    );
     let a2 = a.subst(&x, &o2);
     let a3 = a2.deref_ptr(&x);
     assert_eq!(a, a3);

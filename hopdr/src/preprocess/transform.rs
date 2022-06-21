@@ -1,8 +1,10 @@
-use std::collections::HashMap;
 use super::hes::ValidityChecking;
 use crate::formula;
 use crate::formula::hes;
-use crate::formula::{Bot, Ident, Logic, Type as SimpleType, TypeKind as SimpleTypeKind, Variable, Op};
+use crate::formula::{
+    Bot, Ident, Logic, Op, Type as SimpleType, TypeKind as SimpleTypeKind, Variable,
+};
+use std::collections::HashMap;
 
 type In = ValidityChecking<formula::Ident, SimpleType>;
 type Out = hes::Problem<formula::Constraint>;
@@ -96,11 +98,15 @@ fn transform_expr_inner(input: &InExpr, env: &mut HashMap<Ident, SimpleType>) ->
     use formula::Top;
     match input.kind() {
         Var(x) => {
-            match env.get(x).unwrap_or_else(|| panic!("failed to find: {}", x)).kind() {
+            match env
+                .get(x)
+                .unwrap_or_else(|| panic!("failed to find: {}", x))
+                .kind()
+            {
                 SimpleTypeKind::Integer => EitherExpr::mk_op(formula::Op::mk_var(*x)),
-                _ => EitherExpr::mk_var(*x)
+                _ => EitherExpr::mk_var(*x),
             }
-        },
+        }
         App(e1, e2) => {
             let e1 = f(e1, env).goal();
             let e2 = f(e2, env).goal();
@@ -133,8 +139,12 @@ fn transform_expr_inner(input: &InExpr, env: &mut HashMap<Ident, SimpleType>) ->
             let old = env.insert(x.id, x.ty.clone());
             let y = transform_expr_inner(y, env).goal();
             match old {
-                Some(old) => {env.insert(x.id, old);}
-                None => {env.remove(&x.id);}
+                Some(old) => {
+                    env.insert(x.id, old);
+                }
+                None => {
+                    env.remove(&x.id);
+                }
             }
             EitherExpr::mk_goal(Goal::mk_univ(x.clone().into(), y))
         }
@@ -142,8 +152,12 @@ fn transform_expr_inner(input: &InExpr, env: &mut HashMap<Ident, SimpleType>) ->
             let old = env.insert(x.id, x.ty.clone());
             let y = transform_expr_inner(y, env).goal();
             match old {
-                Some(old) => {env.insert(x.id, old);}
-                None => {env.remove(&x.id);}
+                Some(old) => {
+                    env.insert(x.id, old);
+                }
+                None => {
+                    env.remove(&x.id);
+                }
             }
             EitherExpr::mk_goal(Goal::mk_abs(x.clone().into(), y))
         }
@@ -157,14 +171,17 @@ fn transform_expr(
     transform_expr_inner(expr, env).goal()
 }
 
-fn append_args(mut body: InExpr, args: &[Ident], mut t: SimpleType) -> InExpr{
+fn append_args(mut body: InExpr, args: &[Ident], mut t: SimpleType) -> InExpr {
     let mut variables = Vec::new();
     for arg in args {
         let (arg_ty, ret_t) = match t.kind() {
             formula::TypeKind::Arrow(x, y) => (x.clone(), y.clone()),
             _ => panic!("program error"),
         };
-        let v = crate::preprocess::hes::VariableS{ id: *arg, ty: arg_ty.clone() };
+        let v = crate::preprocess::hes::VariableS {
+            id: *arg,
+            ty: arg_ty.clone(),
+        };
         t = ret_t;
         variables.push(v);
     }

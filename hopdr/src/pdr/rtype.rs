@@ -378,7 +378,6 @@ impl Tau<fofml::Atom> {
             }
         }
     }
-
 }
 
 impl<C> Tau<C> {

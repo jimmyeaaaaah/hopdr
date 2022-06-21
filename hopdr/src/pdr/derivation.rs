@@ -1,4 +1,4 @@
-use super::rtype::{Refinement, TBot, Tau, TauKind, TypeEnvironment, TTop};
+use super::rtype::{Refinement, TBot, TTop, Tau, TauKind, TypeEnvironment};
 use crate::formula::hes::{Goal, GoalBase, Problem as ProblemBase};
 use crate::formula::{self, DerefPtr, FirstOrderLogic};
 use crate::formula::{
@@ -215,7 +215,6 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
             argints: &mut HashSet<Ident>,
             constraint: Constraint,
         ) -> Option<(G, Reduction)> {
-
             match goal.kind() {
                 GoalKind::App(predicate, arg) => {
                     match predicate.kind() {
@@ -228,11 +227,8 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
                             let new_g = g.rename(&x.id, &new_var.id);
                             let old_id = x.id;
                             let mut ret = new_g.subst(&new_var, &arg);
-                            let predicate = G::mk_abs_t(
-                                new_var.clone(),
-                                new_g.clone(),
-                                predicate.aux.clone(),
-                            );
+                            let predicate =
+                                G::mk_abs_t(new_var.clone(), new_g.clone(), predicate.aux.clone());
                             // introduce a new fresh variable to identify this expr
                             ret.aux.id = Ident::fresh();
                             // track the result type
@@ -255,7 +251,7 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
                                     new_var,
                                     old_id,
                                 ),
-                            ))
+                            ));
                         }
                         _ => (),
                     };
@@ -263,16 +259,17 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
                     go_(predicate, level, fvints, argints, constraint.clone())
                         .map(|(g, pred)| (G::mk_app_t(g, arg.clone(), goal.aux.clone()), pred))
                         .or_else(|| {
-                            go_(arg, level, fvints,argints,  constraint.clone())
-                                .map(|(arg, pred)| {
+                            go_(arg, level, fvints, argints, constraint.clone()).map(
+                                |(arg, pred)| {
                                     (G::mk_app_t(predicate.clone(), arg, goal.aux.clone()), pred)
-                                })
+                                },
+                            )
                         })
                 }
-                GoalKind::Conj(g1, g2) => go_(g1, level, fvints,argints,  constraint.clone())
+                GoalKind::Conj(g1, g2) => go_(g1, level, fvints, argints, constraint.clone())
                     .map(|(g1, p)| (G::mk_conj_t(g1, g2.clone(), goal.aux.clone()), p))
                     .or_else(|| {
-                        go_(g2, level, fvints,argints,  constraint.clone())
+                        go_(g2, level, fvints, argints, constraint.clone())
                             .map(|(g2, p)| (G::mk_conj_t(g1.clone(), g2, goal.aux.clone()), p))
                     }),
                 GoalKind::Disj(g1, g2) => {
@@ -280,7 +277,7 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
                     match c1 {
                         Some(c1) => {
                             let constraint = Constraint::mk_conj(c1.negate().unwrap(), constraint);
-                            go_(g2, level, fvints,argints, constraint).map(|(g2, p)| {
+                            go_(g2, level, fvints, argints, constraint).map(|(g2, p)| {
                                 (G::mk_disj_t(g1.clone(), g2.clone(), goal.aux.clone()), p)
                             })
                         }
@@ -307,7 +304,7 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
                         // x is type int and fvints already has x.id
                         saved = true;
                     }
-                    let r = go_(g, level, fvints,argints,  constraint)
+                    let r = go_(g, level, fvints, argints, constraint)
                         .map(|(g, p)| (G::mk_univ_t(x.clone(), g, goal.aux.clone()), p));
                     if x.ty.is_int() && !saved {
                         fvints.remove(&x.id);
@@ -331,7 +328,7 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
                     if x.ty.is_int() && !saved {
                         fvints.remove(&x.id);
                     }
-                    if x.ty.is_int() && !saved_arg{
+                    if x.ty.is_int() && !saved_arg {
                         argints.remove(&x.id);
                     }
                     r
@@ -340,7 +337,13 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
             }
         }
         *level += 1;
-        go_(goal, *level, &mut HashSet::new(), &mut HashSet::new(), Constraint::mk_true())
+        go_(
+            goal,
+            *level,
+            &mut HashSet::new(),
+            &mut HashSet::new(),
+            Constraint::mk_true(),
+        )
     }
     let mut level = 0usize;
     let mut seq = Vec::new();
@@ -672,7 +675,10 @@ impl Context {
                 title!("no ret_tys");
             }
             for ret_ty in ret_tys.iter() {
-                let SavedTy{ty: ret_ty, constraint: ret_ty_constraint} = match &arg_ty {
+                let SavedTy {
+                    ty: ret_ty,
+                    constraint: ret_ty_constraint,
+                } = match &arg_ty {
                     either::Left(ident) => {
                         debug!("ret_ty: {}, ident: {}", ret_ty, ident);
                         debug!("{:?}", ret_ty);
@@ -689,7 +695,7 @@ impl Context {
                 debug!("- ret_ty: {}", ret_ty);
                 debug!("- tmp_ret_ty: {}", tmp_ret_ty);
                 // TODO: I think this is ok
-                let constraint = Atom::mk_implies_opt(  tmp_ret_ty.rty(), ret_ty.rty()).unwrap();
+                let constraint = Atom::mk_implies_opt(tmp_ret_ty.rty(), ret_ty.rty()).unwrap();
                 //let constraint = Atom::mk_implies_opt(Atom::mk_conj(tmp_ret_ty.rty(), ret_ty_constraint.clone()), ret_ty.rty());
                 let tmp_ret_ty_body = match &arg_ty {
                     either::Left(_) => {
@@ -700,7 +706,8 @@ impl Context {
                 };
                 debug!("constraint2");
                 debug!("- tmp_ret_ty: {}", tmp_ret_ty_body);
-                let constraint2 = Atom::mk_implies_opt(ret_ty_constraint.clone(), tmp_ret_ty_body.rty()).unwrap();
+                let constraint2 =
+                    Atom::mk_implies_opt(ret_ty_constraint.clone(), tmp_ret_ty_body.rty()).unwrap();
                 let constraint = Atom::mk_conj(constraint, constraint2);
                 let tmp_ty = match &arg_ty {
                     either::Left(_) => Tau::mk_iarrow(reduction.old_id, tmp_ret_ty.clone()),
@@ -730,17 +737,23 @@ impl Context {
                     derivation.arg.insert(*level, tmp_ty.clone());
                 }
                 let tmp_saved_ty = SavedTy::mk(tmp_ty, ret_ty_constraint.clone());
-                derivation.expr.set(reduction.predicate.aux.id, tmp_saved_ty);
+                derivation
+                    .expr
+                    .set(reduction.predicate.aux.id, tmp_saved_ty);
                 for level in reduction.app_expr.aux.level_arg.iter() {
                     derivation.arg.insert(*level, tmp_ret_ty.clone());
                 }
                 let tmp_saved_ret_ty = SavedTy::mk(tmp_ret_ty, ret_ty_constraint.clone());
-                derivation.expr.set(reduction.app_expr.aux.id, tmp_saved_ret_ty);
+                derivation
+                    .expr
+                    .set(reduction.app_expr.aux.id, tmp_saved_ret_ty);
                 for level in reduction.body.aux.level_arg.iter() {
                     derivation.arg.insert(*level, tmp_ret_ty_body.clone())
                 }
                 let tmp_saved_ret_ty_body = SavedTy::mk(tmp_ret_ty_body, ret_ty_constraint.clone());
-                derivation.expr.set(reduction.body.aux.id, tmp_saved_ret_ty_body);
+                derivation
+                    .expr
+                    .set(reduction.body.aux.id, tmp_saved_ret_ty_body);
             }
             debug!("");
         }
@@ -796,11 +809,11 @@ impl fmt::Display for SavedTy {
 }
 
 impl SavedTy {
-    fn kind<'a>(&'a self) -> &'a TauKind<Atom>{
+    fn kind<'a>(&'a self) -> &'a TauKind<Atom> {
         self.ty.kind()
     }
     fn mk(ty: Ty, constraint: Atom) -> SavedTy {
-        SavedTy { ty, constraint, }
+        SavedTy { ty, constraint }
     }
     fn deref_ptr(&self, ident: &Ident) -> SavedTy {
         let ty = self.ty.deref_ptr(ident);
@@ -912,8 +925,7 @@ impl CandidateType {
     fn set_types(&mut self, expr: &G, constraint: Atom) {
         let ty = self.ty.clone();
         let saved_ty = SavedTy::mk(ty, constraint);
-        self.derivation
-            .memorize_type_judgement(expr, saved_ty);
+        self.derivation.memorize_type_judgement(expr, saved_ty);
     }
     fn merge_derivation(&mut self, derivation: &Derivation) {
         self.derivation.merge(derivation);
@@ -953,7 +965,7 @@ impl CandidateType {
 }
 
 impl From<Ty> for CandidateType {
-    fn from(ty: Ty)-> Self {
+    fn from(ty: Ty) -> Self {
         CandidateType {
             ty,
             derivation: Derivation::new(),
@@ -1062,7 +1074,6 @@ fn rename_integer_variable(t1: &Ty, t2: &Ty) -> Ty {
         _ => panic!("program error"),
     }
 }
-
 
 fn check_int_expr(ienv: &HashSet<Ident>, g: &G) -> Option<Op> {
     match g.kind() {
