@@ -6,7 +6,7 @@ pub mod ty;
 
 use std::collections::HashSet;
 use std::fmt;
-use std::ops::Deref;
+
 
 use rpds::Stack;
 
@@ -229,7 +229,7 @@ impl DerefPtr for Op {
                 Op::mk_bin_op(*o, x, y)
             }
             OpExpr::Var(_) | OpExpr::Const(_) => self.clone(),
-            OpExpr::Ptr(id2, o) if id == id2 => Op::mk_var(*id),
+            OpExpr::Ptr(id2, _o) if id == id2 => Op::mk_var(*id),
             OpExpr::Ptr(id2, o) => Op::mk_ptr(*id2, o.deref_ptr(id)),
         }
     }

@@ -2,7 +2,7 @@ use super::hes::ValidityChecking;
 use crate::formula;
 use crate::formula::hes;
 use crate::formula::{
-    Bot, Ident, Logic, Op, Type as SimpleType, TypeKind as SimpleTypeKind, Variable,
+    Bot, Ident, Logic, Type as SimpleType, TypeKind as SimpleTypeKind,
 };
 use std::collections::HashMap;
 

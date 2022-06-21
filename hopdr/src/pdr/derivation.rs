@@ -1,8 +1,8 @@
-use super::rtype::{Refinement, TBot, TTop, Tau, TauKind, TypeEnvironment};
+use super::rtype::{Refinement, TBot, Tau, TauKind, TypeEnvironment};
 use crate::formula::hes::{Goal, GoalBase, Problem as ProblemBase};
 use crate::formula::{self, DerefPtr, FirstOrderLogic};
 use crate::formula::{
-    chc, fofml, pcsp, Bot, Constraint, Ident, Logic, Negation, Op, Rename, Subst, Top, Type as Sty,
+    chc, fofml, pcsp, Constraint, Ident, Logic, Negation, Op, Rename, Subst, Top,
     Variable,
 };
 use crate::solver;
@@ -836,7 +836,7 @@ impl<ID: Eq + std::hash::Hash + Copy, T: Clone> DerivationMap<ID, T> {
     fn new() -> DerivationMap<ID, T> {
         DerivationMap(HashTrieMap::new())
     }
-    fn merge_derivation_map(&mut self, mut y: DerivationMap<ID, T>) {
+    fn merge_derivation_map(&mut self, y: DerivationMap<ID, T>) {
         for (k, vs) in y.0.iter() {
             let stack = match self.0.get(k) {
                 Some(s) => {
