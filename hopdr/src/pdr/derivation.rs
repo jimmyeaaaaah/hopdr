@@ -2,8 +2,7 @@ use super::rtype::{Refinement, TBot, Tau, TauKind, TypeEnvironment};
 use crate::formula::hes::{Goal, GoalBase, Problem as ProblemBase};
 use crate::formula::{self, DerefPtr, FirstOrderLogic};
 use crate::formula::{
-    chc, fofml, pcsp, Constraint, Ident, Logic, Negation, Op, Rename, Subst, Top,
-    Variable,
+    chc, fofml, pcsp, Constraint, Ident, Logic, Negation, Op, Rename, Subst, Top, Variable,
 };
 use crate::solver;
 use crate::title;
@@ -427,7 +426,6 @@ impl Context {
                     },
                     formula::hes::GoalKind::App(predg, argg) => {
                         let pred_pt = handle_inner(constraint, tenv, ienv, predg);
-                        debug!("handle_inner: {} |- {} : {} ", constraint, pred, pred_pt);
                         // Case: the argument is integer
                         match check_int_expr(ienv, argg) {
                             // Case: the type of argument is int
@@ -495,6 +493,7 @@ impl Context {
             for ct in pt.types.iter_mut() {
                 ct.set_types(app_expr, constraint.clone());
             }
+            debug!("handle_app: {} |- {} : {} ", constraint, app_expr, pt);
             pt
         }
         // we assume conjunction normal form and has the form (θ => a₁ a₂ ⋯) ∧ ⋯
@@ -509,7 +508,6 @@ impl Context {
             ienv: &mut HashSet<Ident>,
             c: &G,
         ) -> Option<CandidateType> {
-            debug!("type_check_go: {} |- {} : {}", constraint, c, t);
             fn go_inner(
                 constraint: &Atom,
                 t: &Ty,
@@ -629,6 +627,7 @@ impl Context {
                 }
             }
             go_inner(constraint, t, tenv, ienv, c).map(|mut ct| {
+                debug!("type_check_go: {} |- {} : {}", constraint, c, ct);
                 // memorize the type assignment to each expr
                 for level in c.aux.level_arg.iter() {
                     ct.memorize(*level);
@@ -656,6 +655,7 @@ impl Context {
         //let mut constraints = Vec::new();
         let mut clauses = Vec::new();
         for reduction in self.reduction_sequence.iter().rev() {
+            title!("Reduction");
             debug!("{}", reduction);
             let level = reduction.level;
             let ret_tys = derivation.get_expr_ty(&reduction.result.aux.id);
@@ -680,23 +680,34 @@ impl Context {
                     constraint: ret_ty_constraint,
                 } = match &arg_ty {
                     either::Left(ident) => {
-                        debug!("ret_ty: {}, ident: {}", ret_ty, ident);
-                        debug!("{:?}", ret_ty);
-                        ret_ty.deref_ptr(ident).rename(&ident, &reduction.old_id)
+                        let t = ret_ty.deref_ptr(ident).rename(&ident, &reduction.old_id);
+                        debug!("found ret_ty: {} ==> {}", ret_ty, t);
+                        t
                     }
                     either::Right(_) => ret_ty.clone(),
                 };
                 // 3. generate constraint from subtyping t <: arg_ty -> ret_ty, and append them to constraints
                 // constrain by `old <= new_tmpty <= top`
-                let mut argints = reduction.argints.clone();
-                let tmp_ret_ty = ret_ty.clone_with_rty_template(&mut argints);
+                //let mut argints = reduction.argints.clone();
+                let mut fvints = reduction.fvints.clone();
+                let tmp_ret_ty = ret_ty.clone_with_rty_template(&mut fvints);
+
+                let tmp_ty = match &arg_ty {
+                    either::Left(_) => Tau::mk_iarrow(reduction.old_id, tmp_ret_ty.clone()),
+                    either::Right(arg_ty) => Ty::mk_arrow(arg_ty.clone(), tmp_ret_ty.clone()),
+                };
+                debug!("inferred type: {}", tmp_ty);
 
                 debug!("constraint1");
-                debug!("- ret_ty: {}", ret_ty);
-                debug!("- tmp_ret_ty: {}", tmp_ret_ty);
+                debug!("  - ret_ty: {}", ret_ty);
+                debug!("  - tmp_ret_ty: {}", tmp_ret_ty);
                 // TODO: I think this is ok
-                let constraint = Atom::mk_implies_opt(tmp_ret_ty.rty(), ret_ty.rty()).unwrap();
-                //let constraint = Atom::mk_implies_opt(Atom::mk_conj(tmp_ret_ty.rty(), ret_ty_constraint.clone()), ret_ty.rty());
+                //let constraint = Atom::mk_implies_opt(tmp_ret_ty.rty(), ret_ty.rty()).unwrap();
+                let constraint = Atom::mk_implies_opt(
+                    Atom::mk_conj(tmp_ret_ty.rty_no_exists(), ret_ty_constraint.clone()),
+                    ret_ty.rty_no_exists(),
+                )
+                .unwrap();
                 let tmp_ret_ty_body = match &arg_ty {
                     either::Left(_) => {
                         let op: Op = reduction.arg.clone().into();
@@ -705,20 +716,20 @@ impl Context {
                     either::Right(_) => tmp_ret_ty.clone(),
                 };
                 debug!("constraint2");
-                debug!("- tmp_ret_ty: {}", tmp_ret_ty_body);
-                let constraint2 =
-                    Atom::mk_implies_opt(ret_ty_constraint.clone(), tmp_ret_ty_body.rty()).unwrap();
+                debug!("  - tmp_ret_ty: {}", tmp_ret_ty_body);
+                debug!("  - ret_ty_constraint: {}", ret_ty_constraint);
+                let constraint2 = Atom::mk_implies_opt(
+                    ret_ty_constraint.clone(),
+                    tmp_ret_ty_body.rty_no_exists(),
+                )
+                .unwrap();
                 let constraint = Atom::mk_conj(constraint, constraint2);
-                let tmp_ty = match &arg_ty {
-                    either::Left(_) => Tau::mk_iarrow(reduction.old_id, tmp_ret_ty.clone()),
-                    either::Right(arg_ty) => Ty::mk_arrow(arg_ty.clone(), tmp_ret_ty.clone()),
-                };
                 // 2. create a template type from `ty` and free variables `fvints`
                 match constraint.to_chcs_or_pcsps() {
                     either::Left(chcs) => {
                         debug!("constraints");
                         for c in chcs {
-                            debug!("- {}", c);
+                            debug!("  - {}", c);
                             clauses.push(c);
                         }
                     }
@@ -731,7 +742,6 @@ impl Context {
                         panic!("fatal")
                     }
                 }
-                debug!("inferred type: {}", tmp_ty);
                 // 4. for each `level` in reduction.candidate.aux, we add t to Derivation
                 for level in reduction.predicate.aux.level_arg.iter() {
                     derivation.arg.insert(*level, tmp_ty.clone());
@@ -740,20 +750,20 @@ impl Context {
                 derivation
                     .expr
                     .set(reduction.predicate.aux.id, tmp_saved_ty);
-                for level in reduction.app_expr.aux.level_arg.iter() {
+
+                for level in reduction.body.aux.level_arg.iter() {
                     derivation.arg.insert(*level, tmp_ret_ty.clone());
                 }
                 let tmp_saved_ret_ty = SavedTy::mk(tmp_ret_ty, ret_ty_constraint.clone());
-                derivation
-                    .expr
-                    .set(reduction.app_expr.aux.id, tmp_saved_ret_ty);
-                for level in reduction.body.aux.level_arg.iter() {
+                derivation.expr.set(reduction.body.aux.id, tmp_saved_ret_ty);
+
+                for level in reduction.app_expr.aux.level_arg.iter() {
                     derivation.arg.insert(*level, tmp_ret_ty_body.clone())
                 }
                 let tmp_saved_ret_ty_body = SavedTy::mk(tmp_ret_ty_body, ret_ty_constraint.clone());
                 derivation
                     .expr
-                    .set(reduction.body.aux.id, tmp_saved_ret_ty_body);
+                    .set(reduction.app_expr.aux.id, tmp_saved_ret_ty_body);
             }
             debug!("");
         }

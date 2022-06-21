@@ -1,9 +1,7 @@
 use super::hes::ValidityChecking;
 use crate::formula;
 use crate::formula::hes;
-use crate::formula::{
-    Bot, Ident, Logic, Type as SimpleType, TypeKind as SimpleTypeKind,
-};
+use crate::formula::{Bot, Ident, Logic, Type as SimpleType, TypeKind as SimpleTypeKind};
 use std::collections::HashMap;
 
 type In = ValidityChecking<formula::Ident, SimpleType>;

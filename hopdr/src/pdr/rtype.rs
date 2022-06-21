@@ -235,6 +235,13 @@ impl<C: Refinement> Tau<C> {
             TauKind::Arrow(_, t) => t.rty(),
         }
     }
+    pub fn rty_no_exists(&self) -> C {
+        match self.kind() {
+            TauKind::Proposition(c) => c.clone(),
+            TauKind::IArrow(_, t) => t.rty_no_exists(),
+            TauKind::Arrow(_, t) => t.rty_no_exists(),
+        }
+    }
     // coarse the rty(self) to be `constraint`
     pub fn add_context(&self, constraint: &C) -> Tau<C> {
         fn go<C: Refinement>(t: &Tau<C>, constraint: &C, polarity: Polarity) -> Tau<C> {
