@@ -84,22 +84,32 @@ fn subst_predicate(
     }
 }
 type Level = usize;
+struct ReductionInfo {
+    level: Level,
+    arg: G,
+    arg_var: Variable,
+    old_id: Ident
+}
+impl ReductionInfo {
+    fn new(level: Level, arg: G, arg_var: Variable, old_id: Ident) -> ReductionInfo {
+        ReductionInfo{level, arg, arg_var, old_id}
+    }
+}
+
 // perhaps we will attach auxiliary information so we prepare another struct for reduction sequence
 struct Reduction {
-    // this is the id of this reduction.
+    app_expr: G,
+    // (λx. λy. ψ) arg1 arg2  -> ψ
+    predicate: G, //λx. λy. ψ
+    body: G, // ψ
+    // args and arg_vras
+    //
+    // Level: this is the id of this reduction.
     // this value is memorized in the memory of each expression
     // for each reduction. That is, when we have reduction
     //    expr1 expr2 -> expr3
     // this id is memorized in expr2's memory (as the argument) and expr3's memory (as the return value)
-    level: Level,
-    // this is `expr1` in the above example.
-    // at the inference phase, we utilize G's memory to assign the inferred types to G.
-    app_expr: G,
-    predicate: G,
-    body: G,
-    arg: G,
-    arg_var: Variable,
-    old_id: Ident,
+    args: Vec<ReductionInfo>,
     // the result of beta reduction; predicate expr -> result
     result: G,
     // predicate's free variables of type int
@@ -111,11 +121,14 @@ struct Reduction {
 
 impl fmt::Display for Reduction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "Reduction [level{} fvints={:?} constraint={}]\n {} {} ==> {}",
-            self.level, self.fvints, self.constraint, self.predicate, self.arg, self.result
-        )
+        write!(f, "[Reduction {}-{}]", self.args[0].level, self.args[self.args.len() - 1].level)?;
+        write!(f, " fvints: {:?}", self.fvints)?;
+        writeln!(f, " constraint: {}", self.constraint)?;
+        write!(f ,"{} ", self.predicate)?;
+        for arg in self.args.iter() {
+            write!(f, "{} ", arg.arg)?;
+        }
+        write!("\n ==> {}", self.result)
     }
 }
 
@@ -124,28 +137,26 @@ impl Reduction {
         app_expr: G,
         predicate: G,
         body: G,
-        arg: G,
+        args: Vec<ReductionInfo>,
         result: G,
-        level: usize,
         fvints: HashSet<Ident>,
         argints: HashSet<Ident>,
         constraint: Constraint,
-        arg_var: Variable,
-        old_id: Ident,
     ) -> Reduction {
         Reduction {
             app_expr,
             predicate,
             body,
-            arg,
+            args,
             result,
-            level,
             fvints,
             argints,
             constraint,
-            arg_var,
-            old_id,
         }
+    }
+    fn append_reduction(&mut self, reduction_info: ReductionInfo, result: G)  {
+        self.result = result;
+        self.args.push(reduction_info);
     }
 }
 
@@ -213,57 +224,71 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
             fvints: &mut HashSet<Ident>,
             argints: &mut HashSet<Ident>,
             constraint: Constraint,
-        ) -> Option<(G, Reduction)> {
+        ) -> Option<(G, Reduction, usize)> {
+            fn generate_reduction_info(level: usize, predicate: &G, arg: &G) -> Option<(G, ReductionInfo)> {
+                match predicate.kind() {
+                    GoalKind::Abs(x, g) => {
+                        let mut arg = arg.clone();
+                        // track the type of argument
+                        arg.aux.add_arg_level(level);
+
+                        let new_var = Variable::fresh(x.ty.clone());
+                        let new_g = g.rename(&x.id, &new_var.id);
+                        let old_id = x.id;
+                        let mut ret = new_g.subst(&new_var, &arg);
+                        // introduce a new fresh variable to identify this expr
+                        ret.aux.id = Ident::fresh();
+                        // track the result type
+                        if new_var.ty.is_int() {
+                            fvints.insert(old_id);
+                            argints.insert(old_id);
+                        }
+                        let reduction_info = ReductionInfo::new(level, arg.clone(), new_var, old_id);
+                        Some((ret.clone(), reduction_info))
+                    }
+                    _ => None
+                }
+            }
             match goal.kind() {
                 GoalKind::App(predicate, arg) => {
-                    match predicate.kind() {
-                        GoalKind::Abs(x, g) => {
-                            let mut arg = arg.clone();
-                            // track the type of argument
-                            arg.aux.add_arg_level(level);
-
-                            let new_var = Variable::fresh(x.ty.clone());
-                            let new_g = g.rename(&x.id, &new_var.id);
-                            let old_id = x.id;
-                            let mut ret = new_g.subst(&new_var, &arg);
-                            let predicate =
-                                G::mk_abs_t(new_var.clone(), new_g.clone(), predicate.aux.clone());
-                            // introduce a new fresh variable to identify this expr
-                            ret.aux.id = Ident::fresh();
-                            // track the result type
-                            if new_var.ty.is_int() {
-                                fvints.insert(old_id);
-                                argints.insert(old_id);
+                    match generate_reduction_info(level, predicate, arg) {
+                        // App(App(...(Abs(...) arg1) .. argn)
+                        Some((ret, reduction_info)) => {
+                            if reduction_info.arg_var.ty.is_int() {
+                                fvints.insert(reduction_info.old_id);
+                                argints.insert(reduction_info.old_id);
                             }
-                            return Some((
+                            return Some((ret.clone(), Reduction::new(
+                                goal.clone(),
+                                predicate.clone(),
+                                g.clone(), // body of the predicate
+                                vec![reduction_info],
                                 ret.clone(),
-                                Reduction::new(
-                                    goal.clone(),
-                                    predicate.clone(),
-                                    g.clone(), // body of the predicate
-                                    arg.clone(),
-                                    ret.clone(),
-                                    level,
-                                    fvints.clone(),
-                                    argints.clone(),
-                                    constraint.clone(),
-                                    new_var,
-                                    old_id,
-                                ),
-                            ));
-                        }
-                        _ => (),
+                                fvints.clone(),
+                                argints.clone(),
+                                constraint.clone(),
+                            ), level + 1))
+                        },
+                        None => (),
                     };
-                    // g must be have form \x. phi
-                    go_(predicate, level, fvints, argints, constraint.clone())
-                        .map(|(g, pred)| (G::mk_app_t(g, arg.clone(), goal.aux.clone()), pred))
-                        .or_else(|| {
-                            go_(arg, level, fvints, argints, constraint.clone()).map(
-                                |(arg, pred)| {
-                                    (G::mk_app_t(predicate.clone(), arg, goal.aux.clone()), pred)
+                    match go_(predicate, level, fvints, argints, constraint.clone()) {
+                        Some((ret, mut reduction, level)) => {
+                            // case reduced above like App(App(Abs, arg)) -> App(Abs, arg)
+                            match generate_reduction_info(level, &ret, arg) {
+                                Some((ret, reduction_info, level)) => {
+                                    reduction.append_reduction(reduction_info, ret.clone());
+                                    return Some((ret, reduction, level + 1));
                                 },
-                            )
-                        })
+                                None => (),
+                            }
+                        },
+                        None => (),
+                    };
+                    go_(arg, level, fvints, argints, constraint.clone()).map(
+                        |(arg, pred, level)| {
+                            (G::mk_app_t(predicate.clone(), arg, goal.aux.clone()), pred, level)
+                        },
+                    )
                 }
                 GoalKind::Conj(g1, g2) => go_(g1, level, fvints, argints, constraint.clone())
                     .map(|(g1, p)| (G::mk_conj_t(g1, g2.clone(), goal.aux.clone()), p))
@@ -335,14 +360,16 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
                 GoalKind::Constr(_) | GoalKind::Var(_) | GoalKind::Op(_) => None,
             }
         }
-        *level += 1;
-        go_(
+       go_(
             goal,
             *level,
             &mut HashSet::new(),
             &mut HashSet::new(),
             Constraint::mk_true(),
-        )
+        ).map(|(ret, reduction, level_new)| {
+           *level = level_new;
+           (ret, reduction)
+       })
     }
     let mut level = 0usize;
     let mut seq = Vec::new();
