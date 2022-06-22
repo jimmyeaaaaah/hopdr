@@ -108,7 +108,7 @@ struct Reduction {
     // for each reduction. That is, when we have reduction
     //    expr1 expr2 -> expr3
     // this id is memorized in expr2's memory (as the argument) and expr3's memory (as the return value)
-    args: Vec<ReductionInfo>,
+    args: Stack<ReductionInfo>,
     // the result of beta reduction; predicate expr -> result
     result: G,
     // predicate's free variables of type int
@@ -120,8 +120,11 @@ struct Reduction {
 
 impl fmt::Display for Reduction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "[Reduction {}-{}]", self.args[0].level, self.args[self.args.len() - 1].level)?;
-        write!(f, " fvints: {:?}", self.fvints)?;
+        write!(f, "[Reduction ")?;
+        for a in self.args.iter() {
+            write!(f, "{}, ", a.level)?;
+        }
+        write!(f, "] fvints: {:?}", self.fvints)?;
         writeln!(f, " constraint: {}", self.constraint)?;
         write!(f ,"{} ", self.predicate)?;
         for arg in self.args.iter() {
@@ -135,7 +138,6 @@ impl Reduction {
     fn new(
         app_expr: G,
         predicate: G,
-        args: Vec<ReductionInfo>,
         result: G,
         fvints: HashSet<Ident>,
         argints: HashSet<Ident>,
@@ -144,7 +146,7 @@ impl Reduction {
         Reduction {
             app_expr,
             predicate,
-            args,
+            args: Stack::new(),
             result,
             fvints,
             argints,
@@ -152,11 +154,15 @@ impl Reduction {
         }
     }
     fn append_reduction(&mut self, reduction_info: ReductionInfo, result: G)  {
+        if reduction_info.arg_var.ty.is_int() {
+            self.fvints.insert(reduction_info.old_id);
+            self.argints.insert(reduction_info.old_id);
+        }
         self.result = result;
-        self.args.push(reduction_info);
+        self.args.push_mut(reduction_info);
     }
     fn level(&self) -> usize {
-        self.args.last().unwrap().level
+        self.args.peek().unwrap().level
     }
 }
 
@@ -249,19 +255,16 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
                     match generate_reduction_info(level, predicate, arg) {
                         // App(App(...(Abs(...) arg1) .. argn)
                         Some((ret, reduction_info)) => {
-                            if reduction_info.arg_var.ty.is_int() {
-                                fvints.insert(reduction_info.old_id);
-                                argints.insert(reduction_info.old_id);
-                            }
-                            return Some((ret.clone(), Reduction::new(
+                            let mut reduction = Reduction::new(
                                 goal.clone(),
                                 predicate.clone(),
-                                vec![reduction_info],
                                 ret.clone(),
                                 fvints.clone(),
                                 argints.clone(),
                                 constraint.clone(),
-                            )))
+                            );
+                            reduction.append_reduction(reduction_info, ret.clone());
+                            return Some((ret.clone(), reduction))
                         },
                         None => (),
                     };
@@ -817,10 +820,9 @@ impl Context {
 fn reduce_until_normal_form(candidate: &Candidate, problem: &Problem) -> Context {
     let mut track_idents = HashMap::new();
     let candidate = candidate.clone().into(); // assign `aux` to candidate.
-    debug!("yosasou: {}", candidate);
     let goal = subst_predicate(&candidate, problem, &mut track_idents);
     let goal = goal.alpha_renaming();
-    debug!("uouo: {}", goal);
+    title!("generate_reduction_sequence");
     let (reduction_sequence, normal_form) = generate_reduction_sequence(&goal);
     Context::new(normal_form, track_idents, reduction_sequence)
 }
