@@ -131,9 +131,9 @@ impl fmt::Display for Reduction {
         }
         write!(f, "] fvints: {:?}", self.fvints)?;
         writeln!(f, " constraint: {}", self.constraint)?;
-        write!(f, "{} ", self.predicate)?;
+        writeln!(f, "{} ", self.predicate)?;
         for arg in self.args.iter() {
-            write!(f, "{} ", arg.arg)?;
+            writeln!(f, "- {} ", arg.arg)?;
         }
         write!(f, "\n ==> {}", self.result)
     }
@@ -390,7 +390,7 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
     while let Some((g, r)) = go(&reduced, &mut level) {
         reduced = g.clone();
         //debug!("-> {}", reduced);
-        //debug!("-> {}", r);
+        debug!("-> {}", r);
         //debug!("->  {}", reduced);
 
         seq.push(r);
@@ -497,10 +497,11 @@ impl Context {
                                 TauKind::Arrow(arg, result) => (arg, result),
                                 TauKind::Proposition(_) | TauKind::IArrow(_, _) => panic!("fatal"),
                             };
-                            let arg_constraint = Atom::mk_conj(result_t.rty(), constraint.clone());
                             let mut result_ct: CandidateType = result_t.clone().into();
                             // check if there exists a derivation for all types in the intersection type.
                             for t in arg_t {
+                                let arg_constraint =
+                                    Atom::mk_conj(t.rty_no_exists(), constraint.clone());
                                 debug!("t: {}", t);
                                 // check if arg_constraint |- argg: arg_t
                                 match go(&arg_constraint, t, tenv, ienv, argg) {
@@ -643,8 +644,6 @@ impl Context {
                         match t.kind() {
                             TauKind::IArrow(id, t) if v.ty.is_int() => {
                                 let t = t.rename(id, &v.id);
-                                debug!("v.id = {}", v.id);
-                                debug!("{:?}", ienv);
                                 assert!(ienv.insert(v.id));
                                 let ct = go(constraint, &t, tenv, ienv, g);
                                 ienv.remove(&v.id);
@@ -669,7 +668,10 @@ impl Context {
                 }
             }
             go_inner(constraint, t, tenv, ienv, c).map(|mut ct| {
-                debug!("type_check_go: {} |- {} : {}", constraint, c, ct);
+                debug!(
+                    "type_check_go({}): {} |- {} : {}",
+                    c.aux.id, constraint, c, ct
+                );
                 // memorize the type assignment to each expr
                 for level in c.aux.level_arg.iter() {
                     ct.memorize(*level);
@@ -679,6 +681,7 @@ impl Context {
             })
         }
         title!("type_check_top");
+        debug!("tenv: {}", tenv);
         debug!("{}", self.normal_form);
         let mut ienv = HashSet::new();
         go(
@@ -731,6 +734,7 @@ impl Context {
             }
 
             for ret_ty in ret_tys.iter() {
+                debug!("ret_ty: {}", ret_ty);
                 let SavedTy {
                     ty: ret_ty,
                     constraint: ret_ty_constraint,
@@ -1188,6 +1192,7 @@ pub fn search_for_type(
     debug!("{}", candidate);
     // TODO: expand candidate once based on problem.
     let mut ctx = reduce_until_normal_form(candidate, problem);
+    ctx.infer_polymorphic_type = true;
     debug!("{}", ctx.normal_form);
     //let candidate = ctx.normal_form.clone();
     let derivation = ctx.type_check_top(tenv)?;

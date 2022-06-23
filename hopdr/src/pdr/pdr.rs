@@ -165,7 +165,7 @@ impl HoPDR {
                     self.decide();
                 }
             }
-            //panic!("uo")
+            panic!("uo")
         }
     }
 
@@ -206,8 +206,7 @@ impl HoPDR {
                 return;
             }
         }
-
-        //unimplemented!()
+        panic!("decide: fail. Assumption ℱ(⌊Γ⌋) not⊧ ψ is not satisfied")
     }
 
     fn run(&mut self) -> Result<PDRResult, Error> {
