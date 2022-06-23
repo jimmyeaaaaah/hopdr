@@ -1,8 +1,8 @@
-use super::fml;
+use super::rtype;
 use super::rtype::{Refinement, Tau, TyEnv, TypeEnvironment};
 use super::VerificationResult;
 use crate::formula::hes::Problem;
-use crate::formula::{fofml, hes, Constraint};
+use crate::formula::{fofml, hes, Constraint, Top};
 use crate::pdr::derivation;
 
 use colored::Colorize;
@@ -71,9 +71,9 @@ impl HoPDR {
     fn candidate(&mut self) {
         info!("{}", "candidate".purple());
         let cnf = self.problem.top.to_cnf();
-        let env = fml::Env::from_type_environment(self.top_env());
+        let tyenv = self.top_env();
         for x in cnf {
-            if !fml::env_models(&env, &x) {
+            if !rtype::type_check_top(tyenv, &x) {
                 debug!("candidate: {}", x);
                 self.models.push(x);
                 return;
@@ -103,13 +103,22 @@ impl HoPDR {
         debug!("check_valid");
         // rtype::type_check_clause(fml, ty.clone(), &mut env);
         // println!("{}:{}\n -> {:?}", fml, ty.clone(), );
-        let env = fml::Env::from_type_environment(self.top_env());
-        fml::env_models(&env, &self.problem.top)
+        let tyenv = self.top_env();
+        rtype::type_check_top(tyenv, &self.problem.top)
     }
 
     fn check_inductive(&self) -> bool {
         debug!("check_inductive");
-        fml::check_inductive(self.top_env(), &self.problem)
+        let tyenv = self.top_env();
+        for clause in self.problem.clauses.iter() {
+            let tys = tyenv.get(&clause.head.id).unwrap().iter();
+            for ty in tys {
+                if !rtype::type_check_goal(tyenv, &clause.body, &ty) {
+                    return false;
+                }
+            }
+        }
+        true
     }
 
     fn initialize(&mut self) {
@@ -198,9 +207,9 @@ impl HoPDR {
         debug!("cex_next reduced: {}", cex_next);
         let cnf = cex_next.to_cnf();
         debug!("{}", gamma_i);
-        let env = fml::Env::from_type_environment(gamma_i);
+        let tyenv = gamma_i;
         for x in cnf {
-            if !fml::env_models(&env, &x) {
+            if !rtype::type_check_top(tyenv, &x) {
                 debug!("candidate: {}", x);
                 self.models.push(x);
                 return;
