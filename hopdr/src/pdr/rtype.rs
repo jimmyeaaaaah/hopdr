@@ -5,12 +5,13 @@ use std::{
 
 use crate::formula::{fofml, Variable};
 use crate::formula::{
-    Constraint, DerefPtr, FirstOrderLogic, Fv, Ident, Negation, Op, Polarity, Rename, Subst, Top,
-    Type as SType, TypeKind as STypeKind,
+    Constraint, DerefPtr, FirstOrderLogic, Fv, Ident, Logic, Negation, Op, Polarity, Rename, Subst,
+    Top, Type as SType, TypeKind as STypeKind,
 };
-use crate::{formula::hes::Goal, solver, solver::smt};
-
 use crate::util::P;
+use crate::{formula, formula::hes::Goal, solver, solver::smt};
+
+use rpds::Stack;
 
 #[derive(Debug)]
 pub enum TauKind<C> {
@@ -227,6 +228,12 @@ fn test_tau_deref_ptr() {
     }
 }
 
+// inner purpose
+enum Method {
+    Conj,
+    Disj,
+}
+
 impl<C: Refinement> Tau<C> {
     pub fn rty(&self) -> C {
         match self.kind() {
@@ -340,6 +347,22 @@ impl<C: Refinement> Tau<C> {
                 Tau::mk_arrow(ts, t)
             }
         }
+    }
+    fn merge_inner(self, c: Self, method: Method) -> Self {
+        match (self.kind(), c.kind()) {
+            (TauKind::Proposition(c1), TauKind::Proposition(c2)) => match method {
+                Method::Conj => Self::mk_prop_ty(C::mk_conj(c1.clone(), c2.clone())),
+                Method::Disj => Self::mk_prop_ty(C::mk_disj(c1.clone(), c2.clone())),
+            },
+            (_, _) => panic!("fatal"),
+        }
+    }
+    // only for bool type
+    fn conjoin(self, t: Self) -> Self {
+        self.merge_inner(t, Method::Conj)
+    }
+    fn disjoin(self, t: Self) -> Self {
+        self.merge_inner(t, Method::Disj)
     }
 }
 impl From<Tau<Constraint>> for Tau<fofml::Atom> {
@@ -634,4 +657,238 @@ pub fn tys_check(
         solver::SolverResult::Unsat => false,
         solver::SolverResult::Timeout | solver::SolverResult::Unknown => panic!("smt check fail.."),
     }
+}
+
+#[derive(Debug)]
+struct PossibleType {
+    types: Stack<Ty>,
+}
+impl<'a, T: IntoIterator<Item = Ty>> From<T> for PossibleType {
+    fn from(ts: T) -> Self {
+        let mut types = Stack::new();
+        for t in ts.into_iter() {
+            types.push_mut(t);
+        }
+        PossibleType::new(types)
+    }
+}
+impl fmt::Display for PossibleType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut first = true;
+        for t in self.types.iter() {
+            if first {
+                write!(f, "{}", t)?;
+                first = false;
+            } else {
+                write!(f, " /\\ {}", t)?;
+            }
+        }
+        Ok(())
+    }
+}
+impl PossibleType {
+    fn empty() -> PossibleType {
+        PossibleType {
+            types: Stack::new(),
+        }
+    }
+    fn new(types: Stack<Ty>) -> PossibleType {
+        PossibleType { types }
+    }
+}
+type G = Goal<Constraint>;
+
+// tenv |- goal: ty
+pub fn type_check_goal(tenv: &mut TyEnv, goal: G, t: Ty) -> bool {
+    // tenv+ienv; constraint |- App(arg, ret): t
+    fn handle_app(
+        constraint: &Constraint,
+        tenv: &mut TyEnv,
+        ienv: &mut HashSet<Ident>,
+        app_expr: &G,
+    ) -> PossibleType {
+        fn handle_inner(
+            constraint: &Constraint,
+            tenv: &mut TyEnv,
+            ienv: &mut HashSet<Ident>,
+            pred: &G,
+        ) -> PossibleType {
+            match pred.kind() {
+                formula::hes::GoalKind::Var(x) => match tenv.get(x) {
+                    // TODO! we have to instantiate x
+                    Some(ts) => ts.iter().map(|t| t.add_context(constraint)).into(),
+                    None => PossibleType::empty(),
+                },
+                formula::hes::GoalKind::App(predg, argg) => {
+                    let pred_pt = handle_inner(constraint, tenv, ienv, predg);
+                    // Case: the argument is integer
+                    match argg.check_int_expr(ienv) {
+                        // Case: the type of argument is int
+                        Some(op) => {
+                            let types = pred_pt
+                                .types
+                                .into_iter()
+                                .map(|t| match t.kind() {
+                                    TauKind::IArrow(x, t2) => t2.subst(x, &op),
+                                    _ => panic!("fatal"),
+                                })
+                                .collect();
+                            return PossibleType::new(types); // eary return
+                        }
+                        // Otherwise, we continue.
+                        None => (),
+                    };
+
+                    // Case: the argument is not integer
+                    let mut result_cts = Stack::new();
+                    // we calculate the argument's type. we have to enumerate all the possible type of pt1.
+                    'pt_iter: for ty in pred_pt.types.iter() {
+                        let (arg_t, result_t) = match ty.kind() {
+                            TauKind::Arrow(arg, result) => (arg, result),
+                            TauKind::Proposition(_) | TauKind::IArrow(_, _) => panic!("fatal"),
+                        };
+                        // check if there exists a derivation for all types in the intersection type.
+                        for t in arg_t {
+                            let arg_constraint =
+                                Constraint::mk_conj(t.rty_no_exists(), constraint.clone());
+                            debug!("t: {}", t);
+                            // check if arg_constraint |- argg: arg_t
+                            if !go(&arg_constraint, t, tenv, ienv, argg) {
+                                continue 'pt_iter;
+                            }
+                        }
+                        // Now that all the argument for `pred_pt` can be derived, we have candidatetype `result_t`
+                        // with the derivations of `ct`s
+                        result_cts.push_mut(result_t.clone());
+                    }
+                    PossibleType::new(result_cts)
+                }
+                formula::hes::GoalKind::Constr(_)
+                | formula::hes::GoalKind::Op(_)
+                | formula::hes::GoalKind::Abs(_, _)
+                | formula::hes::GoalKind::Conj(_, _)
+                | formula::hes::GoalKind::Disj(_, _)
+                | formula::hes::GoalKind::Univ(_, _) => panic!("fatal"),
+            }
+        }
+        let mut pt = handle_inner(constraint, tenv, ienv, app_expr);
+        debug!("handle_app: {} |- {} : {} ", constraint, app_expr, pt);
+        pt
+    }
+    // we assume conjunction normal form and has the form (θ => a₁ a₂ ⋯) ∧ ⋯
+    // constraint: Θ
+    // Γ; Θ ⊢ c : t
+    // function go constructs possible derivation trees by induction on the structure of c(ψ)
+    //
+    fn go(
+        constraint: &Constraint,
+        t: &Ty,
+        tenv: &mut TyEnv,
+        ienv: &mut HashSet<Ident>,
+        c: &G,
+    ) -> bool {
+        match c.kind() {
+            formula::hes::GoalKind::Constr(c) => {
+                let constraint = constraint.clone().into();
+                let type_constr = match t.kind() {
+                    TauKind::Proposition(type_constr) => type_constr.clone().into(),
+                    TauKind::IArrow(_, _) | TauKind::Arrow(_, _) => panic!("fatal"),
+                };
+                solver::smt::default_solver()
+                    .solve_with_universal_quantifiers(&Constraint::mk_implies(
+                        Constraint::mk_conj(constraint, type_constr),
+                        c.clone(),
+                    ))
+                    .is_sat()
+            }
+            formula::hes::GoalKind::Var(x) => match tenv.get(x) {
+                Some(ts) => {
+                    for s in ts {
+                        // check if constraint |- s <: t
+                        let c = Ty::check_subtype(constraint, s, t);
+                        let c = c.into();
+                        if solver::smt::default_solver()
+                            .solve_with_universal_quantifiers(&c)
+                            .is_sat()
+                        {
+                            return true;
+                        }
+                    }
+                    false
+                }
+                None => {
+                    panic!("{} is not found in env", x)
+                }
+            },
+            formula::hes::GoalKind::Conj(g1, g2) => {
+                let t1 = go(constraint, t, tenv, ienv, g1);
+                let t2 = go(constraint, t, tenv, ienv, g2);
+                t1 && t2
+            }
+            formula::hes::GoalKind::Disj(g1, g2) => {
+                let c1: Option<Constraint> = g1.clone().into();
+                let (c, g, g_) = match c1 {
+                    Some(c) => (c, g2, g1),
+                    None => (g2.clone().into(), g1, g2),
+                };
+                let c_neg = c.negate().unwrap();
+                let t1 = go(
+                    &Constraint::mk_conj(c_neg.into(), constraint.clone()),
+                    t,
+                    tenv,
+                    ienv,
+                    g,
+                );
+                // type check of constraints (to track the type derivation, checking g2 is necessary)
+                let t2 = go(
+                    &Constraint::mk_conj(c.into(), constraint.clone()),
+                    t,
+                    tenv,
+                    ienv,
+                    g_,
+                );
+                t1 && t2
+            }
+            formula::hes::GoalKind::Univ(x, g) => {
+                // to avoid the collision, we rename the variable.
+                assert!(ienv.insert(x.id));
+                let pt = go(constraint, t, tenv, ienv, &g);
+                ienv.remove(&x.id);
+                pt
+            }
+            formula::hes::GoalKind::App(_, _) => {
+                handle_app(constraint, tenv, ienv, c).types.pop().is_some()
+            }
+            formula::hes::GoalKind::Abs(v, g) => {
+                // 1. check t and calculate the argument's type.
+                // 2.
+                match t.kind() {
+                    TauKind::IArrow(id, t) if v.ty.is_int() => {
+                        let t = t.rename(id, &v.id);
+                        assert!(ienv.insert(v.id));
+                        let ct = go(constraint, &t, tenv, ienv, g);
+                        ienv.remove(&v.id);
+                        ct
+                    }
+                    TauKind::Arrow(ts, t) if !v.ty.is_int() => {
+                        for t in ts {
+                            tenv.add(v.id, t.clone());
+                        }
+                        go(constraint, t, tenv, ienv, g)
+                    }
+                    _ => panic!("fatal"),
+                }
+            }
+            // op is always handled by App(x, op)
+            formula::hes::GoalKind::Op(_) => panic!("fatal error"),
+        }
+    }
+    crate::title!("type_check_top");
+    debug!("tenv: {}", tenv);
+    let mut ienv = HashSet::new();
+    go(&Constraint::mk_true(), &t, tenv, &mut ienv, &goal)
+}
+
+fn check_inductive(tenv: &TyEnv) -> bool {
+    unimplemented!()
 }

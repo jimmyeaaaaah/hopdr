@@ -706,6 +706,19 @@ impl<C, T> GoalBase<C, T> {
             _ => panic!("abs_var assumes that self.kind() is Abs(_, _)."),
         }
     }
+    pub fn check_int_expr(&self, ienv: &HashSet<Ident>) -> Option<Op> {
+        match self.kind() {
+            GoalKind::Op(o) => Some(o.clone()),
+            GoalKind::Var(x) if ienv.contains(x) => Some(Op::mk_var(*x)),
+            GoalKind::Var(_)
+            | GoalKind::Constr(_)
+            | GoalKind::Abs(_, _)
+            | GoalKind::App(_, _)
+            | GoalKind::Conj(_, _)
+            | GoalKind::Disj(_, _)
+            | GoalKind::Univ(_, _) => None,
+        }
+    }
 }
 
 impl<C: Refinement, T: Clone> Into<Option<C>> for GoalBase<C, T> {

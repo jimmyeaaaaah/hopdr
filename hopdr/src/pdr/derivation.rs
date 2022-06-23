@@ -390,8 +390,8 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
     while let Some((g, r)) = go(&reduced, &mut level) {
         reduced = g.clone();
         //debug!("-> {}", reduced);
-        debug!("-> {}", r);
-        //debug!("->  {}", reduced);
+        //debug!("-> {}", r);
+        debug!("->  {}", reduced);
 
         seq.push(r);
     }
@@ -469,7 +469,7 @@ impl Context {
                     formula::hes::GoalKind::App(predg, argg) => {
                         let pred_pt = handle_inner(constraint, tenv, ienv, predg);
                         // Case: the argument is integer
-                        match check_int_expr(ienv, argg) {
+                        match argg.check_int_expr(ienv) {
                             // Case: the type of argument is int
                             Some(op) => {
                                 let types = pred_pt
@@ -1144,19 +1144,6 @@ fn rename_integer_variable(t1: &Ty, t2: &Ty) -> Ty {
     }
 }
 
-fn check_int_expr(ienv: &HashSet<Ident>, g: &G) -> Option<Op> {
-    match g.kind() {
-        formula::hes::GoalKind::Op(o) => Some(o.clone()),
-        formula::hes::GoalKind::Var(x) if ienv.contains(x) => Some(Op::mk_var(*x)),
-        formula::hes::GoalKind::Var(_)
-        | formula::hes::GoalKind::Constr(_)
-        | formula::hes::GoalKind::Abs(_, _)
-        | formula::hes::GoalKind::App(_, _)
-        | formula::hes::GoalKind::Conj(_, _)
-        | formula::hes::GoalKind::Disj(_, _)
-        | formula::hes::GoalKind::Univ(_, _) => None,
-    }
-}
 // takes g and formats it and returns (Θ, g') where Θ => g'
 fn format_cnf_clause(g: G) -> (Constraint, G) {
     match g.kind() {
@@ -1192,7 +1179,7 @@ pub fn search_for_type(
     debug!("{}", candidate);
     // TODO: expand candidate once based on problem.
     let mut ctx = reduce_until_normal_form(candidate, problem);
-    ctx.infer_polymorphic_type = true;
+    //ctx.infer_polymorphic_type = true;
     debug!("{}", ctx.normal_form);
     //let candidate = ctx.normal_form.clone();
     let derivation = ctx.type_check_top(tenv)?;
