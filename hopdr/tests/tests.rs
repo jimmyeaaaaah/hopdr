@@ -215,6 +215,63 @@ fn type_check_2() {
 }
 
 #[test]
+fn type_check_poly() {
+    let (_, f) = parse::parse::<VerboseError<&str>>(
+        "
+        %HES
+        M =v ∀x. App (\\y. y = x) x.
+        App f x =v f x && App f x.
+	     ",
+    )
+    .unwrap();
+    match &f {
+        parse::Problem::NuHFLZValidityChecking(vc) => {
+            for fml in vc.formulas.iter() {
+                println!("{}", fml);
+            }
+        }
+    }
+
+    let (vc, _ctx) = preprocess::hes::preprocess(f);
+    for fml in vc.clauses.iter() {
+        println!("{}", fml);
+    }
+
+    let mut types = Vec::new();
+    {
+        use formula::{Constraint, Ident, Op, PredKind};
+        use hopdr::pdr::*;
+        use rtype::Tau;
+        // App
+        // ∀x.(y:int → •[x=y]) → r:int → •[r=x]
+        let x = Ident::fresh();
+        let y = Ident::fresh();
+        let r = Ident::fresh();
+        // y:int → •[x=y]
+        let t = Tau::mk_iarrow(
+            y,
+            Tau::mk_prop_ty(Constraint::mk_eq(Op::mk_var(x), Op::mk_var(y))),
+        );
+        let s = Tau::mk_iarrow(
+            r,
+            Tau::mk_prop_ty(Constraint::mk_eq(Op::mk_var(x), Op::mk_var(r))),
+        );
+        let t = Tau::mk_arrow_single(t, s);
+        println!("{}", &t);
+        types.push(t);
+    }
+    use pdr::rtype::*;
+    let mut env = TyEnv::new();
+
+    for (fml, ty) in vc.clauses.iter().zip(types.iter()) {
+        println!("{}: {}", fml.head.id, ty.clone());
+        env.add(fml.head.id, ty.clone());
+    }
+
+    let vc = vc.into();
+    assert!(pdr::fml::check_inductive(&env, &vc))
+}
+#[test]
 fn type_check_e() {
     let (_, f) = parse::parse::<VerboseError<&str>>(
         "

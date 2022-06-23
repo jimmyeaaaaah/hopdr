@@ -4,7 +4,7 @@ use std::fmt::Display;
 use crate::formula::fofml;
 use crate::formula::hes::Problem;
 use crate::formula::hes::{Goal, GoalKind};
-use crate::formula::{Constraint, Ident, Logic};
+use crate::formula::{Constraint, Fv, Ident, Logic, Op, Rename, Subst, Type as SType, Variable};
 use crate::pdr::rtype::{
     least_fml, types_check, tys_check, Refinement, Tau, TyEnv, TypeEnvironment,
 };
@@ -71,6 +71,7 @@ impl From<Goal<fofml::Atom>> for fofml::Atom {
 // Formula Environment Σ
 pub struct Env<C> {
     map: HashMap<Ident, Goal<C>>,
+    tmap: HashMap<Ident, SType>,
 }
 
 impl<C: Display> Display for Env<C> {
@@ -86,37 +87,92 @@ impl<C: Refinement> Env<C> {
     // ⌊Γ⌋
     pub fn from_type_environment(tenv: &TypeEnvironment<Tau<C>>) -> Env<C> {
         let mut map = HashMap::new();
+        let mut tmap = HashMap::new();
         for (key, ts) in tenv.map.iter() {
             let fmls = ts.iter().map(|t| least_fml(t.clone()));
             map.insert(*key, Goal::mk_ho_disj(fmls, ts[0].to_sty()));
+            tmap.insert(*key, ts[0].to_sty());
         }
-        Env { map }
+        Env { map, tmap }
     }
 
-    pub fn eval(&self, g: Goal<C>) -> Goal<C> {
+    fn go(&self, g: Goal<C>, ints: &mut HashSet<Ident>) -> Goal<C> {
         match g.kind() {
             GoalKind::Var(x) => match self.map.get(x) {
-                Some(f) => f.clone(),
+                Some(f) => {
+                    debug!("checking var: {}", x);
+                    let g = f.clone();
+                    let mut fvs = g.fv();
+                    for key in self.map.keys() {
+                        fvs.remove(key);
+                    }
+                    debug!("fvs: {:?}", fvs);
+                    debug!("ints: {:?}", ints);
+                    // instantiate fvs by ints
+                    let mut gs = vec![g];
+                    for fv in fvs
+                        .into_iter()
+                        .map(|fv| Variable::mk(fv, SType::mk_type_int()))
+                    {
+                        let mut new_gs = Vec::new();
+                        for int in ints.iter() {
+                            for g in gs.iter() {
+                                if new_gs.len() > 100000 {
+                                    panic!("explosion")
+                                }
+                                new_gs.push(g.subst(&fv, &Goal::mk_op(Op::mk_var(int.clone()))));
+                            }
+                        }
+                        gs = new_gs;
+                    }
+                    Goal::mk_ho_disj(gs, self.tmap.get(x).unwrap().clone())
+                }
                 None => Goal::mk_var(*x),
             },
-            GoalKind::Abs(x, y) => Goal::mk_abs(x.clone(), self.eval(y.clone())),
-            GoalKind::App(x, y) => Goal::mk_app(self.eval(x.clone()), self.eval(y.clone())),
-            GoalKind::Conj(x, y) => Goal::mk_conj(self.eval(x.clone()), self.eval(y.clone())),
-            GoalKind::Disj(x, y) => Goal::mk_disj(self.eval(x.clone()), self.eval(y.clone())),
-            GoalKind::Univ(x, y) => Goal::mk_univ(x.clone(), self.eval(y.clone())),
+            GoalKind::Abs(x, y) if x.ty.is_int() => {
+                let b = ints.insert(x.id);
+                let g = Goal::mk_abs(x.clone(), self.go(y.clone(), ints));
+                if b {
+                    ints.remove(&x.id);
+                }
+                g
+            }
+            GoalKind::Abs(x, y) => Goal::mk_abs(x.clone(), self.go(y.clone(), ints)),
+            GoalKind::App(x, y) => Goal::mk_app(self.go(x.clone(), ints), self.go(y.clone(), ints)),
+            GoalKind::Conj(x, y) => {
+                Goal::mk_conj(self.go(x.clone(), ints), self.go(y.clone(), ints))
+            }
+            GoalKind::Disj(x, y) => {
+                Goal::mk_disj(self.go(x.clone(), ints), self.go(y.clone(), ints))
+            }
+            GoalKind::Univ(x, y) if x.ty.is_int() => {
+                let b = ints.insert(x.id);
+                let g = Goal::mk_univ(x.clone(), self.go(y.clone(), ints));
+                if b {
+                    ints.remove(&x.id);
+                }
+                g
+            }
+            GoalKind::Univ(x, y) => Goal::mk_univ(x.clone(), self.go(y.clone(), ints)),
             GoalKind::Constr(_) | GoalKind::Op(_) => g.clone(),
         }
     }
+    pub fn eval(&self, g: Goal<C>) -> Goal<C> {
+        debug!("eval: {}", g);
+        self.go(g, &mut HashSet::new())
+    }
 }
-
+//fn correct_int_expr(&self, ints)
 impl Env<fofml::Atom> {
     pub fn from_tyenv(tenv: &TyEnv) -> Env<fofml::Atom> {
         let mut map = HashMap::new();
+        let mut tmap = HashMap::new();
         for (key, ts) in tenv.map.iter() {
             let fmls = ts.iter().map(|t| least_fml(t.clone().into()));
             map.insert(*key, Goal::mk_ho_disj(fmls, ts[0].to_sty()));
+            tmap.insert(*key, ts[0].to_sty());
         }
-        Env { map }
+        Env { map, tmap }
     }
 }
 
@@ -127,19 +183,22 @@ impl<C: Refinement> Problem<C> {
         for c in self.clauses.iter() {
             map.insert(c.head.id, env.eval(c.body.clone()));
         }
-        Env { map }
+        Env {
+            map,
+            tmap: env.tmap.clone(),
+        }
     }
 }
 
 pub fn env_models_constraint<C: Refinement>(env: &Env<C>, g: &Goal<C>) -> C {
-    // debug
+    // debuggo
     debug!("env_models env: {}", env);
     let f = env.eval(g.clone());
     debug!("env_models g: {}", f);
     f.reduce()
 }
 
-// Γ ⊧ g ⇔ ⊧ θ where Γ(g) → θ
+// Γ ⊧ g ⇔ ⊧ θ where Γ(g) ⤳ θ
 pub fn env_models(env: &Env<Constraint>, g: &Goal<Constraint>) -> bool {
     crate::title!("env_models");
     debug!("{}", g);
@@ -167,7 +226,12 @@ pub fn env_types<C: Refinement>(env: &Env<C>, tenv: &TypeEnvironment<Tau<C>>) ->
 }
 
 pub fn check_inductive(env: &TyEnv, problem: &Problem<Constraint>) -> bool {
-    let fenv = problem.transform(&Env::from_type_environment(env));
+    let tmpenv = Env::from_type_environment(env);
+    debug!("tmpenv");
+    debug!("{}", tmpenv);
+    let fenv = problem.transform(&tmpenv);
+    debug!("fenv");
+    debug!("{}", fenv);
 
     // transform fenv
     // currently just checking ⌊Γ⌋ ↑ Γ
