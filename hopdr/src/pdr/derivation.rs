@@ -153,12 +153,13 @@ impl Reduction {
             constraint,
         }
     }
-    fn append_reduction(&mut self, reduction_info: ReductionInfo, result: G)  {
+    fn append_reduction(&mut self, reduction_info: ReductionInfo, result: G, app_expr: G)  {
         if reduction_info.arg_var.ty.is_int() {
             self.fvints.insert(reduction_info.old_id);
             self.argints.insert(reduction_info.old_id);
         }
         self.result = result;
+        self.app_expr = app_expr;
         self.args.push_mut(reduction_info);
     }
     fn level(&self) -> usize {
@@ -263,7 +264,7 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
                                 argints.clone(),
                                 constraint.clone(),
                             );
-                            reduction.append_reduction(reduction_info, ret.clone());
+                            reduction.append_reduction(reduction_info, ret.clone(), goal.clone());
                             return Some((ret.clone(), reduction))
                         },
                         None => (),
@@ -273,7 +274,7 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
                             // case reduced above like App(App(Abs, arg)) -> App(Abs, arg)
                             match generate_reduction_info(reduction.level() + 1, &ret, arg) {
                                 Some((ret, reduction_info)) => {
-                                    reduction.append_reduction(reduction_info, ret.clone());
+                                    reduction.append_reduction(reduction_info, ret.clone(), goal.clone());
                                     return Some((ret, reduction));
                                 },
                                 None => (),
@@ -377,7 +378,7 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
         reduced = g.clone();
         //debug!("-> {}", reduced);
         //debug!("-> {}", r);
-        debug!("->  {}", reduced);
+        //debug!("->  {}", reduced);
 
         seq.push(r);
     }
@@ -683,6 +684,7 @@ impl Context {
             debug!("{}", reduction);
             let ret_tys = derivation.get_expr_ty(&reduction.result.aux.id);
             if ret_tys.iter().len() == 0 {
+                debug!("search for id={},expr={} ", reduction.result.aux.id, reduction.result);
                 title!("no ret_tys");
                 panic!("fatal");
             }
@@ -782,6 +784,7 @@ impl Context {
                 for level in reduction.app_expr.aux.level_arg.iter() {
                     derivation.arg.insert(*level, app_expr_ty.clone())
                 }
+                debug!("app_expr({}): {}", reduction.app_expr.aux.id, reduction.app_expr);
                 let app_expr_saved_ty = SavedTy::mk(app_expr_ty, ret_ty_constraint.clone());
                 derivation
                     .expr
