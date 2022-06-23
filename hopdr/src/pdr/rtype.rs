@@ -699,7 +699,7 @@ impl PossibleType {
 type G = Goal<Constraint>;
 
 // tenv |- goal: ty
-pub fn type_check_goal(tenv: &TyEnv, goal: &G, t: &Ty) -> bool {
+pub fn type_check_goal(tenv: &mut TyEnv, goal: G, t: Ty) -> bool {
     // tenv+ienv; constraint |- App(arg, ret): t
     fn handle_app(
         constraint: &Constraint,
@@ -885,12 +885,10 @@ pub fn type_check_goal(tenv: &TyEnv, goal: &G, t: &Ty) -> bool {
     }
     crate::title!("type_check_top");
     debug!("tenv: {}", tenv);
-    let mut tenv = tenv.clone();
     let mut ienv = HashSet::new();
-    go(&Constraint::mk_true(), &t, &mut tenv, &mut ienv, &goal)
+    go(&Constraint::mk_true(), &t, tenv, &mut ienv, &goal)
 }
 
-pub fn type_check_top(tenv: &TyEnv, goal: &G) -> bool {
-    let ty = Tau::mk_prop_ty(Constraint::mk_true());
-    type_check_goal(tenv, goal, &ty)
+fn check_inductive(tenv: &TyEnv) -> bool {
+    unimplemented!()
 }
