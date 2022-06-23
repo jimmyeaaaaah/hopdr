@@ -125,6 +125,7 @@ impl<C: Refinement> Env<C> {
                         }
                         gs = new_gs;
                     }
+                    assert!(gs.len() > 0);
                     Goal::mk_ho_disj(gs, self.tmap.get(x).unwrap().clone())
                 }
                 None => Goal::mk_var(*x),

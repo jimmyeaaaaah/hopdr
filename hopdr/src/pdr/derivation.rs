@@ -524,7 +524,7 @@ impl Context {
                     | formula::hes::GoalKind::Abs(_, _)
                     | formula::hes::GoalKind::Conj(_, _)
                     | formula::hes::GoalKind::Disj(_, _)
-                    | formula::hes::GoalKind::Univ(_, _) => panic!("fatal"),
+                    | formula::hes::GoalKind::Univ(_, _) => panic!("fatal: {}", pred),
                 }
             }
             let mut pt = handle_inner(constraint, tenv, ienv, app_expr);
@@ -775,7 +775,7 @@ impl Context {
                 debug!("app_expr_type: {}", app_expr_ty);
 
                 // TODO: I think this is ok
-                //let constraint = Atom::mk_implies_opt(tmp_ret_ty.rty(), ret_ty.rty()).unwrap();
+                //let constraint = Atom::mk_implies_opt(tmp_ty.rty_no_exists(), body_ty.rty()).unwrap();
                 let constraint = Atom::mk_implies_opt(
                     Atom::mk_conj(tmp_ty.rty_no_exists(), ret_ty_constraint.clone()),
                     body_ty.rty_no_exists(),
@@ -1179,7 +1179,7 @@ pub fn search_for_type(
     debug!("{}", candidate);
     // TODO: expand candidate once based on problem.
     let mut ctx = reduce_until_normal_form(candidate, problem);
-    //ctx.infer_polymorphic_type = true;
+    ctx.infer_polymorphic_type = true;
     debug!("{}", ctx.normal_form);
     //let candidate = ctx.normal_form.clone();
     let derivation = ctx.type_check_top(tenv)?;

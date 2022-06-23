@@ -299,7 +299,7 @@ impl<A: fmt::Display, C: fmt::Display + Top> fmt::Display for CHCBody<A, C> {
         }
         for b in &self.predicates {
             if !first {
-                write!(f, "/\\ ")?;
+                write!(f, " ∧ ")?;
             } else {
                 first = false;
             }

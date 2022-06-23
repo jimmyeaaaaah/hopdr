@@ -102,8 +102,8 @@ impl<C: fmt::Display, T> fmt::Display for GoalBase<C, T> {
             Op(o) => write!(f, "({})", o),
             Var(x) => write!(f, "{}", x),
             App(x, y) => write!(f, "[{} {}]", x, y),
-            Conj(x, y) => write!(f, "({} & {})", x, y),
-            Disj(x, y) => write!(f, "({} | {})", x, y),
+            Conj(x, y) => write!(f, "({} ∧ {})", x, y),
+            Disj(x, y) => write!(f, "({} ∨ {})", x, y),
             Univ(x, y) => write!(f, "(∀{}.{})", x, y),
             Abs(x, y) => write!(f, "(\\{}.{})", x, y),
         }

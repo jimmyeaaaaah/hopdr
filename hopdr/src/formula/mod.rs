@@ -442,8 +442,8 @@ impl fmt::Display for Constraint {
                 }
                 write!(f, ")")
             }
-            Conj(c1, c2) => write!(f, "({}) & ({})", c1, c2),
-            Disj(c1, c2) => write!(f, "({}) | ({})", c1, c2),
+            Conj(c1, c2) => write!(f, "({}) ∧ ({})", c1, c2),
+            Disj(c1, c2) => write!(f, "({}) ∨ ({})", c1, c2),
             Quantifier(q, x, c) => write!(f, "{}{}.{}", q, x, c),
         }
     }

@@ -102,21 +102,40 @@ impl<C: fmt::Display> fmt::Display for Tau<C> {
 
 pub trait TTop {
     fn mk_top(st: &SType) -> Self;
+    fn is_top(&self) -> bool;
 }
 
 pub trait TBot {
     fn mk_bot(st: &SType) -> Self;
+    fn is_bot(&self) -> bool;
 }
 
 impl<C: Refinement> TTop for Tau<C> {
     fn mk_top(st: &SType) -> Self {
         Tau::new(TyKind::new_top(st))
     }
+    fn is_top(&self) -> bool {
+        match self.kind() {
+            TauKind::Proposition(c) => c.is_true(),
+            TauKind::IArrow(_, t) => t.is_top(),
+            TauKind::Arrow(s, t) if s.len() == 1 => s[0].is_bot() && t.is_top(),
+            TauKind::Arrow(_, _) => false,
+        }
+    }
+
 }
 
 impl<C: Refinement> TBot for Tau<C> {
     fn mk_bot(st: &SType) -> Self {
         Tau::new(TyKind::new_bot(st))
+    }
+    fn is_bot(&self) -> bool {
+        match self.kind() {
+            TauKind::Proposition(c) => c.is_false(),
+            TauKind::IArrow(_, t) => t.is_bot(),
+            TauKind::Arrow(s, t) if s.len() == 1 => s[0].is_top() && t.is_bot(),
+            TauKind::Arrow(_, _) => false,
+        }
     }
 }
 impl<C: Refinement> TyKind<C> {
@@ -524,13 +543,18 @@ impl<T> TypeEnvironment<T> {
     }
 }
 
-impl<T: Clone> TypeEnvironment<T> {
-    pub fn append(&mut self, x: &TypeEnvironment<T>) {
+impl<C: Refinement> TypeEnvironment<Tau<C>> {
+    pub fn append(&mut self, x: &TypeEnvironment<Tau<C>>) {
         for (k, v) in x.map.iter() {
             match self.map.get_mut(k) {
                 Some(w) => {
-                    for t in v {
-                        w.push(t.clone());
+                    if w.len() == 1 && w[0].is_bot() {
+                        *w = vec![];
+                    }
+                    if w.len() != 1 || !w[0].is_top() {
+                        for t in v {
+                            w.push(t.clone());
+                        }
                     }
                 }
                 None => {
@@ -539,8 +563,8 @@ impl<T: Clone> TypeEnvironment<T> {
             }
         }
     }
-    pub fn merge(env1: &TypeEnvironment<T>, env2: &TypeEnvironment<T>) -> TypeEnvironment<T> {
-        let mut map: HashMap<Ident, Vec<T>> = HashMap::new();
+    pub fn merge(env1: &TypeEnvironment<Tau<C>>, env2: &TypeEnvironment<Tau<C>>) -> TypeEnvironment<Tau<C>> {
+        let mut map: HashMap<Ident, Vec<Tau<C>>> = HashMap::new();
         for (k, v) in env1.map.iter() {
             map.insert(*k, v.iter().cloned().collect());
         }
@@ -558,9 +582,6 @@ impl<T: Clone> TypeEnvironment<T> {
         }
         TypeEnvironment { map }
     }
-}
-
-impl<C: Refinement> TypeEnvironment<Tau<C>> {
     pub fn add_top(&mut self, v: Ident, st: &SType) {
         self.add(v, Tau::mk_top(st));
     }
