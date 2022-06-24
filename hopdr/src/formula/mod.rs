@@ -7,7 +7,6 @@ pub mod ty;
 use std::collections::HashSet;
 use std::fmt;
 
-
 use rpds::Stack;
 
 pub use crate::formula::ty::*;

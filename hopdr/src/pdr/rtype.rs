@@ -122,7 +122,6 @@ impl<C: Refinement> TTop for Tau<C> {
             TauKind::Arrow(_, _) => false,
         }
     }
-
 }
 
 impl<C: Refinement> TBot for Tau<C> {
@@ -408,7 +407,11 @@ impl Tau<fofml::Atom> {
             }
         }
     }
-    pub fn clone_with_rty_template(&self, constraint: fofml::Atom, fvs: &mut HashSet<Ident>) -> Tau<fofml::Atom> {
+    pub fn clone_with_rty_template(
+        &self,
+        constraint: fofml::Atom,
+        fvs: &mut HashSet<Ident>,
+    ) -> Tau<fofml::Atom> {
         match self.kind() {
             TauKind::Proposition(_) => {
                 let args: Vec<Op> = fvs.iter().map(|x| Op::mk_var(*x)).collect();
@@ -564,7 +567,10 @@ impl<C: Refinement> TypeEnvironment<Tau<C>> {
             }
         }
     }
-    pub fn merge(env1: &TypeEnvironment<Tau<C>>, env2: &TypeEnvironment<Tau<C>>) -> TypeEnvironment<Tau<C>> {
+    pub fn merge(
+        env1: &TypeEnvironment<Tau<C>>,
+        env2: &TypeEnvironment<Tau<C>>,
+    ) -> TypeEnvironment<Tau<C>> {
         let mut map: HashMap<Ident, Vec<Tau<C>>> = HashMap::new();
         for (k, v) in env1.map.iter() {
             map.insert(*k, v.iter().cloned().collect());

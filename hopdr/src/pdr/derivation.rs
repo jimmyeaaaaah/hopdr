@@ -282,17 +282,17 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
                     match go_(predicate, level, fvints, argints, constraint.clone()) {
                         Some((ret, mut reduction)) => {
                             // case reduced above like App(App(Abs, arg)) -> App(Abs, arg)
-                            match generate_reduction_info(reduction.level() + 1, &ret, arg) {
+                            return match generate_reduction_info(reduction.level() + 1, &ret, arg) {
                                 Some((ret, reduction_info)) => {
                                     reduction.append_reduction(
                                         reduction_info,
                                         ret.clone(),
                                         goal.clone(),
                                     );
-                                    return Some((ret, reduction));
+                                    Some((ret, reduction))
                                 }
-                                None => (),
-                            }
+                                None => Some((ret, reduction)),
+                            };
                         }
                         None => (),
                     };
@@ -365,6 +365,7 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
                     if x.ty.is_int() && !saved_arg {
                         argints.remove(&x.id);
                     }
+                    //debug!("abs={} ({})", r.is_some(), goal);
                     r
                 }
                 GoalKind::Constr(_) | GoalKind::Var(_) | GoalKind::Op(_) => None,
@@ -740,12 +741,14 @@ impl Context {
                     constraint: ret_ty_constraint,
                 } = ret_ty.clone();
 
-                let tmp_ret_ty =
-                    ret_ty.clone_with_rty_template(ret_ty_constraint.clone(), &mut if self.infer_polymorphic_type {
+                let tmp_ret_ty = ret_ty.clone_with_rty_template(
+                    ret_ty_constraint.clone(),
+                    &mut if self.infer_polymorphic_type {
                         reduction.fvints.clone()
                     } else {
                         reduction.argints.clone()
-                    });
+                    },
+                );
 
                 let mut tmp_ty = tmp_ret_ty.clone();
                 let mut body_ty = ret_ty.clone();
@@ -1005,7 +1008,7 @@ impl CandidateType {
                 Method::Conj => Ty::mk_prop_ty(Atom::mk_conj(c1.clone(), c2.clone())),
                 Method::Disj => Ty::mk_prop_ty(Atom::mk_disj(c1.clone(), c2.clone())),
             },
-            (_, _) => panic!("fatal"),
+            (_, _) => panic!("fatal: self.ty={} and c.ty={}", self.ty, c.ty),
         };
         self.merge_derivation(&c.derivation)
     }
