@@ -484,7 +484,7 @@ impl Context {
                                         _ => panic!("fatal"),
                                     })
                                     .collect();
-                                return PossibleType::new(types); // eary return
+                                return PossibleType::new(types); // early return
                             }
                             // Otherwise, we continue.
                             None => (),
@@ -498,7 +498,7 @@ impl Context {
                                 TauKind::Arrow(arg, result) => (arg, result),
                                 TauKind::Proposition(_) | TauKind::IArrow(_, _) => panic!("fatal"),
                             };
-                            let mut result_ct: CandidateType = result_t.clone().into();
+                            let mut result_ct =  CandidateType::new(result_t.clone(), ty.derivation.clone());
                             // check if there exists a derivation for all types in the intersection type.
                             for t in arg_t {
                                 let arg_constraint =
@@ -904,6 +904,26 @@ impl Rename for SavedTy {
 
 #[derive(Clone, Debug)]
 struct DerivationMap<ID: Eq + std::hash::Hash + Copy, T>(HashTrieMap<ID, Stack<T>>);
+
+impl <ID: Eq + std::hash::Hash + Copy + fmt::Display, T: Clone + fmt::Display>fmt::Display for DerivationMap<ID, T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        for (k, stack) in self.0.iter() {
+            write!(f, "{}: ", k)?;
+            let mut first = true;
+            for t in stack.iter() {
+                if first {
+                    first = false;
+                    write!(f, "{}", t)?;
+                }
+                else {
+                    write!(f, ", {}", t)?;
+                }
+            }
+            writeln!(f, "")?;
+        }
+        Ok(())
+    }
+}
 impl<ID: Eq + std::hash::Hash + Copy, T: Clone> DerivationMap<ID, T> {
     fn new() -> DerivationMap<ID, T> {
         DerivationMap(HashTrieMap::new())
