@@ -291,7 +291,7 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
                                     );
                                     Some((ret, reduction))
                                 }
-                                None => Some((ret, reduction)),
+                                None => Some((G::mk_app_t(ret, arg.clone(), goal.aux.clone()), reduction)),
                             };
                         }
                         None => (),
