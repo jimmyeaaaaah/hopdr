@@ -590,7 +590,10 @@ impl Atom {
                 QuantifierKind::Universal => {
                     ienv.insert(x);
                 }
-                QuantifierKind::Existential => panic!("program error: {}", constraint),
+                QuantifierKind::Existential => {
+                    ienv.insert(x);
+                    warn!("existential but maybe ok: {}", constraint)
+                },
             }
         }
         let cnf = pnf.to_cnf();

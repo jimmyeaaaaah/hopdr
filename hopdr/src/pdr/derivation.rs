@@ -326,7 +326,7 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
                                     })
                                 }
                                 None => {
-                                    panic!("fatal")
+                                    panic!("fatal: g1 = {}, g2 = {}", g1, g2)
                                 }
                             }
                         }

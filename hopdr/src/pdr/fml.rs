@@ -108,6 +108,7 @@ impl<C: Refinement> Env<C> {
                     }
                     debug!("fvs: {:?}", fvs);
                     debug!("ints: {:?}", ints);
+
                     // instantiate fvs by ints
                     let mut gs = vec![g];
                     for fv in fvs
