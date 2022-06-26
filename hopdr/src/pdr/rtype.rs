@@ -246,6 +246,28 @@ fn test_tau_deref_ptr() {
     }
 }
 
+impl <C: Refinement>Fv for Tau<C> {
+    type Id = Ident;
+
+    fn fv_with_vec(&self, fvs: &mut HashSet<Self::Id>) {
+        match self.kind() {
+            TauKind::Proposition(c) => {
+                c.fv_with_vec(fvs);
+            }
+            TauKind::IArrow(i, t) => {
+                t.fv_with_vec(fvs);
+                fvs.remove(i);
+            }
+            TauKind::Arrow(ts, t) => {
+                for s in ts {
+                    s.fv_with_vec(fvs);
+                }
+                t.fv_with_vec(fvs);
+            }
+        }
+    }
+}
+
 // inner purpose
 enum Method {
     Conj,

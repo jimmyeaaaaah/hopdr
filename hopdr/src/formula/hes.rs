@@ -451,6 +451,7 @@ impl<C: Subst<Item = Op, Id = Ident> + Rename + Fv<Id = Ident> + fmt::Display, T
     }
 }
 
+
 impl<C: Rename + Fv<Id = Ident>, T: Clone> GoalBase<C, T> {
     pub fn alpha_renaming(&self) -> GoalBase<C, T> {
         pub fn go<C: Rename, T: Clone>(

@@ -108,6 +108,18 @@ impl<C: Refinement> Env<C> {
                     }
                     debug!("fvs: {:?}", fvs);
                     debug!("ints: {:?}", ints);
+                    let mut patterns: Vec<Op> = Vec::new();
+
+                    for int in ints.iter() {
+                        let o = Op::mk_var(*int);
+                        if ints.len() < 4 {
+                            for i in 0..patterns.len() {
+                                patterns.push(Op::mk_add(patterns[i].clone(), o.clone()));
+                            }
+                        }
+                        patterns.push(o);
+                    }
+                    patterns.push(Op::mk_const(0));
 
                     // instantiate fvs by ints
                     let mut gs = vec![g];
@@ -116,12 +128,12 @@ impl<C: Refinement> Env<C> {
                         .map(|fv| Variable::mk(fv, SType::mk_type_int()))
                     {
                         let mut new_gs = Vec::new();
-                        for int in ints.iter() {
+                        for op in patterns.iter() {
                             for g in gs.iter() {
                                 if new_gs.len() > 100000 {
                                     panic!("explosion")
                                 }
-                                new_gs.push(g.subst(&fv, &Goal::mk_op(Op::mk_var(int.clone()))));
+                                new_gs.push(g.subst(&fv, &Goal::mk_op(op.clone())));
                             }
                         }
                         gs = new_gs;

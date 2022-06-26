@@ -2,7 +2,7 @@ use super::rtype::{Refinement, TBot, Tau, TauKind, TypeEnvironment};
 use crate::formula::hes::{Goal, GoalBase, Problem as ProblemBase};
 use crate::formula::{self, DerefPtr, FirstOrderLogic};
 use crate::formula::{
-    chc, fofml, pcsp, Constraint, Ident, Logic, Negation, Op, Rename, Subst, Top, Variable,
+    chc, fofml, pcsp, Constraint, Ident, Logic, Negation, Op, Rename, Subst, Top, Variable, Fv
 };
 use crate::solver;
 use crate::title;
@@ -449,6 +449,42 @@ impl Context {
     /// ctx.abstraction_types: is used for handling types appeared in derivations
     /// assumption: candidate has a beta-normal form of type *.
     fn type_check_top(&mut self, tenv: &mut Env) -> Option<Derivation> {
+        fn instantiate_type(t: Ty, ints: &HashSet<Ident>) -> Vec<Ty> {
+
+            let mut fvs = t.fv();
+            debug!("fvs: {:?}", fvs);
+            debug!("ints: {:?}", ints);
+            let mut patterns: Vec<Op> = Vec::new();
+
+            for int in ints.iter() {
+                let o = Op::mk_var(*int);
+                if ints.len() < 4 {
+                    for i in 0..patterns.len() {
+                        patterns.push(Op::mk_add(patterns[i].clone(), o.clone()));
+                    }
+                }
+                patterns.push(o);
+            }
+            patterns.push(Op::mk_const(0));
+
+            // instantiate fvs by ints
+            let mut ts = vec![t];
+            for fv in fvs
+            {
+                let mut new_ts = Vec::new();
+                for op in patterns.iter() {
+                    for t in ts.iter() {
+                        if new_ts.len() > 100000 {
+                            panic!("explosion")
+                        }
+                        new_ts.push(t.subst(&fv, &op.clone()));
+                    }
+                }
+                ts = new_ts;
+            }
+            assert!(ts.len() > 0);
+            ts
+        }
         // tenv+ienv; constraint |- App(arg, ret): t
         fn handle_app(
             constraint: &Atom,
@@ -464,7 +500,13 @@ impl Context {
             ) -> PossibleType {
                 match pred.kind() {
                     formula::hes::GoalKind::Var(x) => match tenv.get(x) {
-                        Some(ts) => ts.iter().map(|t| t.add_context(constraint)).into(),
+                        Some(ts) => {
+                            let types = ts.iter().map(|t| {
+                                let t = t.add_context(constraint);
+                                instantiate_type(t, ienv).into_iter().map(|t| t.into())
+                            }).flatten().collect();
+                            PossibleType::new(types)
+                        },
                         None => PossibleType::empty(),
                     },
                     formula::hes::GoalKind::App(predg, argg) => {
@@ -580,16 +622,19 @@ impl Context {
                     }
                     formula::hes::GoalKind::Var(x) => match tenv.get(x) {
                         Some(ts) => {
-                            for s in ts {
-                                // check if constraint |- s <: t
-                                let c = Ty::check_subtype(constraint, s, t);
-                                let c = c.into();
-                                if solver::smt::default_solver()
-                                    .solve_with_universal_quantifiers(&c)
-                                    .is_sat()
-                                {
-                                    return Some(t.clone().into());
+                            for ty in ts {
+                                for s in instantiate_type(t.clone(), ienv) {
+                                    // check if constraint |- s <: t
+                                    let c = Ty::check_subtype(constraint, &s, t);
+                                    let c = c.into();
+                                    if solver::smt::default_solver()
+                                        .solve_with_universal_quantifiers(&c)
+                                        .is_sat()
+                                    {
+                                        return Some(t.clone().into());
+                                    }
                                 }
+
                             }
                             None
                         }

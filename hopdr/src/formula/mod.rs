@@ -856,3 +856,49 @@ impl Polarity {
         }
     }
 }
+
+// // Generate Template with the configuration
+// pub trait GreedyInstantiation<T> {
+//     type SeedType: Subst<Id=Ident, Item=Op> + Clone;
+//     fn subst_greedy(seed: SeedType, candidates: Vec<SeedType>) -> Self;
+//     fn scope_variable(seed: &SeedType) -> HashSet<Ident>;
+//     fn greedy_instantiate(seed: SeedType, scope_ints: &HashSet<Ident>) -> Self {
+//         let mut fvs = Self::scope_variable(&seed);
+//
+//         debug!("fvs: {:?}", fvs);
+//         debug!("ints: {:?}", scope_ints);
+//
+//         let mut patterns: Vec<Op> = Vec::new();
+//         for int in scope_ints.iter() {
+//             let o = Op::mk_var(*int);
+//             if scope_ints.len() < 4 {
+//                 for i in 0..patterns.len() {
+//                     patterns.push(Op::mk_add(patterns[i].clone(), o.clone()));
+//                 }
+//             }
+//             patterns.push(o);
+//         }
+//         patterns.push(Op::mk_const(0));
+//
+//         // instantiate fvs by ints
+//         let mut gs = vec![seed.clone()];
+//         for fv in fvs
+//             .into_iter()
+//             .map(|fv| )
+//         {
+//             let mut new_gs = Vec::new();
+//             for op in patterns.iter() {
+//                 for g in gs.iter() {
+//                     if new_gs.len() > 100000 {
+//                         panic!("explosion")
+//                     }
+//                     new_gs.push(g.subst(&fv, op));
+//                 }
+//             }
+//             gs = new_gs;
+//         }
+//         assert!(gs.len() > 0);
+//         Self::subst_greedy(seed, gs)
+//         unimplemented!()
+//     }
+// }
