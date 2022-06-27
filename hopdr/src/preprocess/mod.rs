@@ -3,6 +3,7 @@ pub mod hes;
 mod safety;
 mod transform;
 mod typing;
+pub mod hfl_preprocessor;
 
 use crate::formula;
 use crate::formula::Type as SimpleType;

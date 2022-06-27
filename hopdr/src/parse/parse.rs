@@ -24,7 +24,7 @@ fn sp1<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, char, E> 
 fn ident<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, String, E> {
     let (input, (i1, i2)) = pair(
         alt((alpha1, tag("_"))),
-        many0(alt((alphanumeric1, tag("_")))),
+        many0(alt((alphanumeric1, tag("_"), tag("!")))),
     )(input)?;
     let mut s = i1.to_string();
     for s2 in i2 {

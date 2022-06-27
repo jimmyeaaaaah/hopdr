@@ -37,7 +37,7 @@ fn main() {
     // parsing command line args
     let args = Args::parse();
 
-    let contents = fs::read_to_string(&args.input).expect("Something went wrong reading the file");
+    let contents = preprocess::hfl_preprocessor::open_file_with_preprocess(&args.input).unwrap();
 
     // RUST_LOG=info (trace, debug, etc..)
     debug!("starting PDR...");
