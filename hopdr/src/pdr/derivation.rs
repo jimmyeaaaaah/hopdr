@@ -1,5 +1,5 @@
 use super::rtype::{Refinement, TBot, Tau, TauKind, TypeEnvironment};
-use crate::formula::hes::{Goal, GoalBase, Problem as ProblemBase};
+use crate::formula::hes::{Goal, GoalBase, GoalKind, Problem as ProblemBase};
 use crate::formula::{self, DerefPtr, FirstOrderLogic};
 use crate::formula::{
     chc, fofml, pcsp, Constraint, Ident, Logic, Negation, Op, Rename, Subst, Top, Variable, Fv
@@ -113,7 +113,7 @@ struct Reduction {
     // for each reduction. That is, when we have reduction
     //    expr1 expr2 -> expr3
     // this id is memorized in expr2's memory (as the argument) and expr3's memory (as the return value)
-    args: Stack<ReductionInfo>,
+    args: Vec<ReductionInfo>,
     // the result of beta reduction; predicate expr -> result
     result: G,
     // predicate's free variables of type int
@@ -151,7 +151,7 @@ impl Reduction {
         Reduction {
             app_expr,
             predicate,
-            args: Stack::new(),
+            args: Vec::new(),
             result,
             fvints,
             argints,
@@ -165,10 +165,10 @@ impl Reduction {
         }
         self.result = result;
         self.app_expr = app_expr;
-        self.args.push_mut(reduction_info);
+        self.args.push(reduction_info);
     }
     fn level(&self) -> usize {
-        self.args.peek().unwrap().level
+        self.args[self.args.len() - 1].level
     }
 }
 
@@ -764,7 +764,7 @@ impl Context {
             }
 
             let mut arg_tys = Vec::new();
-            for reduction in reduction.args.iter() {
+            for reduction in reduction.args.iter().rev() {
                 let arg_ty = if reduction.arg_var.ty.is_int() {
                     either::Left(reduction.arg_var.id)
                 } else {
@@ -783,6 +783,21 @@ impl Context {
                 };
                 arg_tys.push(arg_ty);
             }
+
+            // we have to track all the temporal ids
+            let mut expr_ids = Vec::new();
+            let mut p = reduction.app_expr.clone();
+            loop{
+                match p.kind() {
+                    GoalKind::App(g, _) => {
+                        debug!("id={}, g={}", g.aux.id, g);
+                        expr_ids.push(g.aux.id);
+                        p = g.clone();
+                    }
+                    _ => break,
+                }
+            }
+            assert_eq!(expr_ids.len(), arg_tys.len());
 
             for ret_ty in ret_tys.iter() {
                 debug!("ret_ty: {}", ret_ty);
@@ -804,7 +819,7 @@ impl Context {
                 let mut body_ty = ret_ty.clone();
                 let mut app_expr_ty = tmp_ret_ty.clone();
 
-                for (arg_ty, reduction) in arg_tys.iter().zip(reduction.args.iter()) {
+                for (arg_ty, reduction) in arg_tys.iter().zip(reduction.args.iter().rev()) {
                     match arg_ty {
                         either::Left(ident) => {
                             body_ty = body_ty.deref_ptr(ident).rename(&ident, &reduction.old_id);
@@ -861,22 +876,49 @@ impl Context {
                 for level in reduction.predicate.aux.level_arg.iter() {
                     derivation.arg.insert(*level, tmp_ty.clone());
                 }
-                let tmp_saved_ty = SavedTy::mk(tmp_ty, ret_ty_constraint.clone());
-                derivation
-                    .expr
-                    .set(reduction.predicate.aux.id, tmp_saved_ty);
-
                 for level in reduction.app_expr.aux.level_arg.iter() {
                     derivation.arg.insert(*level, app_expr_ty.clone())
                 }
+
+                // let tmp_saved_ty = SavedTy::mk(tmp_ty.clone(), ret_ty_constraint.clone());
+                // derivation
+                //     .expr
+                //     .set(reduction.predicate.aux.id, tmp_saved_ty);
                 debug!(
                     "app_expr({}): {}",
                     reduction.app_expr.aux.id, reduction.app_expr
                 );
-                let app_expr_saved_ty = SavedTy::mk(app_expr_ty, ret_ty_constraint.clone());
+                // go forward
+                // add types to all the temporal app result
+                let mut temporal_ty = tmp_ty.clone();
+                for ((arg_ty, reduction), expr_id) in arg_tys.iter().rev().zip(reduction.args.iter()).zip(expr_ids.iter().rev()) {
+                    debug!("saving({}): {}", expr_id, temporal_ty);
+                    let temporal_saved_ty = SavedTy::mk(temporal_ty.clone(), ret_ty_constraint.clone());
+                    derivation.expr.set(*expr_id, temporal_saved_ty);
+                    match arg_ty {
+                        either::Left(_) => {
+                            let op: Op = reduction.arg.clone().into();
+                            let (id, t) = match temporal_ty.kind() {
+                                TauKind::IArrow(id, t) => { (id, t) }
+                                _ => panic!("fatal"),
+                            };
+                            temporal_ty = t.subst(id, &op);
+                        }
+                        either::Right(_) => {
+                            temporal_ty =  match temporal_ty.kind() {
+                                TauKind::Arrow(_, t) => t.clone(),
+                                _ => panic!("fatal"),
+                            }
+                        }
+                    };
+                }
+                let app_expr_saved_ty = SavedTy::mk(app_expr_ty.clone(), ret_ty_constraint.clone());
                 derivation
                     .expr
                     .set(reduction.app_expr.aux.id, app_expr_saved_ty);
+                // the aux.id is saved above, so we don't have to for app_expr
+
+
             }
             debug!("");
         }
