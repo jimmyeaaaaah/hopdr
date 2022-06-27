@@ -515,7 +515,7 @@ impl Context {
                         None => PossibleType::empty(),
                     },
                     formula::hes::GoalKind::App(predg, argg) => {
-                        let pred_pt = handle_inner(constraint, tenv, ienv, predg);
+                        let pred_pt = handle_app(constraint, tenv, ienv, predg);
                         // Case: the argument is integer
                         match argg.check_int_expr(ienv) {
                             // Case: the type of argument is int

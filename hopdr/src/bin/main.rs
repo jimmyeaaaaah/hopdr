@@ -15,11 +15,13 @@ use std::fs;
 
 /// Validity checker for νHFL(Z)
 #[derive(Parser, Debug)]
-#[clap(author, version, about, long_about = None)]
+#[clap(author = "Hiroyuki Katsura", version, about, long_about = None)]
 struct Args {
     /// Name of the person to greet
     #[clap(short, long)]
     input: String,
+    #[clap(short, long)]
+    no_preprocess:bool
 }
 
 fn main() {
@@ -37,9 +39,11 @@ fn main() {
     // parsing command line args
     let args = Args::parse();
 
-    let contents = fs::read_to_string(&args.input).expect("Something went wrong reading the file");
-    //let contents = preprocess::hfl_preprocessor::open_file_with_preprocess(&args.input).unwrap();
-
+    let contents = if args.no_preprocess {
+    fs::read_to_string(&args.input).expect("Something went wrong reading the file")
+    } else {
+        preprocess::hfl_preprocessor::open_file_with_preprocess(&args.input).unwrap()
+    };
 
     // RUST_LOG=info (trace, debug, etc..)
     debug!("starting PDR...");
