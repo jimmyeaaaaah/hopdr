@@ -431,12 +431,17 @@ impl Context {
         let mut result_env = TypeEnvironment::new();
         for (pred_name, ids) in self.track_idents.iter() {
             for id in ids {
-                let tys = derivation.expr.get_opt(id).unwrap();
-                for ty in tys.iter() {
-                    debug!("{}: {}", pred_name, ty);
-                    debug!("{:?}", model);
-                    let ty = ty.ty.clone();
-                    result_env.add(*pred_name, ty.assign(&model));
+                match derivation.expr.get_opt(id) {
+                    Some(tys) => {
+                        let tys = derivation.expr.get_opt(id).unwrap();
+                        for ty in tys.iter() {
+                            debug!("{}: {}", pred_name, ty);
+                            debug!("{:?}", model);
+                            let ty = ty.ty.clone();
+                            result_env.add(*pred_name, ty.assign(&model));
+                        }
+                    }
+                    None => (),
                 }
             }
         }
