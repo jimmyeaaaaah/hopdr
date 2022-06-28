@@ -21,7 +21,7 @@ struct Args {
     #[clap(short, long)]
     input: String,
     #[clap(short, long)]
-    no_preprocess:bool
+    no_preprocess: bool,
 }
 
 fn main() {
@@ -40,7 +40,7 @@ fn main() {
     let args = Args::parse();
 
     let contents = if args.no_preprocess {
-    fs::read_to_string(&args.input).expect("Something went wrong reading the file")
+        fs::read_to_string(&args.input).expect("Something went wrong reading the file")
     } else {
         preprocess::hfl_preprocessor::open_file_with_preprocess(&args.input).unwrap()
     };

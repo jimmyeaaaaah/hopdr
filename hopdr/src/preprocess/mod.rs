@@ -1,9 +1,9 @@
 mod alpha;
 pub mod hes;
+pub mod hfl_preprocessor;
 mod safety;
 mod transform;
 mod typing;
-pub mod hfl_preprocessor;
 
 use crate::formula;
 use crate::formula::Type as SimpleType;

@@ -9,9 +9,9 @@ use crate::formula::{Fv, OpKind, PredKind, Type as SimpleType};
 use crate::parse;
 use crate::util::Unique;
 
+use crate::parse::NuHFLzValidityChecking;
 use std::collections::HashSet;
 use std::fmt;
-use crate::parse::{NuHFLzValidityChecking};
 
 #[derive(Debug)]
 pub enum ExprKind<Id, Ty> {
@@ -130,7 +130,11 @@ impl<Id: fmt::Display, Ty: fmt::Display> fmt::Display for Clause<Id, Ty> {
 }
 
 fn quantify_validity_checking(vc: NuHFLzValidityChecking) -> NuHFLzValidityChecking {
-    fn translate_expr(mut expr: parse::Expr, preds: &HashSet<String>, args: &HashSet<&str>) -> parse::Expr {
+    fn translate_expr(
+        mut expr: parse::Expr,
+        preds: &HashSet<String>,
+        args: &HashSet<&str>,
+    ) -> parse::Expr {
         let fvs = expr.fv();
         for fv in fvs.iter() {
             if !preds.contains(fv) && !args.contains(fv.as_str()) {
@@ -144,13 +148,22 @@ fn quantify_validity_checking(vc: NuHFLzValidityChecking) -> NuHFLzValidityCheck
 
     let mut formulas = Vec::new();
     for clause in vc.formulas {
-        let parse::Clause{ expr, id, args, fixpoint} = clause;
-        let arg_set = args.iter().map(|s|s.as_str()).collect();
+        let parse::Clause {
+            expr,
+            id,
+            args,
+            fixpoint,
+        } = clause;
+        let arg_set = args.iter().map(|s| s.as_str()).collect();
         let expr = translate_expr(expr, &preds, &arg_set);
-        formulas.push(parse::Clause{expr, id, args, fixpoint});
+        formulas.push(parse::Clause {
+            expr,
+            id,
+            args,
+            fixpoint,
+        });
     }
-    NuHFLzValidityChecking{formulas, toplevel }
-
+    NuHFLzValidityChecking { formulas, toplevel }
 }
 
 pub fn preprocess<'a>(vc: parse::Problem) -> (hes::Problem<formula::Constraint>, Context) {

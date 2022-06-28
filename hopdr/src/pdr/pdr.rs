@@ -197,9 +197,9 @@ impl HoPDR {
         debug!("cex_next reduced: {}", cex_next);
         let cnf = cex_next.to_cnf();
         debug!("{}", gamma_i);
-        let env = fml::Env::from_type_environment(gamma_i);
         for x in cnf {
-            if !fml::env_models(&env, &x) {
+            let mut env = gamma_i.clone();
+            if !derivation::type_check_top(&x, &mut env) {
                 debug!("candidate: {}", x);
                 self.models.push(x);
                 return;

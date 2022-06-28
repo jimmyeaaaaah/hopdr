@@ -593,7 +593,7 @@ impl Atom {
                 QuantifierKind::Existential => {
                     ienv.insert(x);
                     warn!("existential but maybe ok: {}", constraint)
-                },
+                }
             }
         }
         let cnf = pnf.to_cnf();

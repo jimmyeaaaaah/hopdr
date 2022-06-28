@@ -246,7 +246,7 @@ fn test_tau_deref_ptr() {
     }
 }
 
-impl <C: Refinement>Fv for Tau<C> {
+impl<C: Refinement> Fv for Tau<C> {
     type Id = Ident;
 
     fn fv_with_vec(&self, fvs: &mut HashSet<Self::Id>) {
