@@ -39,7 +39,7 @@ fn main() {
     // parsing command line args
     let args = Args::parse();
 
-    let contents = if args.no_preprocess {
+    let contents = if args.no_preprocess || true {
         fs::read_to_string(&args.input).expect("Something went wrong reading the file")
     } else {
         preprocess::hfl_preprocessor::open_file_with_preprocess(&args.input).unwrap()

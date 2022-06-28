@@ -899,7 +899,20 @@ fn type_check_top_with_derivation(psi: &G, tenv: &mut Env) -> Option<Derivation>
                     Some(pt)
                 }
                 formula::hes::GoalKind::App(_, _) => {
-                    handle_app(constraint, tenv, ienv, c).types.pop()
+                    for ty in handle_app(constraint, tenv, ienv, c).types {
+                        for s in instantiate_type(ty.clone().ty, ienv) {
+                            // check if constraint |- s <: t
+                            let c = Ty::check_subtype(constraint, &s, t);
+                            let c = c.into();
+                            if solver::smt::default_solver()
+                                .solve_with_universal_quantifiers(&c)
+                                .is_sat()
+                            {
+                                return Some(ty.clone());
+                            }
+                        }
+                    }
+                    None
                 }
                 formula::hes::GoalKind::Abs(v, g) => {
                     // 1. check t and calculate the argument's type.
