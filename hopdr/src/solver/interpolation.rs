@@ -22,8 +22,17 @@ use crate::solver::{smt, SMT2Style};
 
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
+use crate::solver::interpolation::InterpolationSolver::SMTInterpol;
+
 type CHC = chc::CHC<chc::Atom, Constraint>;
 type CHCBody = chc::CHCBody<chc::Atom, Constraint>;
+
+pub enum InterpolationSolver {
+    SMTInterpol,
+    Csisat,
+}
+
+
 
 // topological sort
 fn topological_sort(l: &[CHC]) -> Option<(Vec<Ident>, HashMap<Ident, usize>)> {
@@ -311,27 +320,29 @@ fn parse_body(s: &str, fvs: HashSet<Ident>) -> Constraint {
     parse_body(x, &mut map).to_constraint().unwrap()
 }
 
-pub fn interpolate(left: &Constraint, right: &Constraint) -> Constraint {
-    fn smtinterpol_solver(smt_string: String) -> String {
-        debug!("smt_string: {}", &smt_string);
-        let f = smt::save_smt2(smt_string);
-        // TODO: determine the path when it's compiled
-        let args = vec![
-            "-jar",
-            "/home/katsura/github.com/moratorium08/hopdr/hopdr/smtinterpol.jar",
-            f.path().to_str().unwrap(),
-        ];
-        debug!("filename: {}", &args[0]);
-        let out = util::exec_with_timeout(
-            "java",
-            //"../../../Hogeyama/hoice/target/debug/hoice",
-            &args,
-            Duration::from_secs(1),
-        );
-        String::from_utf8(out).unwrap()
+struct SMTInterpolSolver {}
+struct CsisatSolver{}
+impl InterpolationSolver {
+    pub fn get_solver(sol: InterpolationSolver) -> Box<dyn Interpolation> {
+        match sol {
+            InterpolationSolver::SMTInterpol => Box::new(SMTInterpolSolver{}),
+            InterpolationSolver::Csisat => Box::new(CsisatSolver{})
+        }
     }
+    pub fn default_solver() -> Box<dyn Interpolation>{
+        Self::get_solver(SMTInterpol)
+    }
+}
 
-    let generate_smtinterpol = || -> (String, HashSet<Ident>) {
+#[derive(Debug)]
+enum InterpolationError {
+    ParseError(String),
+    Satisfiable(String)
+}
+
+
+impl SMTInterpolSolver {
+    fn generate_smt_string(&mut self, left: &Constraint, right: &Constraint) -> (String, HashSet<Ident>) {
         /*
         (set-option :produce-interpolants true)
         (set-info :status unsat)
@@ -366,24 +377,65 @@ pub fn interpolate(left: &Constraint, right: &Constraint) -> Constraint {
         result += "(check-sat)\n(get-interpolants IP_0 IP_1)\n";
 
         (result, fvs)
-    };
-    let (s, fvs) = generate_smtinterpol();
-    let r = smtinterpol_solver(s);
-    crate::title!("smt_interpol");
-    debug!("{}", r);
-    let mut lines = r.lines();
-    loop {
-        let line = lines.next().unwrap();
-        if line.starts_with("unsat") {
-            let line = lines.next().unwrap();
-            let parsed = parse_body(line, fvs);
-            debug!("parsed: {}", parsed);
-            return parsed;
-        } else if line.starts_with("sat") {
-            panic!("program error: SMTInterpol concluded the constraint was sat (expected: unsat)\n[result of smtinterpol]\n{}", &r)
+    }
+    fn execute_solver(&mut self, smt_string: String) -> String {
+        debug!("smt_string: {}", &smt_string);
+        let f = smt::save_smt2(smt_string);
+        // TODO: determine the path when it's compiled
+        let args = vec![
+            "-jar",
+            "/home/katsura/github.com/moratorium08/hopdr/hopdr/smtinterpol.jar",
+            f.path().to_str().unwrap(),
+        ];
+        debug!("filename: {}", &args[0]);
+        let out = util::exec_with_timeout(
+            "java",
+            //"../../../Hogeyama/hoice/target/debug/hoice",
+            &args,
+            Duration::from_secs(1),
+        );
+        String::from_utf8(out).unwrap()
+    }
+    fn parse_result(&mut self, result: String, fvs: HashSet<Ident>) -> Result<Constraint, InterpolationError> {
+        crate::title!("smt_interpol");
+        debug!("{}", result);
+        let mut lines = result.lines();
+        loop {
+            let line = match lines.next() {
+                Some(line) => line,
+                None => return Err(InterpolationError::ParseError(result.clone())),
+            };
+            if line.starts_with("unsat") {
+                let line = lines.next().unwrap();
+                let parsed = parse_body(line, fvs);
+                debug!("parsed: {}", parsed);
+                return Ok(parsed);
+            } else if line.starts_with("sat") {
+                return Err(InterpolationError::Satisfiable(result.clone()))
+                //panic!("program error: SMTInterpol concluded the constraint was sat (expected: unsat)\n[result of smtinterpol]\n{}", &r)
+            }
         }
     }
 }
+impl Interpolation for SMTInterpolSolver {
+    fn interpolate(&mut self, left: &Constraint, right: &Constraint) -> Constraint {
+        let (s, fvs) = self.generate_smt_string(left, right);
+        let r = self.execute_solver(s);
+        self.parse_result(r, fvs).unwrap()
+    }
+}
+
+
+impl Interpolation for CsisatSolver {
+    fn interpolate(&mut self, left: &Constraint, right: &Constraint) -> Constraint {
+        unimplemented!()
+    }
+}
+
+pub trait Interpolation {
+    fn interpolate(&mut self, left: &Constraint, right: &Constraint) -> Constraint;
+}
+
 
 fn generate_least_solution(
     chc: &Vec<CHC>,
@@ -444,6 +496,7 @@ fn interpolate_preds(
     sorted_preds: &[Ident],
     n_args: &HashMap<Ident, usize>,
     least_model: &Model,
+    mut solver: Box<dyn Interpolation>
 ) -> Model {
     debug_assert!(crate::solver::chc::is_solution_valid(chc, &least_model));
     let mut model = Model::new();
@@ -542,7 +595,7 @@ fn interpolate_preds(
         }
         // interpolation:
         crate::title!("trying to interpolate...");
-        let c = interpolate(&weakest, &strongest);
+        let c = solver.interpolate(&weakest, &strongest);
 
         #[cfg(debug_assertions)]
         {
@@ -576,7 +629,7 @@ pub fn solve(chc: &Vec<CHC>) -> Model {
 
     let least_model = generate_least_solution(chc, &preds, &n_args);
 
-    interpolate_preds(chc, &preds, &n_args, &least_model)
+    interpolate_preds(chc, &preds, &n_args, &least_model, InterpolationSolver::default_solver())
 }
 
 #[test]
