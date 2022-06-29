@@ -168,11 +168,11 @@ fn parse_forall<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, 
     Ok((input, Expr::mk_univ(id, e)))
 }
 
-fn parse_expr<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Expr, E> {
+pub fn parse_expr<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Expr, E> {
     alt((parse_lambda, parse_forall, parse_or, parse_var))(input)
 }
 
-fn parse_hes<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Clause, E> {
+pub fn parse_hes<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Clause, E> {
     let (input, id) = preceded(sp, map(ident, String::from))(input)?;
     let (input, args) = separated_list(sp1, preceded(sp, map(ident, String::from)))(input)?;
     let (input, _) = preceded(sp, tag("=v"))(input)?;

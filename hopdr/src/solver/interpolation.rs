@@ -22,7 +22,7 @@ use crate::solver::{smt, SMT2Style};
 
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
-use crate::solver::interpolation::InterpolationSolver::SMTInterpol;
+use crate::solver::interpolation::InterpolationSolver::{Csisat, SMTInterpol};
 
 type CHC = chc::CHC<chc::Atom, Constraint>;
 type CHCBody = chc::CHCBody<chc::Atom, Constraint>;
@@ -330,7 +330,7 @@ impl InterpolationSolver {
         }
     }
     pub fn default_solver() -> Box<dyn Interpolation>{
-        Self::get_solver(SMTInterpol)
+        Self::get_solver(Csisat)
     }
 }
 
@@ -425,10 +425,49 @@ impl Interpolation for SMTInterpolSolver {
     }
 }
 
+impl CsisatSolver {
+    fn generate_constraint_string(&mut self, c: &Constraint) -> String {
+        format!("%HES\nM =v {}.", c.to_hes_format())
+    }
+    fn execute_solver(&mut self, smt_string1: String, smt_string2: String) -> String {
+        let f1 = smt::save_smt2(smt_string1);
+        let f2 = smt::save_smt2(smt_string2);
+        // TODO: determine the path when it's compiled
+        let arg = format!("{},{}", f1.path().to_str().unwrap(),
+                          f2.path().to_str().unwrap());
+        let args = vec![
+            arg.as_str()
+        ];
+        let out = util::exec_with_timeout(
+            "fpat_interp",
+            &args,
+            Duration::from_secs(1),
+        );
+        String::from_utf8(out).unwrap()
+    }
+    fn parse_result(&mut self, result: String, fvs: HashSet<Ident>) -> Result<Constraint, InterpolationError> {
+        use crate::parse;
+        use nom::error::VerboseError;
+        let e = parse::parse_expr::<VerboseError<&str>>(&result).unwrap().1;
+        let c = Constraint::from(e);
+        Ok(c)
+    }
+}
 
 impl Interpolation for CsisatSolver {
     fn interpolate(&mut self, left: &Constraint, right: &Constraint) -> Constraint {
-        unimplemented!()
+        let mut fvs = HashSet::new();
+        left.fv_with_vec(&mut fvs);
+        right.fv_with_vec(&mut fvs);
+
+        let left_s = self.generate_constraint_string(left);
+        let right_s = self.generate_constraint_string(right);
+        println!("{}", &left_s);
+        println!("{}", &right_s);
+
+        let s = self.execute_solver(left_s, right_s);
+        println!("result: {}", s);
+        self.parse_result(s, fvs).unwrap()
     }
 }
 
@@ -669,6 +708,7 @@ fn test_interpolation() {
     debug!("- {}", clause1);
     debug!("- {}", clause2);
     let clauses = vec![clause1, clause2];
+
 
     let m = solve(&clauses);
 

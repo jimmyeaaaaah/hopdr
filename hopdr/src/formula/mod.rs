@@ -10,6 +10,7 @@ use std::fmt;
 use rpds::Stack;
 
 pub use crate::formula::ty::*;
+use crate::parse::ExprKind;
 use crate::util::global_counter;
 pub use crate::util::P;
 
@@ -218,6 +219,26 @@ impl Op {
             OpExpr::Const(_) | OpExpr::Var(_) => self.clone(),
         }
     }
+    pub fn to_hes_format(&self) -> String {
+        match self.kind() {
+            OpExpr::Op(o, x, y) => {
+                let mut s1 = x.to_hes_format();
+                let mut s2 = y.to_hes_format();
+                format!("({} {} {})", s1, o, s2)
+            }
+            OpExpr::Var(x) => {
+                format!("{}", x)
+            }
+            OpExpr::Const(c) => {
+                format!("{}", c)
+            }
+            OpExpr::Ptr(_, x) => {
+                x.to_hes_format()
+            }
+        }
+
+    }
+
 }
 impl DerefPtr for Op {
     fn deref_ptr(&self, id: &Ident) -> Op {
@@ -698,6 +719,38 @@ impl Constraint {
         let (_, c) = self.prenex_normal_form_raw(&mut HashSet::new());
         c
     }
+    pub fn to_hes_format(&self) -> String {
+        match self.kind() {
+            ConstraintExpr::True => {
+                "true".to_string()
+            }
+            ConstraintExpr::False => {
+                "false".to_string()
+            }
+            ConstraintExpr::Pred(p, l) if l.len() == 2 => {
+                let mut s = l[0].to_hes_format();
+                s += match p {
+                    PredKind::Eq => "=",
+                    PredKind::Neq => "!=",
+                    PredKind::Lt => "<",
+                    PredKind::Leq => "<=",
+                    PredKind::Gt => ">",
+                    PredKind::Geq => ">=",
+                };
+                s += &l[1].to_hes_format();
+                s
+            }
+            ConstraintExpr::Pred(p, l) => panic!("fatal"),
+            ConstraintExpr::Disj(x, y) => {
+                format!("( {} \\/ {} )", x.to_hes_format(), y.to_hes_format())
+            }
+            ConstraintExpr::Conj(x, y) => {
+                format!("( {} /\\ {} )", x.to_hes_format(), y.to_hes_format())
+            }
+            ConstraintExpr::Quantifier(_, _, _) => unimplemented!()
+        }
+    }
+
 }
 impl DerefPtr for Constraint {
     fn deref_ptr(&self, id: &Ident) -> Constraint {
@@ -902,3 +955,45 @@ impl Polarity {
 //         unimplemented!()
 //     }
 // }
+
+
+impl From<crate::parse::Expr> for Constraint {
+    fn from<'a>(e: crate::parse::Expr) -> Self {
+        fn op<'a>(e: &'a crate::parse::Expr, env: &mut std::collections::HashMap<&'a String, Ident>) -> Op {
+            match e.kind() {
+                ExprKind::Var(v) => Op::mk_var(*env.get(v).unwrap()),
+                ExprKind::Num(n) => Op::mk_const(*n),
+                ExprKind::Op(o, x, y) => Op::mk_bin_op(*o, op(x, env), op(y, env)),
+                _ => panic!("fatal"),
+            }
+        }
+        fn go<'a>(e: &'a crate::parse::Expr, env: &mut std::collections::HashMap<&'a String, Ident>) -> Constraint {
+            match e.kind() {
+                ExprKind::True => Constraint::mk_true(),
+                ExprKind::False => Constraint::mk_false(),
+                ExprKind::Pred(p, x, y) => Constraint::mk_pred(*p, vec![op(x, env), op(y, env)]),
+                ExprKind::And(x, y) => Constraint::mk_conj(go(x, env), go(y, env)),
+                ExprKind::Or(x, y) => Constraint::mk_disj(go(x, env), go(y, env)),
+                ExprKind::Univ(x, e) => {
+                    let id = Ident::fresh();
+                    let old = env.insert(x, id);
+                    let c = Constraint::mk_univ_int(id, go(e, env));
+                    match old {
+                        Some(old) => assert!(env.insert(x, old).is_some()) ,
+                        None => (),
+                    }
+                    c
+                }
+                ExprKind::Exist(_, _) => unimplemented!(),
+                _ => panic!("fatal")
+            }
+        }
+        let fvs = e.fv();
+        let mut env = std::collections::HashMap::new();
+        for fv in fvs.iter() {
+            let id = Ident::fresh();
+            env.insert(fv, id);
+        }
+        go(&e, &mut env)
+    }
+}
