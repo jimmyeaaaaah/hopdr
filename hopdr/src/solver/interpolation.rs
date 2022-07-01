@@ -330,7 +330,7 @@ impl InterpolationSolver {
         }
     }
     pub fn default_solver() -> Box<dyn Interpolation>{
-        Self::get_solver(Csisat)
+        Self::get_solver(SMTInterpol)
     }
 }
 
@@ -462,16 +462,17 @@ impl Interpolation for CsisatSolver {
 
         let left_s = self.generate_constraint_string(left);
         let right_s = self.generate_constraint_string(right);
-        println!("{}", &left_s);
-        println!("{}", &right_s);
+        debug!("{}", &left_s);
+        debug!("{}", &right_s);
 
         let s = self.execute_solver(left_s, right_s);
-        println!("result: {}", s);
+        debug!("result: {}", s);
         self.parse_result(s, fvs).unwrap()
     }
 }
 
 pub trait Interpolation {
+    /// calculates psi where left => psi and psi => right where fv(psi) ⊂ fv(left) ∪ fv(right)
     fn interpolate(&mut self, left: &Constraint, right: &Constraint) -> Constraint;
 }
 
@@ -576,7 +577,7 @@ fn interpolate_preds(
                                 None => merged.model.insert(*k, v.clone()),
                             };
                         }
-                        println!(
+                        debug!(
                             "merged: {}",
                             solver
                                 .solve_with_universal_quantifiers(
@@ -585,7 +586,7 @@ fn interpolate_preds(
                                 .is_sat()
                         );
 
-                        println!(
+                        debug!(
                             "{}",
                             solver
                                 .solve_with_universal_quantifiers(
