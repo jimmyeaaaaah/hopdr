@@ -701,8 +701,10 @@ pub fn tys_check(
     ts: impl IntoIterator<Item = Ty>,
 ) -> bool {
     //let f = env.eval(g.clone());
+    crate::title!("tys_check!");
     let cnstr = types_check(g, ts);
-    match smt::default_solver().solve(&cnstr, &HashSet::new()) {
+    debug!("tys_check fvs: {:?}", cnstr.fv());
+    match smt::default_solver().solve(&cnstr, &cnstr.fv()) {
         solver::SolverResult::Sat => true,
         solver::SolverResult::Unsat => false,
         solver::SolverResult::Timeout | solver::SolverResult::Unknown => panic!("smt check fail.."),

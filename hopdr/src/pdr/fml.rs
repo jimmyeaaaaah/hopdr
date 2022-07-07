@@ -112,7 +112,7 @@ impl<C: Refinement> Env<C> {
 
                     for int in ints.iter() {
                         let o = Op::mk_var(*int);
-                        if ints.len() < 4 {
+                        if ints.len() < 0 {
                             for i in 0..patterns.len() {
                                 patterns.push(Op::mk_add(patterns[i].clone(), o.clone()));
                             }
