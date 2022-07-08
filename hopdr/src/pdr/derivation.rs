@@ -680,7 +680,10 @@ fn type_check_top_with_derivation(psi: &G, tenv: &mut Env) -> Option<Derivation>
             }
             patterns.push(o);
         }
-        patterns.push(Op::mk_const(0));
+        for i in 0..patterns.len() {
+            patterns.push(Op::mk_add(patterns[i].clone(), Op::mk_const(-1)));
+        }
+
 
         // instantiate fvs by ints
         let mut ts = vec![t];
@@ -978,7 +981,8 @@ fn type_check_top_with_derivation(psi: &G, tenv: &mut Env) -> Option<Derivation>
 pub fn type_check_top(candidate: &Candidate, tenv: &TypeEnvironment<Tau<Constraint>>) -> bool {
     let g = candidate.clone().into();
     let mut tenv = tenv.into();
-    type_check_top_with_derivation(&g, &mut tenv).is_some()
+    let b = type_check_top_with_derivation(&g, &mut tenv).is_some();
+    b
 }
 
 fn reduce_until_normal_form(candidate: &Candidate, problem: &Problem) -> Context {
