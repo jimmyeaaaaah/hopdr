@@ -131,9 +131,7 @@ impl HoPDR {
         debug!("PDR invalid");
         // because of the incompleteness, we have to expand as many as N, and check if it still false
 
-        for i in 0..self.envs.len() {
-
-        }
+        for i in 0..self.envs.len() {}
         PDRResult::Invalid
     }
 

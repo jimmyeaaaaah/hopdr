@@ -684,7 +684,6 @@ fn type_check_top_with_derivation(psi: &G, tenv: &mut Env) -> Option<Derivation>
             patterns.push(Op::mk_add(patterns[i].clone(), Op::mk_const(-1)));
         }
 
-
         // instantiate fvs by ints
         let mut ts = vec![t];
         for fv in fvs {

@@ -20,9 +20,9 @@ use crate::solver::smt::ident_2_smt2;
 use crate::solver::util;
 use crate::solver::{smt, SMT2Style};
 
+use crate::solver::interpolation::InterpolationSolver::{Csisat, SMTInterpol};
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
-use crate::solver::interpolation::InterpolationSolver::{Csisat, SMTInterpol};
 
 type CHC = chc::CHC<chc::Atom, Constraint>;
 type CHCBody = chc::CHCBody<chc::Atom, Constraint>;
@@ -31,8 +31,6 @@ pub enum InterpolationSolver {
     SMTInterpol,
     Csisat,
 }
-
-
 
 // topological sort
 fn topological_sort(l: &[CHC]) -> Option<(Vec<Ident>, HashMap<Ident, usize>)> {
@@ -321,15 +319,15 @@ fn parse_body(s: &str, fvs: HashSet<Ident>) -> Constraint {
 }
 
 struct SMTInterpolSolver {}
-struct CsisatSolver{}
+struct CsisatSolver {}
 impl InterpolationSolver {
     pub fn get_solver(sol: InterpolationSolver) -> Box<dyn Interpolation> {
         match sol {
-            InterpolationSolver::SMTInterpol => Box::new(SMTInterpolSolver{}),
-            InterpolationSolver::Csisat => Box::new(CsisatSolver{})
+            InterpolationSolver::SMTInterpol => Box::new(SMTInterpolSolver {}),
+            InterpolationSolver::Csisat => Box::new(CsisatSolver {}),
         }
     }
-    pub fn default_solver() -> Box<dyn Interpolation>{
+    pub fn default_solver() -> Box<dyn Interpolation> {
         Self::get_solver(SMTInterpol)
     }
 }
@@ -337,12 +335,15 @@ impl InterpolationSolver {
 #[derive(Debug)]
 enum InterpolationError {
     ParseError(String),
-    Satisfiable(String)
+    Satisfiable(String),
 }
 
-
 impl SMTInterpolSolver {
-    fn generate_smt_string(&mut self, left: &Constraint, right: &Constraint) -> (String, HashSet<Ident>) {
+    fn generate_smt_string(
+        &mut self,
+        left: &Constraint,
+        right: &Constraint,
+    ) -> (String, HashSet<Ident>) {
         /*
         (set-option :produce-interpolants true)
         (set-info :status unsat)
@@ -396,7 +397,11 @@ impl SMTInterpolSolver {
         );
         String::from_utf8(out).unwrap()
     }
-    fn parse_result(&mut self, result: String, fvs: HashSet<Ident>) -> Result<Constraint, InterpolationError> {
+    fn parse_result(
+        &mut self,
+        result: String,
+        fvs: HashSet<Ident>,
+    ) -> Result<Constraint, InterpolationError> {
         crate::title!("smt_interpol");
         debug!("{}", result);
         let mut lines = result.lines();
@@ -411,7 +416,7 @@ impl SMTInterpolSolver {
                 debug!("parsed: {}", parsed);
                 return Ok(parsed);
             } else if line.starts_with("sat") {
-                return Err(InterpolationError::Satisfiable(result.clone()))
+                return Err(InterpolationError::Satisfiable(result.clone()));
                 //panic!("program error: SMTInterpol concluded the constraint was sat (expected: unsat)\n[result of smtinterpol]\n{}", &r)
             }
         }
@@ -433,19 +438,20 @@ impl CsisatSolver {
         let f1 = smt::save_smt2(smt_string1);
         let f2 = smt::save_smt2(smt_string2);
         // TODO: determine the path when it's compiled
-        let arg = format!("{},{}", f1.path().to_str().unwrap(),
-                          f2.path().to_str().unwrap());
-        let args = vec![
-            arg.as_str()
-        ];
-        let out = util::exec_with_timeout(
-            "fpat_interp",
-            &args,
-            Duration::from_secs(1),
+        let arg = format!(
+            "{},{}",
+            f1.path().to_str().unwrap(),
+            f2.path().to_str().unwrap()
         );
+        let args = vec![arg.as_str()];
+        let out = util::exec_with_timeout("fpat_interp", &args, Duration::from_secs(1));
         String::from_utf8(out).unwrap()
     }
-    fn parse_result(&mut self, result: String, fvs: HashSet<Ident>) -> Result<Constraint, InterpolationError> {
+    fn parse_result(
+        &mut self,
+        result: String,
+        fvs: HashSet<Ident>,
+    ) -> Result<Constraint, InterpolationError> {
         use crate::parse;
         use nom::error::VerboseError;
         let e = parse::parse_expr::<VerboseError<&str>>(&result).unwrap().1;
@@ -475,7 +481,6 @@ pub trait Interpolation {
     /// calculates psi where left => psi and psi => right where fv(psi) ⊂ fv(left) ∪ fv(right)
     fn interpolate(&mut self, left: &Constraint, right: &Constraint) -> Constraint;
 }
-
 
 fn generate_least_solution(
     chc: &Vec<CHC>,
@@ -536,7 +541,7 @@ fn interpolate_preds(
     sorted_preds: &[Ident],
     n_args: &HashMap<Ident, usize>,
     least_model: &Model,
-    mut solver: Box<dyn Interpolation>
+    mut solver: Box<dyn Interpolation>,
 ) -> Model {
     debug_assert!(crate::solver::chc::is_solution_valid(chc, &least_model));
     let mut model = Model::new();
@@ -669,7 +674,13 @@ pub fn solve(chc: &Vec<CHC>) -> Model {
 
     let least_model = generate_least_solution(chc, &preds, &n_args);
 
-    interpolate_preds(chc, &preds, &n_args, &least_model, InterpolationSolver::default_solver())
+    interpolate_preds(
+        chc,
+        &preds,
+        &n_args,
+        &least_model,
+        InterpolationSolver::default_solver(),
+    )
 }
 
 #[test]
@@ -709,7 +720,6 @@ fn test_interpolation() {
     debug!("- {}", clause1);
     debug!("- {}", clause2);
     let clauses = vec![clause1, clause2];
-
 
     let m = solve(&clauses);
 
