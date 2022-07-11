@@ -662,7 +662,8 @@ fn types<C: Refinement>(fml: Goal<C>, t: Tau<C>) -> Goal<C> {
             Goal::mk_univ(v, fml)
         }
         TauKind::Arrow(x, y) => {
-            let arg = Goal::mk_ho_disj(x.iter().map(|t| least_fml(t.clone())), x[0].to_sty());
+            let v: Vec<_> = x.iter().map(|t| least_fml(t.clone())).collect();
+            let arg = Goal::mk_ho_disj(&v, x[0].to_sty());
             let fml = Goal::mk_app(fml, arg);
             types(fml, y.clone())
         }

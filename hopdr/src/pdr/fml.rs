@@ -89,8 +89,8 @@ impl<C: Refinement> Env<C> {
         let mut map = HashMap::new();
         let mut tmap = HashMap::new();
         for (key, ts) in tenv.map.iter() {
-            let fmls = ts.iter().map(|t| least_fml(t.clone()));
-            map.insert(*key, Goal::mk_ho_disj(fmls, ts[0].to_sty()));
+            let fmls: Vec<_> = ts.iter().map(|t| least_fml(t.clone())).collect();
+            map.insert(*key, Goal::mk_ho_disj(&fmls, ts[0].to_sty()));
             tmap.insert(*key, ts[0].to_sty());
         }
         Env { map, tmap }
@@ -142,7 +142,7 @@ impl<C: Refinement> Env<C> {
                         gs = new_gs;
                     }
                     assert!(gs.len() > 0);
-                    Goal::mk_ho_disj(gs, self.tmap.get(x).unwrap().clone())
+                    Goal::mk_ho_disj(&gs, self.tmap.get(x).unwrap().clone())
                 }
                 None => Goal::mk_var(*x),
             },
@@ -185,8 +185,8 @@ impl Env<fofml::Atom> {
         let mut map = HashMap::new();
         let mut tmap = HashMap::new();
         for (key, ts) in tenv.map.iter() {
-            let fmls = ts.iter().map(|t| least_fml(t.clone().into()));
-            map.insert(*key, Goal::mk_ho_disj(fmls, ts[0].to_sty()));
+            let fmls: Vec<_> = ts.iter().map(|t| least_fml(t.clone().into())).collect();
+            map.insert(*key, Goal::mk_ho_disj(&fmls, ts[0].to_sty()));
             tmap.insert(*key, ts[0].to_sty());
         }
         Env { map, tmap }

@@ -395,11 +395,12 @@ impl Atom {
     fn replace_with_model(&self, model: &Model) -> Constraint {
         let m = model.model.get(&self.predicate).unwrap();
         assert_eq!(m.0.len(), self.args.len());
-        m.1.subst_multi(
+        let v: Vec<_> =
             m.0.iter()
                 .zip(self.args.iter())
-                .map(|(x, y)| (x.clone(), y.clone())),
-        )
+                .map(|(x, y)| (x.clone(), y.clone()))
+                .collect();
+        m.1.subst_multi(&v)
     }
 }
 

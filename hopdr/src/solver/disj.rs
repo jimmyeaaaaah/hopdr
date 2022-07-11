@@ -36,8 +36,8 @@ impl Atom {
             Atom::Positive(c) => either::Left(c.clone()),
             Atom::Negative(c) => {
                 let (args, constraint) = model.model.get(&c.predicate).unwrap();
-                let constraint =
-                    constraint.subst_multi(args.iter().cloned().zip(c.args.iter().cloned()));
+                let v: Vec<_> = args.iter().cloned().zip(c.args.iter().cloned()).collect();
+                let constraint = constraint.subst_multi(&v);
                 either::Right(constraint.negate().unwrap())
             }
         }

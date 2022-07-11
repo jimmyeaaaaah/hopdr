@@ -232,13 +232,9 @@ impl Op {
             OpExpr::Const(c) => {
                 format!("{}", c)
             }
-            OpExpr::Ptr(_, x) => {
-                x.to_hes_format()
-            }
+            OpExpr::Ptr(_, x) => x.to_hes_format(),
         }
-
     }
-
 }
 impl DerefPtr for Op {
     fn deref_ptr(&self, id: &Ident) -> Op {
@@ -378,7 +374,10 @@ pub trait FirstOrderLogic: Logic {
 pub trait Subst: Sized + Clone {
     type Item;
     type Id;
-    fn subst_multi(&self, substs: impl IntoIterator<Item = (Self::Id, Self::Item)>) -> Self {
+    // impl IntoIterator is better, but rust-analyzer fails
+    // issue: - https://github.com/rust-lang/rust-analyzer/issues/10932
+    //        - https://github.com/rust-lang/rust-analyzer/issues/12484
+    fn subst_multi(&self, substs: &[(Self::Id, Self::Item)]) -> Self {
         let mut itr = substs.into_iter();
         let (id, item) = match itr.next() {
             Some((id, item)) => (id, item),
@@ -721,12 +720,8 @@ impl Constraint {
     }
     pub fn to_hes_format(&self) -> String {
         match self.kind() {
-            ConstraintExpr::True => {
-                "true".to_string()
-            }
-            ConstraintExpr::False => {
-                "false".to_string()
-            }
+            ConstraintExpr::True => "true".to_string(),
+            ConstraintExpr::False => "false".to_string(),
             ConstraintExpr::Pred(p, l) if l.len() == 2 => {
                 let mut s = l[0].to_hes_format();
                 s += match p {
@@ -747,10 +742,9 @@ impl Constraint {
             ConstraintExpr::Conj(x, y) => {
                 format!("( {} /\\ {} )", x.to_hes_format(), y.to_hes_format())
             }
-            ConstraintExpr::Quantifier(_, _, _) => unimplemented!()
+            ConstraintExpr::Quantifier(_, _, _) => unimplemented!(),
         }
     }
-
 }
 impl DerefPtr for Constraint {
     fn deref_ptr(&self, id: &Ident) -> Constraint {
@@ -956,10 +950,12 @@ impl Polarity {
 //     }
 // }
 
-
 impl From<crate::parse::Expr> for Constraint {
     fn from<'a>(e: crate::parse::Expr) -> Self {
-        fn op<'a>(e: &'a crate::parse::Expr, env: &mut std::collections::HashMap<&'a String, Ident>) -> Op {
+        fn op<'a>(
+            e: &'a crate::parse::Expr,
+            env: &mut std::collections::HashMap<&'a String, Ident>,
+        ) -> Op {
             match e.kind() {
                 ExprKind::Var(v) => Op::mk_var(*env.get(v).unwrap()),
                 ExprKind::Num(n) => Op::mk_const(*n),
@@ -967,7 +963,10 @@ impl From<crate::parse::Expr> for Constraint {
                 _ => panic!("fatal"),
             }
         }
-        fn go<'a>(e: &'a crate::parse::Expr, env: &mut std::collections::HashMap<&'a String, Ident>) -> Constraint {
+        fn go<'a>(
+            e: &'a crate::parse::Expr,
+            env: &mut std::collections::HashMap<&'a String, Ident>,
+        ) -> Constraint {
             match e.kind() {
                 ExprKind::True => Constraint::mk_true(),
                 ExprKind::False => Constraint::mk_false(),
@@ -979,13 +978,13 @@ impl From<crate::parse::Expr> for Constraint {
                     let old = env.insert(x, id);
                     let c = Constraint::mk_univ_int(id, go(e, env));
                     match old {
-                        Some(old) => assert!(env.insert(x, old).is_some()) ,
+                        Some(old) => assert!(env.insert(x, old).is_some()),
                         None => (),
                     }
                     c
                 }
                 ExprKind::Exist(_, _) => unimplemented!(),
-                _ => panic!("fatal")
+                _ => panic!("fatal"),
             }
         }
         let fvs = e.fv();

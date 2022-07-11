@@ -272,7 +272,7 @@ impl<C, T> GoalBase<C, T> {
     }
 }
 impl<C: Bot + Top> Goal<C> {
-    pub fn mk_ho_disj(fmls: impl IntoIterator<Item = Goal<C>>, mut sty: Type) -> Goal<C> {
+    pub fn mk_ho_disj(fmls: &[Goal<C>], mut sty: Type) -> Goal<C> {
         let mut vs = Vec::new();
         loop {
             sty = match sty.kind() {
@@ -286,7 +286,7 @@ impl<C: Bot + Top> Goal<C> {
         }
         let mut x = Goal::mk_false();
         for f in fmls {
-            let mut fml = f;
+            let mut fml = f.clone();
             for v in vs.iter() {
                 fml = Goal::mk_app(fml, Goal::mk_var(v.id));
             }
@@ -834,7 +834,7 @@ impl<C: Rename> Problem<C> {
                     let y2_ident = Ident::fresh();
                     let y2 = Variable::mk(y2_ident, y.ty.clone());
                     let g = g.rename(&y.id, &y2_ident);
-                    GoalBase::mk_abs(y2, self.eval(&g))
+                    Goal::mk_abs(y2, self.eval(&g))
                 }
                 None => Goal::mk_abs(y.clone(), self.eval(g)),
             },

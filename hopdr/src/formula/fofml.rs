@@ -466,7 +466,12 @@ impl Atom {
             AtomKind::Constraint(c) => c.clone(),
             AtomKind::Predicate(p, l) => match model.get(p) {
                 Some((r, c)) => {
-                    c.subst_multi(r.iter().zip(l.iter()).map(|(x, y)| (x.clone(), y.clone())))
+                    let v: Vec<_> = r
+                        .iter()
+                        .zip(l.iter())
+                        .map(|(x, y)| (x.clone(), y.clone()))
+                        .collect();
+                    c.subst_multi(&v)
                 }
                 None => {
                     // TODO: is it true?
@@ -760,11 +765,12 @@ impl TemplateKind for Linear {
         let args: Vec<Ident> = arg_ops.iter().map(|_| Ident::fresh()).collect();
         let constant = Op::mk_var(self.constant);
         let c = self.to_constraint(coefs, &args, constant);
-        c.subst_multi(
-            args.iter()
-                .zip(arg_ops.iter())
-                .map(|(x, y)| (x.clone(), y.clone())),
-        )
+        let v: Vec<_> = args
+            .iter()
+            .zip(arg_ops.iter())
+            .map(|(x, y)| (x.clone(), y.clone()))
+            .collect();
+        c.subst_multi(&v)
     }
 
     fn instantiate(&self, arg_ops: &[Op], model: &smt::Model) -> Constraint {
@@ -775,11 +781,12 @@ impl TemplateKind for Linear {
         let args: Vec<Ident> = arg_ops.iter().map(|_| Ident::fresh()).collect();
         let constant = Op::mk_const(model.get(&self.constant).unwrap());
         let c = self.to_constraint(coefs, &args, constant);
-        c.subst_multi(
-            args.iter()
-                .zip(arg_ops.iter())
-                .map(|(x, y)| (x.clone(), y.clone())),
-        )
+        let v: Vec<_> = args
+            .iter()
+            .zip(arg_ops.iter())
+            .map(|(x, y)| (x.clone(), y.clone()))
+            .collect();
+        c.subst_multi(&v)
     }
 
     fn coefs<'a>(&'a self) -> Box<dyn Iterator<Item = &'a Ident> + 'a> {

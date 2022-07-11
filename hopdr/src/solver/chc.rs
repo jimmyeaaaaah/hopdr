@@ -636,7 +636,12 @@ fn reduce_application(
         match a.kind() {
             AtomKind::Predicate(p, l) => match env.get(p) {
                 Some((args, a)) => {
-                    let a = a.subst_multi(args.iter().zip(l.iter()).map(|(x, y)| (*x, y.clone())));
+                    let v: Vec<_> = args
+                        .iter()
+                        .zip(l.iter())
+                        .map(|(x, y)| (*x, y.clone()))
+                        .collect();
+                    let a = a.subst_multi(&v);
                     (true, a)
                 }
                 None => panic!("failed to handle the model from hoice"),
