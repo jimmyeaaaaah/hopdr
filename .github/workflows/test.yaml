@@ -16,7 +16,9 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: install dependency
-      run: sudo apt install -y z3
+      run: sudo apt install -y z3 default-jre wget
+    - name: get smtinterpol
+      run: wget https://ultimate.informatik.uni-freiburg.de/smtinterpol/smtinterpol-2.5-1147-g108647d8.jar -O smtinterpol.jar
     - name: Format
       run: cargo fmt --all -- --check
     # - name: Clippy
