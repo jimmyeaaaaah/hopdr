@@ -1,4 +1,4 @@
-use super::rtype::{Refinement, TBot, Tau, TauKind, TypeEnvironment};
+use super::rtype::{generate_arithmetic_template, Refinement, TBot, Tau, TauKind, TypeEnvironment};
 use crate::formula::hes::{Goal, GoalBase, GoalKind, Problem as ProblemBase};
 use crate::formula::{self, DerefPtr, FirstOrderLogic};
 use crate::formula::{
@@ -664,41 +664,21 @@ impl Context {
 /// tenv: Γ
 /// candidate: ψ
 /// assumption: candidate has a beta-normal form of type *.
-fn type_check_top_with_derivation(psi: &G, tenv: &mut Env) -> Option<Derivation> {
-    fn instantiate_type(t: Ty, ints: &HashSet<Ident>) -> Vec<Ty> {
-        let mut fvs = t.fv();
+fn type_check_top_with_derivation(
+    psi: &G,
+    tenv: &mut Env,
+    coefficients: &mut Vec<Ident>,
+) -> Option<Derivation> {
+    fn instantiate_type(t: Ty, ints: &HashSet<Ident>, coefficients: &mut Vec<Ident>) -> Ty {
+        let fvs = t.fv();
         debug!("fvs: {:?}", fvs);
         debug!("ints: {:?}", ints);
-        let mut patterns: Vec<Op> = Vec::new();
 
-        for int in ints.iter() {
-            let o = Op::mk_var(*int);
-            if ints.len() < 4 {
-                for i in 0..patterns.len() {
-                    patterns.push(Op::mk_add(patterns[i].clone(), o.clone()));
-                }
-            }
-            patterns.push(o);
-        }
-        for i in 0..patterns.len() {
-            patterns.push(Op::mk_add(patterns[i].clone(), Op::mk_const(-1)));
-        }
-
-        // instantiate fvs by ints
-        let mut ts = vec![t];
+        let mut ts = t;
         for fv in fvs {
-            let mut new_ts = Vec::new();
-            for op in patterns.iter() {
-                for t in ts.iter() {
-                    if new_ts.len() > 100000 {
-                        panic!("explosion")
-                    }
-                    new_ts.push(t.subst(&fv, &op.clone()));
-                }
-            }
-            ts = new_ts;
+            let o = generate_arithmetic_template(ints, coefficients);
+            ts = ts.subst(&fv, &o);
         }
-        assert!(ts.len() > 0);
         ts
     }
     // tenv+ienv; constraint |- App(arg, ret): t
@@ -721,9 +701,8 @@ fn type_check_top_with_derivation(psi: &G, tenv: &mut Env) -> Option<Derivation>
                             .iter()
                             .map(|t| {
                                 let t = t.add_context(constraint);
-                                instantiate_type(t, ienv).into_iter().map(|t| t.into())
+                                instantiate_type(t, ienv, coefficients).into()
                             })
-                            .flatten()
                             .collect();
                         PossibleType::new(types)
                     }
@@ -843,16 +822,17 @@ fn type_check_top_with_derivation(psi: &G, tenv: &mut Env) -> Option<Derivation>
                 formula::hes::GoalKind::Var(x) => match tenv.get(x) {
                     Some(ts) => {
                         for ty in ts {
-                            for s in instantiate_type(t.clone(), ienv) {
-                                // check if constraint |- s <: t
-                                let c = Ty::check_subtype(constraint, &s, t);
-                                let c = c.into();
-                                if solver::smt::default_solver()
-                                    .solve_with_universal_quantifiers(&c)
-                                    .is_sat()
-                                {
-                                    return Some(t.clone().into());
-                                }
+                            let mut coefficients = Vec::new();
+                            let s = instantiate_type(t.clone(), ienv, &mut coefficients);
+                            // check if constraint |- s <: t
+                            let c = Ty::check_subtype(constraint, &s, t);
+                            let c: Constraint = c.into();
+                            let mut fvs = c.fv();
+                            for coef in coefficients {
+                                fvs.remove(&coef);
+                            }
+                            if solver::smt::default_solver().solve(&c, &fvs).is_sat() {
+                                return Some(t.clone().into());
                             }
                         }
                         None
