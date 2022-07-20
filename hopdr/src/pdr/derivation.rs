@@ -882,16 +882,16 @@ fn type_check_top_with_derivation(
                 }
                 formula::hes::GoalKind::App(_, _) => {
                     for ty in handle_app(constraint, tenv, ienv, c).types {
-                        for s in instantiate_type(ty.clone().ty, ienv) {
+                        let mut coefs = Vec::new();
+                        let s = instantiate_type(ty.clone().ty, ienv,  &mut coefs);
                             // check if constraint |- s <: t
-                            let c = Ty::check_subtype(constraint, &s, t);
-                            let c = c.into();
-                            if solver::smt::default_solver()
-                                .solve_with_universal_quantifiers(&c)
-                                .is_sat()
-                            {
-                                return Some(ty.clone());
-                            }
+                        let c = Ty::check_subtype(constraint, &s, t);
+                        let c = c.into();
+                        if solver::smt::default_solver()
+                            .solve_with_universal_quantifiers(&c)
+                            .is_sat()
+                        {
+                            return Some(ty.clone());
                         }
                     }
                     None
@@ -1312,6 +1312,7 @@ pub fn search_for_type(
     ctx.infer_polymorphic_type = true;
     debug!("{}", ctx.normal_form);
     //let candidate = ctx.normal_form.clone();
-    let derivation = type_check_top_with_derivation(&ctx.normal_form, tenv)?;
+    let mut coefs = Vec::new();
+    let derivation = type_check_top_with_derivation(&ctx.normal_form, tenv, &mut coefs)?;
     ctx.infer_type(derivation)
 }
