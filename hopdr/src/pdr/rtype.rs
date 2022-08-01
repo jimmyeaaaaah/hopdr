@@ -492,16 +492,16 @@ impl Tau<Constraint> {
 }
 
 // template for polymorphic types
-pub fn generate_arithmetic_template(ints: &HashSet<Ident>, coefficients: &mut Vec<Ident>) -> Op {
+pub fn generate_arithmetic_template(ints: &HashSet<Ident>, coefficients: &mut Stack<Ident>) -> Op {
     // linear template
     let c_id = Ident::fresh();
     let mut o = Op::mk_var(c_id);
-    coefficients.push(c_id);
+    coefficients.push_mut(c_id);
     for int in ints {
         let tmp = Ident::fresh();
         // o += c_i * x_i
         o = Op::mk_bin_op(formula::OpKind::Mul, Op::mk_var(tmp), Op::mk_var(*int));
-        coefficients.push(tmp);
+        coefficients.push_mut(tmp);
     }
     o
 }
