@@ -13,7 +13,7 @@ use lexpr::Value;
 
 #[derive(Debug)]
 pub struct Model {
-    model: HashMap<Ident, i64>,
+    pub model: HashMap<Ident, i64>,
 }
 
 fn encode_ident(x: &Ident) -> String {

@@ -1,4 +1,5 @@
 use super::rtype::{generate_arithmetic_template, Refinement, TBot, Tau, TauKind, TypeEnvironment};
+use crate::formula::chc::Model;
 use crate::formula::hes::{Goal, GoalBase, GoalKind, Problem as ProblemBase};
 use crate::formula::{self, DerefPtr, FirstOrderLogic};
 use crate::formula::{
@@ -667,6 +668,7 @@ impl Context {
 /// assumption: candidate has a beta-normal form of type *.
 fn type_check_top_with_derivation(psi: &G, tenv: &mut Env) -> Option<Derivation> {
     fn instantiate_type(t: Ty, ints: &HashSet<Ident>, coefficients: &mut Stack<Ident>) -> Ty {
+        title!("instatiate_type");
         let fvs = t.fv();
         debug!("fvs: {:?}", fvs);
         debug!("ints: {:?}", ints);
@@ -674,6 +676,7 @@ fn type_check_top_with_derivation(psi: &G, tenv: &mut Env) -> Option<Derivation>
         let mut ts = t;
         for fv in fvs {
             let o = generate_arithmetic_template(ints, coefficients);
+            debug!("template: {}", o);
             ts = ts.subst(&fv, &o);
         }
         ts
@@ -708,7 +711,7 @@ fn type_check_top_with_derivation(psi: &G, tenv: &mut Env) -> Option<Derivation>
             },
             _ => {
                 let mut pt = go(constraint, tenv, ienv, arg_expr);
-                pt.coarse_type(t);
+                pt.coarse_type(constraint, t);
                 pt
             }
         }
@@ -775,7 +778,7 @@ fn type_check_top_with_derivation(psi: &G, tenv: &mut Env) -> Option<Derivation>
                             TauKind::Arrow(arg, result) => (arg, result),
                             TauKind::Proposition(_) | TauKind::IArrow(_, _) => panic!("fatal"),
                         };
-                        let mut result_ct = CandidateDerivation::new(
+                        let result_ct = CandidateDerivation::new(
                             result_t.clone(),
                             ty.coefficients.clone(),
                             ty.derivation.clone(),
@@ -844,7 +847,7 @@ fn type_check_top_with_derivation(psi: &G, tenv: &mut Env) -> Option<Derivation>
         ) -> PossibleDerivation<Atom> {
             match c.kind() {
                 formula::hes::GoalKind::Constr(c) => {
-                    let constraint = constraint.clone().into();
+                    let constraint = c.clone().into();
                     let t = Ty::mk_prop_ty(constraint);
                     let cd = CandidateDerivation::new(t, Stack::new(), Derivation::new());
                     PossibleDerivation::singleton(cd)
@@ -924,7 +927,7 @@ fn type_check_top_with_derivation(psi: &G, tenv: &mut Env) -> Option<Derivation>
         for ct in pt.types.iter_mut() {
             debug!(
                 "type_check_go({}): {} |- {} : {}",
-                c.aux.id, constraint, c, ct
+                c.aux.id, constraint, c, ct.ty
             );
             // memorize the type assignment to each expr
             for level in c.aux.level_arg.iter() {
@@ -939,8 +942,35 @@ fn type_check_top_with_derivation(psi: &G, tenv: &mut Env) -> Option<Derivation>
     debug!("{}", psi);
     let mut ienv = HashSet::new();
     let mut pt = go(&Atom::mk_true(), tenv, &mut ienv, &psi);
-    pt.coarse_type(&Ty::mk_prop_ty(Atom::mk_true()));
-    unimplemented!()
+    pt.coarse_type(&Atom::mk_true(), &Ty::mk_prop_ty(Atom::mk_true()));
+
+    // check if there is an actually possible derivation
+    for ct in pt.types.iter() {
+        let mut constraint = Constraint::mk_true();
+        for c in ct.constraints.iter() {
+            constraint = Constraint::mk_conj(constraint, c.clone().into());
+        }
+        let fvs = constraint.fv();
+        let exists: HashSet<Ident> = ct.coefficients.iter().cloned().collect();
+        let vars = fvs.difference(&exists).cloned().collect();
+        // for fv in fvs {
+        //     if !exists.contains(&fv) {
+        //         constraint = Constraint::mk_univ_int(fv, constraint);
+        //     }
+        // }
+        let mut solver = solver::smt::default_solver();
+        match solver.solve_with_model(&constraint, &vars, &exists) {
+            Ok(m) => {
+                debug!("constraint was sat: {}", constraint);
+                // replace all the integer coefficient
+                let mut derivation = ct.derivation.clone();
+                derivation.update_with_model(&m);
+                return Some(derivation);
+            }
+            Err(_) => (),
+        }
+    }
+    None
 }
 
 /// Γ ⊢ ψ : •<T>
@@ -974,6 +1004,16 @@ struct SavedTy {
 impl fmt::Display for SavedTy {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}; {}", self.constraint, self.ty)
+    }
+}
+impl formula::Subst for SavedTy {
+    type Item = Op;
+    type Id = Ident;
+
+    fn subst(&self, x: &Self::Id, v: &Self::Item) -> Self {
+        let ty = self.ty.subst(x, v);
+        let constraint = self.constraint.subst(x, v);
+        SavedTy { ty, constraint }
     }
 }
 
@@ -1022,7 +1062,9 @@ impl<ID: Eq + std::hash::Hash + Copy + fmt::Display, T: Clone + fmt::Display> fm
         Ok(())
     }
 }
-impl<ID: Eq + std::hash::Hash + Copy, T: Clone> DerivationMap<ID, T> {
+impl<ID: Eq + std::hash::Hash + Copy, T: Clone + Subst<Item = Op, Id = Ident>>
+    DerivationMap<ID, T>
+{
     fn new() -> DerivationMap<ID, T> {
         DerivationMap(HashTrieMap::new())
     }
@@ -1062,6 +1104,21 @@ impl<ID: Eq + std::hash::Hash + Copy, T: Clone> DerivationMap<ID, T> {
     fn get_opt(&self, level: &ID) -> Option<Stack<T>> {
         self.0.get(level).cloned()
     }
+    fn update_with_model(&mut self, m: &solver::smt::Model) {
+        let mut new_map = HashTrieMap::new();
+        for (k, tys) in self.0.iter() {
+            let mut new_tys = Stack::new();
+            for ty in tys.iter() {
+                let mut ty = ty.clone();
+                for (var, val) in m.model.iter() {
+                    ty = ty.subst(var, &Op::mk_const(*val));
+                }
+                new_tys.push_mut(ty);
+            }
+            new_map.insert_mut(*k, new_tys);
+        }
+        *self = DerivationMap(new_map)
+    }
 }
 #[derive(Clone, Debug)]
 struct Derivation {
@@ -1091,6 +1148,10 @@ impl Derivation {
     fn merge(&mut self, derivation: &Derivation) {
         self.arg.merge_derivation_map(derivation.arg.clone());
         self.expr.merge_derivation_map(derivation.expr.clone());
+    }
+    fn update_with_model(&mut self, m: &solver::smt::Model) {
+        self.arg.update_with_model(&m);
+        self.expr.update_with_model(&m);
     }
 }
 #[derive(Clone, Debug)]
@@ -1180,6 +1241,15 @@ impl<C: Refinement> CandidateDerivation<C> {
         let ty = self.ty.clone();
         self.ty = Ty::mk_arrow(ts.clone(), ty);
         self
+    }
+}
+impl CandidateDerivation<Atom> {
+    // generate constraints from the subsumption rules
+    fn coarse_type(&mut self, constraint: &Atom, t: &Ty) {
+        let s = self.ty.clone();
+        let constraint = Ty::check_subtype(constraint, &s, t);
+        self.constraints.push_mut(constraint);
+        self.ty = t.clone();
     }
 }
 
@@ -1285,8 +1355,12 @@ impl<C: Refinement> PossibleDerivation<C> {
         let types = self.types.into_iter().map(|ct| ct.arrow(ts)).collect();
         PossibleDerivation { types }
     }
-    fn coarse_type(&mut self, t: &Ty) {
-        unimplemented!()
+}
+impl PossibleDerivation<Atom> {
+    fn coarse_type(&mut self, constraint: &Atom, t: &Ty) {
+        for ct in self.types.iter_mut() {
+            ct.coarse_type(constraint, t);
+        }
     }
 }
 
