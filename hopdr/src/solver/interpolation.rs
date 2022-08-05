@@ -20,7 +20,7 @@ use crate::solver::smt::ident_2_smt2;
 use crate::solver::util;
 use crate::solver::{smt, SMT2Style};
 
-use crate::solver::interpolation::InterpolationSolver::{Csisat, SMTInterpol};
+use crate::solver::interpolation::InterpolationSolver::SMTInterpol;
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
@@ -450,7 +450,7 @@ impl CsisatSolver {
     fn parse_result(
         &mut self,
         result: String,
-        fvs: HashSet<Ident>,
+        _fvs: HashSet<Ident>,
     ) -> Result<Constraint, InterpolationError> {
         use crate::parse;
         use nom::error::VerboseError;

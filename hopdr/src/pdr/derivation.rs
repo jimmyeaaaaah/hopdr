@@ -1,5 +1,5 @@
 use super::rtype::{generate_arithmetic_template, Refinement, TBot, Tau, TauKind, TypeEnvironment};
-use crate::formula::chc::Model;
+
 use crate::formula::hes::{Goal, GoalBase, GoalKind, Problem as ProblemBase};
 use crate::formula::{self, DerefPtr, FirstOrderLogic};
 use crate::formula::{
@@ -437,7 +437,6 @@ impl Context {
             for id in ids {
                 match derivation.expr.get_opt(id) {
                     Some(tys) => {
-                        let tys = derivation.expr.get_opt(id).unwrap();
                         for ty in tys.iter() {
                             debug!("{}: {}", pred_name, ty);
                             debug!("{:?}", model);
@@ -897,7 +896,7 @@ fn type_check_top_with_derivation(psi: &G, tenv: &mut Env) -> Option<Derivation>
                     pt
                 }
                 formula::hes::GoalKind::App(_, _) => handle_app(constraint, tenv, ienv, c),
-                formula::hes::GoalKind::Abs(v, g) => {
+                formula::hes::GoalKind::Abs(_v, _g) => {
                     // abs can appear in the argument of application
                     // they are handled independently
                     //// 1. check t and calculate the argument's type.

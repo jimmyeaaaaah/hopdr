@@ -222,8 +222,8 @@ impl Op {
     pub fn to_hes_format(&self) -> String {
         match self.kind() {
             OpExpr::Op(o, x, y) => {
-                let mut s1 = x.to_hes_format();
-                let mut s2 = y.to_hes_format();
+                let s1 = x.to_hes_format();
+                let s2 = y.to_hes_format();
                 format!("({} {} {})", s1, o, s2)
             }
             OpExpr::Var(x) => {
@@ -735,7 +735,7 @@ impl Constraint {
                 s += &l[1].to_hes_format();
                 s
             }
-            ConstraintExpr::Pred(p, l) => panic!("fatal"),
+            ConstraintExpr::Pred(_p, _l) => panic!("fatal"),
             ConstraintExpr::Disj(x, y) => {
                 format!("( {} \\/ {} )", x.to_hes_format(), y.to_hes_format())
             }

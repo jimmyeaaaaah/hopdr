@@ -239,7 +239,7 @@ fn type_check_poly() {
 
     let mut types = Vec::new();
     {
-        use formula::{Constraint, Ident, Op, PredKind};
+        use formula::{Constraint, Ident, Op};
         use hopdr::pdr::*;
         use rtype::Tau;
         // App
