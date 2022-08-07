@@ -1453,7 +1453,7 @@ pub fn check_inductive(env: &TypeEnvironment<Tau<Constraint>>, problem: &Problem
                 &clause.body.clone().into(),
                 &t,
             ) {
-                return true;
+                return false;
             }
         }
     }
