@@ -109,7 +109,7 @@ impl HoPDR {
 
     fn check_inductive(&self) -> bool {
         debug!("check_inductive");
-        fml::check_inductive(self.top_env(), &self.problem)
+        derivation::check_inductive(self.top_env(), &self.problem)
     }
 
     fn initialize(&mut self) {
