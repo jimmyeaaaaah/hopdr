@@ -1,4 +1,3 @@
-use super::fml;
 use super::rtype::{Refinement, Tau, TyEnv, TypeEnvironment};
 use super::VerificationResult;
 use crate::formula::hes::Problem;
@@ -71,9 +70,8 @@ impl HoPDR {
     fn candidate(&mut self) {
         info!("{}", "candidate".purple());
         let cnf = self.problem.top.to_cnf();
-        let env = fml::Env::from_type_environment(self.top_env());
         for x in cnf {
-            if !fml::env_models(&env, &x) {
+            if !derivation::type_check_top(&x, self.top_env()) {
                 debug!("candidate: {}", x);
                 self.models.push(x);
                 return;
@@ -101,10 +99,8 @@ impl HoPDR {
 
     fn check_valid(&mut self) -> bool {
         debug!("check_valid");
-        // rtype::type_check_clause(fml, ty.clone(), &mut env);
-        // println!("{}:{}\n -> {:?}", fml, ty.clone(), );
-        let env = fml::Env::from_type_environment(self.top_env());
-        fml::env_models(&env, &self.problem.top)
+        let env = self.top_env();
+        derivation::type_check_top(&self.problem.top, env)
     }
 
     fn check_inductive(&self) -> bool {
@@ -120,6 +116,17 @@ impl HoPDR {
     fn unfold(&mut self) {
         info!("{}", "unfold".purple());
         self.envs.push(TyEnv::new_bot_env(&self.problem));
+        self.induction();
+    }
+
+    fn induction(&mut self) {
+        info!("{}", "induction".purple());
+        let n = self.envs.len();
+        if n < 3 {
+            return;
+        }
+        let tyenv = derivation::saturate(&self.envs[n - 2], &self.problem);
+        self.envs[n - 1] = tyenv;
     }
 
     fn valid(&mut self) -> PDRResult {

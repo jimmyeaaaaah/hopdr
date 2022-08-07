@@ -1457,11 +1457,38 @@ pub fn check_inductive(env: &TypeEnvironment<Tau<Constraint>>, problem: &Problem
             }
         }
     }
-    //for (id, g) in fenv.map.into_iter() {
-    //    let tys = env.get(&id).unwrap().iter().map(|x| x.clone());
-    //    if !tys_check(&g, tys) {
-    //        return false;
-    //    }
-    //}
     true
+}
+
+pub fn saturate(
+    env: &TypeEnvironment<Tau<Constraint>>,
+    problem: &Problem,
+) -> TypeEnvironment<Tau<Constraint>> {
+    let top = Atom::mk_true();
+    let mut current_env = env.clone();
+    loop {
+        let mut new_env = TypeEnvironment::new();
+        let mut saturated = true;
+        for (id, ts) in current_env.map.iter() {
+            let clause = problem.get_clause(id).unwrap();
+            let mut env: Env = (&current_env).into();
+            for t in ts.iter() {
+                if type_check(
+                    &top,
+                    &mut env,
+                    &mut HashSet::new(),
+                    &clause.body.clone().into(),
+                    &t.clone().into(),
+                ) {
+                    new_env.add(*id, t.clone());
+                } else {
+                    saturated = false;
+                }
+            }
+        }
+        current_env = new_env;
+        if saturated {
+            return current_env;
+        }
+    }
 }
