@@ -1,3 +1,5 @@
+
+
 % general
 \newcommand \Nat {\mathbb{Z}}
 \newcommand \Def {::=}
@@ -5,6 +7,21 @@
 \DeclareMathOperator{\fv}{fv}
 \newcommand \gfp {\textbf{gfp}}
 \newcommand {\model} {\mathcal{M}}
+
+% algorithmic
+\renewcommand{\algorithmicrequire}{\textbf{Input:}}
+\renewcommand{\algorithmicensure}{\textbf{Output:}}
+
+% crossref
+% \crefname{theorem}{Theorem}{Theorems}
+% \crefname{example}{Example}{Examples}
+% \crefname{lemma}{Lemma}{Lemmas}
+% \crefname{definition}{Definition}{Definitions}
+% \crefname{table}{Table}{Tables}
+
+% newtheorem
+\newtheorem{prop}{Property}
+
 
 % names
 \newcommand \nhz{\(\nu\text{HFL}_\Nat\)}
@@ -14,6 +31,12 @@
 \newcommand \horus{Horus}
 \newcommand \hopdr {{\sc HoPDR}}
 \newcommand \nhfl{\(\nu\text{HFL}\)}
+\newcommand \oursolver {{\sc PDRHFL}}
+\newcommand \infertype {{\sc InferConflict}}
+\newcommand \collecttypes {{\sc CollectTypes}}
+\newcommand \hoice{{\sc HoIce} }
+\newcommand \genderivation {{\sc GenDerivation}}
+%\newcommand \mochi{{\sc MoCHi} }
 
 
 \newcommand\COL{\mathbin{:}}
@@ -29,7 +52,7 @@
 
 % nhz syntax
 \newcommand \formula {\varphi}
-\newcommand \goal {\psi}
+\newcommand \goal {\varphi}
 \newcommand \true {\textbf{tt}}
 \newcommand \false {\textbf{ff}}
 \newcommand \predicate {\textbf{p}}
@@ -94,7 +117,6 @@
 % refinement type judgement
 \newcommand \refines[2]{#1:: #2}
 \newcommand \tenv {\Gamma}
-\newcommand \types {\vdash}
 \newcommand \rtE {\tenv}
 \newcommand \wf[2]{\tenv \vdash \refines{#1}{#2}}
 \newcommand \minimalize[1] {#1_{\Downarrow}}
@@ -114,13 +136,14 @@
 \newcommand {\vtenv}[2][]{\val{#2}({\ifthenelse{\isempty{#1}}{\valfun}{#1}})}
 %\newcommand {\semttaus}[1][] { \bigcap_i \semt{\tau_i}({\ifthenelse{\isempty{#1}}{\valfun}{#1}})}
 \newcommand {\semttaus} {\bigcap_i \semt{\tau_i}(\valfun)}
-\newcommand {\valrtE}[1] { \val{#1} } 
+\newcommand {\valrtE}[1] { \val{#1} }
 
 
 % PDR rules
 \newcommand {\rdecide} {\emph{Decide}}
 \newcommand {\rconflict} {\emph{Conflict}}
 \newcommand {\rvalid} {\emph{Valid}}
+\newcommand {\rinit} {\emph{Init}}
 \newcommand {\rinvalid} {\emph{Invalid}}
 \newcommand {\rcandidate} {\emph{Candidate}}
 \newcommand {\runfold} {\emph{Unfold}}
@@ -132,12 +155,12 @@
 \newcommand {\valid} {\textbf{Valid}}
 \newcommand {\unknown} {\textbf{Unknown}}
 
-\newcommand {\pdrmid} {\parallel}
+\newcommand {\pdrmid} {\mathbin{||}}
 \newcommand {\pdrapp} {\Longrightarrow }
 \newcommand {\Tr} {\pdrapp}
-\newcommand {\pdrtop} {\psi_{\mathcal{G}}}
-\newcommand {\TOP} {\pdrtop}
-\newcommand {\RULES} {\mathcal{R}}
+\newcommand\config[2]{#1\pdrmid#2}
+%\newcommand {\pdrtop} {\psi_{\mathcal{G}}}
+\newcommand {\pdrtop} {\varphi}
 \newcommand {\pdrtransform} {\mathcal{F}}
 \newcommand {\pdrF} {\pdrtransform}
 \newcommand {\floor}[1] {\lfloor #1 \rfloor }
@@ -146,11 +169,14 @@
 \newcommand {\F} {\BE{\stE}}
 \newcommand {\E} {\rtE}
 \newcommand {\PT} {\pdrtop}
+%\newcommand\pdrrule {\mathcal{R}}
+\newcommand\RULES{\mathcal{R}}
+\newcommand \breduc {\longrightarrow}
+
 
 \newcommand {\tree} {\mathcal{T}}
 \newcommand {\aprx} {\mathcal{A}}
-\newcommand {\cex} {C}
-\newcommand {\cexs} {\mathcal{C}}
+\newcommand {\cex} {\mathcal{C}}
 
 \newcommand {\treeroot} {\textbf{root}}
 
@@ -181,7 +207,7 @@
 \newcommand \erty {\tilde{\refty}}
 \newcommand \econstr {\Theta}
 
-% nu-hfl 
+% nu-hfl
 \newcommand \lts {\mathcal{L}}
 \newcommand \action {\mathcal{A}}
 \newcommand \reduction {\longrightarrow}
@@ -190,6 +216,9 @@
 \newcommand \kotypes {\vdash}
 \newcommand \msome[1] {\langle #1 \rangle}
 \newcommand \mall[1] {[ #1 ]}
+
+\newcommand \derivation {T}
+%\newcommand \highlightcolor {red}
 
 % Program
 \lstdefinestyle{mystyle}{
@@ -213,3 +242,12 @@ morecomment=[l]{//},
 morekeywords={assert}
 }
 
+% experiments
+\newcommand \benchunno{{\it unno}}
+\newcommand \benchmochiv{{\it mochi\_valid}}
+\newcommand \benchmochiinv{{\it mochi\_invalid}}
+\newcommand \benchmochi{{\it mochi}}
+
+% misc
+\newcommand{\figcaption}[1]{\def\@captype{figure}\caption{#1}}
+\newcommand{\tblcaption}[1]{\def\@captype{table}\caption{#1}}

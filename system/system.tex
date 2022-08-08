@@ -33,7 +33,7 @@ Counterexamples are a sequence of (a restricted form of) formulas \( \{\, \cex_k
 }
 
 \infrule[Valid]{
-\tenv_N \types \pdrtop \COL \tb{\true} 
+\tenv_N \types \pdrtop \COL \tb{\true}
 \andalso \tenv_N \types \RULES \COL \tenv_N
 }{
 \epsilon \pdrmid \aprx \cdot \tenv_N \Tr \valid
@@ -55,9 +55,9 @@ Counterexamples are a sequence of (a restricted form of) formulas \( \{\, \cex_k
 }
 
 \infrule[Conflict]{
-\tenv_i \types \RULES \COL \tenv 
+\tenv_i \types \RULES \COL \tenv
 \andalso \tenv \types \cex \COL \tb{\true}
-\andalso 
+\andalso
 \Gamma'_j =
 	\left\{
 	\begin{array}{ll}
@@ -66,7 +66,7 @@ Counterexamples are a sequence of (a restricted form of) formulas \( \{\, \cex_k
 	\end{array}
 	\right.
 } {
-(i+1, \cex) \cdot \cexs \pdrmid \tenv_0 \dots \tenv_N 
+(i+1, \cex) \cdot \cexs \pdrmid \tenv_0 \dots \tenv_N
 \Tr \cexs \pdrmid \tenv_0' \dots \tenv_N'
 }
 
@@ -114,7 +114,7 @@ We have the following execution of HoPDR.
     &\Tr (\epsilon, \TE{\stE} \cdot \BE{\stE}) &\runfold\\
     &\pdrapp ((1, \pdrtop), \TE{\stE} \cdot \BE{\stE}) &\rcandidate\\
 \end{align*}
-We have \( \TE{\stE} \types \pdrtop \COL \tb{\true} \), so we apply \rconflict{}. Let \( \psi' \) be \( \RULES \pdrtop = \RULES (\forall x. x \leq 0 \lor G\ x\ (H\ 0) \). 
+We have \( \TE{\stE} \types \pdrtop \COL \tb{\true} \), so we apply \rconflict{}. Let \( \psi' \) be \( \RULES \pdrtop = \RULES (\forall x. x \leq 0 \lor G\ x\ (H\ 0) \).
 We have the following derivation
 ( \( \tenv_0' = \{x \COL \stypeint\} \cup \tenv_0 \) ).
 To make the derivation smaller, we omit \( \COL \stypeint \) from \( \ti{x} \) in the following tree.
