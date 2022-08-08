@@ -1,7 +1,7 @@
 use super::rtype::{Refinement, Tau, TyEnv, TypeEnvironment};
 use super::VerificationResult;
 use crate::formula::hes::Problem;
-use crate::formula::{fofml, hes, Constraint};
+use crate::formula::{hes, Constraint};
 use crate::pdr::derivation;
 
 use colored::Colorize;
@@ -33,7 +33,6 @@ pub struct HoPDR {
     models: Vec<Candidate>,
     envs: Vec<TyEnv>,
     problem: Problem<Constraint>,
-    problem_atom_cache: Problem<fofml::Atom>,
     loop_cnt: u64,
 }
 
@@ -85,11 +84,9 @@ impl HoPDR {
     }
 
     fn new(problem: Problem<Constraint>) -> HoPDR {
-        let problem_atom_cache = problem.clone().into();
         let mut hopdr = HoPDR {
             models: Vec::new(),
             envs: Vec::new(),
-            problem_atom_cache,
             problem,
             loop_cnt: 0,
         };
@@ -126,7 +123,7 @@ impl HoPDR {
             return;
         }
         let tyenv = derivation::saturate(&self.envs[n - 2], &self.problem);
-        self.envs[n - 1] = tyenv;
+        self.envs[n - 1].append(&tyenv);
     }
 
     fn valid(&mut self) -> PDRResult {
