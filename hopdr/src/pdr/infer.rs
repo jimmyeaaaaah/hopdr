@@ -16,6 +16,7 @@ type Candidate = Goal<fofml::Atom>;
 type TemplateType = Tau<fofml::Atom>;
 type TemplateEnv = TypeEnvironment<TemplateType>;
 
+#[derive(Debug, Eq, PartialEq)]
 enum TypeKind {
     Proposition,
     IArrow(Type), // int -> τ

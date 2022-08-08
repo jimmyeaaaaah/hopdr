@@ -100,6 +100,18 @@ impl<C: fmt::Display> fmt::Display for Tau<C> {
     }
 }
 
+impl<C: PartialEq + Display> PartialEq for Tau<C> {
+    fn eq(&self, other: &Self) -> bool {
+        let r = match (self.kind(), other.kind()) {
+            (TauKind::Proposition(c), TauKind::Proposition(c2)) => c == c2,
+            (TauKind::IArrow(x1, t1), TauKind::IArrow(x2, t2)) => x1 == x2 && t1 == t2,
+            (TauKind::Arrow(ts1, t1), TauKind::Arrow(ts2, t2)) => t1 == t2 && ts1 == ts2,
+            (_, _) => false,
+        };
+        r
+    }
+}
+
 pub trait TTop {
     fn mk_top(st: &SType) -> Self;
     fn is_top(&self) -> bool;
@@ -542,7 +554,17 @@ impl From<&TypeEnvironment<Tau<Constraint>>> for TypeEnvironment<Tau<fofml::Atom
     }
 }
 
-impl<T> TypeEnvironment<T> {
+fn add_if_not_exist<T: PartialEq + Display>(ts: &mut Vec<T>, t: T) {
+    if ts
+        .iter()
+        .find_map(|x| if x == &t { Some(()) } else { None })
+        .is_none()
+    {
+        ts.push(t);
+    }
+}
+
+impl<T: PartialEq + Display> TypeEnvironment<T> {
     pub fn new() -> TypeEnvironment<T> {
         TypeEnvironment {
             map: HashMap::new(),
@@ -551,8 +573,8 @@ impl<T> TypeEnvironment<T> {
 
     fn add_(&mut self, v: Ident, t: T) {
         match self.map.get_mut(&v) {
-            Some(s) => {
-                s.push(t);
+            Some(ts) => {
+                add_if_not_exist(ts, t);
             }
             None => {
                 self.map.insert(v, vec![t]);
@@ -594,7 +616,7 @@ impl<C: Refinement> TypeEnvironment<Tau<C>> {
                     }
                     if w.len() != 1 || !w[0].is_top() {
                         for t in v {
-                            w.push(t.clone());
+                            add_if_not_exist(w, t.clone());
                         }
                     }
                 }
@@ -616,7 +638,7 @@ impl<C: Refinement> TypeEnvironment<Tau<C>> {
             match map.get_mut(k) {
                 Some(vs) => {
                     for t in ts {
-                        vs.push(t.clone())
+                        add_if_not_exist(vs, t.clone());
                     }
                 }
                 None => {

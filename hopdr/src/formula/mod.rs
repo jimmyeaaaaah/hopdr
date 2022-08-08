@@ -106,7 +106,7 @@ impl QuantifierKind {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub enum OpExpr {
     Op(OpKind, Op, Op),
     Var(Ident),
@@ -130,6 +130,17 @@ impl fmt::Display for Op {
             Var(i) => write!(f, "{}", i),
             Const(c) => write!(f, "{}", c),
             Ptr(_, o) => write!(f, "{}", o),
+        }
+    }
+}
+impl PartialEq for Op {
+    fn eq(&self, other: &Self) -> bool {
+        match (self.kind(), other.kind()) {
+            (OpExpr::Op(o1, x1, y1), OpExpr::Op(o2, x2, y2)) => o1 == o2 && x1 == x2 && y1 == y2,
+            (OpExpr::Var(x), OpExpr::Var(y)) => x == y,
+            (OpExpr::Const(c), OpExpr::Const(c2)) => c == c2,
+            (OpExpr::Ptr(_, y1), OpExpr::Ptr(_, y2)) => y1 == y2,
+            (_, _) => false,
         }
     }
 }
@@ -430,7 +441,7 @@ pub trait DerefPtr {
     fn deref_ptr(&self, id: &Ident) -> Self;
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub enum ConstraintExpr {
     True,
     False,
@@ -465,6 +476,30 @@ impl fmt::Display for Constraint {
             Disj(c1, c2) => write!(f, "({}) ∨ ({})", c1, c2),
             Quantifier(q, x, c) => write!(f, "{}{}.{}", q, x, c),
         }
+    }
+}
+
+impl PartialEq for Constraint {
+    fn eq(&self, other: &Self) -> bool {
+        let r = match (self.kind(), other.kind()) {
+            (ConstraintExpr::True, ConstraintExpr::True) => true,
+            (ConstraintExpr::False, ConstraintExpr::False) => true,
+            (ConstraintExpr::Pred(PredKind::Eq, l1), ConstraintExpr::Pred(PredKind::Eq, l2))
+                if l1.len() == 2 && l2.len() == 2 =>
+            {
+                // x == y vs x == y
+                // or x == y vs y == x
+                (l1[0] == l2[0] && l1[1] == l2[1]) || (l1[0] == l2[1] && l1[1] == l2[0])
+            }
+            (ConstraintExpr::Pred(p1, l1), ConstraintExpr::Pred(p2, l2)) => p1 == p2 && l1 == l2,
+            (ConstraintExpr::Conj(x1, y1), ConstraintExpr::Conj(x2, y2)) => x1 == x2 && y1 == y2,
+            (ConstraintExpr::Disj(x1, y1), ConstraintExpr::Disj(x2, y2)) => x1 == x2 && y1 == y2,
+            (ConstraintExpr::Quantifier(q1, x1, y1), ConstraintExpr::Quantifier(q2, x2, y2)) => {
+                q1 == q2 && x1 == x2 && y1 == y2
+            }
+            (_, _) => false,
+        };
+        r
     }
 }
 

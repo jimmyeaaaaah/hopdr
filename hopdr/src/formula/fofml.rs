@@ -11,7 +11,7 @@ use crate::solver;
 use crate::solver::smt;
 use crate::util::P;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub enum AtomKind {
     True, // equivalent to Constraint(True). just for optimization purpose
     Constraint(Constraint),
@@ -40,6 +40,24 @@ impl fmt::Display for Atom {
             AtomKind::Not(x) => write!(f, "not({})", x),
             AtomKind::Quantifier(q, x, c) => write!(f, "{} {}. {}", q, x, c),
         }
+    }
+}
+impl PartialEq for Atom {
+    fn eq(&self, other: &Self) -> bool {
+        let r = match (self.kind(), other.kind()) {
+            (AtomKind::True, AtomKind::True) => true,
+            (AtomKind::Constraint(c1), AtomKind::Constraint(c2)) => c1 == c2,
+            (AtomKind::Predicate(p1, l1), AtomKind::Predicate(p2, l2)) => p1 == p2 && l1 == l2,
+            (AtomKind::Conj(x1, y1), AtomKind::Conj(x2, y2)) => x1 == x2 && y1 == y2,
+            (AtomKind::Disj(x1, y1), AtomKind::Disj(x2, y2)) => x1 == x2 && y1 == y2,
+            (AtomKind::Not(x), AtomKind::Not(y)) => x == y,
+            (AtomKind::Quantifier(q1, x1, y1), AtomKind::Quantifier(q2, x2, y2)) => {
+                q1 == q2 && x1 == x2 && y1 == y2
+            }
+            (_, _) => false,
+        };
+        debug!("{} == {}?: {}", self, other, r);
+        r
     }
 }
 
