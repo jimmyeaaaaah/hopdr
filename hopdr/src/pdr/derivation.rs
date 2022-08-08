@@ -560,6 +560,8 @@ impl Context {
                 let constraint2 =
                     Atom::mk_implies_opt(ret_ty_constraint.clone(), app_expr_ty.rty_no_exists())
                         .unwrap();
+                debug!("constraint1: {}", constraint);
+                debug!("constraint2: {}", constraint2);
                 let constraint = Atom::mk_conj(constraint, constraint2);
                 // 2. create a template type from `ty` and free variables `fvints`
                 match constraint.to_chcs_or_pcsps() {
@@ -663,6 +665,7 @@ impl Context {
 
 fn instantiate_type(t: Ty, ints: &HashSet<Ident>, coefficients: &mut Stack<Ident>) -> Ty {
     title!("instatiate_type");
+    debug!("type={}", t);
     let fvs = t.fv();
     debug!("fvs: {:?}", fvs);
     debug!("ints: {:?}", ints);
@@ -673,6 +676,7 @@ fn instantiate_type(t: Ty, ints: &HashSet<Ident>, coefficients: &mut Stack<Ident
         debug!("template: {}", o);
         ts = ts.subst(&fv, &o);
     }
+    debug!("instantiated: {}", ts);
     ts
 }
 fn handle_abs(
@@ -686,8 +690,9 @@ fn handle_abs(
         GoalKind::Abs(v, g) if v.ty.is_int() => match t.kind() {
             TauKind::IArrow(id, t) if v.ty.is_int() => {
                 let t = t.rename(id, &v.id);
+                let constraint = constraint.rename(id, &v.id);
                 assert!(ienv.insert(v.id));
-                let pt = handle_abs(constraint, tenv, ienv, g, &t);
+                let pt = handle_abs(&constraint, tenv, ienv, g, &t);
                 ienv.remove(&v.id);
                 pt.iarrow(&v.id)
             }
@@ -731,7 +736,9 @@ fn handle_app(
                     let types = ts
                         .iter()
                         .map(|t| {
+                            debug!("before add_context(constraint={}) = {}", constraint, t);
                             let t = t.add_context(constraint);
+                            debug!("after add_context = {}", t);
                             let s = instantiate_type(t, ienv, &mut coefficients);
                             CandidateDerivation::new(s, coefficients.clone(), Derivation::new())
                         })
@@ -781,7 +788,7 @@ fn handle_app(
                     // check if there exists a derivation for all types in the intersection type.
                     for t in arg_t {
                         let arg_constraint = Atom::mk_conj(t.rty_no_exists(), constraint.clone());
-                        debug!("t: {}", t);
+                        //debug!("t: {}", t);
                         // check if arg_constraint |- argg: arg_t
                         let pt = handle_abs(&arg_constraint, tenv, ienv, argg, t);
 
@@ -953,7 +960,7 @@ fn type_check(
 fn type_check_top_with_derivation(psi: &G, tenv: &mut Env) -> Option<Derivation> {
     title!("type_check_top");
     debug!("tenv: {}", tenv);
-    debug!("{}", psi);
+    debug!("target: {}", psi);
     let mut ienv = HashSet::new();
     let mut pt = type_check_inner(&Atom::mk_true(), tenv, &mut ienv, &psi);
     pt.coarse_type(&Atom::mk_true(), &Ty::mk_prop_ty(Atom::mk_true()));
@@ -1453,7 +1460,8 @@ pub fn search_for_type(
     debug!("{}", ctx.normal_form);
     //let candidate = ctx.normal_form.clone();
     let derivation = type_check_top_with_derivation(&ctx.normal_form, tenv)?;
-    ctx.infer_type(derivation)
+    // must succeed in theory
+    Some(ctx.infer_type(derivation).unwrap())
 }
 
 // Γ ⊢ Γ

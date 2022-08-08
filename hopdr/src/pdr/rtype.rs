@@ -303,6 +303,8 @@ impl<C: Refinement> Tau<C> {
     }
     // coarse the rty(self) to be `constraint`
     pub fn add_context(&self, constraint: &C) -> Tau<C> {
+        crate::title!("add_context");
+        debug!("constraint = {}", constraint);
         fn go<C: Refinement>(t: &Tau<C>, constraint: &C, polarity: Polarity) -> Tau<C> {
             match t.kind() {
                 // *[c] <: *[?] under constraint <=> constraint /\ ? => c. so ? = constraint => c
@@ -319,10 +321,10 @@ impl<C: Refinement> Tau<C> {
                 }
                 TauKind::Arrow(ts, t) => {
                     let t = go(t, constraint, polarity);
-                    let constraint = C::mk_conj(constraint.clone(), t.rty());
+                    //let constraint = C::mk_conj(constraint.clone(), t.rty());
                     let ts = ts
                         .iter()
-                        .map(|s| go(s, &constraint, polarity.rev()))
+                        .map(|s| go(s, constraint, polarity.rev()))
                         .collect();
                     Tau::mk_arrow(ts, t)
                 }
