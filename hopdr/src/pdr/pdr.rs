@@ -117,13 +117,18 @@ impl HoPDR {
     }
 
     fn induction(&mut self) {
-        info!("{}", "induction".purple());
         let n = self.envs.len();
         if n < 3 {
             return;
         }
-        let tyenv = derivation::saturate(&self.envs[n - 2], &self.problem);
-        self.envs[n - 1].append(&tyenv);
+
+        info!("{}", "induction".purple());
+
+        for i in 1..n - 1 {
+            let tyenv = derivation::saturate(&self.envs[i], &self.problem);
+            debug!("induction({}): {}", i, tyenv);
+            self.envs[n - 1].append(&tyenv);
+        }
     }
 
     fn valid(&mut self) -> PDRResult {
@@ -163,10 +168,17 @@ impl HoPDR {
                 }
             };
             let mut tyenv_i = self.get_current_target_approx().into();
-            match derivation::search_for_type(&cand, &self.problem, &mut tyenv_i) {
+            let config = derivation::InferenceConfig::new().infer_polymorphic_type(false);
+            // first try without polymorphic type
+            match derivation::search_for_type(&cand, &self.problem, &mut tyenv_i, config) {
                 Some(tyenv) => self.conflict(tyenv)?,
                 None => {
-                    self.decide();
+                    let config = derivation::InferenceConfig::new().infer_polymorphic_type(true);
+                    let mut tyenv_i = self.get_current_target_approx().into();
+                    match derivation::search_for_type(&cand, &self.problem, &mut tyenv_i, config) {
+                        Some(tyenv) => self.conflict(tyenv)?,
+                        None => self.decide(),
+                    };
                 }
             }
         }
@@ -201,6 +213,10 @@ impl HoPDR {
         debug!("cex_next reduced: {}", cex_next);
         let cnf = cex_next.to_cnf();
         debug!("{}", gamma_i);
+
+        let mut env = gamma_i.clone();
+        debug!("check: {}", derivation::type_check_top(&cex_next, &mut env));
+
         for x in cnf {
             let mut env = gamma_i.clone();
             if !derivation::type_check_top(&x, &mut env) {
@@ -227,9 +243,9 @@ impl HoPDR {
             } else {
                 self.unfold()
             }
-            //use std::{thread, time};
-            //let asec = time::Duration::from_secs(1);
-            //thread::sleep(asec);
+            use std::{thread, time};
+            let asec = time::Duration::from_secs(1);
+            thread::sleep(asec);
         }
     }
 }

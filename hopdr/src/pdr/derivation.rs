@@ -415,9 +415,10 @@ impl Context {
         normal_form: G,
         track_idents: HashMap<Ident, Vec<Ident>>,
         reduction_sequence: Vec<Reduction>,
+        config: InferenceConfig,
     ) -> Context {
         // default
-        let infer_polymorphic_type = false;
+        let infer_polymorphic_type = config.infer_polymorphic_type;
         Context {
             normal_form,
             track_idents,
@@ -973,14 +974,18 @@ pub fn type_check_top(candidate: &Candidate, tenv: &TypeEnvironment<Tau<Constrai
     b
 }
 
-fn reduce_until_normal_form(candidate: &Candidate, problem: &Problem) -> Context {
+fn reduce_until_normal_form(
+    candidate: &Candidate,
+    problem: &Problem,
+    config: InferenceConfig,
+) -> Context {
     let mut track_idents = HashMap::new();
     let candidate = candidate.clone().into(); // assign `aux` to candidate.
     let goal = subst_predicate(&candidate, problem, &mut track_idents);
     let goal = goal.alpha_renaming();
     title!("generate_reduction_sequence");
     let (reduction_sequence, normal_form) = generate_reduction_sequence(&goal);
-    Context::new(normal_form, track_idents, reduction_sequence)
+    Context::new(normal_form, track_idents, reduction_sequence, config)
 }
 
 #[derive(Clone, Debug)]
@@ -1420,17 +1425,31 @@ fn format_cnf_clause(g: G) -> (Constraint, G) {
         | formula::hes::GoalKind::Op(_) => panic!("fatal"),
     }
 }
+pub struct InferenceConfig {
+    pub infer_polymorphic_type: bool,
+}
+impl InferenceConfig {
+    pub fn new() -> InferenceConfig {
+        InferenceConfig {
+            infer_polymorphic_type: true,
+        }
+    }
+    pub fn infer_polymorphic_type(mut self, infer_polymorphic_type: bool) -> InferenceConfig {
+        self.infer_polymorphic_type = infer_polymorphic_type;
+        self
+    }
+}
 
 pub fn search_for_type(
     candidate: &Candidate,
     problem: &Problem,
     tenv: &mut Env,
+    config: InferenceConfig,
 ) -> Option<TypeEnvironment<Tau<Constraint>>> {
     crate::title!("search_for_type");
     debug!("{}", candidate);
     // TODO: expand candidate once based on problem.
-    let mut ctx = reduce_until_normal_form(candidate, problem);
-    ctx.infer_polymorphic_type = true;
+    let mut ctx = reduce_until_normal_form(candidate, problem, config);
     debug!("{}", ctx.normal_form);
     //let candidate = ctx.normal_form.clone();
     let derivation = type_check_top_with_derivation(&ctx.normal_form, tenv)?;
