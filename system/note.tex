@@ -1,0 +1,84 @@
+
+\documentclass[acmsmall,review,anonymous]{acmart}\settopmatter{printfolios=true,printccs=false,printacmref=false}
+
+
+\usepackage{algorithmic}
+\usepackage{amsmath}
+\usepackage{bcprules}
+\usepackage{braket}
+\usepackage{color}
+
+\usepackage{graphicx}
+\usepackage{listings}
+\usepackage{mathpartir}
+\usepackage{mathtools}
+\usepackage{multirow}
+\usepackage{pifont}
+\usepackage{stmaryrd}
+
+
+\input{katsura_preamble}
+\input{local}
+
+\begin{document}
+
+\section{introduction}
+
+In the current implementation, for a configuration \( \epsilon \mid \RTE_0 \dots
+\RTE_N \cdot \bot_{\STE} \) after the application of \runfold{}, we calculate
+a type environemnt
+\begin{align*}
+    \RTE' = \cup_{i=1}^N \Shrink{\RULES}{\RTE_i},
+\end{align*}
+and replace \( \RTE_{N+1} \) with \( \RTE' \).
+
+\section{running examples}
+\subsection{intro2}
+
+% %HES
+% M =v APP (\y. x <= y ) x.
+% APP f x  =v APP f (x + 1)  /\ f x .
+\begin{align*}
+    App\ f\ x &=_{\nu} App\ f\ (x+1) \land f\ x\\
+    \pdrtop &= App\ (\lambda y. x \leq y)\ x
+\end{align*}
+
+\begin{align*}
+  & \Tr (\epsilon, \TE{\STE}) &\rinitialize \\
+  & \Tr (\epsilon, \TE{\STE}\cdot \BE{\STE}) & \runfold \\
+  & \Tr (\pdrtop, \TE{\STE}\cdot \BE{\STE}) & \rcandidate \\
+    & \Tr (\pdrtop, \TE{\STE}\cdot \RTE_1) & \rconflict \\
+    & \Tr (\pdrtop, \TE{\STE}\cdot \RTE_1 \cdot \BE{\STE} ) & \runfold \\
+  & \Tr (\pdrtop, \TE{\STE}\cdot \RTE_1 \cdot \BE{\STE}) & \rcandidate \\
+    & \Tr (\pdrtop' \cdot \pdrtop, \TE{\STE}\cdot \RTE_1 \cdot \BE{\STE}) & \rdecide \\
+    & \Tr (\pdrtop, \TE{\STE} \cdot \RTE_1' \cdot \BE{\STE}) & \rconflict \\
+    & \Tr (\pdrtop, \TE{\STE} \cdot \RTE_1' \cdot \RTE_1) & \rconflict \\
+    & \Tr (\pdrtop, \TE{\STE} \cdot \RTE_1' \cdot \RTE_1 \cdot \BE{\STE}) & \runfold \\
+    & \Tr (\pdrtop, \TE{\STE} \cdot \RTE_1' \cdot \RTE_1 \cdot \RTE_3) &
+    \rinduction \\
+    & \Tr (\pdrtop, \TE{\STE} \cdot \RTE_1' \cdot \RTE_1 \cdot \RTE_3) &
+    \rvalid
+\end{align*}
+
+where
+\begin{align*}
+    \RTE_1 &= \{\, App\COL \forall z. (\ti{x} \to \tb{x = z}) \to \ti{x} \to
+    \tb{x = z} \} \\
+    \pdrtop' &= \forall x.\: App\ (\lambda y. x \leq y)\ (x + 1) \\
+    \RTE_1' &= \{\, App\COL \forall z. (\ti{x} \to \tb{x = z}) \to \ti{x} \to
+    \tb{x = z}, \\
+    & \quad App \COL \forall z. (\ti{x} \to \tb{z \leq x - 1}) \to \ti{x} \to \tb{z \leq
+    x - 1} \, \} \\
+    \RTE_3 &= \{\, App \COL \forall z. (\ti{x} \to \tb{z \leq x - 1}) \to \ti{x}
+    \to \tb{z \leq x - 1} \, \} \\
+\end{align*}
+
+Note that
+\begin{align*}
+    \RTE_3 = \Shrink{\RULES}{\RTE_1'} \cup \Shrink{\RULES}{\RTE_1}.
+\end{align*}
+
+
+\subsection{intro3}
+
+\end{document}
