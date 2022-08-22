@@ -606,6 +606,13 @@ impl<T: PartialEq + Display> TypeEnvironment<T> {
         }
         r
     }
+    pub fn size(&self) -> usize {
+        let mut s = 0usize;
+        for ts in self.map.values() {
+            s += ts.len()
+        }
+        s
+    }
 }
 
 impl<C: Refinement> TypeEnvironment<Tau<C>> {

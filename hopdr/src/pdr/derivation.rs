@@ -1498,8 +1498,8 @@ pub fn saturate(
         let mut saturated = true;
         for (id, ts) in current_env.map.iter() {
             let clause = problem.get_clause(id).unwrap();
-            let mut env: Env = (&current_env).into();
             for t in ts.iter() {
+                let mut env: Env = (&current_env).into();
                 if type_check(
                     &top,
                     &mut env,
