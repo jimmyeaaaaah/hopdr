@@ -499,11 +499,33 @@ impl<C> Tau<C> {
         }
     }
 }
+
+pub fn instantiate_type<Ty: Subst<Id = Ident, Item = Op> + Display + Fv<Id = Ident>>(
+    t: Ty,
+    ints: &HashSet<Ident>,
+    coefficients: &mut Stack<Ident>,
+) -> Ty {
+    crate::title!("instatiate_type");
+    debug!("type={}", t);
+    let fvs = t.fv();
+    debug!("fvs: {:?}", fvs);
+    debug!("ints: {:?}", ints);
+
+    let mut ts = t;
+    for fv in fvs {
+        let o = generate_arithmetic_template(ints, coefficients);
+        debug!("template: {}", o);
+        ts = ts.subst(&fv, &o);
+    }
+    debug!("instantiated: {}", ts);
+    ts
+}
+
 impl Tau<Constraint> {
     pub fn constraint_rty(&self) -> Constraint {
         self.rty()
     }
-    pub fn check_subtype_polymoprhic(constraint: &Constraint, t: &Self, s: &Self) -> bool {
+    pub fn check_subtype_polymorphic(t: &Self, s: &Self) -> bool {
         // Assumption: polymorphic type appears only at the top level of types.
         // Subtyping rule for polymorphic type
         // V; θ ▹ [e/x]τ₁ ≤ τ₂     x ∉ Fv(θ)   {y: int | y ∈ V } ⊢ e : int
@@ -514,15 +536,76 @@ impl Tau<Constraint> {
         // ----------------------------------------- [AllR]
         //             V; θ ▹ τ₁ ≤ τ₂
         //
-        // 1. Instantiate t by substituting free variables with linear templates: t'.
-        // 2. Rename s's free variables with fresh ones (let them V'): s'.
+        // 1. Rename s's free variables with fresh ones (let them V'): s'.
+        // 2. Instantiate t by substituting free variables with linear templates: t'.
         // 3. Generate constraint by `check_subtype(constraint, t', s')`
         // 4. Bind all the varaibles in V' by universal quantifiers
         // 5. Bind all the variables used for the linear templates by existential quantifiers
         // 6. Solve the generated constraint by some SMT solver.
 
-        unimplemented!()
+        crate::title!("check_subtype_polymorphic");
+
+        let mut vprime = s.fv();
+        // 1. rename
+        let mut sprime = s.clone();
+        let mut idents = HashSet::new();
+        for v in vprime.iter() {
+            let vp = Ident::fresh();
+            sprime = s.rename(v, &vp);
+            idents.insert(vp);
+        }
+        debug!("idents: {idents:?}");
+
+        // 2. instantiate t
+        let mut coefficients = Stack::new();
+        let tprime = instantiate_type(t.clone(), &idents, &mut coefficients);
+        debug!("tprime: {tprime}");
+        debug!("sprime: {sprime}");
+
+        // 3. constraint
+        let constraint = Tau::check_subtype(&Constraint::mk_true(), &tprime, &sprime);
+        debug!("constraint: {constraint}");
+        // 4. univ 5.existential quantifier 6. smt solver
+        let mut sol = solver::smt::default_solver();
+        let coefficients: HashSet<Ident> = coefficients.iter().cloned().collect();
+        for fv in constraint.fv() {
+            if !coefficients.contains(&fv) {
+                vprime.insert(fv);
+            }
+        }
+        let m = sol.solve_with_model(&constraint, &vprime, &coefficients);
+        m.is_ok()
     }
+}
+
+#[test]
+fn test_subtype_polymorphic() {
+    // x + 1 <= 4
+    // ∀ x₁, x₂. (y:int → •〈y =x₁+x₂〉)→z:int→ • 〈z=x₁+x₂〉
+    //           ≤ ∀ x₃.(y:int→•〈y=x₃〉)→z:int→•〈z=x₃〉
+    let x1 = Ident::fresh();
+    let x2 = Ident::fresh();
+    let x3 = Ident::fresh();
+
+    let y = Ident::fresh();
+    let z = Ident::fresh();
+
+    let x_1_plus_x2 = Op::mk_add(Op::mk_var(x1), Op::mk_var(x2));
+    let t = Tau::mk_prop_ty(Constraint::mk_eq(Op::mk_var(y), x_1_plus_x2.clone()));
+    let t = Tau::mk_iarrow(y, t);
+    let s = Tau::mk_prop_ty(Constraint::mk_eq(Op::mk_var(z), x_1_plus_x2.clone()));
+    let s = Tau::mk_iarrow(z, s);
+    let t1 = Tau::mk_arrow_single(t, s);
+
+    let t = Tau::mk_prop_ty(Constraint::mk_eq(Op::mk_var(y), Op::mk_var(x3)));
+    let t = Tau::mk_iarrow(y, t);
+    let s = Tau::mk_prop_ty(Constraint::mk_eq(Op::mk_var(z), Op::mk_var(x3)));
+    let s = Tau::mk_iarrow(z, s);
+    let t2 = Tau::mk_arrow_single(t, s);
+
+    println!("{t1} <= {t2}");
+    assert!(Tau::check_subtype_polymorphic(&t1, &t2));
+    assert!(!Tau::check_subtype_polymorphic(&t2, &t1));
 }
 
 // template for polymorphic types
@@ -688,19 +771,19 @@ impl<C: Refinement> TypeEnvironment<Tau<C>> {
 
 impl TypeEnvironment<Tau<Constraint>> {
     pub fn shrink(&mut self) {
-        let mut new_map = HashMap::new();
-        for (k, ts) in self.map.iter() {
-            let mut new_ts = Vec::new();
-            for (i, t) in ts.iter().enumerate() {
-                for s in ts[i..].iter() {
-                    // polymorphic typeを考慮したsubtypingをする必要がある
-                    unimplemented!()
-                    // let c = Tau::check_subtype(&Constraint::mk_true(), s, t);
-                    // let mut solver = smt::default_solver();
-                    // if solver.solve_with_universal_quantifiers([constrait])
-                }
-            }
-        }
+        //let mut new_map = HashMap::new();
+        //for (k, ts) in self.map.iter() {
+        //    let mut new_ts = Vec::new();
+        //    for (i, t) in ts.iter().enumerate() {
+        //        for s in ts[i..].iter() {
+        //            // polymorphic typeを考慮したsubtypingをする必要がある
+        //            unimplemented!()
+        //            // let c = Tau::check_subtype(&Constraint::mk_true(), s, t);
+        //            // let mut solver = smt::default_solver();
+        //            // if solver.solve_with_universal_quantifiers([constrait])
+        //        }
+        //    }
+        //}
     }
 }
 

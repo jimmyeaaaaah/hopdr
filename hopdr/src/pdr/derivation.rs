@@ -1,4 +1,4 @@
-use super::rtype::{generate_arithmetic_template, Refinement, TBot, Tau, TauKind, TypeEnvironment};
+use super::rtype::{instantiate_type, Refinement, TBot, Tau, TauKind, TypeEnvironment};
 
 use crate::formula::hes::{Goal, GoalBase, GoalKind, Problem as ProblemBase};
 use crate::formula::{self, DerefPtr, FirstOrderLogic};
@@ -663,22 +663,6 @@ impl Context {
     }
 }
 
-fn instantiate_type(t: Ty, ints: &HashSet<Ident>, coefficients: &mut Stack<Ident>) -> Ty {
-    title!("instatiate_type");
-    debug!("type={}", t);
-    let fvs = t.fv();
-    debug!("fvs: {:?}", fvs);
-    debug!("ints: {:?}", ints);
-
-    let mut ts = t;
-    for fv in fvs {
-        let o = generate_arithmetic_template(ints, coefficients);
-        debug!("template: {}", o);
-        ts = ts.subst(&fv, &o);
-    }
-    debug!("instantiated: {}", ts);
-    ts
-}
 fn handle_abs(
     constraint: &Atom,
     tenv: &mut Env,

@@ -104,6 +104,12 @@ pub trait SMTSolver {
     /// - constraint: The constraint to be checked by SMT solver
     /// - vars: variables to be bound by universal quantifiers.
     fn solve(&mut self, constraint: &Constraint, vars: &HashSet<Ident>) -> SolverResult;
+    /// Given a constraint, the solver executes an SMT solver to check whether
+    /// it is satisfiable or not, and returns the model for `fvs`.
+    ///
+    /// - constraint: The constraint to be checked by SMT solver
+    /// - vars: variables to be bound by universal quantifiers.
+    /// - fvs: variables to be bound by existential quantifier
     fn solve_with_model(
         &mut self,
         constraint: &Constraint,
