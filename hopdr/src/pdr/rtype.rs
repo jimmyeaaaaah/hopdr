@@ -614,13 +614,52 @@ pub fn generate_arithmetic_template(ints: &HashSet<Ident>, coefficients: &mut St
     let c_id = Ident::fresh();
     let mut o = Op::mk_var(c_id);
     coefficients.push_mut(c_id);
+    // linear expr
     for int in ints {
         let tmp = Ident::fresh();
         // o += c_i * x_i
-        o = Op::mk_bin_op(formula::OpKind::Mul, Op::mk_var(tmp), Op::mk_var(*int));
+        let t = Op::mk_bin_op(formula::OpKind::Mul, Op::mk_var(tmp), Op::mk_var(*int));
+        o = Op::mk_add(o, t);
         coefficients.push_mut(tmp);
     }
     o
+}
+#[test]
+fn test_generate_arithmetic_template() {
+    // fvs: x, y
+    let x = Ident::fresh();
+    let y = Ident::fresh();
+    let mut ints = HashSet::new();
+    ints.insert(x);
+    ints.insert(y);
+    let mut coefs = Stack::new();
+    let o = generate_arithmetic_template(&ints, &mut coefs);
+    // expected: o = (ax + by) + c
+    println!("{o}");
+    use crate::formula::{OpExpr, OpKind};
+    fn disasm_addition(o: &Op, ops: &mut Vec<Op>) {
+        match o.kind() {
+            OpExpr::Op(OpKind::Add, x, y) => {
+                disasm_addition(x, ops);
+                disasm_addition(y, ops);
+            }
+            _ => ops.push(o.clone()),
+        }
+    }
+    let mut ops = Vec::new();
+    disasm_addition(&o, &mut ops);
+    assert_eq!(coefs.iter().len(), 3);
+    assert_eq!(ops.len(), 3);
+    for o in ops {
+        match o.kind() {
+            OpExpr::Op(OpKind::Mul, o1, o2) => match (o1.kind(), o2.kind()) {
+                (OpExpr::Var(a), OpExpr::Var(b)) if *a == x || *a == y || *b == x || *b == y => (),
+                (_, _) => panic!("fail"),
+            },
+            OpExpr::Var(z) if *z != x && *z != y => (),
+            _ => panic!("fail"),
+        }
+    }
 }
 
 // Type environment
