@@ -503,6 +503,26 @@ impl Tau<Constraint> {
     pub fn constraint_rty(&self) -> Constraint {
         self.rty()
     }
+    pub fn check_subtype_polymoprhic(constraint: &Constraint, t: &Self, s: &Self) -> bool {
+        // Assumption: polymorphic type appears only at the top level of types.
+        // Subtyping rule for polymorphic type
+        // V; θ ▹ [e/x]τ₁ ≤ τ₂     x ∉ Fv(θ)   {y: int | y ∈ V } ⊢ e : int
+        // ------------------------------------------------------------ [AllL]
+        //                          ∀x.τ₁ ≤ τ₂
+        //
+        // V ∪ {x}; θ ▹ τ₁ ≤ τ₂    x ∉ Fv(θ) ∪ FIV(τ₁)
+        // ----------------------------------------- [AllR]
+        //             V; θ ▹ τ₁ ≤ τ₂
+        //
+        // 1. Instantiate t by substituting free variables with linear templates: t'.
+        // 2. Rename s's free variables with fresh ones (let them V'): s'.
+        // 3. Generate constraint by `check_subtype(constraint, t', s')`
+        // 4. Bind all the varaibles in V' by universal quantifiers
+        // 5. Bind all the variables used for the linear templates by existential quantifiers
+        // 6. Solve the generated constraint by some SMT solver.
+
+        unimplemented!()
+    }
 }
 
 // template for polymorphic types
@@ -663,6 +683,24 @@ impl<C: Refinement> TypeEnvironment<Tau<C>> {
 
     pub fn add_bot(&mut self, v: Ident, st: &SType) {
         self.add(v, Tau::mk_bot(st));
+    }
+}
+
+impl TypeEnvironment<Tau<Constraint>> {
+    pub fn shrink(&mut self) {
+        let mut new_map = HashMap::new();
+        for (k, ts) in self.map.iter() {
+            let mut new_ts = Vec::new();
+            for (i, t) in ts.iter().enumerate() {
+                for s in ts[i..].iter() {
+                    // polymorphic typeを考慮したsubtypingをする必要がある
+                    unimplemented!()
+                    // let c = Tau::check_subtype(&Constraint::mk_true(), s, t);
+                    // let mut solver = smt::default_solver();
+                    // if solver.solve_with_universal_quantifiers([constrait])
+                }
+            }
+        }
     }
 }
 
