@@ -982,6 +982,22 @@ impl Op {
             OpExpr::Ptr(_, x) => x.eval(env),
         }
     }
+    /// simplifies the expression and reduce Ptr
+    pub fn simplify(&self) -> Op {
+        match self.eval(&Env::new()) {
+            Some(x) => return Op::mk_const(x),
+            None => (),
+        };
+        match self.kind() {
+            OpExpr::Op(o, x, y) => {
+                let x = x.simplify();
+                let y = y.simplify();
+                Op::mk_bin_op(*o, x, y)
+            }
+            OpExpr::Ptr(_, x) => x.simplify(),
+            OpExpr::Var(_) | OpExpr::Const(_) => self.clone(),
+        }
+    }
 }
 
 #[test]
@@ -996,6 +1012,19 @@ fn test_op_eval() {
     env.add(x, 10);
     let v = o.eval(&env).unwrap();
     assert_eq!(v, 12);
+}
+
+#[test]
+fn test_op_simplify() {
+    let x = Ident::fresh();
+    let o = Op::mk_bin_op(
+        OpKind::Sub,
+        Op::mk_add(Op::mk_const(5), Op::mk_const(3)),
+        Op::mk_var(x),
+    );
+    let o2 = Op::mk_bin_op(OpKind::Sub, Op::mk_const(8), Op::mk_var(x));
+    let o = o.simplify();
+    assert_eq!(o, o2);
 }
 
 impl PredKind {
@@ -1035,6 +1064,39 @@ impl Constraint {
             ConstraintExpr::Quantifier(_, _, x) => x.eval(env),
         }
     }
+    pub fn simplify(&self) -> Self {
+        match self.eval(&Env::new()) {
+            Some(b) if b => return Constraint::mk_true(),
+            Some(_) => return Constraint::mk_false(),
+            _ => (),
+        };
+        match self.kind() {
+            ConstraintExpr::Conj(x, y) => {
+                let x = x.simplify();
+                let y = x.simplify();
+                Constraint::mk_conj(x, y)
+            }
+            ConstraintExpr::Disj(x, y) => {
+                let x = x.simplify();
+                let y = x.simplify();
+                Constraint::mk_disj(x, y)
+            }
+            ConstraintExpr::Quantifier(q, x, c) => {
+                let c = c.simplify();
+                let fvs = c.fv();
+                if !fvs.contains(&x.id) {
+                    c
+                } else {
+                    Constraint::mk_quantifier(*q, x.clone(), c)
+                }
+            }
+            ConstraintExpr::Pred(p, l) => {
+                let l = l.iter().map(|o| o.simplify()).collect();
+                Constraint::mk_pred(*p, l)
+            }
+            ConstraintExpr::True | ConstraintExpr::False => self.clone(),
+        }
+    }
 }
 
 #[test]
@@ -1058,6 +1120,37 @@ fn test_constraint_eval() {
     let v = c.eval(&env).unwrap();
     assert!(!v);
 }
+#[test]
+fn test_constraint_simplify() {
+    let x = Ident::fresh();
+    let o = Op::mk_bin_op(
+        OpKind::Sub,
+        Op::mk_add(Op::mk_const(5), Op::mk_const(3)),
+        Op::mk_var(x),
+    );
+    let o2 = Op::mk_bin_op(OpKind::Sub, Op::mk_const(8), Op::mk_var(x));
+    let o = o.simplify();
+
+    let c = Constraint::mk_eq(o.clone(), Op::mk_const(12));
+    let c2 = Constraint::mk_eq(o2.clone(), Op::mk_const(12));
+    let c = c.simplify();
+    assert_eq!(c, c2);
+
+    let c = Constraint::mk_quantifier_int(
+        QuantifierKind::Universal,
+        Ident::fresh(),
+        Constraint::mk_eq(o2.clone(), Op::mk_const(12)),
+    );
+    let c2 = Constraint::mk_eq(o2.clone(), Op::mk_const(12));
+    let c = c.simplify();
+    assert_eq!(c, c2);
+
+    let lhs = Constraint::mk_eq(Op::mk_var(Ident::fresh()), Op::mk_const(0));
+    let c = Constraint::mk_conj(lhs.clone(), Constraint::mk_eq(o.clone(), Op::mk_const(12)));
+    let c2 = Constraint::mk_conj(lhs, Constraint::mk_eq(o2.clone(), Op::mk_const(12)));
+    assert_eq!(c, c2);
+}
+
 // // Generate Template with the configuration
 // pub trait GreedyInstantiation<T> {
 //     type SeedType: Subst<Id=Ident, Item=Op> + Clone;
