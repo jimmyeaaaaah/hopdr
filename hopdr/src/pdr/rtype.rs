@@ -576,6 +576,85 @@ impl Tau<Constraint> {
         let m = sol.solve_with_model(&constraint, &vprime, &coefficients);
         m.is_ok()
     }
+
+    /// traverse all the prop types, and reduce the constraint by `Constraint::reduction_trivial`
+    fn optimize_constraint_reduction(&self) -> Self {
+        unimplemented!()
+    }
+    /// traverse all the intersection types at the argument positions,
+    /// check if there are redundant intersections t1 /\ t2 in the sense that
+    /// t1 == t2 (syntactically equivalent)
+    fn optimize_intersection_trivial(&self) -> Self {
+        match self.kind() {
+            TauKind::Proposition(_) => self.clone(),
+            TauKind::IArrow(x, y) => {
+                let y = y.optimize_intersection_trivial();
+                Ty::mk_iarrow(*x, y)
+            }
+            TauKind::Arrow(ts, t) => {
+                let t = t.optimize_intersection_trivial();
+                let mut ts_new = Vec::new();
+                for s in ts.iter() {
+                    let mut required = true;
+                    for s2 in ts_new.iter() {
+                        if s == s2 {
+                            required = false;
+                            break;
+                        }
+                    }
+                    if required {
+                        ts_new.push(s.clone());
+                    }
+                }
+                Ty::mk_arrow(ts_new, t)
+            }
+        }
+    }
+
+    pub fn optimize(&self) -> Self {
+        // Pass
+        //  - optimize_constraint_reduction
+        //  - optimize_intersection_trivial
+        //  # - optimize_intersection_subsumption
+        let t = self.optimize_constraint_reduction();
+        let t = t.optimize_intersection_trivial();
+        t
+    }
+}
+
+#[test]
+fn test_optimize_intersection_trivial() {
+    // t: (•〈⊤〉→•〈⊤〉∧ •〈⊤〉→•〈⊤〉)→•〈⊤〉
+    // s: (•〈⊤〉→•〈⊤〉)→•〈⊤〉
+    let t = Tau::mk_prop_ty(Constraint::mk_true());
+    let t2t = Tau::mk_arrow_single(t.clone(), t.clone());
+    let arg_t = vec![t2t.clone(), t2t.clone()];
+    let s = Tau::mk_arrow_single(t2t, t.clone());
+    let t = Tau::mk_arrow(arg_t, t);
+
+    let t = t.optimize_intersection_trivial();
+    assert_eq!(t, s);
+}
+
+#[test]
+fn test_optimize_constraint_reduction() {
+    // t: (•〈⊤〉→•〈⊤〉∧ •〈⊤〉→•〈⊤〉)→•〈⊤〉
+    // s: (•〈⊤〉→•〈⊤〉)→•〈⊤〉
+    let t1 = {
+        let t = Tau::mk_prop_ty(Constraint::mk_true());
+        let t2t = Tau::mk_arrow_single(t.clone(), t.clone());
+        let arg_t = vec![t2t.clone(), t2t.clone()];
+        Tau::mk_arrow(arg_t, t)
+    };
+    let t2 = {
+        let t = Tau::mk_prop_ty(Constraint::mk_eq(Op::mk_const(1), Op::mk_const(1)));
+        let t2t = Tau::mk_arrow_single(t.clone(), t.clone());
+        let arg_t = vec![t2t.clone(), t2t.clone()];
+        Tau::mk_arrow(arg_t, t)
+    };
+
+    let t2 = t2.optimize_constraint_reduction();
+    assert_eq!(t1, t2);
 }
 
 /// `generate_t_and_its_subtype_for_test` return the following two refinement types
