@@ -578,8 +578,11 @@ impl Tau<Constraint> {
     }
 }
 
-#[test]
-fn test_subtype_polymorphic() {
+/// `generate_t_and_its_subtype_for_test` return the following two refinement types
+///   - t: ∀ x₁, x₂. (y:int → •〈y =x₁+x₂〉)→z:int→ • 〈z=x₁+x₂〉
+///   - s: ∀ x₃.(y:int→•〈y=x₃〉)→z:int→•〈z=x₃〉
+/// Note that t ≤ s holds.
+fn generate_t_and_its_subtype_for_test() -> (Ty, Ty) {
     // x + 1 <= 4
     // ∀ x₁, x₂. (y:int → •〈y =x₁+x₂〉)→z:int→ • 〈z=x₁+x₂〉
     //           ≤ ∀ x₃.(y:int→•〈y=x₃〉)→z:int→•〈z=x₃〉
@@ -602,7 +605,12 @@ fn test_subtype_polymorphic() {
     let s = Tau::mk_prop_ty(Constraint::mk_eq(Op::mk_var(z), Op::mk_var(x3)));
     let s = Tau::mk_iarrow(z, s);
     let t2 = Tau::mk_arrow_single(t, s);
+    (t1, t2)
+}
 
+#[test]
+fn test_subtype_polymorphic() {
+    let (t1, t2) = generate_t_and_its_subtype_for_test();
     println!("{t1} <= {t2}");
     assert!(Tau::check_subtype_polymorphic(&t1, &t2));
     assert!(!Tau::check_subtype_polymorphic(&t2, &t1));
@@ -748,6 +756,12 @@ impl<T: PartialEq + Display> TypeEnvironment<T> {
         }
         r
     }
+    /// `size_pred` returns the number of refinement types saved in the type environment
+    /// if the given pred name exists in the map.
+    /// otherwise, it returns 0.
+    pub fn size_pred(&self, pred: &Ident) -> usize {
+        self.map.get(pred).map_or(0, |ts| ts.len())
+    }
     pub fn size(&self) -> usize {
         let mut s = 0usize;
         for ts in self.map.values() {
@@ -810,20 +824,40 @@ impl<C: Refinement> TypeEnvironment<Tau<C>> {
 
 impl TypeEnvironment<Tau<Constraint>> {
     pub fn shrink(&mut self) {
-        //let mut new_map = HashMap::new();
-        //for (k, ts) in self.map.iter() {
-        //    let mut new_ts = Vec::new();
-        //    for (i, t) in ts.iter().enumerate() {
-        //        for s in ts[i..].iter() {
-        //            // polymorphic typeを考慮したsubtypingをする必要がある
-        //            unimplemented!()
-        //            // let c = Tau::check_subtype(&Constraint::mk_true(), s, t);
-        //            // let mut solver = smt::default_solver();
-        //            // if solver.solve_with_universal_quantifiers([constrait])
-        //        }
-        //    }
-        //}
+        let mut new_map = HashMap::new();
+        for (k, ts) in self.map.iter() {
+            let mut new_ts = Vec::new();
+            for (i, t) in ts.iter().enumerate() {
+                let mut required = true;
+                for s in new_ts.iter().chain(ts[i..].iter()) {
+                    if Tau::check_subtype_polymorphic(s, t) {
+                        // s can become t by using the subsumption rule, so t is no longer required in the environment.
+                        required = false;
+                        break;
+                    }
+                }
+                if required {
+                    new_ts.push(t.clone())
+                }
+            }
+            new_map.insert(*k, new_ts);
+        }
+        self.map = new_map;
     }
+}
+
+#[test]
+fn test_tyenv_shrink() {
+    let (t1, t2) = generate_t_and_its_subtype_for_test();
+    let mut e = TypeEnvironment::new();
+    let x = Ident::fresh();
+    e.add(x, t1);
+    e.add(x, t2);
+    assert_eq!(e.size_pred(&x), 2);
+    e.shrink();
+    assert_eq!(e.size_pred(&x), 1);
+    e.shrink();
+    assert_eq!(e.size_pred(&x), 1);
 }
 
 // ⌊τ⌋_c
