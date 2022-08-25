@@ -193,20 +193,22 @@ impl HoPDR {
     // Assumption 1: self.models.len() > 0
     // Assumption 2: ℱ(⌊Γ⌋) ⊧ ψ
     // Assumption 3: self.get_current_cex_level() < N
-    fn conflict(&mut self, tyenv_new: TypeEnvironment<Tau<Constraint>>) -> Result<(), Error> {
+    fn conflict(&mut self, mut tyenv_new: TypeEnvironment<Tau<Constraint>>) -> Result<(), Error> {
         debug!("{}", "conflict".blue());
         debug!("{}", tyenv_new);
+        tyenv_new.optimize();
+        debug!("optimized: {tyenv_new}");
         // refute the top model in self.models.
         self.models.pop().unwrap();
         // conjoin
         for i in 0..(self.get_current_cex_level() + 1) {
             self.envs[i].append(&tyenv_new);
             // TODO: remove magic number
-            if self.envs[i].size() > 0 {
-                debug!("before shrink: {}", self.envs[i].size());
-                self.envs[i].shrink();
-                debug!("after shrink: {}", self.envs[i].size());
-            }
+            // if self.envs[i].size() > 0 {
+            //     debug!("before shrink: {}", self.envs[i].size());
+            //     self.envs[i].shrink();
+            //     debug!("after shrink: {}", self.envs[i].size());
+            // }
         }
         Ok(())
     }

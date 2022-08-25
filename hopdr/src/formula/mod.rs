@@ -1090,10 +1090,13 @@ impl Constraint {
                     Constraint::mk_quantifier(*q, x.clone(), c)
                 }
             }
-            ConstraintExpr::Pred(p, l) => {
-                let l = l.iter().map(|o| o.simplify()).collect();
-                Constraint::mk_pred(*p, l)
-            }
+            ConstraintExpr::Pred(p, l) => match p {
+                PredKind::Eq if l.len() == 2 && l[0] == l[1] => Constraint::mk_true(),
+                _ => {
+                    let l = l.iter().map(|o| o.simplify()).collect();
+                    Constraint::mk_pred(*p, l)
+                }
+            },
             ConstraintExpr::True | ConstraintExpr::False => self.clone(),
         }
     }

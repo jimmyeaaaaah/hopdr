@@ -579,12 +579,24 @@ impl Tau<Constraint> {
 
     /// traverse all the prop types, and reduce the constraint by `Constraint::reduction_trivial`
     fn optimize_constraint_reduction(&self) -> Self {
-        unimplemented!()
+        match self.kind() {
+            TauKind::Proposition(c) => Ty::mk_prop_ty(c.simplify()),
+            TauKind::IArrow(x, t) => Ty::mk_iarrow(*x, t.optimize_constraint_reduction()),
+            TauKind::Arrow(ts, t) => {
+                let ts = ts
+                    .iter()
+                    .map(|s| s.optimize_constraint_reduction())
+                    .collect();
+                let t = t.optimize_constraint_reduction();
+                Ty::mk_arrow(ts, t)
+            }
+        }
     }
     /// traverse all the intersection types at the argument positions,
     /// check if there are redundant intersections t1 /\ t2 in the sense that
     /// t1 == t2 (syntactically equivalent)
     fn optimize_intersection_trivial(&self) -> Self {
+        debug!("optimize_intersection_trivial: {self}");
         match self.kind() {
             TauKind::Proposition(_) => self.clone(),
             TauKind::IArrow(x, y) => {
@@ -606,6 +618,10 @@ impl Tau<Constraint> {
                         ts_new.push(s.clone());
                     }
                 }
+                let ts_new = ts_new
+                    .iter()
+                    .map(|t| t.optimize_intersection_trivial())
+                    .collect();
                 Ty::mk_arrow(ts_new, t)
             }
         }
@@ -616,7 +632,8 @@ impl Tau<Constraint> {
         //  - optimize_constraint_reduction
         //  - optimize_intersection_trivial
         //  # - optimize_intersection_subsumption
-        let t = self.optimize_constraint_reduction();
+        let t = self.clone();
+        let t = t.optimize_constraint_reduction();
         let t = t.optimize_intersection_trivial();
         t
     }
@@ -638,8 +655,8 @@ fn test_optimize_intersection_trivial() {
 
 #[test]
 fn test_optimize_constraint_reduction() {
-    // t: (•〈⊤〉→•〈⊤〉∧ •〈⊤〉→•〈⊤〉)→•〈⊤〉
-    // s: (•〈⊤〉→•〈⊤〉)→•〈⊤〉
+    // t1: (•〈⊤〉→•〈⊤〉)→•〈⊤〉
+    // t1: (•〈1=1〉→•〈1=1〉)→•〈1=1〉
     let t1 = {
         let t = Tau::mk_prop_ty(Constraint::mk_true());
         let t2t = Tau::mk_arrow_single(t.clone(), t.clone());
@@ -920,6 +937,14 @@ impl TypeEnvironment<Tau<Constraint>> {
                 }
             }
             new_map.insert(*k, new_ts);
+        }
+        self.map = new_map;
+    }
+    pub fn optimize(&mut self) {
+        let mut new_map = HashMap::new();
+        for (k, ts) in self.map.iter() {
+            let ts = ts.iter().map(|t| t.optimize()).collect();
+            new_map.insert(*k, ts);
         }
         self.map = new_map;
     }
