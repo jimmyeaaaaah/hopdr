@@ -931,6 +931,9 @@ fn type_check(
     c: &G,
     t: &Ty,
 ) -> bool {
+    for fv in t.fv() {
+        ienv.insert(fv);
+    }
     let pt = handle_abs(constraint, tenv, ienv, c, t);
     //pt.coarse_type(constraint, t);
     pt.check_derivation().is_some()
