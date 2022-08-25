@@ -939,6 +939,125 @@ impl Polarity {
     }
 }
 
+//////// evaluation ////////
+#[derive(Debug)]
+pub struct Env {
+    map: std::collections::HashMap<Ident, i64>,
+}
+
+impl Env {
+    pub fn new() -> Self {
+        Env {
+            map: std::collections::HashMap::new(),
+        }
+    }
+
+    pub fn add(&mut self, k: Ident, v: i64) {
+        self.map.insert(k, v);
+    }
+}
+
+impl OpKind {
+    pub fn eval(&self, x: i64, y: i64) -> i64 {
+        match self {
+            OpKind::Add => x + y,
+            OpKind::Sub => x - y,
+            OpKind::Mul => x * y,
+            OpKind::Div => x / y,
+            OpKind::Mod => x % y,
+        }
+    }
+}
+
+impl Op {
+    pub fn eval(&self, env: &Env) -> Option<i64> {
+        match self.kind() {
+            OpExpr::Op(o, x, y) => {
+                let xv = x.eval(env)?;
+                let yv = y.eval(env)?;
+                Some(o.eval(xv, yv))
+            }
+            OpExpr::Var(x) => env.map.get(x).cloned(),
+            OpExpr::Const(c) => Some(*c),
+            OpExpr::Ptr(_, x) => x.eval(env),
+        }
+    }
+}
+
+#[test]
+fn test_op_eval() {
+    let x = Ident::fresh();
+    let o = Op::mk_bin_op(
+        OpKind::Sub,
+        Op::mk_add(Op::mk_const(5), Op::mk_var(x)),
+        Op::mk_const(3),
+    );
+    let mut env = Env::new();
+    env.add(x, 10);
+    let v = o.eval(&env).unwrap();
+    assert_eq!(v, 12);
+}
+
+impl PredKind {
+    pub fn eval(&self, env: &Env, args: &[Op]) -> Option<bool> {
+        assert!(args.len() == 2);
+        let x = args[0].eval(env)?;
+        let y = args[1].eval(env)?;
+        match self {
+            PredKind::Eq => x == y,
+            PredKind::Neq => x != y,
+            PredKind::Lt => x < y,
+            PredKind::Leq => x <= y,
+            PredKind::Gt => x > y,
+            PredKind::Geq => x >= y,
+        }
+        .into()
+    }
+}
+
+impl Constraint {
+    /// if Fv(self) ⊂ dom(env) and self does not contain any quantifier, then eval must return Some(v)
+    pub fn eval(&self, env: &Env) -> Option<bool> {
+        match self.kind() {
+            ConstraintExpr::True => Some(true),
+            ConstraintExpr::False => Some(false),
+            ConstraintExpr::Pred(p, l) => p.eval(env, l),
+            ConstraintExpr::Conj(x, y) => {
+                let x = x.eval(env)?;
+                let y = y.eval(env)?;
+                Some(x && y)
+            }
+            ConstraintExpr::Disj(x, y) => {
+                let x = x.eval(env)?;
+                let y = y.eval(env)?;
+                Some(x || y)
+            }
+            ConstraintExpr::Quantifier(_, _, x) => x.eval(env),
+        }
+    }
+}
+
+#[test]
+fn test_constraint_eval() {
+    let x = Ident::fresh();
+    let o = Op::mk_bin_op(
+        OpKind::Sub,
+        Op::mk_add(Op::mk_const(5), Op::mk_var(x)),
+        Op::mk_const(3),
+    );
+    let c = Constraint::mk_eq(o.clone(), Op::mk_const(12));
+    let mut env = Env::new();
+    env.add(x, 10);
+    let v = c.eval(&env).unwrap();
+    assert!(v);
+
+    let c = Constraint::mk_conj(
+        Constraint::mk_false(),
+        Constraint::mk_eq(o, Op::mk_const(12)),
+    );
+    let v = c.eval(&env).unwrap();
+    assert!(!v);
+}
 // // Generate Template with the configuration
 // pub trait GreedyInstantiation<T> {
 //     type SeedType: Subst<Id=Ident, Item=Op> + Clone;
