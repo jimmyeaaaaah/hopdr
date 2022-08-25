@@ -65,9 +65,12 @@ impl Fv for Atom {
     type Id = Ident;
     fn fv_with_vec(&self, fvs: &mut HashSet<Self::Id>) {
         match self.kind() {
-            AtomKind::True | AtomKind::Constraint(_) => (),
-            AtomKind::Predicate(ident, _) => {
-                fvs.insert(*ident);
+            AtomKind::True => (),
+            AtomKind::Constraint(c) => c.fv_with_vec(fvs),
+            AtomKind::Predicate(_, l) => {
+                for o in l.iter() {
+                    o.fv_with_vec(fvs);
+                }
             }
             AtomKind::Conj(x, y) | AtomKind::Disj(x, y) => {
                 x.fv_with_vec(fvs);
