@@ -829,7 +829,7 @@ impl TypeEnvironment<Tau<Constraint>> {
             let mut new_ts = Vec::new();
             for (i, t) in ts.iter().enumerate() {
                 let mut required = true;
-                for s in new_ts.iter().chain(ts[i..].iter()) {
+                for s in new_ts.iter().chain(ts[i + 1..].iter()) {
                     if Tau::check_subtype_polymorphic(s, t) {
                         // s can become t by using the subsumption rule, so t is no longer required in the environment.
                         required = false;
@@ -856,6 +856,16 @@ fn test_tyenv_shrink() {
     assert_eq!(e.size_pred(&x), 2);
     e.shrink();
     assert_eq!(e.size_pred(&x), 1);
+    e.shrink();
+    assert_eq!(e.size_pred(&x), 1);
+
+    let t = Ty::mk_bot(&SType::mk_type_prop());
+    let t2 = Ty::mk_top(&SType::mk_type_prop());
+    let mut e = TypeEnvironment::new();
+    let x = Ident::fresh();
+    e.add(x, t);
+    e.add(x, t2);
+    assert_eq!(e.size_pred(&x), 2);
     e.shrink();
     assert_eq!(e.size_pred(&x), 1);
 }
