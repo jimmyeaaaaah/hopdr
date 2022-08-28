@@ -512,7 +512,7 @@ pub fn instantiate_type<Ty: Subst<Id = Ident, Item = Op> + Display + Fv<Id = Ide
     debug!("ints: {:?}", ints);
 
     let mut ts = t;
-    for fv in fvs.difference(&ints) {
+    for fv in fvs {
         let o = generate_arithmetic_template(ints, coefficients);
         debug!("template: {}", o);
         ts = ts.subst(&fv, &o);

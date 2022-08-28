@@ -720,9 +720,10 @@ fn handle_app(
                     let types = ts
                         .iter()
                         .map(|t| {
-                            debug!("before add_context(constraint={}) = {}", constraint, t);
-                            let t = t.add_context(constraint);
-                            debug!("after add_context = {}", t);
+                            // debug!("before add_context(constraint={}) = {}", constraint, t);
+                            // let t = t.add_context(constraint);
+                            // debug!("after add_context = {}", t);
+                            let t = t.clone();
                             let s = instantiate_type(t, ienv, &mut coefficients);
                             CandidateDerivation::new(s, coefficients.clone(), Derivation::new())
                         })
@@ -933,6 +934,7 @@ fn type_check(
 ) -> bool {
     for fv in t.fv() {
         ienv.insert(fv);
+        debug!("type_check ienv: {ienv:?}");
     }
     let pt = handle_abs(constraint, tenv, ienv, c, t);
     //pt.coarse_type(constraint, t);
@@ -1355,6 +1357,7 @@ impl PossibleDerivation<Atom> {
             for c in ct.constraints.iter() {
                 constraint = Constraint::mk_conj(constraint, c.clone().into());
             }
+            debug!("check_derivation constraint: {constraint}");
             let fvs = constraint.fv();
             let exists: HashSet<Ident> = ct.coefficients.iter().cloned().collect();
             let vars = fvs.difference(&exists).cloned().collect();
