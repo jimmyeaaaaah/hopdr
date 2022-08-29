@@ -204,11 +204,11 @@ impl HoPDR {
         for i in 0..(self.get_current_cex_level() + 1) {
             self.envs[i].append(&tyenv_new);
             // TODO: remove magic number
-            // if self.envs[i].size() > 0 {
-            //     debug!("before shrink: {}", self.envs[i].size());
-            //     self.envs[i].shrink();
-            //     debug!("after shrink: {}", self.envs[i].size());
-            // }
+            if self.envs[i].size() > 0 {
+                debug!("before shrink: {}", self.envs[i].size());
+                self.envs[i].shrink();
+                debug!("after shrink: {}", self.envs[i].size());
+            }
         }
         Ok(())
     }
