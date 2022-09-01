@@ -7,6 +7,7 @@ pub mod parse;
 pub mod pdr;
 pub mod preprocess;
 pub mod solver;
+pub mod stat;
 #[macro_use]
 pub mod util;
 

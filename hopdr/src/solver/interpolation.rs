@@ -318,6 +318,21 @@ fn parse_body(s: &str, fvs: HashSet<Ident>) -> Constraint {
     parse_body(x, &mut map).to_constraint().unwrap()
 }
 
+/// helper macro for measuring total time for execution
+macro_rules! interp_execution {
+    ( $b:block ) => {{
+        crate::stat::interpolation::count();
+        use std::time::Instant;
+        let now = Instant::now();
+
+        let out = $b;
+
+        let duration = now.elapsed();
+        crate::stat::interpolation::total_time(duration);
+        out
+    }};
+}
+
 struct SMTInterpolSolver {}
 struct CsisatSolver {}
 impl InterpolationSolver {
@@ -389,12 +404,14 @@ impl SMTInterpolSolver {
             f.path().to_str().unwrap(),
         ];
         debug!("filename: {}", &args[0]);
-        let out = util::exec_with_timeout(
-            "java",
-            //"../../../Hogeyama/hoice/target/debug/hoice",
-            &args,
-            Duration::from_secs(1),
-        );
+        let out = interp_execution!({
+            util::exec_with_timeout(
+                "java",
+                //"../../../Hogeyama/hoice/target/debug/hoice",
+                &args,
+                Duration::from_secs(1),
+            )
+        });
         String::from_utf8(out).unwrap()
     }
     fn parse_result(
@@ -444,7 +461,9 @@ impl CsisatSolver {
             f2.path().to_str().unwrap()
         );
         let args = vec![arg.as_str()];
-        let out = util::exec_with_timeout("fpat_interp", &args, Duration::from_secs(1));
+        let out = interp_execution!({
+            util::exec_with_timeout("fpat_interp", &args, Duration::from_secs(1))
+        });
         String::from_utf8(out).unwrap()
     }
     fn parse_result(

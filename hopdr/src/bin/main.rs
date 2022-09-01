@@ -22,9 +22,12 @@ struct Args {
     input: String,
     #[clap(short, long)]
     no_preprocess: bool,
+    #[clap(short, long)]
+    print_stat: bool,
 }
 
 fn main() {
+    let solver_total_time = std::time::Instant::now();
     // setting logs
     env_logger::builder()
         .format_timestamp(None)
@@ -75,5 +78,10 @@ fn main() {
         pdr::VerificationResult::Unknown => {
             println!("{}", "Unknown".red());
         }
+    }
+    crate::stat::overall::register_total_time(solver_total_time.elapsed());
+
+    if args.print_stat {
+        crate::stat::dump();
     }
 }

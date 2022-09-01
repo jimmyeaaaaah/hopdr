@@ -169,18 +169,34 @@ pub fn default_solver() -> Box<dyn CHCSolver> {
     smt_solver(CHCStyle::Hoice)
 }
 
+macro_rules! chc_execution {
+    ( $b:block ) => {{
+        crate::stat::chc::count();
+        use std::time::Instant;
+        let now = Instant::now();
+
+        let out = $b;
+
+        let duration = now.elapsed();
+        crate::stat::chc::total_time(duration);
+        out
+    }};
+}
+
 fn hoice_solver(smt_string: String) -> String {
     debug!("hoice_solver: {}", smt_string);
     let f = smt::save_smt2(smt_string);
     let args = vec![f.path().to_str().unwrap()];
     debug!("filename: {}", &args[0]);
     // TODO: determine the path when it's compiled
-    let out = util::exec_with_timeout(
-        "/home/katsura/github.com/hopv/hoice/target/release/hoice",
-        //"../../../Hogeyama/hoice/target/debug/hoice",
-        &args,
-        Duration::from_secs(1),
-    );
+    let out = chc_execution!({
+        util::exec_with_timeout(
+            "/home/katsura/github.com/hopv/hoice/target/release/hoice",
+            //"../../../Hogeyama/hoice/target/debug/hoice",
+            &args,
+            Duration::from_secs(1),
+        )
+    });
     String::from_utf8(out).unwrap()
 }
 
