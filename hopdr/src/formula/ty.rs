@@ -1,6 +1,8 @@
 use crate::util::P;
 use std::fmt;
 
+use super::{TeXFormat, TeXPrinter};
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum TypeKind {
     Proposition,
@@ -19,6 +21,15 @@ impl fmt::Display for Type {
     }
 }
 
+impl TeXFormat for Type {
+    fn tex_fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.kind() {
+            TypeKind::Proposition => write!(f, "\\stypebool "),
+            TypeKind::Integer => write!(f, "\\stypeint "),
+            TypeKind::Arrow(x, y) => write!(f, "({} \\to {})", TeXPrinter(x), TeXPrinter(y)),
+        }
+    }
+}
 impl Type {
     // should be a singleton object..
     pub fn mk_type_prop() -> Type {

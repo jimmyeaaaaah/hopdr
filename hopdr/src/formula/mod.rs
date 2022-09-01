@@ -1248,19 +1248,19 @@ impl From<crate::parse::Expr> for Constraint {
 }
 
 /// TexPrint is inteded
-trait TeXFormat {
+pub trait TeXFormat {
     fn tex_fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error>;
 }
 
-struct TeXPrinter<T: TeXFormat> {
-    item: T,
+pub struct TeXPrinter<'a> {
+    item: &'a dyn TeXFormat,
 }
 
-pub fn TeXPrinter<T: TeXFormat>(item: T) -> TeXPrinter<T> {
+pub fn TeXPrinter<'a>(item: &'a dyn TeXFormat) -> TeXPrinter<'a> {
     TeXPrinter(item)
 }
 
-impl<T: TeXFormat> fmt::Display for TeXPrinter<T> {
+impl<'a> fmt::Display for TeXPrinter<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.item.tex_fmt(f)
     }
@@ -1270,10 +1270,6 @@ impl TeXFormat for Ident {
     fn tex_fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
         write!(f, "x_{self}")
     }
-}
-
-fn spacing(buf: &mut String) {
-    buf.push_str(" ");
 }
 
 impl TeXFormat for OpKind {
@@ -1293,15 +1289,89 @@ impl TeXFormat for Op {
     fn tex_fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
         match self.kind() {
             OpExpr::Op(o, o1, o2) => {
-                write!(f, "({o1} {o} {o2})")
+                write!(
+                    f,
+                    "({} {} {})",
+                    TeXPrinter(o1),
+                    TeXPrinter(o),
+                    TeXPrinter(o2)
+                )
             }
             OpExpr::Var(x) => {
-                write!(f, " {x} ")
+                write!(f, " {} ", TeXPrinter(x))
             }
             OpExpr::Const(c) => {
                 write!(f, " {c} ")
             }
-            OpExpr::Ptr(_, o) => write!(f, "{o}"),
+            OpExpr::Ptr(_, o) => write!(f, "{}", TeXPrinter(o)),
+        }
+    }
+}
+impl TeXFormat for PredKind {
+    fn tex_fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        write!(
+            f,
+            "{}",
+            match self {
+                PredKind::Eq => "=",
+                PredKind::Neq => r"\neq",
+                PredKind::Lt => "<",
+                PredKind::Leq => r"\leq",
+                PredKind::Gt => r">",
+                PredKind::Geq => r"\geq",
+            }
+        )
+    }
+}
+
+impl TeXFormat for QuantifierKind {
+    fn tex_fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        match self {
+            QuantifierKind::Universal => write!(f, "\\forall"),
+            QuantifierKind::Existential => write!(f, "\\exists"),
+        }
+    }
+}
+impl TeXFormat for Variable {
+    fn tex_fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        write!(f, "{}: {}", TeXPrinter(&self.id), TeXPrinter(&self.ty))
+    }
+}
+
+impl TeXFormat for Constraint {
+    fn tex_fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        match self.kind() {
+            ConstraintExpr::True => write!(f, r"\true"),
+            ConstraintExpr::False => write!(f, r"\false"),
+            ConstraintExpr::Pred(p, l) if l.len() == 2 => write!(
+                f,
+                "({} {} {})",
+                TeXPrinter(&l[0]),
+                TeXPrinter(p),
+                TeXPrinter(&l[1])
+            ),
+            ConstraintExpr::Pred(p, l) => {
+                write!(f, "({p})(")?;
+                for x in l.iter() {
+                    write!(f, "{},", TeXPrinter(x))?;
+                }
+                Ok(())
+            }
+            ConstraintExpr::Conj(x, y) => {
+                write!(f, "({} \\land {})", TeXPrinter(x), TeXPrinter(y))
+            }
+            ConstraintExpr::Disj(x, y) => {
+                write!(f, "({} \\lor {})", TeXPrinter(x), TeXPrinter(y))
+            }
+            ConstraintExpr::Quantifier(q, x, c) => {
+                write!(
+                    f,
+                    "({} {}. {})",
+                    TeXPrinter(q),
+                    TeXPrinter(x),
+                    TeXPrinter(c)
+                )
+            }
         }
     }
 }

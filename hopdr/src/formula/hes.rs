@@ -1,6 +1,6 @@
 use crate::formula::ty::Type;
 use crate::formula::{
-    Bot, Constraint, FirstOrderLogic, Fv, Ident, Logic, Op, Rename, Top, Variable,
+    Bot, Constraint, FirstOrderLogic, Fv, Ident, Logic, Op, Rename, TeXPrinter, Top, Variable,
 };
 use crate::pdr::rtype::Refinement;
 use crate::util::P;
@@ -8,7 +8,7 @@ use std::collections::HashSet;
 
 use std::fmt;
 
-use super::{fofml, Subst};
+use super::{fofml, Subst, TeXFormat};
 
 #[derive(Debug)]
 pub enum ConstKind {
@@ -106,6 +106,31 @@ impl<C: fmt::Display, T> fmt::Display for GoalBase<C, T> {
             Disj(x, y) => write!(f, "({} ∨ {})", x, y),
             Univ(x, y) => write!(f, "(∀{}.{})", x, y),
             Abs(x, y) => write!(f, "(\\{}.{})", x, y),
+        }
+    }
+}
+
+impl<C: TeXFormat, T> TeXFormat for GoalBase<C, T> {
+    fn tex_fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        match self.kind() {
+            GoalKind::Constr(c) => c.tex_fmt(f),
+            GoalKind::Op(o) => o.tex_fmt(f),
+            GoalKind::Var(v) => v.tex_fmt(f),
+            GoalKind::Abs(x, g) => {
+                write!(f, "(\\lambda {}. {})", TeXPrinter(x), TeXPrinter(g))
+            }
+            GoalKind::App(x, y) => {
+                write!(f, "({}\\ {})", TeXPrinter(x), TeXPrinter(y))
+            }
+            GoalKind::Conj(x, y) => {
+                write!(f, "({}\\land {})", TeXPrinter(x), TeXPrinter(y))
+            }
+            GoalKind::Disj(x, y) => {
+                write!(f, "({}\\lor {})", TeXPrinter(x), TeXPrinter(y))
+            }
+            GoalKind::Univ(x, g) => {
+                write!(f, "(\\forall {}. {})", TeXPrinter(x), TeXPrinter(g))
+            }
         }
     }
 }
