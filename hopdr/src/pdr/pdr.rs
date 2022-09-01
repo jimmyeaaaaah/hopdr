@@ -257,9 +257,6 @@ impl HoPDR {
             } else {
                 self.unfold()
             }
-            use std::{thread, time};
-            let asec = time::Duration::from_secs(1);
-            thread::sleep(asec);
         }
     }
 }
