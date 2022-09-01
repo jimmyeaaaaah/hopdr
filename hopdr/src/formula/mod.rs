@@ -1246,3 +1246,62 @@ impl From<crate::parse::Expr> for Constraint {
         go(&e, &mut env)
     }
 }
+
+/// TexPrint is inteded
+trait TeXFormat {
+    fn tex_fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error>;
+}
+
+struct TeXPrinter<T: TeXFormat> {
+    item: T,
+}
+
+pub fn TeXPrinter<T: TeXFormat>(item: T) -> TeXPrinter<T> {
+    TeXPrinter(item)
+}
+
+impl<T: TeXFormat> fmt::Display for TeXPrinter<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.item.tex_fmt(f)
+    }
+}
+
+impl TeXFormat for Ident {
+    fn tex_fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        write!(f, "x_{self}")
+    }
+}
+
+fn spacing(buf: &mut String) {
+    buf.push_str(" ");
+}
+
+impl TeXFormat for OpKind {
+    fn tex_fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        let op = match self {
+            OpKind::Add => " + ",
+            OpKind::Sub => " - ",
+            OpKind::Mul => r" \times ",
+            OpKind::Div => r" \slash ",
+            OpKind::Mod => r" \% ",
+        };
+        write!(f, "{op}")
+    }
+}
+
+impl TeXFormat for Op {
+    fn tex_fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        match self.kind() {
+            OpExpr::Op(o, o1, o2) => {
+                write!(f, "({o1} {o} {o2})")
+            }
+            OpExpr::Var(x) => {
+                write!(f, " {x} ")
+            }
+            OpExpr::Const(c) => {
+                write!(f, " {c} ")
+            }
+            OpExpr::Ptr(_, o) => write!(f, "{o}"),
+        }
+    }
+}
