@@ -15,12 +15,13 @@ use crate::formula::Fv;
 use crate::formula::Op;
 use crate::formula::Subst;
 use crate::formula::{Bot, Constraint, FirstOrderLogic, Ident, Logic, Negation, Top};
-
+use crate::solver::interpolation::InterpolationSolver::SMTInterpol;
 use crate::solver::smt::ident_2_smt2;
 use crate::solver::util;
 use crate::solver::{smt, SMT2Style};
 
-use crate::solver::interpolation::InterpolationSolver::SMTInterpol;
+use home::home_dir;
+
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
@@ -398,11 +399,10 @@ impl SMTInterpolSolver {
         debug!("smt_string: {}", &smt_string);
         let f = smt::save_smt2(smt_string);
         // TODO: determine the path when it's compiled
-        let args = vec![
-            "-jar",
-            "/home/katsura/github.com/moratorium08/hopdr/hopdr/smtinterpol.jar",
-            f.path().to_str().unwrap(),
-        ];
+        let mut home = home_dir().unwrap();
+        home.push(".local/share/hopdr/smtinterpol.jar");
+        let s = home.into_os_string().into_string().unwrap();
+        let args = vec!["-jar", &s, f.path().to_str().unwrap()];
         debug!("filename: {}", &args[0]);
         let out = interp_execution!({
             util::exec_with_timeout(

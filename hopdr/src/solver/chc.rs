@@ -189,14 +189,7 @@ fn hoice_solver(smt_string: String) -> String {
     let args = vec![f.path().to_str().unwrap()];
     debug!("filename: {}", &args[0]);
     // TODO: determine the path when it's compiled
-    let out = chc_execution!({
-        util::exec_with_timeout(
-            "/home/katsura/github.com/hopv/hoice/target/release/hoice",
-            //"../../../Hogeyama/hoice/target/debug/hoice",
-            &args,
-            Duration::from_secs(1),
-        )
-    });
+    let out = chc_execution!({ util::exec_with_timeout("hoice", &args, Duration::from_secs(1),) });
     String::from_utf8(out).unwrap()
 }
 

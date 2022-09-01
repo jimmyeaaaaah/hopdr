@@ -31,10 +31,14 @@ This issue is to be fixed.
 
 Required dependencies:
 - interpolation solver
-  - smtinterpol
+  - smtinterpol (assume: `~/.local/share/hopdr/smtinterpol.jar`)
 - CHC solver
   - hoice
+- SMTSolver
+  - z3
+- Misc
+  - Java (for smtinterpol)
 
 ```
-wget  http://ultimate.informatik.uni-freiburg.de/smtinterpol/smtinterpol-2.5-1093-g7506c07c.jar smtinterpol.jar
+wget  http://ultimate.informatik.uni-freiburg.de/smtinterpol/smtinterpol-2.5-1093-g7506c07c.jar -O ~/.local/share/hopdr/smtinterpol.jar
 ```

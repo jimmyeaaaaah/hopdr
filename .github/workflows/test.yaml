@@ -18,7 +18,9 @@ jobs:
     - name: install dependency
       run: sudo apt install -y z3 default-jre wget
     - name: get smtinterpol
-      run: wget https://ultimate.informatik.uni-freiburg.de/smtinterpol/smtinterpol-2.5-1147-g108647d8.jar -O smtinterpol.jar
+      run: mkdir -p ~/.local/share/hopdr && wget https://ultimate.informatik.uni-freiburg.de/smtinterpol/smtinterpol-2.5-1147-g108647d8.jar -O ~/.local/share/hopdr/smtinterpol.jar
+    - name: get hoice
+      run: cargo install --git https://github.com/hopv/hoice
     - name: Format
       run: cargo fmt --all -- --check
     # - name: Clippy
