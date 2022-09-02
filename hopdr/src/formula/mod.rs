@@ -1073,12 +1073,12 @@ impl Constraint {
         match self.kind() {
             ConstraintExpr::Conj(x, y) => {
                 let x = x.simplify();
-                let y = x.simplify();
+                let y = y.simplify();
                 Constraint::mk_conj(x, y)
             }
             ConstraintExpr::Disj(x, y) => {
                 let x = x.simplify();
-                let y = x.simplify();
+                let y = y.simplify();
                 Constraint::mk_disj(x, y)
             }
             ConstraintExpr::Quantifier(q, x, c) => {

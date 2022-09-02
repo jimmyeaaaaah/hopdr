@@ -1,5 +1,5 @@
 use super::STAT;
-use std::{sync::Mutex, time::Duration};
+use std::{time::Duration};
 pub struct InterpolationStatistics {
     count: usize,
     total_time: Duration,
