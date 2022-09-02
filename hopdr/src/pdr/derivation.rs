@@ -671,7 +671,7 @@ fn handle_abs(
     arg_expr: &G,
     t: &Ty,
 ) -> PossibleDerivation<Atom> {
-    match arg_expr.kind() {
+    let pt = match arg_expr.kind() {
         GoalKind::Abs(v, g) if v.ty.is_int() => match t.kind() {
             TauKind::IArrow(id, t) if v.ty.is_int() => {
                 let t = t.rename(id, &v.id);
@@ -698,7 +698,9 @@ fn handle_abs(
             pt.coarse_type(constraint, t);
             pt
         }
-    }
+    };
+    debug!("handle_abs: {} |- {} : {} ", constraint, arg_expr, pt);
+    pt
 }
 // tenv+ienv; constraint |- App(arg, ret): t
 /// returns possible types for app_expr under constraint
@@ -726,7 +728,12 @@ fn handle_app(
                             // debug!("after add_context = {}", t);
                             let t = t.clone();
                             let s = instantiate_type(t, ienv, &mut coefficients);
-                            CandidateDerivation::new(s, coefficients.clone(), Derivation::new())
+                            CandidateDerivation::new(
+                                s,
+                                coefficients.clone(),
+                                Stack::new(),
+                                Derivation::new(),
+                            )
                         })
                         .collect();
                     PossibleDerivation::new(types)
@@ -746,6 +753,7 @@ fn handle_app(
                                 TauKind::IArrow(x, t2) => CandidateDerivation::new(
                                     t2.subst(x, &op),
                                     t.coefficients.clone(),
+                                    t.constraints.clone(),
                                     t.derivation.clone(),
                                 ),
                                 _ => panic!("fatal"),
@@ -768,6 +776,7 @@ fn handle_app(
                     let result_ct = CandidateDerivation::new(
                         result_t.clone(),
                         ty.coefficients.clone(),
+                        ty.constraints.clone(),
                         ty.derivation.clone(),
                     );
                     let mut tmp_cts = vec![result_ct];
@@ -831,7 +840,7 @@ fn type_check_inner(
             formula::hes::GoalKind::Constr(c) => {
                 let constraint = c.clone().into();
                 let t = Ty::mk_prop_ty(constraint);
-                let cd = CandidateDerivation::new(t, Stack::new(), Derivation::new());
+                let cd = CandidateDerivation::new(t, Stack::new(), Stack::new(), Derivation::new());
                 PossibleDerivation::singleton(cd)
             }
             formula::hes::GoalKind::Var(x) => match tenv.get(x) {
@@ -840,7 +849,12 @@ fn type_check_inner(
                     for ty in ts {
                         let mut coefficients = Stack::new();
                         let s = instantiate_type(ty.clone(), ienv, &mut coefficients);
-                        let cd = CandidateDerivation::new(s, coefficients, Derivation::new());
+                        let cd = CandidateDerivation::new(
+                            s,
+                            coefficients,
+                            Stack::new(),
+                            Derivation::new(),
+                        );
                         tys.push(cd);
                     }
                     PossibleDerivation::new(tys)
@@ -1159,11 +1173,16 @@ enum Method {
     Disj,
 }
 impl<C: Refinement> CandidateDerivation<C> {
-    fn new(ty: Ty, coefficients: Stack<Ident>, derivation: Derivation) -> CandidateDerivation<C> {
+    fn new(
+        ty: Ty,
+        coefficients: Stack<Ident>,
+        constraints: Stack<C>,
+        derivation: Derivation,
+    ) -> CandidateDerivation<C> {
         CandidateDerivation {
             ty,
             coefficients,
-            constraints: Stack::new(),
+            constraints,
             derivation,
         }
     }
@@ -1183,6 +1202,11 @@ impl<C: Refinement> CandidateDerivation<C> {
             self.coefficients.push_mut(*c);
         }
     }
+    fn merge_constraints(&mut self, constraints: &Stack<C>) {
+        for c in constraints.iter() {
+            self.constraints.push_mut(c.clone());
+        }
+    }
     fn merge_inner(&mut self, c: &CandidateDerivation<C>, method: Method) {
         self.ty = match (self.ty.kind(), c.ty.kind()) {
             (TauKind::Proposition(c1), TauKind::Proposition(c2)) => match method {
@@ -1193,6 +1217,7 @@ impl<C: Refinement> CandidateDerivation<C> {
         };
         self.merge_derivation(&c.derivation);
         self.merge_coefficients(&c.coefficients);
+        self.merge_constraints(&c.constraints);
     }
     // only for bool type
     fn conjoin(c1: &Self, c2: &Self) -> Self {
@@ -1209,6 +1234,7 @@ impl<C: Refinement> CandidateDerivation<C> {
         let mut c1 = c1.clone();
         c1.merge_derivation(&c2.derivation);
         c1.merge_coefficients(&c2.coefficients);
+        c1.merge_constraints(&c2.constraints);
         c1
     }
     fn quantify(&mut self, x: Ident) {
@@ -1237,7 +1263,9 @@ impl CandidateDerivation<Atom> {
     // generate constraints from the subsumption rules
     fn coarse_type(&mut self, constraint: &Atom, t: &Ty) {
         let s = self.ty.clone();
+        debug!("coarse_type: {constraint} |- {s} <: {t}");
         let constraint = Ty::check_subtype(constraint, &s, t);
+        debug!("constraint: {constraint}");
         self.constraints.push_mut(constraint);
         self.ty = t.clone();
     }
