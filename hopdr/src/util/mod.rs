@@ -1,5 +1,8 @@
 use std::marker::PhantomData;
 use std::ops::Deref;
+use std::sync::mpsc;
+use std::thread;
+use std::time;
 use std::{fmt, rc::Rc};
 
 //pub trait Kind {
@@ -188,4 +191,33 @@ macro_rules! title {
         use colored::Colorize;
         debug!("{}{}{}", "[".bold(), $arg.bold(), "]".bold());
     }};
+}
+
+// Function executor with timeouts
+// idea taken from https://gist.github.com/junha1/8ebaf53f46ea6fc14ab6797b9939b0f8,
+
+#[derive(Debug, Clone, Copy)]
+pub enum ExecutionError {
+    Timeout,
+    Panic,
+}
+
+/// returns Some(x) if `f` finishes within `timeout`; None otherwise.
+pub fn executes_with_timeout<T: Send + 'static, F: FnOnce() -> T + Send + 'static>(
+    f: F,
+    timeout: time::Duration,
+) -> Result<T, ExecutionError> {
+    let (sender, recv) = mpsc::channel();
+    let join_handler = thread::spawn(move || {
+        let x = f();
+        sender.send(()).unwrap();
+        x
+    });
+    if let Err(r) = recv.recv_timeout(timeout) {
+        return match r {
+            mpsc::RecvTimeoutError::Timeout => Err(ExecutionError::Timeout),
+            mpsc::RecvTimeoutError::Disconnected => Err(ExecutionError::Panic),
+        };
+    }
+    join_handler.join().map_err(|_| ExecutionError::Panic)
 }
