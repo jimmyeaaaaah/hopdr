@@ -1,4 +1,5 @@
 pub mod chc;
+pub mod farkas;
 pub mod fofml;
 pub mod hes;
 pub mod pcsp;
@@ -206,6 +207,10 @@ impl Op {
 
     pub fn mk_add(x: Op, y: Op) -> Op {
         Op::new(OpExpr::Op(OpKind::Add, x, y))
+    }
+
+    pub fn mk_minus(x: Op) -> Op {
+        Op::new(OpExpr::Op(OpKind::Sub, Op::mk_const(0), x))
     }
 
     pub fn mk_const(x: i64) -> Op {
@@ -709,6 +714,7 @@ impl Constraint {
             ConstraintExpr::Quantifier(_, _, c) => c.clone().remove_quantifier(),
         }
     }
+    /// env: current free variable
     fn prenex_normal_form_raw(
         &self,
         env: &mut HashSet<Ident>,
