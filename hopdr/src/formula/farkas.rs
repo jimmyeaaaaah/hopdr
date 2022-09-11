@@ -48,7 +48,7 @@ fn transform_predicate(c: &Constraint) -> Constraint {
 
     match c.kind() {
         crate::formula::ConstraintExpr::True | crate::formula::ConstraintExpr::False => c.clone(),
-        crate::formula::ConstraintExpr::Pred(p, l) => inner(p, l),
+        crate::formula::ConstraintExpr::Pred(p, l) => inner(*p, l),
         crate::formula::ConstraintExpr::Conj(x, y) => {
             let x = transform_predicate(x);
             let y = transform_predicate(y);
@@ -66,11 +66,79 @@ fn transform_predicate(c: &Constraint) -> Constraint {
     }
 }
 
+// Pred(PredKind::Geq, x, y)
+// 1. x - y >= 0
+// 2. o1 * x1 + o2 * x2 + ...
 fn pred_to_vec(constr: &Constraint, m: &HashMap<Ident, usize>) -> Vec<Op> {
+    // translates mult op to a vector of Const|Vars
+    // x * y * z -> [x; y; z]
+    fn get_mult_vec(x: &Op, v: &mut Vec<Op>) {
+        match x.kind() {
+            crate::formula::OpExpr::Op(crate::formula::OpKind::Mul, x, y) => {
+                get_mult_vec(x, v);
+                get_mult_vec(y, v);
+            }
+            crate::formula::OpExpr::Const(_) | crate::formula::OpExpr::Var(_) => {
+                v.push(x.clone());
+            }
+            crate::formula::OpExpr::Ptr(_, x) => get_mult_vec(x, v),
+            crate::formula::OpExpr::Op(_, x, y) => panic!("program error"),
+        }
+    }
+    fn handle_mult(x: &Op, m: &HashMap<Ident, usize>, v: &mut Vec<Op>) {
+        match x.kind() {}
+    }
+    fn go(z: &Op, m: &HashMap<Ident, usize>, v: &mut Vec<Op>) {
+        match z.kind() {
+            crate::formula::OpExpr::Op(o, x, y) => match o {
+                crate::formula::OpKind::Add => {
+                    go(x, m, v);
+                    go(y, m, v);
+                }
+                crate::formula::OpKind::Sub => {
+                    let y = y.negate();
+                    go(x, m, v);
+                    go(&y, m, v);
+                }
+                crate::formula::OpKind::Mul => handle_mult(z, m, v),
+                crate::formula::OpKind::Div | crate::formula::OpKind::Mod => {
+                    panic!("unsupported operand: {}", o)
+                }
+            },
+            crate::formula::OpExpr::Var(v) => todo!(),
+            crate::formula::OpExpr::Const(_) => todo!(),
+            crate::formula::OpExpr::Ptr(_, _) => todo!(),
+        }
+    }
+    fn replace_sub_with_add(o: &Op) -> Op {
+        use crate::formula::OpKind;
+        match o.kind() {
+            crate::formula::OpExpr::Op(o, x, y) => {
+                let x = replace_sub_with_add(x);
+                let y = replace_sub_with_add(y);
+                match o {
+                    OpKind::Add | OpKind::Mul | OpKind::Div | OpKind::Mod => {
+                        Op::mk_bin_op(*o, x, y)
+                    }
+                    OpKind::Sub => Op::mk_bin_op(*o, x, y.negate()),
+                }
+            }
+            crate::formula::OpExpr::Var(_) | crate::formula::OpExpr::Const(_) => o.clone(),
+            crate::formula::OpExpr::Ptr(x, o) => Op::mk_ptr(*x, replace_sub_with_add(o)),
+        }
+    }
     match constr.kind() {
-        super::ConstraintExpr::True => 
-        super::ConstraintExpr::Pred(_, _) => todo!(),
-        super::ConstraintExpr::False 
+        super::ConstraintExpr::True => Vec::new(),
+        super::ConstraintExpr::Pred(p, l) if l.len() == 2 => {
+            let x = l[0].clone();
+            let y = l[1].clone();
+            let z = Op::mk_bin_op(super::OpKind::Sub, x, y);
+            let mut v = vec![Op::mk_const(0); m.len() + 1];
+            go(&z, m, &mut v);
+            v
+        }
+        super::ConstraintExpr::False
+        | super::ConstraintExpr::Pred(_, _)
         | super::ConstraintExpr::Conj(_, _)
         | super::ConstraintExpr::Disj(_, _)
         | super::ConstraintExpr::Quantifier(_, _, _) => panic!("program error"),
@@ -125,11 +193,12 @@ pub fn farkas_transform(c: &Constraint) -> Constraint {
             let matrix = dnf
                 .into_iter()
                 .map(|constr| pred_to_vec(&constr.negate().unwrap(), &univ_vars))
-                .collect();
-
+                //.collect()
+                ;
             unimplemented!()
         })
-        .collect();
+        //.collect()
+        ;
 
     unimplemented!()
 }

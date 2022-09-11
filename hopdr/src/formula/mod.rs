@@ -251,6 +251,9 @@ impl Op {
             OpExpr::Ptr(_, x) => x.to_hes_format(),
         }
     }
+    pub fn negate(&self) -> Op {
+        Op::mk_bin_op(OpKind::Mul, Op::mk_const(-1), self.clone())
+    }
 }
 impl DerefPtr for Op {
     fn deref_ptr(&self, id: &Ident) -> Op {
