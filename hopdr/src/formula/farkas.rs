@@ -68,25 +68,31 @@ fn transform_predicate(c: &Constraint) -> Constraint {
 
 // Pred(PredKind::Geq, x, y)
 // 1. x - y >= 0
-// 2. o1 * x1 + o2 * x2 + ...
+// 2. expand all the mult (add)
+// 2. o1 + o2 + ...
+// 3. expand all the expression like (o1 + o2) * x1
 fn pred_to_vec(constr: &Constraint, m: &HashMap<Ident, usize>) -> Vec<Op> {
     // translates mult op to a vector of Const|Vars
     // x * y * z -> [x; y; z]
-    fn get_mult_vec(x: &Op, v: &mut Vec<Op>) {
-        match x.kind() {
-            crate::formula::OpExpr::Op(crate::formula::OpKind::Mul, x, y) => {
-                get_mult_vec(x, v);
-                get_mult_vec(y, v);
-            }
-            crate::formula::OpExpr::Const(_) | crate::formula::OpExpr::Var(_) => {
-                v.push(x.clone());
-            }
-            crate::formula::OpExpr::Ptr(_, x) => get_mult_vec(x, v),
-            crate::formula::OpExpr::Op(_, x, y) => panic!("program error"),
-        }
-    }
+    // fn get_mult_vec(x: &Op, v: &mut Vec<Op>) -> Some {
+    //     match x.kind() {
+    //         crate::formula::OpExpr::Op(crate::formula::OpKind::Mul, x, y) => {
+    //             get_mult_vec(x, v);
+    //             get_mult_vec(y, v);
+    //         }
+    //         crate::formula::OpExpr::Const(_) | crate::formula::OpExpr::Var(_) => {
+    //             v.push(x.clone());
+    //         }
+    //         crate::formula::OpExpr::Ptr(_, x) => get_mult_vec(x, v),
+    //         crate::formula::OpExpr::Op(_, x, y) => panic!("program error"),
+    //     }
+    // }
+
+    // assumption v.len() == m.len() + 1
+    // v's m[id]-th element is the coefficient for the variable `id`
+    // v's m.len()-th element is the constant
     fn handle_mult(x: &Op, m: &HashMap<Ident, usize>, v: &mut Vec<Op>) {
-        match x.kind() {}
+        unimplemented!()
     }
     fn go(z: &Op, m: &HashMap<Ident, usize>, v: &mut Vec<Op>) {
         match z.kind() {

@@ -252,8 +252,86 @@ impl Op {
         }
     }
     pub fn negate(&self) -> Op {
-        Op::mk_bin_op(OpKind::Mul, Op::mk_const(-1), self.clone())
+        // check if self is `-1 * o`. if so, returns o. otherwise, returns -1 * self
+        match self.kind() {
+            OpExpr::Op(OpKind::Mul, o1, o2) => match o1.kind() {
+                OpExpr::Const(-1) => o2.clone(),
+                _ => Op::mk_bin_op(OpKind::Mul, Op::mk_const(-1), self.clone()),
+            },
+            OpExpr::Op(_, _, _) | OpExpr::Var(_) | OpExpr::Const(_) | OpExpr::Ptr(_, _) => {
+                Op::mk_bin_op(OpKind::Mul, Op::mk_const(-1), self.clone())
+            }
+        }
     }
+    pub fn expand_expr_to_vec(&self) -> Vec<Op> {
+        match self.kind() {
+            OpExpr::Var(_) | OpExpr::Const(_) => vec![self.clone()],
+            OpExpr::Ptr(_, o) => self.expand_expr_to_vec(),
+            OpExpr::Op(OpKind::Add, o1, o2) => {
+                let mut v1 = o1.expand_expr_to_vec();
+                let mut v2 = o2.expand_expr_to_vec();
+                v1.append(&mut v2);
+                v1
+            }
+            OpExpr::Op(OpKind::Sub, o1, o2) => {
+                let o2 = o2.negate();
+                let mut v1 = o1.expand_expr_to_vec();
+                let mut v2 = o2.expand_expr_to_vec();
+                v1.append(&mut v2);
+                v1
+            }
+            OpExpr::Op(OpKind::Mul, o1, o2) => {
+                let v1 = o1.expand_expr_to_vec();
+                let v2 = o2.expand_expr_to_vec();
+                let mut new_v = Vec::new();
+                for o1 in v1.iter() {
+                    for o2 in v2.iter() {
+                        new_v.push(Op::mk_bin_op(OpKind::Mul, o1.clone(), o2.clone()));
+                    }
+                }
+                new_v
+            }
+            OpExpr::Op(o, _, _) => panic!("not supported operator: {}", o),
+        }
+    }
+    /// expands the given op (e.g. (4 + 1) * ((2 - 3) + 2) -> (4 + 1) * (2 - 3) + (4 + 1) * 2 -> ((4 + 1) * 2 -  (4 + 1) * 3 + (4 + 1) * 2)
+    pub fn expand_expr(&self) -> Op {
+        let v = self.expand_expr_to_vec();
+        assert!(v.len() > 0);
+        let mut o = v[0].clone();
+        for o2 in v[1..].into_iter() {
+            o = Op::mk_add(o, o2.clone())
+        }
+        o
+    }
+}
+#[test]
+fn test_expansion() {
+    // (x - 1) * (y + (z - w))
+    let x = Ident::fresh();
+    let y = Ident::fresh();
+    let z = Ident::fresh();
+    let w = Ident::fresh();
+    let o1 = Op::mk_bin_op(OpKind::Sub, Op::mk_var(x), Op::mk_const(1));
+    let o2 = Op::mk_add(
+        Op::mk_var(y),
+        Op::mk_bin_op(OpKind::Sub, Op::mk_var(x), Op::mk_var(w)),
+    );
+    let o = Op::mk_bin_op(OpKind::Mul, o1, o2);
+    let o2 = o.expand_expr();
+    println!("{o}");
+    println!("{o2}");
+
+    assert_ne!(o, o2);
+
+    let mut env = Env::new();
+    env.add(x, 10);
+    env.add(y, -11);
+    env.add(z, 12);
+    env.add(w, 13);
+    let v = o.eval(&env).unwrap();
+    let v2 = o2.eval(&env).unwrap();
+    assert_eq!(v, v2);
 }
 impl DerefPtr for Op {
     fn deref_ptr(&self, id: &Ident) -> Op {
