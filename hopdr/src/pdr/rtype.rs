@@ -3,7 +3,7 @@ use std::{
     fmt::{self, Display},
 };
 
-use crate::formula::{fofml, Variable};
+use crate::formula::{farkas, fofml, Variable};
 use crate::formula::{
     Constraint, DerefPtr, FirstOrderLogic, Fv, Ident, Logic, Negation, Op, Polarity, Rename, Subst,
     Top, Type as SType, TypeKind as STypeKind,

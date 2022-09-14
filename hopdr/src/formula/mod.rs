@@ -291,7 +291,7 @@ impl Op {
     pub fn expand_expr_to_vec(&self) -> Vec<Op> {
         match self.kind() {
             OpExpr::Var(_) | OpExpr::Const(_) => vec![self.clone()],
-            OpExpr::Ptr(_, o) => self.expand_expr_to_vec(),
+            OpExpr::Ptr(_, o) => o.expand_expr_to_vec(),
             OpExpr::Op(OpKind::Add, o1, o2) => {
                 let mut v1 = o1.expand_expr_to_vec();
                 let mut v2 = o2.expand_expr_to_vec();

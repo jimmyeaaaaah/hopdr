@@ -1,6 +1,6 @@
 use std::{collections::HashMap, result};
 
-use crate::formula::{FirstOrderLogic, OpKind};
+use crate::formula::{Bot, FirstOrderLogic, OpKind};
 
 /// Given a linear integer arithmetic Constraint,
 /// returns
@@ -74,6 +74,7 @@ fn transform_predicate(c: &Constraint) -> Constraint {
 // 2. o1 + o2 + ...
 // 3. expand all the expression like (o1 + o2) * x1
 fn pred_to_vec(constr: &Constraint, m: &HashMap<Ident, usize>) -> Vec<Op> {
+    debug!("pred_to_vec: {constr}");
     // Assumption: o only contains operation muls (if other ops exist, then it panics)
     // if o contains multiple variables in m, then returns None
     // otherwise, returns coefficient of the variable, and variable name if exists
@@ -105,17 +106,21 @@ fn pred_to_vec(constr: &Constraint, m: &HashMap<Ident, usize>) -> Vec<Op> {
     let mut result_vec = vec![Op::mk_const(0); m.len() + 1];
     let additions = match constr.kind() {
         super::ConstraintExpr::True => Vec::new(),
-        super::ConstraintExpr::Pred(p, l) if l.len() == 2 => {
+        super::ConstraintExpr::Pred(PredKind::Geq, l) if l.len() == 2 => {
             let x = l[0].clone();
             let y = l[1].clone();
             let z = Op::mk_bin_op(super::OpKind::Sub, x, y);
             z.expand_expr_to_vec()
         }
-        super::ConstraintExpr::False
-        | super::ConstraintExpr::Pred(_, _)
+        super::ConstraintExpr::False => {
+            // 0 >= 1
+            let o = Op::mk_const(-1);
+            o.expand_expr_to_vec()
+        }
+        super::ConstraintExpr::Pred(_, _)
         | super::ConstraintExpr::Conj(_, _)
         | super::ConstraintExpr::Disj(_, _)
-        | super::ConstraintExpr::Quantifier(_, _, _) => panic!("program error"),
+        | super::ConstraintExpr::Quantifier(_, _, _) => panic!("program error: {}", constr),
     };
     let constant_index = m.len();
     for addition in additions {
@@ -135,6 +140,7 @@ fn pred_to_vec(constr: &Constraint, m: &HashMap<Ident, usize>) -> Vec<Op> {
 pub fn farkas_transform(c: &Constraint) -> Constraint {
     // translates the constraint to ∧ θᵢ where θᵢ has the form ¬ (∧ eᵢ ≥ 0).
     // Note that eᵢ is a linear expression.
+    debug!("farkas input: {c}");
 
     // 1. prenex normal form of c
     let mut fv = c.fv();
@@ -164,7 +170,7 @@ pub fn farkas_transform(c: &Constraint) -> Constraint {
                 .into_iter()
                 .map(|atom| pred_to_vec(&atom.negate().unwrap(), &univ_vars))
                 .collect();
-            let mut coefs: Vec<_> = (0..matrix.len()).map(|_| Ident::fresh()).collect();
+            let coefs: Vec<_> = (0..matrix.len()).map(|_| Ident::fresh()).collect();
             let mut result_constraint = Constraint::mk_true();
             for i in 0..univ_vars.len() {
                 let mut o = Op::mk_const(0);
@@ -175,7 +181,8 @@ pub fn farkas_transform(c: &Constraint) -> Constraint {
                 result_constraint = Constraint::mk_conj(c, result_constraint);
             }
             // for constant part
-            let mut o = Op::mk_var(Ident::fresh()); // r0
+            let constant_ident = Ident::fresh();
+            let mut o = Op::mk_var(constant_ident); // r0
             let i = univ_vars.len(); // constant index
             for (j, vec) in matrix.iter().enumerate() {
                 o = Op::mk_add(Op::mk_mul(vec[i].clone(), Op::mk_var(coefs[j])), o);
@@ -183,10 +190,17 @@ pub fn farkas_transform(c: &Constraint) -> Constraint {
             let c = Constraint::mk_eq(o, Op::mk_const(-1));
             result_constraint = Constraint::mk_conj(c, result_constraint);
 
+            // add constraint for non-negativity
+            for coef in coefs.iter().chain([constant_ident].iter()) {
+                let c2 = Constraint::mk_geq(Op::mk_var(*coef), Op::mk_const(0));
+                result_constraint = Constraint::mk_conj(result_constraint, c2);
+            }
+
             result_constraint
         })
         .reduce(|x, y| Constraint::mk_conj(x, y))
         .unwrap_or(Constraint::mk_true());
+    debug!("farkas result {result_constraint}");
     result_constraint
 }
 
@@ -274,5 +288,23 @@ fn test_farkas_transform() {
     let c = farkas_transform(&c);
     println!("translated: {c}");
     let mut solver = crate::solver::smt::default_solver();
-    assert!(solver.solve(&c, &std::collections::HashSet::new()).is_sat())
+    let m = solver.solve_with_model(&c, &std::collections::HashSet::new(), &c.fv());
+    let m = m.unwrap();
+    println!("p1: {}", m.get(&ip1).unwrap());
+    println!("p2: {}", m.get(&ip2).unwrap());
+    println!("p4: {}", m.get(&ip4).unwrap());
+
+    println!("{:?}", m.model);
+    //assert!(false);
+}
+
+#[test]
+fn test_farkas_transform2() {
+    use crate::formula::*;
+    let c = Constraint::mk_false();
+    let c2 = farkas_transform(&c);
+    println!("{c2}");
+
+    let mut solver = crate::solver::smt::default_solver();
+    assert!(solver.solve(&c2, &HashSet::new()).is_unsat());
 }

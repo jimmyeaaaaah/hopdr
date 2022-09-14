@@ -3,7 +3,8 @@ use super::rtype::{instantiate_type, Refinement, TBot, Tau, TauKind, TypeEnviron
 use crate::formula::hes::{Goal, GoalBase, GoalKind, Problem as ProblemBase};
 use crate::formula::{self, DerefPtr, FirstOrderLogic};
 use crate::formula::{
-    chc, fofml, pcsp, Constraint, Fv, Ident, Logic, Negation, Op, Rename, Subst, Top, Variable,
+    chc, farkas, fofml, pcsp, Constraint, Fv, Ident, Logic, Negation, Op, Rename, Subst, Top,
+    Variable,
 };
 use crate::solver;
 use crate::title;
@@ -1389,9 +1390,18 @@ impl PossibleDerivation<Atom> {
             debug!("check_derivation constraint: {constraint}");
             let fvs = constraint.fv();
             let exists: HashSet<Ident> = ct.coefficients.iter().cloned().collect();
-            let vars = fvs.difference(&exists).cloned().collect();
+            let vars = fvs.difference(&exists).cloned();
+
+            // introduce universal quantifiers
+            for var in vars {
+                constraint = Constraint::mk_univ_int(var, constraint);
+            }
+            // farkas transform
+            let constraint = farkas::farkas_transform(&constraint);
+            let fvs = constraint.fv();
+
             let mut solver = solver::smt::default_solver();
-            match solver.solve_with_model(&constraint, &vars, &exists) {
+            match solver.solve_with_model(&constraint, &HashSet::new(), &fvs) {
                 Ok(m) => {
                     debug!("constraint was sat: {}", constraint);
                     // replace all the integer coefficient
