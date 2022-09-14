@@ -205,12 +205,33 @@ impl Op {
         Op::new(OpExpr::Op(op, x, y))
     }
 
+    pub fn check_const(&self, c: i64) -> bool {
+        match self.kind() {
+            OpExpr::Const(c2) if c == *c2 => true,
+            _ => false,
+        }
+    }
+
     pub fn mk_add(x: Op, y: Op) -> Op {
-        Op::new(OpExpr::Op(OpKind::Add, x, y))
+        if x.check_const(0) {
+            y
+        } else if y.check_const(0) {
+            x
+        } else {
+            Op::new(OpExpr::Op(OpKind::Add, x, y))
+        }
     }
 
     pub fn mk_mul(x: Op, y: Op) -> Op {
-        Op::new(OpExpr::Op(OpKind::Mul, x, y))
+        if x.check_const(1) {
+            y
+        } else if y.check_const(1) {
+            x
+        } else if x.check_const(0) || y.check_const(0) {
+            Op::mk_const(0)
+        } else {
+            Op::new(OpExpr::Op(OpKind::Mul, x, y))
+        }
     }
 
     pub fn mk_minus(x: Op) -> Op {

@@ -1,6 +1,6 @@
-use std::{collections::HashMap, intrinsics::add_with_overflow};
+use std::{collections::HashMap, result};
 
-use crate::formula::OpKind;
+use crate::formula::{FirstOrderLogic, OpKind};
 
 /// Given a linear integer arithmetic Constraint,
 /// returns
@@ -79,27 +79,24 @@ fn pred_to_vec(constr: &Constraint, m: &HashMap<Ident, usize>) -> Vec<Op> {
     // otherwise, returns coefficient of the variable, and variable name if exists
     // for a constrant, the results should have a pair (o, None)
     fn parse_mult(o: &Op, m: &HashMap<Ident, usize>) -> Option<(Op, Option<Ident>)> {
-        match o.kind(){
+        match o.kind() {
             crate::formula::OpExpr::Op(OpKind::Mul, o1, o2) => {
                 let (coef1, v1) = parse_mult(o1, m)?;
                 let (coef2, v2) = parse_mult(o2, m)?;
                 match (v1, v2) {
                     (Some(_), Some(_)) => None,
-                    (Some(v), None) | (None, Some(v)) => {
-                        Some((Op::mk_mul(coef1, coef2), Some(v)))
-                    },
-                    (None, None) => {
-                        Some((Op::mk_mul(coef1, coef2), None))
-                    }
+                    (Some(v), None) | (None, Some(v)) => Some((Op::mk_mul(coef1, coef2), Some(v))),
+                    (None, None) => Some((Op::mk_mul(coef1, coef2), None)),
                 }
-            },
+            }
             crate::formula::OpExpr::Var(v) if m.contains_key(v) => {
                 Some((Op::mk_const(1), Some(*v)))
-            },
-            crate::formula::OpExpr::Var(_) |
-            crate::formula::OpExpr::Const(_) => Some((o.clone(), None)),
+            }
+            crate::formula::OpExpr::Var(_) | crate::formula::OpExpr::Const(_) => {
+                Some((o.clone(), None))
+            }
             crate::formula::OpExpr::Ptr(_, o) => parse_mult(o, m),
-            crate::formula::OpExpr::Op(OpKind::Mul, o1, o2) => panic!("program error")
+            crate::formula::OpExpr::Op(_, _, _) => panic!("program error"),
         }
     }
     // assumption v.len() == m.len() + 1
@@ -122,9 +119,10 @@ fn pred_to_vec(constr: &Constraint, m: &HashMap<Ident, usize>) -> Vec<Op> {
     };
     let constant_index = m.len();
     for addition in additions {
-        let (coef, v) = parse_mult(&addition, m).expect("there is non-linear exprresion, which is note supported");
+        let (coef, v) = parse_mult(&addition, m)
+            .expect("there is non-linear exprresion, which is note supported");
         let id = v.map_or(constant_index, |v| *m.get(&v).unwrap());
-        result_vec[id] = Op::mk_add(result_vec[id], coef);
+        result_vec[id] = Op::mk_add(result_vec[id].clone(), coef);
     }
     result_vec
 }
@@ -157,26 +155,124 @@ pub fn farkas_transform(c: &Constraint) -> Constraint {
     let cnf = c2.to_cnf();
 
     // we transform cnf's element so that it has the form  ¬ (∧ eᵢ ≥ 0).
-    let cnf = cnf
+    let result_constraint = cnf
         .into_iter()
         .map(|clause| {
             let dnf = clause.to_dnf();
             // check if it is trivial or not
-            for atom in dnf {
-                let v = pred_to_vec(&atom.negate().unwrap(), &univ_vars);
-                
-            }
-
-            // we transform disjunction to not conjunction by de morgan dual
-            let matrix = dnf
+            let matrix: Vec<_> = dnf
                 .into_iter()
-                .map(|constr| pred_to_vec(&constr.negate().unwrap(), &univ_vars))
-                //.collect()
-                ;
-            unimplemented!()
-        })
-        //.collect()
-        ;
+                .map(|atom| pred_to_vec(&atom.negate().unwrap(), &univ_vars))
+                .collect();
+            let mut coefs: Vec<_> = (0..matrix.len()).map(|_| Ident::fresh()).collect();
+            let mut result_constraint = Constraint::mk_true();
+            for i in 0..univ_vars.len() {
+                let mut o = Op::mk_const(0);
+                for (j, vec) in matrix.iter().enumerate() {
+                    o = Op::mk_add(Op::mk_mul(vec[i].clone(), Op::mk_var(coefs[j])), o);
+                }
+                let c = Constraint::mk_eq(o, Op::mk_const(0));
+                result_constraint = Constraint::mk_conj(c, result_constraint);
+            }
+            // for constant part
+            let mut o = Op::mk_var(Ident::fresh()); // r0
+            let i = univ_vars.len(); // constant index
+            for (j, vec) in matrix.iter().enumerate() {
+                o = Op::mk_add(Op::mk_mul(vec[i].clone(), Op::mk_var(coefs[j])), o);
+            }
+            let c = Constraint::mk_eq(o, Op::mk_const(-1));
+            result_constraint = Constraint::mk_conj(c, result_constraint);
 
-    unimplemented!()
+            result_constraint
+        })
+        .reduce(|x, y| Constraint::mk_conj(x, y))
+        .unwrap_or(Constraint::mk_true());
+    result_constraint
+}
+
+#[test]
+fn test_farkas_transform() {
+    // example in Section 4.2.2. in the paper by Unno et al.(POPL 2012)
+    let x = Ident::fresh();
+    let y = Ident::fresh();
+    let zv = Ident::fresh();
+
+    let ip1 = Ident::fresh();
+    let ip2 = Ident::fresh();
+    let ip3 = Ident::fresh();
+    let ip4 = Ident::fresh();
+
+    println!("x: {x}");
+    println!("y: {y}");
+    println!("z: {zv}");
+
+    println!("p1: {ip1}");
+    println!("p2: {ip2}");
+    println!("p3: {ip3}");
+    println!("p4: {ip4}");
+
+    let gen = |coefs: [Op; 4]| -> Constraint {
+        let vars = [
+            Op::mk_var(x),
+            Op::mk_var(y),
+            Op::mk_var(zv),
+            Op::mk_const(1),
+        ];
+        let o = coefs
+            .into_iter()
+            .zip(vars.into_iter())
+            .fold(Op::mk_const(0), |x, (coef, var)| {
+                Op::mk_add(x, Op::mk_mul(coef.clone(), var.clone()))
+            });
+        Constraint::mk_bin_pred(PredKind::Geq, o, Op::mk_const(0))
+    };
+    let zero = Op::mk_const(0);
+    let z = move || -> Op { zero.clone() };
+
+    let p1 = move || -> Op { Op::mk_var(ip1) };
+    let p2 = move || -> Op { Op::mk_var(ip2) };
+    let p3 = move || -> Op { Op::mk_var(ip3) };
+    let p4 = move || -> Op { Op::mk_var(ip4) };
+
+    fn m(x: Op) -> Op {
+        Op::mk_minus(x)
+    }
+    fn mul(x: Op, y: Op) -> Op {
+        Op::mk_mul(x, y)
+    }
+    fn p(x: Op, y: Op) -> Op {
+        Op::mk_add(x, y)
+    }
+
+    let table = [
+        [p4(), z(), m(p4()), z()],
+        [m(p4()), z(), p4(), z()],
+        [
+            mul(p1(), p4()),
+            m(p(mul(p1(), p4()), p2())),
+            p2(),
+            p(mul(p1(), p4()), p2()),
+        ],
+        [
+            m(mul(p1(), p4())),
+            p(mul(p1(), p4()), p2()),
+            m(p2()),
+            m(p(mul(p1(), p4()), p2())),
+        ],
+        [Op::mk_const(1), Op::mk_const(-1), z(), Op::mk_const(-1)],
+    ];
+    let mut c = Constraint::mk_true();
+    for row in table {
+        let c1 = gen(row);
+        println!("{c1}");
+        c = Constraint::mk_conj(c, c1);
+    }
+    c = c.negate().unwrap();
+    c = Constraint::mk_univ_int(zv, c);
+    c = Constraint::mk_univ_int(y, c);
+    c = Constraint::mk_univ_int(x, c);
+    let c = farkas_transform(&c);
+    println!("translated: {c}");
+    let mut solver = crate::solver::smt::default_solver();
+    assert!(solver.solve(&c, &std::collections::HashSet::new()).is_sat())
 }
