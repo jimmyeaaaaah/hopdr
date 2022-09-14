@@ -209,6 +209,10 @@ impl Op {
         Op::new(OpExpr::Op(OpKind::Add, x, y))
     }
 
+    pub fn mk_mul(x: Op, y: Op) -> Op {
+        Op::new(OpExpr::Op(OpKind::Mul, x, y))
+    }
+
     pub fn mk_minus(x: Op) -> Op {
         Op::new(OpExpr::Op(OpKind::Sub, Op::mk_const(0), x))
     }

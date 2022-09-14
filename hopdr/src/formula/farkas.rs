@@ -1,4 +1,6 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, intrinsics::add_with_overflow};
+
+use crate::formula::OpKind;
 
 /// Given a linear integer arithmetic Constraint,
 /// returns
@@ -72,83 +74,59 @@ fn transform_predicate(c: &Constraint) -> Constraint {
 // 2. o1 + o2 + ...
 // 3. expand all the expression like (o1 + o2) * x1
 fn pred_to_vec(constr: &Constraint, m: &HashMap<Ident, usize>) -> Vec<Op> {
-    // translates mult op to a vector of Const|Vars
-    // x * y * z -> [x; y; z]
-    // fn get_mult_vec(x: &Op, v: &mut Vec<Op>) -> Some {
-    //     match x.kind() {
-    //         crate::formula::OpExpr::Op(crate::formula::OpKind::Mul, x, y) => {
-    //             get_mult_vec(x, v);
-    //             get_mult_vec(y, v);
-    //         }
-    //         crate::formula::OpExpr::Const(_) | crate::formula::OpExpr::Var(_) => {
-    //             v.push(x.clone());
-    //         }
-    //         crate::formula::OpExpr::Ptr(_, x) => get_mult_vec(x, v),
-    //         crate::formula::OpExpr::Op(_, x, y) => panic!("program error"),
-    //     }
-    // }
-
+    // Assumption: o only contains operation muls (if other ops exist, then it panics)
+    // if o contains multiple variables in m, then returns None
+    // otherwise, returns coefficient of the variable, and variable name if exists
+    // for a constrant, the results should have a pair (o, None)
+    fn parse_mult(o: &Op, m: &HashMap<Ident, usize>) -> Option<(Op, Option<Ident>)> {
+        match o.kind(){
+            crate::formula::OpExpr::Op(OpKind::Mul, o1, o2) => {
+                let (coef1, v1) = parse_mult(o1, m)?;
+                let (coef2, v2) = parse_mult(o2, m)?;
+                match (v1, v2) {
+                    (Some(_), Some(_)) => None,
+                    (Some(v), None) | (None, Some(v)) => {
+                        Some((Op::mk_mul(coef1, coef2), Some(v)))
+                    },
+                    (None, None) => {
+                        Some((Op::mk_mul(coef1, coef2), None))
+                    }
+                }
+            },
+            crate::formula::OpExpr::Var(v) if m.contains_key(v) => {
+                Some((Op::mk_const(1), Some(*v)))
+            },
+            crate::formula::OpExpr::Var(_) |
+            crate::formula::OpExpr::Const(_) => Some((o.clone(), None)),
+            crate::formula::OpExpr::Ptr(_, o) => parse_mult(o, m),
+            crate::formula::OpExpr::Op(OpKind::Mul, o1, o2) => panic!("program error")
+        }
+    }
     // assumption v.len() == m.len() + 1
     // v's m[id]-th element is the coefficient for the variable `id`
     // v's m.len()-th element is the constant
-    fn handle_mult(x: &Op, m: &HashMap<Ident, usize>, v: &mut Vec<Op>) {
-        unimplemented!()
-    }
-    fn go(z: &Op, m: &HashMap<Ident, usize>, v: &mut Vec<Op>) {
-        match z.kind() {
-            crate::formula::OpExpr::Op(o, x, y) => match o {
-                crate::formula::OpKind::Add => {
-                    go(x, m, v);
-                    go(y, m, v);
-                }
-                crate::formula::OpKind::Sub => {
-                    let y = y.negate();
-                    go(x, m, v);
-                    go(&y, m, v);
-                }
-                crate::formula::OpKind::Mul => handle_mult(z, m, v),
-                crate::formula::OpKind::Div | crate::formula::OpKind::Mod => {
-                    panic!("unsupported operand: {}", o)
-                }
-            },
-            crate::formula::OpExpr::Var(v) => todo!(),
-            crate::formula::OpExpr::Const(_) => todo!(),
-            crate::formula::OpExpr::Ptr(_, _) => todo!(),
-        }
-    }
-    fn replace_sub_with_add(o: &Op) -> Op {
-        use crate::formula::OpKind;
-        match o.kind() {
-            crate::formula::OpExpr::Op(o, x, y) => {
-                let x = replace_sub_with_add(x);
-                let y = replace_sub_with_add(y);
-                match o {
-                    OpKind::Add | OpKind::Mul | OpKind::Div | OpKind::Mod => {
-                        Op::mk_bin_op(*o, x, y)
-                    }
-                    OpKind::Sub => Op::mk_bin_op(*o, x, y.negate()),
-                }
-            }
-            crate::formula::OpExpr::Var(_) | crate::formula::OpExpr::Const(_) => o.clone(),
-            crate::formula::OpExpr::Ptr(x, o) => Op::mk_ptr(*x, replace_sub_with_add(o)),
-        }
-    }
-    match constr.kind() {
+    let mut result_vec = vec![Op::mk_const(0); m.len() + 1];
+    let additions = match constr.kind() {
         super::ConstraintExpr::True => Vec::new(),
         super::ConstraintExpr::Pred(p, l) if l.len() == 2 => {
             let x = l[0].clone();
             let y = l[1].clone();
             let z = Op::mk_bin_op(super::OpKind::Sub, x, y);
-            let mut v = vec![Op::mk_const(0); m.len() + 1];
-            go(&z, m, &mut v);
-            v
+            z.expand_expr_to_vec()
         }
         super::ConstraintExpr::False
         | super::ConstraintExpr::Pred(_, _)
         | super::ConstraintExpr::Conj(_, _)
         | super::ConstraintExpr::Disj(_, _)
         | super::ConstraintExpr::Quantifier(_, _, _) => panic!("program error"),
+    };
+    let constant_index = m.len();
+    for addition in additions {
+        let (coef, v) = parse_mult(&addition, m).expect("there is non-linear exprresion, which is note supported");
+        let id = v.map_or(constant_index, |v| *m.get(&v).unwrap());
+        result_vec[id] = Op::mk_add(result_vec[id], coef);
     }
+    result_vec
 }
 
 /// returns a constraint that does not contain universal quantifiers
@@ -184,15 +162,9 @@ pub fn farkas_transform(c: &Constraint) -> Constraint {
         .map(|clause| {
             let dnf = clause.to_dnf();
             // check if it is trivial or not
-            let mut trivial_true = false;
-            for c in dnf.iter() {
-                match c.kind() {
-                    super::ConstraintExpr::True => trivial_true = true,
-                    _ => (),
-                }
-            }
-            if trivial_true {
-                return Constraint::mk_true();
+            for atom in dnf {
+                let v = pred_to_vec(&atom.negate().unwrap(), &univ_vars);
+                
             }
 
             // we transform disjunction to not conjunction by de morgan dual
