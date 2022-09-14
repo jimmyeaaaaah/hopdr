@@ -504,6 +504,7 @@ pub fn instantiate_type<Ty: Subst<Id = Ident, Item = Op> + Display + Fv<Id = Ide
     t: Ty,
     ints: &HashSet<Ident>,
     coefficients: &mut Stack<Ident>,
+    all_coefficients: &mut HashSet<Ident>,
 ) -> Ty {
     crate::title!("instatiate_type");
     debug!("type={}", t);
@@ -513,7 +514,10 @@ pub fn instantiate_type<Ty: Subst<Id = Ident, Item = Op> + Display + Fv<Id = Ide
 
     let mut ts = t;
     for fv in fvs {
-        let o = generate_arithmetic_template(ints, coefficients);
+        if all_coefficients.contains(&fv) {
+            continue;
+        }
+        let o = generate_arithmetic_template(ints, coefficients, all_coefficients);
         debug!("template: {}", o);
         ts = ts.subst(&fv, &o);
     }
@@ -558,7 +562,8 @@ impl Tau<Constraint> {
 
         // 2. instantiate t
         let mut coefficients = Stack::new();
-        let tprime = instantiate_type(t.clone(), &idents, &mut coefficients);
+        let mut all_coefficients = HashSet::new();
+        let tprime = instantiate_type(t.clone(), &idents, &mut coefficients, &mut all_coefficients);
         debug!("tprime: {tprime}");
         debug!("sprime: {sprime}");
 
@@ -713,11 +718,16 @@ fn test_subtype_polymorphic() {
 }
 
 // template for polymorphic types
-pub fn generate_arithmetic_template(ints: &HashSet<Ident>, coefficients: &mut Stack<Ident>) -> Op {
+pub fn generate_arithmetic_template(
+    ints: &HashSet<Ident>,
+    coefficients: &mut Stack<Ident>,
+    all_coefficients: &mut HashSet<Ident>,
+) -> Op {
     // linear template
     let c_id = Ident::fresh();
     let mut o = Op::mk_var(c_id);
     coefficients.push_mut(c_id);
+    all_coefficients.insert(c_id);
     // linear expr
     for int in ints {
         let tmp = Ident::fresh();
@@ -725,6 +735,7 @@ pub fn generate_arithmetic_template(ints: &HashSet<Ident>, coefficients: &mut St
         let t = Op::mk_bin_op(formula::OpKind::Mul, Op::mk_var(tmp), Op::mk_var(*int));
         o = Op::mk_add(o, t);
         coefficients.push_mut(tmp);
+        all_coefficients.insert(tmp);
     }
     o
 }
@@ -737,7 +748,7 @@ fn test_generate_arithmetic_template() {
     ints.insert(x);
     ints.insert(y);
     let mut coefs = Stack::new();
-    let o = generate_arithmetic_template(&ints, &mut coefs);
+    let o = generate_arithmetic_template(&ints, &mut coefs, &mut HashSet::new());
     // expected: o = (ax + by) + c
     println!("{o}");
     use crate::formula::{OpExpr, OpKind};

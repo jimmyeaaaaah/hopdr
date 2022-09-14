@@ -14,6 +14,7 @@ use rpds::{HashTrieMap, Stack};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::fmt::Formatter;
+use std::hash::Hash;
 
 type Atom = fofml::Atom;
 type Candidate = Goal<Constraint>;
@@ -669,6 +670,7 @@ fn handle_abs(
     constraint: &Atom,
     tenv: &mut Env,
     ienv: &mut HashSet<Ident>,
+    all_coefficients: &mut HashSet<Ident>,
     arg_expr: &G,
     t: &Ty,
 ) -> PossibleDerivation<Atom> {
@@ -678,7 +680,7 @@ fn handle_abs(
                 let t = t.rename(id, &v.id);
                 let constraint = constraint.rename(id, &v.id);
                 assert!(ienv.insert(v.id));
-                let pt = handle_abs(&constraint, tenv, ienv, g, &t);
+                let pt = handle_abs(&constraint, tenv, ienv, all_coefficients, g, &t);
                 ienv.remove(&v.id);
                 pt.iarrow(&v.id)
             }
@@ -686,16 +688,18 @@ fn handle_abs(
         },
         GoalKind::Abs(v, g) => match t.kind() {
             TauKind::Arrow(ts, t) if !v.ty.is_int() => {
+                let mut tenv = tenv.clone();
                 for t in ts {
+                    debug!("adding type {t} to tenv");
                     tenv.add(v.id, t.clone());
                 }
-                let pt = handle_abs(constraint, tenv, ienv, g, t);
+                let pt = handle_abs(constraint, &mut tenv, ienv, all_coefficients, g, t);
                 pt.arrow(ts)
             }
             _ => panic!("fatal"),
         },
         _ => {
-            let mut pt = type_check_inner(constraint, tenv, ienv, arg_expr);
+            let mut pt = type_check_inner(constraint, tenv, ienv, all_coefficients, arg_expr);
             pt.coarse_type(constraint, t);
             pt
         }
@@ -709,17 +713,20 @@ fn handle_app(
     constraint: &Atom,
     tenv: &mut Env,
     ienv: &mut HashSet<Ident>,
+    all_coefficients: &mut HashSet<Ident>,
     app_expr: &G,
 ) -> PossibleDerivation<Atom> {
     fn handle_inner(
         constraint: &Atom,
         tenv: &mut Env,
         ienv: &mut HashSet<Ident>,
+        all_coefficients: &mut HashSet<Ident>,
         pred: &G,
     ) -> PossibleDerivation<Atom> {
         match pred.kind() {
             formula::hes::GoalKind::Var(x) => match tenv.get(x) {
                 Some(ts) => {
+                    debug!("search {x} from tenv");
                     let mut coefficients = Stack::new();
                     let types = ts
                         .iter()
@@ -728,7 +735,7 @@ fn handle_app(
                             // let t = t.add_context(constraint);
                             // debug!("after add_context = {}", t);
                             let t = t.clone();
-                            let s = instantiate_type(t, ienv, &mut coefficients);
+                            let s = instantiate_type(t, ienv, &mut coefficients, all_coefficients);
                             CandidateDerivation::new(
                                 s,
                                 coefficients.clone(),
@@ -742,7 +749,7 @@ fn handle_app(
                 None => PossibleDerivation::empty(),
             },
             formula::hes::GoalKind::App(predg, argg) => {
-                let pred_pt = handle_app(constraint, tenv, ienv, predg);
+                let pred_pt = handle_app(constraint, tenv, ienv, all_coefficients, predg);
                 // Case: the argument is integer
                 match argg.check_int_expr(ienv) {
                     // Case: the type of argument is int
@@ -786,7 +793,7 @@ fn handle_app(
                         let arg_constraint = Atom::mk_conj(t.rty_no_exists(), constraint.clone());
                         //debug!("t: {}", t);
                         // check if arg_constraint |- argg: arg_t
-                        let pt = handle_abs(&arg_constraint, tenv, ienv, argg, t);
+                        let pt = handle_abs(&arg_constraint, tenv, ienv, all_coefficients, argg, t);
 
                         // permutation
                         let mut new_tmp_cts = Vec::new();
@@ -812,7 +819,7 @@ fn handle_app(
             | formula::hes::GoalKind::Univ(_, _) => panic!("fatal: {}", pred),
         }
     }
-    let mut pt = handle_inner(constraint, tenv, ienv, app_expr);
+    let mut pt = handle_inner(constraint, tenv, ienv, all_coefficients, app_expr);
     for level in app_expr.aux.level_arg.iter() {
         for ct in pt.types.iter_mut() {
             ct.memorize(*level);
@@ -829,12 +836,14 @@ fn type_check_inner(
     constraint: &Atom, // Θ
     tenv: &mut Env,
     ienv: &mut HashSet<Ident>, // V
+    all_coefficients: &mut HashSet<Ident>,
     c: &G,
 ) -> PossibleDerivation<Atom> {
     fn go_inner(
         constraint: &Atom,
         tenv: &mut Env,
         ienv: &mut HashSet<Ident>,
+        all_coefficients: &mut HashSet<Ident>,
         c: &G,
     ) -> PossibleDerivation<Atom> {
         match c.kind() {
@@ -849,7 +858,8 @@ fn type_check_inner(
                     let mut tys = Vec::new();
                     for ty in ts {
                         let mut coefficients = Stack::new();
-                        let s = instantiate_type(ty.clone(), ienv, &mut coefficients);
+                        let s =
+                            instantiate_type(ty.clone(), ienv, &mut coefficients, all_coefficients);
                         let cd = CandidateDerivation::new(
                             s,
                             coefficients,
@@ -863,8 +873,8 @@ fn type_check_inner(
                 None => PossibleDerivation::empty(),
             },
             formula::hes::GoalKind::Conj(g1, g2) => {
-                let t1 = type_check_inner(constraint, tenv, ienv, g1);
-                let t2 = type_check_inner(constraint, tenv, ienv, g2);
+                let t1 = type_check_inner(constraint, tenv, ienv, all_coefficients, g1);
+                let t2 = type_check_inner(constraint, tenv, ienv, all_coefficients, g2);
                 PossibleDerivation::conjoin(t1, t2)
             }
             formula::hes::GoalKind::Disj(g1, g2) => {
@@ -878,23 +888,31 @@ fn type_check_inner(
                     &Atom::mk_conj(c_neg.into(), constraint.clone()),
                     tenv,
                     ienv,
+                    all_coefficients,
                     g,
                 );
                 // type check of constraints (to track the type derivation, checking g2 is necessary)
-                let t2 =
-                    type_check_inner(&Atom::mk_conj(c.into(), constraint.clone()), tenv, ienv, g_);
+                let t2 = type_check_inner(
+                    &Atom::mk_conj(c.into(), constraint.clone()),
+                    tenv,
+                    ienv,
+                    all_coefficients,
+                    g_,
+                );
                 PossibleDerivation::disjoin(t1, t2)
             }
             formula::hes::GoalKind::Univ(x, g) => {
                 // to avoid the collision, we rename the variable.
                 assert!(ienv.insert(x.id));
-                let mut pt = type_check_inner(constraint, tenv, ienv, &g);
+                let mut pt = type_check_inner(constraint, tenv, ienv, all_coefficients, &g);
                 ienv.remove(&x.id);
                 // quantify all the constraint.
                 pt.quantify(&x.id);
                 pt
             }
-            formula::hes::GoalKind::App(_, _) => handle_app(constraint, tenv, ienv, c),
+            formula::hes::GoalKind::App(_, _) => {
+                handle_app(constraint, tenv, ienv, all_coefficients, c)
+            }
             formula::hes::GoalKind::Abs(_v, _g) => {
                 // abs can appear in the argument of application
                 // they are handled independently
@@ -921,7 +939,7 @@ fn type_check_inner(
             formula::hes::GoalKind::Op(_) => panic!("fatal error"),
         }
     }
-    let mut pt = go_inner(constraint, tenv, ienv, c);
+    let mut pt = go_inner(constraint, tenv, ienv, all_coefficients, c);
     for ct in pt.types.iter_mut() {
         debug!(
             "type_check_go({}): {} |- {} : {}",
@@ -952,7 +970,8 @@ fn type_check(
         ienv.insert(fv);
         debug!("type_check ienv: {ienv:?}");
     }
-    let pt = handle_abs(constraint, tenv, ienv, c, t);
+    let mut all_coefficients = HashSet::new();
+    let pt = handle_abs(constraint, tenv, ienv, &mut all_coefficients, c, t);
     //pt.coarse_type(constraint, t);
     pt.check_derivation().is_some()
 }
@@ -967,7 +986,14 @@ fn type_check_top_with_derivation(psi: &G, tenv: &mut Env) -> Option<Derivation>
     debug!("tenv: {}", tenv);
     debug!("target: {}", psi);
     let mut ienv = HashSet::new();
-    let mut pt = type_check_inner(&Atom::mk_true(), tenv, &mut ienv, &psi);
+    let mut all_coefficients = HashSet::new();
+    let mut pt = type_check_inner(
+        &Atom::mk_true(),
+        tenv,
+        &mut ienv,
+        &mut all_coefficients,
+        &psi,
+    );
     pt.coarse_type(&Atom::mk_true(), &Ty::mk_prop_ty(Atom::mk_true()));
 
     // check if there is an actually possible derivation

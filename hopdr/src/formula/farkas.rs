@@ -124,8 +124,9 @@ fn pred_to_vec(constr: &Constraint, m: &HashMap<Ident, usize>) -> Vec<Op> {
     };
     let constant_index = m.len();
     for addition in additions {
-        let (coef, v) = parse_mult(&addition, m)
-            .expect("there is non-linear exprresion, which is note supported");
+        let (coef, v) = parse_mult(&addition, m).expect(&format!(
+            "there is non-linear exprresion, which is note supported: {addition}\ngenerated from {constr}"
+        ));
         let id = v.map_or(constant_index, |v| *m.get(&v).unwrap());
         result_vec[id] = Op::mk_add(result_vec[id].clone(), coef);
     }
@@ -156,6 +157,7 @@ pub fn farkas_transform(c: &Constraint) -> Constraint {
     // first replace all the predicates except for >= by constraints that only contain < (which will be negated below, so that will produce
     // <=s)
     let c2 = transform_predicate(&c2);
+    debug!("transformed: {c2}");
 
     // cnf = [θᵢ]
     let cnf = c2.to_cnf();
