@@ -677,12 +677,14 @@ fn handle_abs(
     let pt = match arg_expr.kind() {
         GoalKind::Abs(v, g) if v.ty.is_int() => match t.kind() {
             TauKind::IArrow(id, t) if v.ty.is_int() => {
-                let t = t.rename(id, &v.id);
-                let constraint = constraint.rename(id, &v.id);
-                assert!(ienv.insert(v.id));
-                let pt = handle_abs(&constraint, tenv, ienv, all_coefficients, g, &t);
-                ienv.remove(&v.id);
-                pt.iarrow(&v.id)
+                let new_id = Ident::fresh();
+                let t = t.rename(id, &new_id);
+                let g = g.rename(&v.id, &new_id);
+                let constraint = constraint.rename(id, &new_id);
+                ienv.insert(new_id);
+                let pt = handle_abs(&constraint, tenv, ienv, all_coefficients, &g, &t);
+                ienv.remove(&new_id);
+                pt.iarrow(&new_id)
             }
             _ => panic!("program error"),
         },
@@ -1418,16 +1420,22 @@ impl PossibleDerivation<Atom> {
             let exists: HashSet<Ident> = ct.coefficients.iter().cloned().collect();
             let vars = fvs.difference(&exists).cloned();
 
-            // introduce universal quantifiers
-            for var in vars {
-                constraint = Constraint::mk_univ_int(var, constraint);
-            }
-            // farkas transform
-            let constraint = farkas::farkas_transform(&constraint);
-            let fvs = constraint.fv();
-
             let mut solver = solver::smt::default_solver();
-            match solver.solve_with_model(&constraint, &HashSet::new(), &fvs) {
+            let m = if true {
+                // introduce universal quantifiers
+                for var in vars {
+                    constraint = Constraint::mk_univ_int(var, constraint);
+                }
+                // farkas transform
+                let constraint = farkas::farkas_transform(&constraint);
+                let fvs = constraint.fv();
+
+                solver.solve_with_model(&constraint, &HashSet::new(), &fvs)
+            } else {
+                let vars = vars.collect();
+                solver.solve_with_model(&constraint, &vars, &exists)
+            };
+            match m {
                 Ok(m) => {
                     debug!("constraint was sat: {}", constraint);
                     // replace all the integer coefficient

@@ -42,9 +42,11 @@ fn transform_predicate(c: &Constraint) -> Constraint {
                 Constraint::mk_disj(p1, p2)
             }
             PredKind::Gt => lt(y, x),
+            // x >= y  <=> x + 1 > y <=> y < x + 1
             PredKind::Geq => lt(y, inc(x)),
             PredKind::Lt => lt(x, y),
-            PredKind::Leq => lt(inc(x), y),
+            // x <= y  <=> x < y + 1
+            PredKind::Leq => lt(x, inc(y)),
         }
     }
 
@@ -153,11 +155,14 @@ pub fn farkas_transform(c: &Constraint) -> Constraint {
         assert!(var.ty.is_int());
         univ_vars.insert(var.id, idx);
     }
-
     // first replace all the predicates except for >= by constraints that only contain < (which will be negated below, so that will produce
     // <=s)
     let c2 = transform_predicate(&c2);
     debug!("transformed: {c2}");
+    debug!("univ_vars: ");
+    for (v, _) in univ_vars.iter() {
+        debug!("- {v}");
+    }
 
     // cnf = [θᵢ]
     let cnf = c2.to_cnf();
@@ -309,4 +314,23 @@ fn test_farkas_transform2() {
 
     let mut solver = crate::solver::smt::default_solver();
     assert!(solver.solve(&c2, &HashSet::new()).is_unsat());
+}
+#[test]
+fn test_farkas_transform3() {
+    // ∀x_17: i.((x_17 + 1) > 0) ∨ (x_17 <= 0)
+    use crate::formula::*;
+    let x17 = Ident::fresh();
+    let c1 = Constraint::mk_bin_pred(
+        PredKind::Gt,
+        Op::mk_add(Op::mk_var(x17), Op::mk_const(1)),
+        Op::mk_const(0),
+    );
+    let c2 = Constraint::mk_bin_pred(PredKind::Leq, Op::mk_var(x17), Op::mk_const(0));
+    let c = Constraint::mk_disj(c1, c2);
+    let c = Constraint::mk_univ_int(x17, c);
+    let c2 = farkas_transform(&c);
+    println!("{c2}");
+
+    let mut solver = crate::solver::smt::default_solver();
+    assert!(solver.solve(&c2, &HashSet::new()).is_sat());
 }
