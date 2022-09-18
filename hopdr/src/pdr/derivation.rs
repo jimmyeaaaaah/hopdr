@@ -677,14 +677,14 @@ fn handle_abs(
     let pt = match arg_expr.kind() {
         GoalKind::Abs(v, g) if v.ty.is_int() => match t.kind() {
             TauKind::IArrow(id, t) if v.ty.is_int() => {
-                let new_id = Ident::fresh();
-                let t = t.rename(id, &new_id);
-                let g = g.rename(&v.id, &new_id);
-                let constraint = constraint.rename(id, &new_id);
-                ienv.insert(new_id);
-                let pt = handle_abs(&constraint, tenv, ienv, all_coefficients, &g, &t);
-                ienv.remove(&new_id);
-                pt.iarrow(&new_id)
+                let t = t.rename(id, &v.id);
+                let constraint = constraint.rename(id, &v.id);
+                let b = ienv.insert(v.id);
+                let pt = handle_abs(&constraint, tenv, ienv, all_coefficients, g, &t);
+                if !b {
+                    ienv.remove(&v.id);
+                }
+                pt.iarrow(&v.id)
             }
             _ => panic!("program error"),
         },
@@ -905,9 +905,11 @@ fn type_check_inner(
             }
             formula::hes::GoalKind::Univ(x, g) => {
                 // to avoid the collision, we rename the variable.
-                assert!(ienv.insert(x.id));
+                let b = ienv.insert(x.id);
                 let mut pt = type_check_inner(constraint, tenv, ienv, all_coefficients, &g);
-                ienv.remove(&x.id);
+                if b {
+                    ienv.remove(&x.id);
+                }
                 // quantify all the constraint.
                 pt.quantify(&x.id);
                 pt
