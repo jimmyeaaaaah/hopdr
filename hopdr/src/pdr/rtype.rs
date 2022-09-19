@@ -104,7 +104,9 @@ impl<C: TeXFormat> TeXFormat for Tau<C> {
     fn tex_fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
         match self.kind() {
             TauKind::Proposition(c) => write!(f, r"\tb{{ {} }}", TeXPrinter(c)),
-            TauKind::IArrow(i, t) => write!(f, r"(\ti{{ {} }} \to {})", i, TeXPrinter(t)),
+            TauKind::IArrow(i, t) => {
+                write!(f, r"(\ti{{ {} }} \to {})", TeXPrinter(i), TeXPrinter(t))
+            }
             TauKind::Arrow(t1, t2) => {
                 write!(f, "(")?;
                 if t1.len() == 0 {
@@ -832,23 +834,21 @@ impl<T: Display> Display for TypeEnvironment<T> {
 
 impl<T: TeXFormat> TeXFormat for TypeEnvironment<T> {
     fn tex_fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        writeln!(f, r"\begin{{align*}}")?;
         for (idx, ts) in self.map.iter() {
-            write!(f, "X_({}) : ", idx)?;
+            write!(f, "{} &: ", TeXPrinter(idx))?;
             let mut fst = true;
             for t in ts {
-                let mut fst = true;
-                for t in ts {
-                    if fst {
-                        fst = false;
-                    } else {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "{}", TeXPrinter(t))?;
+                if fst {
+                    fst = false;
+                } else {
+                    write!(f, ", ")?;
                 }
-                writeln!(f)?;
+                write!(f, "{}", TeXPrinter(t))?;
             }
+            writeln!(f, r"\\")?;
         }
-        writeln!(f)
+        writeln!(f, r"\end{{align*}}")
     }
 }
 

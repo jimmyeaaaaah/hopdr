@@ -793,6 +793,13 @@ impl<C: fmt::Display> fmt::Display for Clause<C> {
     }
 }
 
+impl<C: TeXFormat> TeXFormat for Clause<C> {
+    fn tex_fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        write!(f, "{} ", TeXPrinter(&self.head))?;
+        write!(f, "= {}", TeXPrinter(&self.body))
+    }
+}
+
 impl<C> Clause<C> {
     pub fn new(body: Goal<C>, head: Variable) -> Clause<C> {
         Clause { body, head }
@@ -827,6 +834,17 @@ impl<C: fmt::Display> fmt::Display for Problem<C> {
             writeln!(f, "- {}", c)?;
         }
         fmt::Result::Ok(())
+    }
+}
+
+impl<C: TeXFormat> TeXFormat for Problem<C> {
+    fn tex_fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        writeln!(f, r"\begin{{align*}}")?;
+        writeln!(f, r"\pdrtop := {}\\", TeXPrinter(&self.top))?;
+        for c in self.clauses.iter() {
+            writeln!(f, r"{} \\", TeXPrinter(c))?;
+        }
+        writeln!(f, r"\end{{align*}}")
     }
 }
 

@@ -81,8 +81,9 @@ impl HoPDR {
             if !derivation::type_check_top(&x, self.top_env()) {
                 debug!("candidate: {}", x);
                 if self.config.dump_tex_progress {
-                    println!("candidate");
-                    println!("{}", TeXPrinter(&x));
+                    print!("candidate: ");
+                    println!(r"\( {} \)", TeXPrinter(&x));
+                    println!();
                 }
                 self.models.push(x);
                 return;
@@ -141,7 +142,8 @@ impl HoPDR {
             debug!("induction({}): {}", i, tyenv);
 
             if self.config.dump_tex_progress {
-                println!("induction({}): {}", i, tyenv);
+                println!(r"induction to env[{}]", i);
+                println!("{}", TeXPrinter(&tyenv));
             }
             self.envs[n - 1].append(&tyenv);
         }
@@ -256,8 +258,9 @@ impl HoPDR {
                 debug!("candidate: {}", x);
 
                 if self.config.dump_tex_progress {
-                    println!("candidate");
-                    println!("{}", TeXPrinter(&x));
+                    print!("candidate: ");
+                    println!(r"\( {} \)", TeXPrinter(&x));
+                    println!();
                 }
 
                 self.models.push(x);
@@ -270,6 +273,10 @@ impl HoPDR {
     fn run(&mut self) -> Result<PDRResult, Error> {
         info!("[PDR] target formula");
         info!("{}", self.problem);
+
+        if self.config.dump_tex_progress {
+            println!("{}", TeXPrinter(&self.problem));
+        }
         loop {
             self.dump_state();
             if self.config.dump_tex_progress {
