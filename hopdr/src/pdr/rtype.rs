@@ -3,7 +3,7 @@ use std::{
     fmt::{self, Display},
 };
 
-use crate::formula::{farkas, fofml, Variable};
+use crate::formula::{farkas, fofml, TeXFormat, TeXPrinter, Variable};
 use crate::formula::{
     Constraint, DerefPtr, FirstOrderLogic, Fv, Ident, Logic, Negation, Op, Polarity, Rename, Subst,
     Top, Type as SType, TypeKind as STypeKind,
@@ -95,6 +95,33 @@ impl<C: fmt::Display> fmt::Display for Tau<C> {
                     }
                 }
                 write!(f, "-> {})", t2)
+            }
+        }
+    }
+}
+
+impl<C: TeXFormat> TeXFormat for Tau<C> {
+    fn tex_fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        match self.kind() {
+            TauKind::Proposition(c) => write!(f, r"\tb{{ {} }}", TeXPrinter(c)),
+            TauKind::IArrow(i, t) => write!(f, r"(\ti{{ {} }} \to {})", i, TeXPrinter(t)),
+            TauKind::Arrow(t1, t2) => {
+                write!(f, "(")?;
+                if t1.len() == 0 {
+                    write!(f, r"\top")?;
+                } else {
+                    if t1.len() > 1 {
+                        write!(f, "(")?;
+                    }
+                    write!(f, "{}", TeXPrinter(&t1[0]))?;
+                    for t in t1[1..].iter() {
+                        write!(f, r" \wedge {}", TeXPrinter(t))?;
+                    }
+                    if t1.len() > 1 {
+                        write!(f, ")")?;
+                    }
+                }
+                write!(f, r"\to {})", TeXPrinter(t2))
             }
         }
     }
@@ -798,6 +825,28 @@ impl<T: Display> Display for TypeEnvironment<T> {
                 write!(f, "{}", t)?;
             }
             writeln!(f)?;
+        }
+        writeln!(f)
+    }
+}
+
+impl<T: TeXFormat> TeXFormat for TypeEnvironment<T> {
+    fn tex_fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        for (idx, ts) in self.map.iter() {
+            write!(f, "X_({}) : ", idx)?;
+            let mut fst = true;
+            for t in ts {
+                let mut fst = true;
+                for t in ts {
+                    if fst {
+                        fst = false;
+                    } else {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", TeXPrinter(t))?;
+                }
+                writeln!(f)?;
+            }
         }
         writeln!(f)
     }

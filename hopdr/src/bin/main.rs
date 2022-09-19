@@ -8,6 +8,7 @@ use hopdr::*;
 
 use clap::Parser;
 use colored::Colorize;
+use hopdr::pdr::PDRConfig;
 use hopdr::title;
 use nom::error::VerboseError;
 
@@ -28,9 +29,11 @@ struct Args {
     /// Timeout (sec); if set to 0, no timeout
     #[clap(short, long, default_value_t = 0)]
     timeout: u64,
+    #[clap(short, long)]
+    dump_tex_progress: bool,
 }
 
-fn pdr_main(contents: String) -> hopdr::pdr::VerificationResult {
+fn pdr_main(contents: String, config: PDRConfig) -> hopdr::pdr::VerificationResult {
     debug!("starting PDR...");
     let (_, f) = parse::parse::<VerboseError<&str>>(&contents).unwrap();
 
@@ -50,7 +53,7 @@ fn pdr_main(contents: String) -> hopdr::pdr::VerificationResult {
         debug!("{}", fml);
     }
 
-    pdr::run(vc)
+    pdr::run(vc, config)
 }
 
 fn main() {
@@ -75,16 +78,18 @@ fn main() {
         preprocess::hfl_preprocessor::open_file_with_preprocess(&args.input).unwrap()
     };
 
+    let config = pdr::PDRConfig::new().dump_tex_progress(args.dump_tex_progress);
+
     // RUST_LOG=info (trace, debug, etc..)
 
     // executes PDR with timeout
     // following https://gist.github.com/junha1/8ebaf53f46ea6fc14ab6797b9939b0f8
 
     let r = if args.timeout == 0 {
-        Ok(pdr_main(contents))
+        Ok(pdr_main(contents, config))
     } else {
         let timeout = time::Duration::from_secs(args.timeout);
-        util::executes_with_timeout(move || pdr_main(contents), timeout)
+        util::executes_with_timeout(move || pdr_main(contents, config), timeout)
     };
     match r {
         Ok(pdr::VerificationResult::Valid) => {

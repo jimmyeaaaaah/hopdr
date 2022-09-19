@@ -1,7 +1,7 @@
 use super::rtype::{Refinement, Tau, TyEnv, TypeEnvironment};
-use super::VerificationResult;
+use super::{PDRConfig, VerificationResult};
 use crate::formula::hes::Problem;
-use crate::formula::{hes, Constraint};
+use crate::formula::{hes, Constraint, TeXPrinter};
 use crate::pdr::derivation;
 
 use colored::Colorize;
@@ -34,6 +34,7 @@ pub struct HoPDR {
     envs: Vec<TyEnv>,
     problem: Problem<Constraint>,
     loop_cnt: u64,
+    config: PDRConfig,
 }
 
 impl<C: Refinement> TypeEnvironment<Tau<C>> {
@@ -66,12 +67,23 @@ impl HoPDR {
         }
     }
 
+    fn tex_dump_state(&self) {
+        for (level, e) in self.envs.iter().enumerate() {
+            println!(r"Level \( {} \)", level);
+            println!("{}", TeXPrinter(e));
+        }
+    }
+
     fn candidate(&mut self) {
         info!("{}", "candidate".purple());
         let cnf = self.problem.top.to_cnf();
         for x in cnf {
             if !derivation::type_check_top(&x, self.top_env()) {
                 debug!("candidate: {}", x);
+                if self.config.dump_tex_progress {
+                    println!("candidate");
+                    println!("{}", TeXPrinter(&x));
+                }
                 self.models.push(x);
                 return;
             }
@@ -83,12 +95,13 @@ impl HoPDR {
         self.envs.last().unwrap()
     }
 
-    fn new(problem: Problem<Constraint>) -> HoPDR {
+    fn new(problem: Problem<Constraint>, config: PDRConfig) -> HoPDR {
         let mut hopdr = HoPDR {
             models: Vec::new(),
             envs: Vec::new(),
             problem,
             loop_cnt: 0,
+            config,
         };
         hopdr.initialize();
         hopdr
@@ -123,10 +136,13 @@ impl HoPDR {
         }
 
         info!("{}", "induction".purple());
-
         for i in 1..n - 1 {
             let tyenv = derivation::saturate(&self.envs[i], &self.problem);
             debug!("induction({}): {}", i, tyenv);
+
+            if self.config.dump_tex_progress {
+                println!("induction({}): {}", i, tyenv);
+            }
             self.envs[n - 1].append(&tyenv);
         }
     }
@@ -194,8 +210,11 @@ impl HoPDR {
     // Assumption 2: ℱ(⌊Γ⌋) ⊧ ψ
     // Assumption 3: self.get_current_cex_level() < N
     fn conflict(&mut self, mut tyenv_new: TypeEnvironment<Tau<Constraint>>) -> Result<(), Error> {
-        debug!("{}", "conflict".blue());
+        info!("{}", "conflict".blue());
         debug!("{}", tyenv_new);
+        if self.config.dump_tex_progress {
+            println!("{}", TeXPrinter(&tyenv_new));
+        }
         tyenv_new.optimize();
         debug!("optimized: {tyenv_new}");
         // refute the top model in self.models.
@@ -215,7 +234,7 @@ impl HoPDR {
 
     // Assumption: ℱ(⌊Γ⌋) not⊧ ψ
     fn decide(&mut self) {
-        debug!("{}", "decide".blue());
+        info!("{}", "decide".blue());
         debug!("[PDR]decide");
         let level = self.get_current_cex_level();
         let gamma_i = &self.envs[level];
@@ -235,6 +254,12 @@ impl HoPDR {
             let mut env = gamma_i.clone();
             if !derivation::type_check_top(&x, &mut env) {
                 debug!("candidate: {}", x);
+
+                if self.config.dump_tex_progress {
+                    println!("candidate");
+                    println!("{}", TeXPrinter(&x));
+                }
+
                 self.models.push(x);
                 return;
             }
@@ -247,6 +272,9 @@ impl HoPDR {
         info!("{}", self.problem);
         loop {
             self.dump_state();
+            if self.config.dump_tex_progress {
+                self.tex_dump_state();
+            }
             if !self.check_valid() {
                 self.candidate();
                 if self.check_feasible()? {
@@ -261,8 +289,8 @@ impl HoPDR {
     }
 }
 
-pub fn run(problem: Problem<Constraint>) -> VerificationResult {
-    let mut pdr = HoPDR::new(problem);
+pub fn run(problem: Problem<Constraint>, config: PDRConfig) -> VerificationResult {
+    let mut pdr = HoPDR::new(problem, config);
     match pdr.run() {
         Ok(PDRResult::Valid) => VerificationResult::Valid,
         Ok(PDRResult::Invalid) => VerificationResult::Invalid,

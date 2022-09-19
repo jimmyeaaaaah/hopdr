@@ -1369,7 +1369,7 @@ pub struct TeXPrinter<'a> {
 }
 
 pub fn TeXPrinter<'a>(item: &'a dyn TeXFormat) -> TeXPrinter<'a> {
-    TeXPrinter(item)
+    TeXPrinter { item }
 }
 
 impl<'a> fmt::Display for TeXPrinter<'a> {
@@ -1380,7 +1380,7 @@ impl<'a> fmt::Display for TeXPrinter<'a> {
 
 impl TeXFormat for Ident {
     fn tex_fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-        write!(f, "x_{self}")
+        write!(f, "x_{{ {self} }}")
     }
 }
 
