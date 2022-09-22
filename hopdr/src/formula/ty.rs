@@ -1,7 +1,9 @@
+use rpds::HashTrieMap;
+
 use crate::util::P;
 use std::fmt;
 
-use super::{TeXFormat, TeXPrinter};
+use super::{Ident, TeXFormat, TeXPrinter};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum TypeKind {
@@ -60,4 +62,44 @@ impl Type {
             TypeKind::Arrow(x, y) => std::cmp::max(x.order() + 1, y.order()),
         }
     }
+}
+
+#[derive(Clone, Debug)]
+pub struct Environment {
+    map: HashTrieMap<Ident, Type>,
+}
+
+impl fmt::Display for Environment {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "[")?;
+        for (i, t) in self.map.iter() {
+            write!(f, "{}: {}, ", i, t)?;
+        }
+        write!(f, "]")
+    }
+}
+
+impl<'a> Environment {
+    pub fn new() -> Environment {
+        Environment {
+            map: HashTrieMap::new(),
+        }
+    }
+    pub fn add(&mut self, id: Ident, ty: Type) {
+        self.map = self.map.insert(id, ty);
+    }
+    pub fn del(&mut self, id: &Ident) {
+        self.map = self.map.remove(id);
+    }
+    pub fn get(&self, id: &Ident) -> Option<Type> {
+        self.map.get(id).cloned()
+    }
+}
+
+pub fn generate_global_environment<C>(formulas: &Vec<super::hes::Clause<C>>) -> Environment {
+    let mut env = Environment::new();
+    for formula in formulas.iter() {
+        env.add(formula.head.id, formula.head.ty.clone());
+    }
+    env
 }
