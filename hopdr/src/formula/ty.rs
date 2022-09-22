@@ -65,11 +65,11 @@ impl Type {
 }
 
 #[derive(Clone, Debug)]
-pub struct Environment {
+pub struct TyEnv {
     map: HashTrieMap<Ident, Type>,
 }
 
-impl fmt::Display for Environment {
+impl fmt::Display for TyEnv {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "[")?;
         for (i, t) in self.map.iter() {
@@ -79,9 +79,9 @@ impl fmt::Display for Environment {
     }
 }
 
-impl<'a> Environment {
-    pub fn new() -> Environment {
-        Environment {
+impl<'a> TyEnv {
+    pub fn new() -> TyEnv {
+        TyEnv {
             map: HashTrieMap::new(),
         }
     }
@@ -96,8 +96,8 @@ impl<'a> Environment {
     }
 }
 
-pub fn generate_global_environment<C>(formulas: &Vec<super::hes::Clause<C>>) -> Environment {
-    let mut env = Environment::new();
+pub fn generate_global_environment<C>(formulas: &Vec<super::hes::Clause<C>>) -> TyEnv {
+    let mut env = TyEnv::new();
     for formula in formulas.iter() {
         env.add(formula.head.id, formula.head.ty.clone());
     }
