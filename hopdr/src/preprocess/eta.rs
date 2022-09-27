@@ -8,6 +8,7 @@ fn transform_goal(
     t: &formula::Type,
     env: &mut formula::TyEnv,
 ) -> hes::Goal<formula::Constraint> {
+    use formula::Op;
     use hes::GoalKind;
     let f = translate;
 
@@ -68,7 +69,13 @@ fn transform_goal(
             formula::TypeKind::Proposition | formula::TypeKind::Integer => g,
             formula::TypeKind::Arrow(s, t) => {
                 let x = formula::Ident::fresh();
-                let g = Goal::mk_app(g, Goal::mk_var(x));
+                let arg = match s.kind() {
+                    formula::TypeKind::Integer => Goal::mk_op(Op::mk_var(x)),
+                    formula::TypeKind::Proposition | formula::TypeKind::Arrow(_, _) => {
+                        Goal::mk_var(x)
+                    }
+                };
+                let g = Goal::mk_app(g, arg);
                 let g = append_args(g, t);
                 let v = formula::Variable::mk(x, s.clone());
                 Goal::mk_abs(v, g)
