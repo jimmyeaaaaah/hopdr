@@ -37,7 +37,7 @@ fn transform_goal(
                 (Type::mk_type_prop(), Goal::mk_univ(x.clone(), g))
             }
             GoalKind::Var(x) => {
-                let t = env.get(x).unwrap();
+                let t = env.get(x).expect(&format!("cannot find {}", x));
                 (t, g.clone())
             }
             GoalKind::Abs(x, g) => {
@@ -84,16 +84,21 @@ fn transform_goal(
                     formula::TypeKind::Arrow(_, t) => t,
                     _ => panic!("program error"),
                 };
-                Goal::mk_abs(x.clone(), translate(g, t, env))
+                env.add(x.id, x.ty.clone());
+                let g = translate(g, t, env);
+                env.del(&x.id);
+                Goal::mk_abs(x.clone(), g)
             }
             GoalKind::App(g1, g2) => {
                 let (s, g1) = handle_abs(g1, env);
-                let g2 = match t.kind() {
-                    formula::TypeKind::Arrow(t, _) => translate(g2, &s, env),
-                    formula::TypeKind::Proposition | formula::TypeKind::Integer => todo!(),
+                let g2 = match s.kind() {
+                    formula::TypeKind::Arrow(t1, _) => translate(g2, &t1, env),
+                    formula::TypeKind::Proposition | formula::TypeKind::Integer => {
+                        panic!("program error")
+                    }
                 };
                 let g_app = Goal::mk_app(g1, g2);
-                append_args(g_app, &s)
+                append_args(g_app, &t)
             }
             GoalKind::Univ(x, g) => Goal::mk_univ(x.clone(), translate(g, t, env)),
             GoalKind::Conj(g1, g2) => Goal::mk_conj(translate(g1, t, env), translate(g2, t, env)),
@@ -120,4 +125,33 @@ pub fn transform(problem: hes::Problem<formula::Constraint>) -> hes::Problem<for
         .collect();
     let top = transform_goal(&problem.top, &formula::Type::mk_type_prop(), &mut env);
     hes::Problem { top, clauses }
+}
+
+#[test]
+fn test_transform() {
+    use crate::parse;
+    use crate::parse::parse;
+    use crate::preprocess;
+    use nom::error::VerboseError;
+
+    let s = "
+    %HES
+    S =v S2 n.
+    S2 z =v F z (H z).
+    F x g =v g (x+1).
+    H z y =v y > z.";
+    let (_, f) = parse::<VerboseError<&str>>(s).unwrap();
+    let (vc, ctx) = preprocess::hes::preprocess(f);
+    println!("before: {vc}");
+    let vc_old = vc.clone();
+    let h = transform(vc);
+    println!("{h}");
+    let s2 = ctx
+        .ident_map
+        .get(&parse::Ident::new("S2".to_string()))
+        .unwrap();
+    assert_ne!(
+        &h.get_clause(s2).unwrap().body,
+        &vc_old.get_clause(s2).unwrap().body
+    )
 }
