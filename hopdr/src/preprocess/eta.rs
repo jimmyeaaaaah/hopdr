@@ -58,7 +58,7 @@ fn transform_goal(
                         panic!("program error")
                     }
                 };
-                let g2 = translate(g2, t, env);
+                let g2 = translate(g2, s, env);
                 (t.clone(), Goal::mk_app(g1, g2))
             }
         }
