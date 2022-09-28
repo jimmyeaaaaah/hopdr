@@ -323,13 +323,12 @@ fn parse_body(s: &str, fvs: HashSet<Ident>) -> Constraint {
 macro_rules! interp_execution {
     ( $b:block ) => {{
         crate::stat::interpolation::count();
-        use std::time::Instant;
-        let now = Instant::now();
+
+        crate::stat::interpolation::start_clock();
 
         let out = $b;
 
-        let duration = now.elapsed();
-        crate::stat::interpolation::total_time(duration);
+        crate::stat::interpolation::end_clock();
         out
     }};
 }

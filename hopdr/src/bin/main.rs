@@ -3,6 +3,7 @@ extern crate hopdr;
 extern crate lazy_static;
 #[macro_use]
 extern crate log;
+extern crate ctrlc;
 
 use hopdr::*;
 
@@ -67,7 +68,6 @@ fn gen_configuration_from_args(args: &Args) -> hopdr::Configuration {
 }
 
 fn main() {
-    let solver_total_time = std::time::Instant::now();
     // setting logs
     env_logger::builder()
         .format_timestamp(None)
@@ -98,10 +98,10 @@ fn main() {
     // following https://gist.github.com/junha1/8ebaf53f46ea6fc14ab6797b9939b0f8
 
     let r = if args.timeout == 0 {
-        Ok(pdr_main(contents, config))
+        util::executes_with_timeout_and_ctrlc(move || pdr_main(contents, config), None)
     } else {
         let timeout = time::Duration::from_secs(args.timeout);
-        util::executes_with_timeout(move || pdr_main(contents, config), timeout)
+        util::executes_with_timeout_and_ctrlc(move || pdr_main(contents, config), Some(timeout))
     };
     match r {
         Ok(pdr::VerificationResult::Valid) => {
@@ -119,8 +119,11 @@ fn main() {
         Err(util::ExecutionError::Panic) => {
             println!("{}", "Fail".red());
         }
+        Err(util::ExecutionError::Ctrlc) => {
+            println!("{}", "Execution terminated".white());
+        }
     }
-    crate::stat::overall::register_total_time(solver_total_time.elapsed());
+    crate::stat::finalize();
 
     if args.print_stat {
         crate::stat::dump();

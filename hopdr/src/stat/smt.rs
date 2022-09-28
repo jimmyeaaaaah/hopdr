@@ -1,8 +1,10 @@
 use super::STAT;
-use std::time::Duration;
+use std::time::{Duration, Instant};
+
 pub struct SMTStatistics {
     smt_count: usize,
     smt_duration: Duration,
+    clock_starts_at: Option<Instant>,
 }
 
 impl std::fmt::Display for SMTStatistics {
@@ -18,6 +20,7 @@ impl SMTStatistics {
         SMTStatistics {
             smt_count: 0,
             smt_duration: Duration::ZERO,
+            clock_starts_at: None,
         }
     }
 }
@@ -25,6 +28,30 @@ impl SMTStatistics {
 pub fn smt_count() {
     STAT.lock().unwrap().smt.smt_count += 1
 }
-pub fn timer_smt(duration: Duration) {
-    STAT.lock().unwrap().smt.smt_duration += duration;
+
+pub fn start_clock() {
+    let now = Instant::now();
+
+    STAT.lock().unwrap().smt.clock_starts_at = Some(now)
+}
+
+pub fn end_clock() {
+    let st = {
+        STAT.lock()
+            .unwrap()
+            .smt
+            .clock_starts_at
+            .expect("program error")
+            .clone()
+    };
+    let dur = st.elapsed();
+    STAT.lock().unwrap().smt.smt_duration += dur;
+}
+
+pub fn finalize() {
+    let r = { STAT.lock().unwrap().smt.clock_starts_at.clone() };
+    match r {
+        Some(_) => end_clock(),
+        None => (),
+    }
 }

@@ -1,8 +1,10 @@
 use super::STAT;
 use std::time::Duration;
+use std::time::Instant;
 pub struct InterpolationStatistics {
     count: usize,
     total_time: Duration,
+    clock_starts_at: Option<Instant>,
 }
 
 impl std::fmt::Display for InterpolationStatistics {
@@ -18,6 +20,7 @@ impl InterpolationStatistics {
         InterpolationStatistics {
             total_time: Duration::ZERO,
             count: 0,
+            clock_starts_at: None,
         }
     }
 }
@@ -26,6 +29,24 @@ pub fn count() {
     STAT.lock().unwrap().interpolation.count += 1;
 }
 
-pub fn total_time(total_time: Duration) {
-    STAT.lock().unwrap().interpolation.total_time += total_time
+pub fn start_clock() {
+    let now = Instant::now();
+
+    STAT.lock().unwrap().interpolation.clock_starts_at = Some(now)
+}
+
+pub fn end_clock() {
+    let mut stat = STAT.lock().unwrap();
+    let st = stat.interpolation.clock_starts_at.expect("program error");
+    let dur = st.elapsed();
+    stat.interpolation.total_time += dur;
+    stat.interpolation.clock_starts_at = None;
+}
+
+pub fn finalize() {
+    let r = { STAT.lock().unwrap().interpolation.clock_starts_at };
+    match r {
+        Some(_) => end_clock(),
+        None => (),
+    }
 }

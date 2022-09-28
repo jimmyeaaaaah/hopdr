@@ -261,13 +261,11 @@ fn z3_solver(smt_string: String) -> String {
     debug!("filename: {}", &args[0]);
 
     crate::stat::smt::smt_count();
-    use std::time::Instant;
-    let now = Instant::now();
+    crate::stat::smt::start_clock();
 
     let out = util::exec_with_timeout("z3", &args, Duration::from_secs(1));
 
-    let duration = now.elapsed();
-    crate::stat::smt::timer_smt(duration);
+    crate::stat::smt::end_clock();
 
     String::from_utf8(out).unwrap()
 }

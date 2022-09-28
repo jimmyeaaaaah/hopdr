@@ -51,3 +51,9 @@ static STAT: Lazy<Mutex<Statistics>> = Lazy::new(|| Mutex::new(Statistics::new()
 pub fn dump() {
     println!("{}", STAT.lock().unwrap());
 }
+
+pub fn finalize() {
+    crate::stat::overall::finalize();
+    self::interpolation::finalize();
+    self::smt::finalize();
+}

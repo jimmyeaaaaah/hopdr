@@ -1,14 +1,21 @@
 use super::STAT;
-use std::time::Duration;
+use either::Either;
+use std::time::{Duration, Instant};
 pub struct OverallStatistics {
-    total_time: Option<Duration>,
+    total_time: Either<Instant, Duration>,
 }
 
 impl std::fmt::Display for OverallStatistics {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.total_time {
-            Some(tot) => writeln!(f, "total time: {:.2} sec", tot.as_secs_f32())?,
-            None => (),
+            Either::Left(tot) => writeln!(
+                f,
+                "still ongoing: accumurated time: {:.2} sec",
+                tot.elapsed().as_secs_f32()
+            )?,
+            Either::Right(tot) => {
+                writeln!(f, "finished: total time: {:.2} sec", tot.as_secs_f32())?
+            }
         };
         Ok(())
     }
@@ -16,10 +23,16 @@ impl std::fmt::Display for OverallStatistics {
 
 impl OverallStatistics {
     pub fn new() -> OverallStatistics {
-        OverallStatistics { total_time: None }
+        OverallStatistics {
+            total_time: Either::Left(Instant::now()),
+        }
     }
 }
 
-pub fn register_total_time(total_time: Duration) {
-    STAT.lock().unwrap().overall.total_time = Some(total_time)
+pub fn finalize() {
+    let duration = match STAT.lock().unwrap().overall.total_time {
+        Either::Left(now) => now.elapsed(),
+        Either::Right(dur) => dur,
+    };
+    STAT.lock().unwrap().overall.total_time = Either::Right(duration);
 }
