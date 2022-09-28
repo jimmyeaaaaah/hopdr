@@ -22,15 +22,19 @@ struct Args {
     /// Name of the person to greet
     #[clap(short, long)]
     input: String,
-    #[clap(short, long)]
+    #[clap(long)]
     no_preprocess: bool,
-    #[clap(short, long)]
+    #[clap(long)]
     print_stat: bool,
     /// Timeout (sec); if set to 0, no timeout
     #[clap(short, long, default_value_t = 0)]
     timeout: u64,
-    #[clap(short, long)]
+    #[clap(long)]
     dump_tex_progress: bool,
+    #[clap(long)]
+    no_inlining: bool,
+    #[clap(long)]
+    remove_disjunction: bool,
 }
 
 fn pdr_main(contents: String, config: PDRConfig) -> hopdr::pdr::VerificationResult {
@@ -56,6 +60,12 @@ fn pdr_main(contents: String, config: PDRConfig) -> hopdr::pdr::VerificationResu
     pdr::run(vc, config)
 }
 
+fn gen_configuration_from_args(args: &Args) -> hopdr::Configuration {
+    hopdr::Configuration::new()
+        .inlining(!args.no_inlining)
+        .remove_disjunction(args.remove_disjunction)
+}
+
 fn main() {
     let solver_total_time = std::time::Instant::now();
     // setting logs
@@ -72,10 +82,12 @@ fn main() {
     // parsing command line args
     let args = Args::parse();
 
-    let contents = if args.no_preprocess || true {
+    let config = gen_configuration_from_args(&args);
+
+    let contents = if args.no_preprocess {
         fs::read_to_string(&args.input).expect("Something went wrong reading the file")
     } else {
-        preprocess::hfl_preprocessor::open_file_with_preprocess(&args.input).unwrap()
+        preprocess::hfl_preprocessor::open_file_with_preprocess(&args.input, &config).unwrap()
     };
 
     let config = pdr::PDRConfig::new().dump_tex_progress(args.dump_tex_progress);
