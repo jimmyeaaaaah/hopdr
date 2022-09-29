@@ -1,5 +1,6 @@
 use super::alpha::alpha_renaming;
 use super::eta;
+use super::extravar;
 use super::safety;
 use super::transform::transform;
 use super::typing::typing;
@@ -178,6 +179,7 @@ pub fn preprocess<'a>(vc: parse::Problem) -> (hes::Problem<formula::Constraint>,
             let problem = safety::transform(problem);
             debug!("[safety::transform]\n{}\n", problem);
             let problem = eta::transform(problem);
+            let problem = extravar::transform(problem);
             (problem, ctx)
         }
     }
