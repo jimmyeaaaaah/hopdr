@@ -247,6 +247,7 @@ struct Z3Solver {}
 pub fn smt_solver(s: SMT2Style) -> Box<dyn SMTSolver> {
     match s {
         SMT2Style::Z3 => Box::new(Z3Solver {}),
+        SMT2Style::CVC => panic!("not supported"),
     }
 }
 

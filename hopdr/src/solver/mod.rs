@@ -1,12 +1,14 @@
 pub mod chc;
 pub mod disj;
 pub mod interpolation;
+pub mod sat;
 pub mod smt;
 mod util;
 
 #[derive(Copy, Clone)]
 pub enum SMT2Style {
     Z3,
+    CVC,
 }
 
 #[derive(Debug)]
