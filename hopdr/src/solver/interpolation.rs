@@ -28,6 +28,22 @@ use std::time::Duration;
 type CHC = chc::CHC<chc::Atom, Constraint>;
 type CHCBody = chc::CHCBody<chc::Atom, Constraint>;
 
+static mut SMTINTERPOL_PATH: Option<String> = None;
+pub fn set_smt_interpol_path(path: String) {
+    unsafe {
+        SMTINTERPOL_PATH = Some(path);
+    }
+}
+fn get_smt_interpol_path() -> String {
+    match unsafe { &SMTINTERPOL_PATH } {
+        Some(s) => s.clone(),
+        None => {
+            let mut home = home_dir().unwrap();
+            home.push(".local/share/hopdr/smtinterpol.jar");
+            home.into_os_string().into_string().unwrap()
+        }
+    }
+}
 pub enum InterpolationSolver {
     SMTInterpol,
     Csisat,
@@ -398,9 +414,7 @@ impl SMTInterpolSolver {
         debug!("smt_string: {}", &smt_string);
         let f = smt::save_smt2(smt_string);
         // TODO: determine the path when it's compiled
-        let mut home = home_dir().unwrap();
-        home.push(".local/share/hopdr/smtinterpol.jar");
-        let s = home.into_os_string().into_string().unwrap();
+        let s = get_smt_interpol_path();
         let args = vec!["-jar", &s, f.path().to_str().unwrap()];
         debug!("filename: {}", &args[0]);
         let out = interp_execution!({
