@@ -3,7 +3,7 @@ use std::{
     fmt::{self, Display},
 };
 
-use crate::formula::{farkas, fofml, TeXFormat, TeXPrinter, Variable};
+use crate::formula::{fofml, TeXFormat, TeXPrinter, Variable};
 use crate::formula::{
     Constraint, DerefPtr, FirstOrderLogic, Fv, Ident, Logic, Negation, Op, Polarity, Rename, Subst,
     Top, Type as SType, TypeKind as STypeKind,
@@ -712,6 +712,7 @@ fn test_optimize_constraint_reduction() {
 ///   - t: ∀ x₁, x₂. (y:int → •〈y =x₁+x₂〉)→z:int→ • 〈z=x₁+x₂〉
 ///   - s: ∀ x₃.(y:int→•〈y=x₃〉)→z:int→•〈z=x₃〉
 /// Note that t ≤ s holds.
+#[cfg(test)]
 fn generate_t_and_its_subtype_for_test() -> (Ty, Ty) {
     // x + 1 <= 4
     // ∀ x₁, x₂. (y:int → •〈y =x₁+x₂〉)→z:int→ • 〈z=x₁+x₂〉

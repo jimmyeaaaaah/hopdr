@@ -1368,6 +1368,7 @@ pub struct TeXPrinter<'a> {
     item: &'a dyn TeXFormat,
 }
 
+#[allow(non_snake_case)]
 pub fn TeXPrinter<'a>(item: &'a dyn TeXFormat) -> TeXPrinter<'a> {
     TeXPrinter { item }
 }

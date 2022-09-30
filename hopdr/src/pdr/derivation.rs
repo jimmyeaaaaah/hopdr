@@ -3,8 +3,7 @@ use super::rtype::{instantiate_type, Refinement, TBot, Tau, TauKind, TypeEnviron
 use crate::formula::hes::{Goal, GoalBase, GoalKind, Problem as ProblemBase};
 use crate::formula::{self, DerefPtr, FirstOrderLogic};
 use crate::formula::{
-    chc, farkas, fofml, pcsp, Constraint, Fv, Ident, Logic, Negation, Op, Rename, Subst, Top,
-    Variable,
+    chc, farkas, fofml, Constraint, Fv, Ident, Logic, Negation, Op, Rename, Subst, Top, Variable,
 };
 use crate::solver;
 use crate::title;
@@ -14,15 +13,12 @@ use rpds::{HashTrieMap, Stack};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::fmt::Formatter;
-use std::hash::Hash;
 
 type Atom = fofml::Atom;
 type Candidate = Goal<Constraint>;
 type Ty = Tau<Atom>;
 type Env = TypeEnvironment<Ty>;
 type Problem = ProblemBase<Constraint>;
-type CHC = chc::CHC<chc::Atom, Atom>;
-type PCSP = pcsp::PCSP<fofml::Atom>;
 
 /// track_idents maps predicate in Problem to the idents of lambda abstraction exprs
 ///
@@ -227,8 +223,6 @@ impl From<Candidate> for G {
 fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
     // Some(Candidate): substituted an app
     // None: not yet
-    use formula::hes::GoalKind;
-
     fn go(goal: &G, level: &mut usize) -> Option<(G, Reduction)> {
         /// returns Some(_) if reduction happens in goal; otherwise None
         /// left of the return value: the reduced term
@@ -1053,16 +1047,8 @@ impl formula::Subst for SavedTy {
 }
 
 impl SavedTy {
-    fn kind<'a>(&'a self) -> &'a TauKind<Atom> {
-        self.ty.kind()
-    }
     fn mk(ty: Ty, constraint: Atom) -> SavedTy {
         SavedTy { ty, constraint }
-    }
-    fn deref_ptr(&self, ident: &Ident) -> SavedTy {
-        let ty = self.ty.deref_ptr(ident);
-        let constraint = self.constraint.deref_ptr(ident);
-        SavedTy::mk(ty, constraint)
     }
 }
 
@@ -1363,10 +1349,6 @@ impl<C: Refinement> PossibleDerivation<C> {
         PossibleDerivation::new(Vec::new())
     }
 
-    fn push(&mut self, ty: CandidateDerivation<C>) {
-        self.types.push(ty);
-    }
-
     fn singleton(cd: CandidateDerivation<C>) -> Self {
         Self::new(vec![cd])
     }
@@ -1452,51 +1434,6 @@ impl PossibleDerivation<Atom> {
     }
 }
 
-fn rename_integer_variable(t1: &Ty, t2: &Ty) -> Ty {
-    match (t1.kind(), t2.kind()) {
-        (TauKind::Proposition(_), TauKind::Proposition(_)) => t2.clone(),
-        (TauKind::IArrow(x, tx), TauKind::IArrow(y, ty)) => {
-            let t = rename_integer_variable(tx, &ty.rename(y, x));
-            Tau::mk_iarrow(*x, t)
-        }
-        (TauKind::Arrow(s1, t1), TauKind::Arrow(s2, t2)) => {
-            let mut args = Vec::new();
-            for (s1, s2) in s1.iter().zip(s2.iter()) {
-                let s2 = rename_integer_variable(s1, s2);
-                args.push(s2);
-            }
-            let t2 = rename_integer_variable(t1, t2);
-            Tau::mk_arrow(args, t2)
-        }
-        _ => panic!("program error"),
-    }
-}
-
-// takes g and formats it and returns (Θ, g') where Θ => g'
-fn format_cnf_clause(g: G) -> (Constraint, G) {
-    match g.kind() {
-        formula::hes::GoalKind::Constr(_)
-        | formula::hes::GoalKind::Var(_)
-        | formula::hes::GoalKind::Abs(_, _)
-        | formula::hes::GoalKind::App(_, _) => (Constraint::mk_true(), g.clone()),
-        formula::hes::GoalKind::Disj(g1, g2) => {
-            let c: Option<Constraint> = g1.clone().into();
-            match c {
-                Some(c) => (c.negate().unwrap(), g2.clone()),
-                None => {
-                    let c: Option<Constraint> = g2.clone().into();
-                    match c {
-                        Some(c) => (c.negate().unwrap(), g1.clone()),
-                        None => panic!("fatal: candidate is non-linear."),
-                    }
-                }
-            }
-        }
-        formula::hes::GoalKind::Conj(_, _)
-        | formula::hes::GoalKind::Univ(_, _)
-        | formula::hes::GoalKind::Op(_) => panic!("fatal"),
-    }
-}
 pub struct InferenceConfig {
     pub infer_polymorphic_type: bool,
 }

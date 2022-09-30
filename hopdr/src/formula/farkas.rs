@@ -1,6 +1,6 @@
-use std::{collections::HashMap, result};
+use std::collections::HashMap;
 
-use crate::formula::{Bot, FirstOrderLogic, OpKind};
+use crate::formula::OpKind;
 
 /// Given a linear integer arithmetic Constraint,
 /// returns
@@ -213,6 +213,7 @@ pub fn farkas_transform(c: &Constraint) -> Constraint {
 
 #[test]
 fn test_farkas_transform() {
+    use crate::formula::FirstOrderLogic;
     // example in Section 4.2.2. in the paper by Unno et al.(POPL 2012)
     let x = Ident::fresh();
     let y = Ident::fresh();

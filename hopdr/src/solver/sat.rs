@@ -1,14 +1,10 @@
-use tempfile::NamedTempFile;
-
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
 use super::smt::{ident_2_smt2, save_smt2};
 use super::util;
-use super::{SMT2Style, SolverResult};
-use crate::formula::{
-    Constraint, ConstraintExpr, Ident, Op, OpExpr, OpKind, PredKind, QuantifierKind,
-};
+use super::SolverResult;
+use crate::formula::{Constraint, ConstraintExpr, Ident, Op, OpExpr, OpKind, PredKind};
 use lexpr;
 use lexpr::Value;
 
@@ -207,12 +203,6 @@ impl SATSolver {
         }
     }
 
-    pub(super) fn quantifier_to_smt2(q: &QuantifierKind) -> &'static str {
-        match q {
-            QuantifierKind::Existential => "exists",
-            QuantifierKind::Universal => "forall",
-        }
-    }
     fn pred_to_smt2(&mut self, p: &PredKind, args: &[String]) -> String {
         let args = args.join(" ");
         match p {
