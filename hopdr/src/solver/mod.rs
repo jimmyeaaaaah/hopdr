@@ -6,9 +6,10 @@ pub mod smt;
 mod util;
 
 #[derive(Copy, Clone)]
-pub enum SMT2Style {
+pub enum SMTSolverType {
     Z3,
     CVC,
+    Auto,
 }
 
 #[derive(Debug)]
@@ -17,6 +18,11 @@ pub enum SolverResult {
     Unsat,
     Unknown,
     Timeout,
+}
+
+#[derive(Debug)]
+pub struct Model {
+    pub model: std::collections::HashMap<crate::formula::Ident, i64>,
 }
 
 impl SolverResult {

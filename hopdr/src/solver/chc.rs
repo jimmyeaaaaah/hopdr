@@ -2,7 +2,7 @@ use super::smt;
 use super::smt::constraint_to_smt2_inner;
 use super::smt::ident_2_smt2;
 use super::util;
-use super::SMT2Style;
+use super::SMTSolverType;
 use crate::formula::chc;
 use crate::formula::chc::Model;
 use crate::formula::fofml;
@@ -67,7 +67,7 @@ fn predicate_to_smt2(p: &Ident, args: &[Op]) -> String {
 }
 
 fn atom_to_smt2(p: &pcsp::Atom) -> String {
-    const STYLE: SMT2Style = SMT2Style::Z3;
+    const STYLE: SMTSolverType = SMTSolverType::Z3;
     match p.kind() {
         pcsp::AtomKind::True => "true".to_string(),
         pcsp::AtomKind::Constraint(c) => constraint_to_smt2_inner(c, STYLE),
@@ -93,7 +93,7 @@ fn chc_to_smt2(chc: &CHC, style: CHCStyle) -> String {
     let head_smt2 = match &chc.head {
         chc::CHCHead::Constraint(c) => {
             c.fv_with_vec(&mut fvs);
-            smt::constraint_to_smt2_inner(c, SMT2Style::Z3)
+            smt::constraint_to_smt2_inner(c, SMTSolverType::Z3)
         }
         chc::CHCHead::Predicate(a) => {
             for i in a.args.iter() {

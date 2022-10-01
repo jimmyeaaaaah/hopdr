@@ -18,7 +18,7 @@ use crate::formula::{Bot, Constraint, FirstOrderLogic, Ident, Logic, Negation, T
 use crate::solver::interpolation::InterpolationSolver::SMTInterpol;
 use crate::solver::smt::ident_2_smt2;
 use crate::solver::util;
-use crate::solver::{smt, SMT2Style};
+use crate::solver::{smt, SMTSolverType};
 
 use home::home_dir;
 
@@ -401,9 +401,9 @@ impl SMTInterpolSolver {
         for var in fvs.iter() {
             result += &format!("(declare-fun {} () Int)\n", smt::ident_2_smt2(var));
         }
-        let left_s = smt::constraint_to_smt2_inner(left, SMT2Style::Z3);
+        let left_s = smt::constraint_to_smt2_inner(left, SMTSolverType::Z3);
         result += &format!("(assert (! {} :named IP_0))\n", left_s);
-        let right_s = smt::constraint_to_smt2_inner(right, SMT2Style::Z3);
+        let right_s = smt::constraint_to_smt2_inner(right, SMTSolverType::Z3);
         result += &format!("(assert (! {} :named IP_1))\n", right_s);
 
         result += "(check-sat)\n(get-interpolants IP_0 IP_1)\n";

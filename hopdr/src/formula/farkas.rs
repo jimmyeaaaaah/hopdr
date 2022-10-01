@@ -253,7 +253,6 @@ fn test_farkas_transform() {
 
     let p1 = move || -> Op { Op::mk_var(ip1) };
     let p2 = move || -> Op { Op::mk_var(ip2) };
-    let p3 = move || -> Op { Op::mk_var(ip3) };
     let p4 = move || -> Op { Op::mk_var(ip4) };
 
     fn m(x: Op) -> Op {

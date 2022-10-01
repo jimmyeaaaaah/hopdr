@@ -1125,7 +1125,7 @@ impl<ID: Eq + std::hash::Hash + Copy, T: Clone + Subst<Item = Op, Id = Ident>>
     fn get_opt(&self, level: &ID) -> Option<Stack<T>> {
         self.0.get(level).cloned()
     }
-    fn update_with_model(&mut self, m: &solver::smt::Model) {
+    fn update_with_model(&mut self, m: &solver::Model) {
         let mut new_map = HashTrieMap::new();
         for (k, tys) in self.0.iter() {
             let mut new_tys = Stack::new();
@@ -1170,7 +1170,7 @@ impl Derivation {
         self.arg.merge_derivation_map(derivation.arg.clone());
         self.expr.merge_derivation_map(derivation.expr.clone());
     }
-    fn update_with_model(&mut self, m: &solver::smt::Model) {
+    fn update_with_model(&mut self, m: &solver::Model) {
         self.arg.update_with_model(&m);
         self.expr.update_with_model(&m);
     }

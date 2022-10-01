@@ -733,7 +733,7 @@ fn test_fofml_atom_deref_ptr() {
 
 trait TemplateKind {
     fn apply(&self, args: &[Op]) -> Constraint;
-    fn instantiate(&self, args: &[Op], model: &smt::Model) -> Constraint;
+    fn instantiate(&self, args: &[Op], model: &solver::Model) -> Constraint;
     fn coefs<'a>(&'a self) -> Box<dyn Iterator<Item = &'a Ident> + 'a>;
 }
 
@@ -794,7 +794,7 @@ impl TemplateKind for Linear {
         c.subst_multi(&v)
     }
 
-    fn instantiate(&self, arg_ops: &[Op], model: &smt::Model) -> Constraint {
+    fn instantiate(&self, arg_ops: &[Op], model: &solver::Model) -> Constraint {
         let coefs = self.coefs.iter().map(|x| {
             let v = model.get(x).unwrap();
             Op::mk_const(v)
@@ -865,7 +865,7 @@ impl<'a> Template<'a> {
         self.template_kinds.iter().map(|x| x.coefs()).flatten()
     }
 
-    fn to_constraint(self, model: &smt::Model) -> (Vec<Ident>, Constraint) {
+    fn to_constraint(self, model: &solver::Model) -> (Vec<Ident>, Constraint) {
         let args = (0..self.nargs)
             .into_iter()
             .map(|_| Ident::fresh())

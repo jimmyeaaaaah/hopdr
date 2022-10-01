@@ -4,17 +4,12 @@ use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
 use super::util;
-use super::{SMT2Style, SolverResult};
+use super::{Model, SMTSolverType, SolverResult};
 use crate::formula::{
     Constraint, ConstraintExpr, Ident, Op, OpExpr, OpKind, PredKind, QuantifierKind,
 };
 use lexpr;
 use lexpr::Value;
-
-#[derive(Debug)]
-pub struct Model {
-    pub model: HashMap<Ident, i64>,
-}
 
 fn encode_ident(x: &Ident) -> String {
     format!("x{}", x)
@@ -184,7 +179,7 @@ pub(super) fn quantifier_to_smt2(q: &QuantifierKind) -> &'static str {
     }
 }
 
-pub(super) fn constraint_to_smt2_inner(c: &Constraint, style: SMT2Style) -> String {
+pub(super) fn constraint_to_smt2_inner(c: &Constraint, style: SMTSolverType) -> String {
     let f = constraint_to_smt2_inner;
     match c.kind() {
         ConstraintExpr::True => "true".to_string(),
@@ -206,7 +201,7 @@ pub(super) fn constraint_to_smt2_inner(c: &Constraint, style: SMT2Style) -> Stri
 
 fn constraint_to_smt2(
     c: &Constraint,
-    style: SMT2Style,
+    style: SMTSolverType,
     vars: &HashSet<Ident>,
     fvs: Option<&HashSet<Ident>>,
 ) -> String {
@@ -244,15 +239,28 @@ pub(super) fn save_smt2(smt_string: String) -> NamedTempFile {
 
 struct Z3Solver {}
 
-pub fn smt_solver(s: SMT2Style) -> Box<dyn SMTSolver> {
+struct AutoSolver {
+    z3_solver: Z3Solver,
+}
+
+impl AutoSolver {
+    fn new() -> AutoSolver {
+        AutoSolver {
+            z3_solver: Z3Solver {},
+        }
+    }
+}
+
+pub fn smt_solver(s: SMTSolverType) -> Box<dyn SMTSolver> {
     match s {
-        SMT2Style::Z3 => Box::new(Z3Solver {}),
-        SMT2Style::CVC => panic!("not supported"),
+        SMTSolverType::Z3 => Box::new(Z3Solver {}),
+        SMTSolverType::Auto => Box::new(AutoSolver::new()),
+        SMTSolverType::CVC => panic!("not supported"),
     }
 }
 
 pub fn default_solver() -> Box<dyn SMTSolver> {
-    smt_solver(SMT2Style::Z3)
+    smt_solver(SMTSolverType::Auto)
 }
 
 fn z3_solver(smt_string: String) -> String {
@@ -271,13 +279,32 @@ fn z3_solver(smt_string: String) -> String {
     String::from_utf8(out).unwrap()
 }
 
+impl SMTSolver for AutoSolver {
+    fn solve(&mut self, c: &Constraint, vars: &HashSet<Ident>) -> SolverResult {
+        let mut sat_solver = super::sat::SATSolver::default_solver(64);
+        match sat_solver.solve(c) {
+            Ok(_) => SolverResult::Sat,
+            Err(r) => r,
+        }
+    }
+    fn solve_with_model(
+        &mut self,
+        c: &Constraint,
+        vars: &HashSet<Ident>,
+        fvs: &HashSet<Ident>,
+    ) -> Result<Model, SolverResult> {
+        let mut sat_solver = super::sat::SATSolver::default_solver(16);
+        sat_solver.solve(c)
+    }
+}
+
 impl SMTSolver for Z3Solver {
     fn solve(&mut self, c: &Constraint, vars: &HashSet<Ident>) -> SolverResult {
         use crate::formula::Fv;
         debug!("smt_solve: {}", c);
         let fvs = c.fv();
         let fvs = &fvs - vars;
-        let smt2 = constraint_to_smt2(c, SMT2Style::Z3, vars, Some(&fvs));
+        let smt2 = constraint_to_smt2(c, SMTSolverType::Z3, vars, Some(&fvs));
         debug!("smt2: {}", &smt2);
         let s = z3_solver(smt2);
         debug!("smt_solve result: {:?}", &s);
@@ -296,7 +323,7 @@ impl SMTSolver for Z3Solver {
         fvs: &HashSet<Ident>,
     ) -> Result<Model, SolverResult> {
         debug!("smt_solve_with_model: {} {}", c, fvs.len());
-        let smt2 = constraint_to_smt2(c, SMT2Style::Z3, vars, Some(fvs));
+        let smt2 = constraint_to_smt2(c, SMTSolverType::Z3, vars, Some(fvs));
         debug!("smt2: {}", &smt2);
         let s = z3_solver(smt2);
         debug!("smt_solve result: {:?}", &s);
@@ -340,7 +367,7 @@ fn z3_sat_model_from_constraint() {
         Constraint::mk_pred(PredKind::Gt, vec![x1, x2.clone()]),
         Constraint::mk_pred(PredKind::Eq, vec![x2, Op::mk_const(0)]),
     );
-    let mut solver = smt_solver(SMT2Style::Z3);
+    let mut solver = smt_solver(SMTSolverType::Z3);
     match solver.solve_with_model(&c, &HashSet::new(), &fvs) {
         Ok(model) => {
             assert_eq!(model.get(&i2).unwrap(), 0)

@@ -3,15 +3,10 @@ use std::time::Duration;
 
 use super::smt::{ident_2_smt2, save_smt2};
 use super::util;
-use super::SolverResult;
+use super::{Model, SolverResult};
 use crate::formula::{Constraint, ConstraintExpr, Ident, Op, OpExpr, OpKind, PredKind};
 use lexpr;
 use lexpr::Value;
-
-#[derive(Debug)]
-pub struct Model {
-    pub model: HashMap<Ident, i64>,
-}
 
 fn parse_variable(v: &str) -> Ident {
     assert!(v.starts_with('x'));
@@ -52,7 +47,7 @@ fn parse_declare_fun(v: lexpr::Value, bit_size: u32) -> (Ident, i64) {
 }
 
 impl Model {
-    fn from_z3_model_str(s: &str, bit_size: u32) -> Result<Model, lexpr::parse::Error> {
+    fn from_z3_sat_model_str(s: &str, bit_size: u32) -> Result<Model, lexpr::parse::Error> {
         let x = lexpr::from_str(s)?;
         let model: HashMap<Ident, i64> = match x {
             Value::Cons(x) => x
@@ -64,10 +59,6 @@ impl Model {
         };
         Ok(Model { model })
     }
-
-    pub fn get(&self, x: &Ident) -> Option<i64> {
-        self.model.get(x).cloned()
-    }
 }
 
 #[test]
@@ -78,7 +69,7 @@ fn z3_parse_model() {
         (define-fun x_x2 () (_ BitVec 32)
         #x00000001)
     )";
-    match Model::from_z3_model_str(model, 32) {
+    match Model::from_z3_sat_model_str(model, 32) {
         Ok(m) => {
             let x1 = m.get(&1.into()).unwrap();
             let x2 = m.get(&2.into()).unwrap();
@@ -137,7 +128,7 @@ impl SATSolver {
         debug!("smt_solve result: {:?}", &s);
         if s.starts_with("sat") {
             let pos = s.find('\n').unwrap();
-            Ok(Model::from_z3_model_str(&s[pos..], self.bit_size).unwrap())
+            Ok(Model::from_z3_sat_model_str(&s[pos..], self.bit_size).unwrap())
         } else if s.starts_with("unsat") {
             Err(SolverResult::Unsat)
         } else {
@@ -242,7 +233,7 @@ fn z3_sat_model() {
     debug!("{}", r);
     assert!(r.starts_with("sat"));
     let pos = r.find('\n').unwrap();
-    assert!(Model::from_z3_model_str(&r[pos..], bit_size).is_ok())
+    assert!(Model::from_z3_sat_model_str(&r[pos..], bit_size).is_ok())
 }
 
 #[test]
