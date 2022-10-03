@@ -1402,23 +1402,10 @@ impl PossibleDerivation<Atom> {
             debug!("check_derivation constraint: {constraint}");
             let fvs = constraint.fv();
             let exists: HashSet<Ident> = ct.coefficients.iter().cloned().collect();
-            let vars = fvs.difference(&exists).cloned();
+            let vars = fvs.difference(&exists).cloned().collect();
 
-            let mut solver = solver::smt::default_solver();
-            let m = if true {
-                // introduce universal quantifiers
-                for var in vars {
-                    constraint = Constraint::mk_univ_int(var, constraint);
-                }
-                // farkas transform
-                let constraint = farkas::farkas_transform(&constraint);
-                let fvs = constraint.fv();
-
-                solver.solve_with_model(&constraint, &HashSet::new(), &fvs)
-            } else {
-                let vars = vars.collect();
-                solver.solve_with_model(&constraint, &vars, &exists)
-            };
+            let mut solver = solver::smt::smt_solver(solver::SMTSolverType::Auto);
+            let m = solver.solve_with_model(&constraint, &vars, &fvs);
             match m {
                 Ok(m) => {
                     debug!("constraint was sat: {}", constraint);

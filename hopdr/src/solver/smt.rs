@@ -260,7 +260,7 @@ pub fn smt_solver(s: SMTSolverType) -> Box<dyn SMTSolver> {
 }
 
 pub fn default_solver() -> Box<dyn SMTSolver> {
-    smt_solver(SMTSolverType::Auto)
+    smt_solver(SMTSolverType::Z3)
 }
 
 fn z3_solver(smt_string: String) -> String {
@@ -279,10 +279,29 @@ fn z3_solver(smt_string: String) -> String {
     String::from_utf8(out).unwrap()
 }
 
+impl AutoSolver {
+    /// Check if satisfiable up to over AutoSolver::MAX_BIT_SIZE bit integers
+    const MAX_BIT_SIZE: u32 = 16;
+
+    fn farkas_transform(&self, c: &Constraint, vars: &HashSet<Ident>) -> Constraint {
+        use crate::formula::farkas;
+        use crate::formula::FirstOrderLogic;
+
+        let mut constraint = c.clone();
+        for var in vars {
+            constraint = Constraint::mk_univ_int(*var, constraint);
+        }
+
+        // farkas transform
+        farkas::farkas_transform(&constraint)
+    }
+}
+
 impl SMTSolver for AutoSolver {
     fn solve(&mut self, c: &Constraint, vars: &HashSet<Ident>) -> SolverResult {
-        let mut sat_solver = super::sat::SATSolver::default_solver(64);
-        match sat_solver.solve(c) {
+        let constraint = self.farkas_transform(c, vars);
+        let mut sat_solver = super::sat::SATSolver::default_solver(AutoSolver::MAX_BIT_SIZE);
+        match sat_solver.solve(&constraint) {
             Ok(_) => SolverResult::Sat,
             Err(r) => r,
         }
@@ -293,8 +312,10 @@ impl SMTSolver for AutoSolver {
         vars: &HashSet<Ident>,
         fvs: &HashSet<Ident>,
     ) -> Result<Model, SolverResult> {
-        let mut sat_solver = super::sat::SATSolver::default_solver(16);
-        sat_solver.solve(c)
+        let constraint = self.farkas_transform(c, vars);
+
+        let mut sat_solver = super::sat::SATSolver::default_solver(AutoSolver::MAX_BIT_SIZE);
+        sat_solver.solve(&constraint)
     }
 }
 
