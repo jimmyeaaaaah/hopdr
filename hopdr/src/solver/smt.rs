@@ -281,7 +281,7 @@ fn z3_solver(smt_string: String) -> String {
 
 impl AutoSolver {
     /// Check if satisfiable up to over AutoSolver::MAX_BIT_SIZE bit integers
-    const MAX_BIT_SIZE: u32 = 16;
+    const MAX_BIT_SIZE: u32 = 8;
 
     fn farkas_transform(&self, c: &Constraint, vars: &HashSet<Ident>) -> Constraint {
         use crate::formula::farkas;
@@ -310,7 +310,7 @@ impl SMTSolver for AutoSolver {
         &mut self,
         c: &Constraint,
         vars: &HashSet<Ident>,
-        fvs: &HashSet<Ident>,
+        _fvs: &HashSet<Ident>,
     ) -> Result<Model, SolverResult> {
         let constraint = self.farkas_transform(c, vars);
 
