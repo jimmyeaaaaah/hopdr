@@ -140,7 +140,13 @@ impl SATSolver {
 
         let decls = fvs
             .iter()
-            .map(|ident| format!("(declare-const {} (_ BitVec 32))", ident_2_smt2(ident)))
+            .map(|ident| {
+                format!(
+                    "(declare-const {} (_ BitVec {}))",
+                    ident_2_smt2(ident),
+                    self.bit_size
+                )
+            })
             .collect::<Vec<_>>()
             .join("\n");
 
