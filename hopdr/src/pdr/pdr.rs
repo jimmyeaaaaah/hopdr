@@ -186,25 +186,25 @@ impl HoPDR {
                 }
             };
             let mut tyenv_i = self.get_current_target_approx().into();
-            //let config = derivation::InferenceConfig::new().infer_polymorphic_type(false);
-            //// first try without polymorphic type
-            //match derivation::search_for_type(&cand, &self.problem, &mut tyenv_i, config) {
-            //    Some(tyenv) => self.conflict(tyenv)?,
-            //    None => {
-            //        let config = derivation::InferenceConfig::new().infer_polymorphic_type(true);
-            //        let mut tyenv_i = self.get_current_target_approx().into();
-            //        match derivation::search_for_type(&cand, &self.problem, &mut tyenv_i, config) {
-            //            Some(tyenv) => self.conflict(tyenv)?,
-            //            None => self.decide(),
-            //        };
-            //    }
-            //}
-
-            let config = derivation::InferenceConfig::new().infer_polymorphic_type(true);
+            let config = derivation::InferenceConfig::new().infer_polymorphic_type(false);
+            // first try without polymorphic type
             match derivation::search_for_type(&cand, &self.problem, &mut tyenv_i, config) {
                 Some(tyenv) => self.conflict(tyenv)?,
-                None => self.decide(),
+                None => {
+                    let config = derivation::InferenceConfig::new().infer_polymorphic_type(true);
+                    let mut tyenv_i = self.get_current_target_approx().into();
+                    match derivation::search_for_type(&cand, &self.problem, &mut tyenv_i, config) {
+                        Some(tyenv) => self.conflict(tyenv)?,
+                        None => self.decide(),
+                    };
+                }
             }
+
+            //let config = derivation::InferenceConfig::new().infer_polymorphic_type(true);
+            //match derivation::search_for_type(&cand, &self.problem, &mut tyenv_i, config) {
+            //    Some(tyenv) => self.conflict(tyenv)?,
+            //    None => self.decide(),
+            //}
         }
     }
 

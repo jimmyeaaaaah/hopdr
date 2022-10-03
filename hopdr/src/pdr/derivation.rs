@@ -1444,13 +1444,18 @@ pub fn search_for_type(
 ) -> Option<TypeEnvironment<Tau<Constraint>>> {
     crate::title!("search_for_type");
     debug!("{}", candidate);
+    let infer_polymorphic_type = config.infer_polymorphic_type;
     // TODO: expand candidate once based on problem.
     let mut ctx = reduce_until_normal_form(candidate, problem, config);
     debug!("{}", ctx.normal_form);
     //let candidate = ctx.normal_form.clone();
     let derivation = type_check_top_with_derivation(&ctx.normal_form, tenv)?;
-    // must succeed in theory
-    Some(ctx.infer_type(derivation).unwrap())
+    if infer_polymorphic_type {
+        // must succeed in theory
+        Some(ctx.infer_type(derivation).unwrap())
+    } else {
+        ctx.infer_type(derivation)
+    }
 }
 
 // Γ ⊢ Γ
