@@ -306,12 +306,16 @@ impl SMTSolver for AutoSolver {
         &mut self,
         c: &Constraint,
         vars: &HashSet<Ident>,
-        _fvs: &HashSet<Ident>,
+        fvs: &HashSet<Ident>,
     ) -> Result<Model, SolverResult> {
-        let constraint = self.farkas_transform(c, vars);
-
-        let mut sat_solver = super::sat::SATSolver::default_solver(AutoSolver::MAX_BIT_SIZE);
-        sat_solver.solve(&constraint)
+        if fvs.is_empty() {
+            let mut sat_solver = smt_solver(SMTSolverType::Z3);
+            sat_solver.solve_with_model(c, vars, fvs)
+        } else {
+            let constraint = self.farkas_transform(c, vars);
+            let mut sat_solver = super::sat::SATSolver::default_solver(AutoSolver::MAX_BIT_SIZE);
+            sat_solver.solve(&constraint)
+        }
     }
 }
 
