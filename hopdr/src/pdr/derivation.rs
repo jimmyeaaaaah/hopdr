@@ -3,7 +3,7 @@ use super::rtype::{instantiate_type, Refinement, TBot, Tau, TauKind, TypeEnviron
 use crate::formula::hes::{Goal, GoalBase, GoalKind, Problem as ProblemBase};
 use crate::formula::{self, DerefPtr, FirstOrderLogic};
 use crate::formula::{
-    chc, farkas, fofml, Constraint, Fv, Ident, Logic, Negation, Op, Rename, Subst, Top, Variable,
+    chc, fofml, Constraint, Fv, Ident, Logic, Negation, Op, Rename, Subst, Top, Variable,
 };
 use crate::solver;
 use crate::title;

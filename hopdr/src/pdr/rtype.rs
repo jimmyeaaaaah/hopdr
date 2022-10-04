@@ -310,6 +310,7 @@ impl<C: Refinement> Fv for Tau<C> {
 }
 
 // inner purpose
+#[allow(dead_code)]
 enum Method {
     Conj,
     Disj,
@@ -431,7 +432,7 @@ impl<C: Refinement> Tau<C> {
             }
         }
     }
-    fn merge_inner(self, c: Self, method: Method) -> Self {
+    fn _merge_inner(self, c: Self, method: Method) -> Self {
         match (self.kind(), c.kind()) {
             (TauKind::Proposition(c1), TauKind::Proposition(c2)) => match method {
                 Method::Conj => Self::mk_prop_ty(C::mk_conj(c1.clone(), c2.clone())),
@@ -441,11 +442,11 @@ impl<C: Refinement> Tau<C> {
         }
     }
     // only for bool type
-    fn conjoin(self, t: Self) -> Self {
-        self.merge_inner(t, Method::Conj)
+    fn _conjoin(self, t: Self) -> Self {
+        self._merge_inner(t, Method::Conj)
     }
-    fn disjoin(self, t: Self) -> Self {
-        self.merge_inner(t, Method::Disj)
+    fn _disjoin(self, t: Self) -> Self {
+        self._merge_inner(t, Method::Disj)
     }
 }
 impl From<Tau<Constraint>> for Tau<fofml::Atom> {

@@ -239,15 +239,11 @@ pub(super) fn save_smt2(smt_string: String) -> NamedTempFile {
 
 struct Z3Solver {}
 
-struct AutoSolver {
-    z3_solver: Z3Solver,
-}
+struct AutoSolver {}
 
 impl AutoSolver {
     fn new() -> AutoSolver {
-        AutoSolver {
-            z3_solver: Z3Solver {},
-        }
+        AutoSolver {}
     }
 }
 

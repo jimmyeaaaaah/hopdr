@@ -241,8 +241,8 @@ fn test_farkas_transform() {
             Op::mk_const(1),
         ];
         let o = coefs
-            .into_iter()
-            .zip(vars.into_iter())
+            .iter()
+            .zip(vars.iter())
             .fold(Op::mk_const(0), |x, (coef, var)| {
                 Op::mk_add(x, Op::mk_mul(coef.clone(), var.clone()))
             });
