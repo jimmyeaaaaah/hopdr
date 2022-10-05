@@ -29,3 +29,5 @@ jobs:
       run: cargo build
     - name: Test
       run: cargo test --verbose
+    - name: Functional Test
+      run: cd hopdr && ./test.sh
