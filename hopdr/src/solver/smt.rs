@@ -343,7 +343,7 @@ impl SMTSolver for Z3Solver {
         vars: &HashSet<Ident>,
         fvs: &HashSet<Ident>,
     ) -> Result<Model, SolverResult> {
-        debug!("smt_solve_with_model: {} {}", c, fvs.len());
+        debug!("smt_solve_with_model: {} fvs.len(): {}", c, fvs.len());
         let smt2 = constraint_to_smt2(c, SMTSolverType::Z3, vars, Some(fvs));
         debug!("smt2: {}", &smt2);
         let s = z3_solver(smt2);

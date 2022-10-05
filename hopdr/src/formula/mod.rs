@@ -140,7 +140,7 @@ impl PartialEq for Op {
             (OpExpr::Op(o1, x1, y1), OpExpr::Op(o2, x2, y2)) => o1 == o2 && x1 == x2 && y1 == y2,
             (OpExpr::Var(x), OpExpr::Var(y)) => x == y,
             (OpExpr::Const(c), OpExpr::Const(c2)) => c == c2,
-            (OpExpr::Ptr(_, y1), OpExpr::Ptr(_, y2)) => y1 == y2,
+            (OpExpr::Ptr(x1, y1), OpExpr::Ptr(x2, y2)) => x1 == x2 && y1 == y2,
             (_, _) => false,
         }
     }
