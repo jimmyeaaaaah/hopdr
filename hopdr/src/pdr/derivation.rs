@@ -730,8 +730,12 @@ fn handle_app(
                             // debug!("before add_context(constraint={}) = {}", constraint, t);
                             // let t = t.add_context(constraint);
                             // debug!("after add_context = {}", t);
-                            let t = t.clone();
+                            debug!("instantiate_type ienv: {:?}", ienv);
+                            debug!("before: {t}");
+                            let t = t.avoid_collision(ienv);
+                            debug!("after: {t}");
                             let s = instantiate_type(t, ienv, &mut coefficients, all_coefficients);
+                            debug!("instantiated: {s}");
                             CandidateDerivation::new(
                                 s,
                                 coefficients.clone(),
@@ -853,9 +857,14 @@ fn type_check_inner(
                 Some(ts) => {
                     let mut tys = Vec::new();
                     for ty in ts {
+                        debug!("before: {ty}");
+                        let ty = ty.avoid_collision(ienv);
+                        debug!("before: {ty}");
                         let mut coefficients = Stack::new();
+                        debug!("instantiate_type ienv: {:?}", ienv);
                         let s =
                             instantiate_type(ty.clone(), ienv, &mut coefficients, all_coefficients);
+                        debug!("instantiated: {s}");
                         let cd = CandidateDerivation::new(
                             s,
                             coefficients,
@@ -1409,6 +1418,7 @@ impl PossibleDerivation<Atom> {
             match m {
                 Ok(m) => {
                     debug!("constraint was sat: {}", constraint);
+                    debug!("model is {}", m);
                     // replace all the integer coefficient
                     let mut derivation = ct.derivation.clone();
                     derivation.update_with_model(&m);

@@ -448,6 +448,23 @@ impl<C: Refinement> Tau<C> {
     fn _disjoin(self, t: Self) -> Self {
         self._merge_inner(t, Method::Disj)
     }
+    pub fn avoid_collision(&self, ienv: &HashSet<Ident>) -> Self {
+        match self.kind() {
+            TauKind::Proposition(_) => self.clone(),
+            TauKind::IArrow(x, t) if ienv.contains(x) => {
+                let new_x = Ident::fresh();
+                let t = t.rename(x, &new_x);
+                let t = t.avoid_collision(ienv);
+                Tau::mk_iarrow(new_x, t)
+            }
+            TauKind::IArrow(x, t) => Tau::mk_iarrow(*x, t.avoid_collision(ienv)),
+            TauKind::Arrow(ts, t) => {
+                let ts = ts.iter().map(|t| t.avoid_collision(ienv)).collect();
+                let t = t.avoid_collision(ienv);
+                Tau::mk_arrow(ts, t)
+            }
+        }
+    }
 }
 impl From<Tau<Constraint>> for Tau<fofml::Atom> {
     fn from(t: Tau<Constraint>) -> Self {
@@ -541,10 +558,9 @@ pub fn instantiate_type<Ty: Subst<Id = Ident, Item = Op> + Display + Fv<Id = Ide
     let fvs = t.fv();
     debug!("fvs: {:?}", fvs);
     debug!("ints: {:?}", ints);
-
     let mut ts = t;
     for fv in fvs {
-        if all_coefficients.contains(&fv) {
+        if all_coefficients.contains(&fv) || ints.contains(&fv) {
             continue;
         }
         let o = generate_arithmetic_template(ints, coefficients, all_coefficients);
