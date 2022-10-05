@@ -1,0 +1,3 @@
+%HES
+M x =v App (\y. y = x) x.
+App f x =v f x && App f (x+1).

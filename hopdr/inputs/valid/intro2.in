@@ -1,0 +1,4 @@
+%HES
+MAIN_295  =v APP (\y. z <= y) z.
+APP f x =v APP f (x + 1) /\ f x.
+
