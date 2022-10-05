@@ -283,7 +283,7 @@ impl AutoSolver {
         use crate::formula::farkas;
         use crate::formula::FirstOrderLogic;
 
-        let mut constraint = c.clone();
+        let mut constraint = c.simplify();
         for var in vars {
             constraint = Constraint::mk_univ_int(*var, constraint);
         }
@@ -291,13 +291,25 @@ impl AutoSolver {
         // farkas transform
         farkas::farkas_transform(&constraint)
     }
+
+    fn solve_inner(&self, constraint: &Constraint) -> Result<Model, SolverResult> {
+        let mut result = SolverResult::Unknown;
+        for bit_size in 2..Self::MAX_BIT_SIZE + 1 {
+            let mut sat_solver = super::sat::SATSolver::default_solver(bit_size);
+            match sat_solver.solve(&constraint) {
+                Ok(r) => return Ok(r),
+                Err(r) => result = r,
+            }
+        }
+        Err(result)
+    }
 }
 
 impl SMTSolver for AutoSolver {
     fn solve(&mut self, c: &Constraint, vars: &HashSet<Ident>) -> SolverResult {
         let constraint = self.farkas_transform(c, vars);
-        let mut sat_solver = super::sat::SATSolver::default_solver(AutoSolver::MAX_BIT_SIZE);
-        match sat_solver.solve(&constraint) {
+
+        match self.solve_inner(&constraint) {
             Ok(_) => SolverResult::Sat,
             Err(r) => r,
         }
@@ -313,8 +325,7 @@ impl SMTSolver for AutoSolver {
             sat_solver.solve_with_model(c, vars, fvs)
         } else {
             let constraint = self.farkas_transform(c, vars);
-            let mut sat_solver = super::sat::SATSolver::default_solver(AutoSolver::MAX_BIT_SIZE);
-            sat_solver.solve(&constraint)
+            self.solve_inner(&constraint)
         }
     }
 }
