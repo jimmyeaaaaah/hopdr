@@ -8,6 +8,7 @@ pub mod ty;
 use std::collections::HashSet;
 use std::fmt;
 
+use colored::Colorize;
 use rpds::Stack;
 
 pub use crate::formula::ty::*;
@@ -1000,7 +1001,12 @@ pub type Variable = P<VariableS>;
 
 impl fmt::Display for Variable {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: {}", self.id, self.ty)
+        write!(
+            f,
+            "{}: {}",
+            format!("{}", self.id).purple(),
+            format!("{}", self.ty).cyan()
+        )
     }
 }
 

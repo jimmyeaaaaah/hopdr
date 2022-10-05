@@ -293,6 +293,7 @@ impl AutoSolver {
     }
 
     fn solve_inner(&self, constraint: &Constraint) -> Result<Model, SolverResult> {
+        debug!("check if {constraint} is sat");
         let mut result = SolverResult::Unknown;
         for bit_size in 2..Self::MAX_BIT_SIZE + 1 {
             let mut sat_solver = super::sat::SATSolver::default_solver(bit_size);
