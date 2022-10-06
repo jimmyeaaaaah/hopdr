@@ -1,4 +1,4 @@
-use super::rtype::{instantiate_type, Refinement, TBot, Tau, TauKind, TypeEnvironment};
+use super::rtype::{PolymorphicType, Refinement, TBot, Tau, TauKind, TyEnv, TypeEnvironment};
 
 use crate::formula::hes::{Goal, GoalBase, GoalKind, Problem as ProblemBase};
 use crate::formula::{self, DerefPtr, FirstOrderLogic};
@@ -17,7 +17,8 @@ use std::fmt::Formatter;
 type Atom = fofml::Atom;
 type Candidate = Goal<Constraint>;
 type Ty = Tau<Atom>;
-type Env = TypeEnvironment<Ty>;
+type PTy = PolymorphicType<Tau<Atom>>;
+type Env = TypeEnvironment<PTy>;
 type Problem = ProblemBase<Constraint>;
 
 /// track_idents maps predicate in Problem to the idents of lambda abstraction exprs
@@ -422,11 +423,7 @@ impl Context {
             infer_polymorphic_type,
         }
     }
-    fn retrieve_from_track_idents(
-        &self,
-        model: &chc::Model,
-        derivation: &Derivation,
-    ) -> TypeEnvironment<Tau<Constraint>> {
+    fn retrieve_from_track_idents(&self, model: &chc::Model, derivation: &Derivation) -> TyEnv {
         // TODO NEXT: we can retrieve it from context.track_idents
         let model = &model.model;
         let mut result_env = TypeEnvironment::new();
@@ -438,7 +435,9 @@ impl Context {
                             debug!("{}: {}", pred_name, ty);
                             debug!("{:?}", model);
                             let ty = ty.ty.clone();
-                            result_env.add(*pred_name, ty.assign(&model));
+                            let ty = ty.assign(&model);
+                            let pty = PolymorphicType::poly(ty);
+                            result_env.add(*pred_name, pty);
                         }
                     }
                     None => (),
@@ -447,10 +446,7 @@ impl Context {
         }
         result_env
     }
-    fn infer_type(
-        &mut self,
-        mut derivation: Derivation,
-    ) -> Option<TypeEnvironment<Tau<Constraint>>> {
+    fn infer_type(&mut self, mut derivation: Derivation) -> Option<TyEnv> {
         //let mut constraints = Vec::new();
         let mut clauses = Vec::new();
         for reduction in self.reduction_sequence.iter().rev() {
@@ -687,7 +683,7 @@ fn handle_abs(
                 let mut tenv = tenv.clone();
                 for t in ts {
                     debug!("adding type {t} to tenv");
-                    tenv.add(v.id, t.clone());
+                    tenv.add(v.id, PolymorphicType::mono(t.clone()));
                 }
                 let pt = handle_abs(constraint, &mut tenv, ienv, all_coefficients, g, t);
                 pt.arrow(ts)
@@ -730,14 +726,16 @@ fn handle_app(
                             // debug!("before add_context(constraint={}) = {}", constraint, t);
                             // let t = t.add_context(constraint);
                             // debug!("after add_context = {}", t);
+                            let t = t.instantiate(ienv, &mut coefficients, all_coefficients);
                             debug!("instantiate_type ienv: {:?}", ienv);
+                            debug!("instantiated: {t}");
+
                             debug!("before: {t}");
                             let t = t.avoid_collision(ienv);
-                            debug!("after: {t}");
-                            let s = instantiate_type(t, ienv, &mut coefficients, all_coefficients);
-                            debug!("instantiated: {s}");
+                            debug!("before: {t}");
+
                             CandidateDerivation::new(
-                                s,
+                                t,
                                 coefficients.clone(),
                                 Stack::new(),
                                 Derivation::new(),
@@ -857,16 +855,17 @@ fn type_check_inner(
                 Some(ts) => {
                     let mut tys = Vec::new();
                     for ty in ts {
+                        let mut coefficients = Stack::new();
+                        let ty = ty.instantiate(ienv, &mut coefficients, all_coefficients);
+                        debug!("instantiate_type ienv: {:?}", ienv);
+                        debug!("instantiated: {ty}");
+
                         debug!("before: {ty}");
                         let ty = ty.avoid_collision(ienv);
                         debug!("before: {ty}");
-                        let mut coefficients = Stack::new();
-                        debug!("instantiate_type ienv: {:?}", ienv);
-                        let s =
-                            instantiate_type(ty.clone(), ienv, &mut coefficients, all_coefficients);
-                        debug!("instantiated: {s}");
+
                         let cd = CandidateDerivation::new(
-                            s,
+                            ty,
                             coefficients,
                             Stack::new(),
                             Derivation::new(),
@@ -971,14 +970,14 @@ fn type_check(
     tenv: &mut Env,
     ienv: &mut HashSet<Ident>, // V
     c: &G,
-    t: &Ty,
+    t: &PTy,
 ) -> bool {
-    for fv in t.fv() {
-        ienv.insert(fv);
+    for fv in t.vars.iter() {
+        ienv.insert(*fv);
         debug!("type_check ienv: {ienv:?}");
     }
     let mut all_coefficients = HashSet::new();
-    let pt = handle_abs(constraint, tenv, ienv, &mut all_coefficients, c, t);
+    let pt = handle_abs(constraint, tenv, ienv, &mut all_coefficients, c, &t.ty);
     //pt.coarse_type(constraint, t);
     pt.check_derivation().is_some()
 }
@@ -1012,7 +1011,7 @@ fn type_check_top_with_derivation(psi: &G, tenv: &mut Env) -> Option<Derivation>
 /// tenv: Γ
 /// candidate: ψ
 /// assumption: candidate has a beta-normal form of type *.
-pub fn type_check_top(candidate: &Candidate, tenv: &TypeEnvironment<Tau<Constraint>>) -> bool {
+pub fn type_check_top(candidate: &Candidate, tenv: &TyEnv) -> bool {
     let g = candidate.clone().into();
     let mut tenv = tenv.into();
     let b = type_check_top_with_derivation(&g, &mut tenv).is_some();
@@ -1451,7 +1450,7 @@ pub fn search_for_type(
     problem: &Problem,
     tenv: &mut Env,
     config: InferenceConfig,
-) -> Option<TypeEnvironment<Tau<Constraint>>> {
+) -> Option<TyEnv> {
     crate::title!("search_for_type");
     debug!("{}", candidate);
     let infer_polymorphic_type = config.infer_polymorphic_type;
@@ -1469,7 +1468,7 @@ pub fn search_for_type(
 }
 
 // Γ ⊢ Γ
-pub fn check_inductive(env: &TypeEnvironment<Tau<Constraint>>, problem: &Problem) -> bool {
+pub fn check_inductive(env: &TyEnv, problem: &Problem) -> bool {
     let top = Atom::mk_true();
     let tenv: Env = env.into();
     for (id, ts) in env.map.iter() {
@@ -1491,10 +1490,7 @@ pub fn check_inductive(env: &TypeEnvironment<Tau<Constraint>>, problem: &Problem
     true
 }
 
-pub fn saturate(
-    env: &TypeEnvironment<Tau<Constraint>>,
-    problem: &Problem,
-) -> TypeEnvironment<Tau<Constraint>> {
+pub fn saturate(env: &TyEnv, problem: &Problem) -> TyEnv {
     let top = Atom::mk_true();
     let mut current_env = env.clone();
     loop {

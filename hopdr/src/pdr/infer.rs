@@ -257,5 +257,6 @@ pub(super) fn infer(
             result_env.add(*k, t.assign(&model));
         }
     }
-    Some(result_env)
+    todo!()
+    // Some(result_env)
 }

@@ -180,18 +180,18 @@ impl<C: Refinement> Env<C> {
     }
 }
 //fn correct_int_expr(&self, ints)
-impl Env<fofml::Atom> {
-    pub fn from_tyenv(tenv: &TyEnv) -> Env<fofml::Atom> {
-        let mut map = HashMap::new();
-        let mut tmap = HashMap::new();
-        for (key, ts) in tenv.map.iter() {
-            let fmls: Vec<_> = ts.iter().map(|t| least_fml(t.clone().into())).collect();
-            map.insert(*key, Goal::mk_ho_disj(&fmls, ts[0].to_sty()));
-            tmap.insert(*key, ts[0].to_sty());
-        }
-        Env { map, tmap }
-    }
-}
+// impl Env<fofml::Atom> {
+//     pub fn from_tyenv(tenv: &TyEnv) -> Env<fofml::Atom> {
+//         let mut map = HashMap::new();
+//         let mut tmap = HashMap::new();
+//         for (key, ts) in tenv.map.iter() {
+//             let fmls: Vec<_> = ts.iter().map(|t| least_fml(t.clone().into())).collect();
+//             map.insert(*key, Goal::mk_ho_disj(&fmls, ts[0].to_sty()));
+//             tmap.insert(*key, ts[0].to_sty());
+//         }
+//         Env { map, tmap }
+//     }
+// }
 
 impl<C: Refinement> Problem<C> {
     // ℱ(Σ)
@@ -242,21 +242,21 @@ pub fn env_types<C: Refinement>(env: &Env<C>, tenv: &TypeEnvironment<Tau<C>>) ->
     result_constraint
 }
 
-pub fn check_inductive(env: &TyEnv, problem: &Problem<Constraint>) -> bool {
-    let tmpenv = Env::from_type_environment(env);
-    debug!("tmpenv");
-    debug!("{}", tmpenv);
-    let fenv = problem.transform(&tmpenv);
-    debug!("fenv");
-    debug!("{}", fenv);
-
-    // transform fenv
-    // currently just checking ⌊Γ⌋ ↑ Γ
-    for (id, g) in fenv.map.into_iter() {
-        let tys = env.get(&id).unwrap().iter().map(|x| x.clone());
-        if !tys_check(&g, tys) {
-            return false;
-        }
-    }
-    true
-}
+// pub fn check_inductive(env: &TyEnv, problem: &Problem<Constraint>) -> bool {
+//     let tmpenv = Env::from_type_environment(env);
+//     debug!("tmpenv");
+//     debug!("{}", tmpenv);
+//     let fenv = problem.transform(&tmpenv);
+//     debug!("fenv");
+//     debug!("{}", fenv);
+//
+//     // transform fenv
+//     // currently just checking ⌊Γ⌋ ↑ Γ
+//     for (id, g) in fenv.map.into_iter() {
+//         let tys = env.get(&id).unwrap().iter().map(|x| x.clone());
+//         if !tys_check(&g, tys) {
+//             return false;
+//         }
+//     }
+//     true
+// }
