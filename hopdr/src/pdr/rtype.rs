@@ -465,6 +465,16 @@ impl<C: Refinement> Tau<C> {
             }
         }
     }
+    pub fn mk_arrow(t: Vec<Tau<C>>, s: Tau<C>) -> Tau<C> {
+        let t_fst = t[0].clone();
+        let t: Vec<_> = t.into_iter().filter(|t| !t.is_bot()).collect();
+        if t.len() == 0 {
+            // t_fst must be bot ty
+            Tau::new(TauKind::Arrow(vec![t_fst], s))
+        } else {
+            Tau::new(TauKind::Arrow(t, s))
+        }
+    }
 }
 impl From<Tau<Constraint>> for Tau<fofml::Atom> {
     fn from(t: Tau<Constraint>) -> Self {
@@ -530,10 +540,6 @@ impl<C> Tau<C> {
 
     pub fn mk_iarrow(id: Ident, t: Tau<C>) -> Tau<C> {
         Tau::new(TauKind::IArrow(id, t))
-    }
-
-    pub fn mk_arrow(t: Vec<Tau<C>>, s: Tau<C>) -> Tau<C> {
-        Tau::new(TauKind::Arrow(t, s))
     }
 
     pub fn mk_arrow_single(t: Tau<C>, s: Tau<C>) -> Tau<C> {
