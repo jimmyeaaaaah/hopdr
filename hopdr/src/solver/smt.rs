@@ -278,11 +278,11 @@ fn z3_solver(smt_string: String) -> String {
 
 impl AutoSolver {
     /// Check if satisfiable up to over AutoSolver::MAX_BIT_SIZE bit integers
+    const MIN_BIT_SIZE: u32 = 5;
     const MAX_BIT_SIZE: u32 = 8;
 
     fn farkas_transform(&self, c: &Constraint, vars: &HashSet<Ident>) -> Constraint {
         use crate::formula::farkas;
-        use crate::formula::FirstOrderLogic;
 
         let mut constraint = c.simplify();
         for var in vars {
@@ -296,7 +296,7 @@ impl AutoSolver {
     fn solve_inner(&self, constraint: &Constraint) -> Result<Model, SolverResult> {
         debug!("check if {constraint} is sat");
         let mut result = SolverResult::Unknown;
-        for bit_size in 2..Self::MAX_BIT_SIZE + 1 {
+        for bit_size in Self::MIN_BIT_SIZE..Self::MAX_BIT_SIZE + 1 {
             let mut sat_solver = super::sat::SATSolver::default_solver(bit_size);
             match sat_solver.solve(&constraint) {
                 Ok(r) => return Ok(r),
@@ -327,8 +327,57 @@ impl SMTSolver for AutoSolver {
             sat_solver.solve_with_model(c, vars, fvs)
         } else {
             let constraint = self.farkas_transform(c, vars);
+            println!("transformed: {constraint}");
             self.solve_inner(&constraint)
         }
+    }
+}
+
+#[test]
+fn test_auto_solver_bug() {
+    // ∀x_198: i.∀x_15: i.∀x_14: i.((x_14 != x_15) ∨ ((x_14 + 1) = ((x_195 + (x_196 * x_14)) + (x_197 * x_15)))) ∧ ((x_198 != ((x_195 + (x_196 * x_14)) + (x_197 * x_15))) ∨ (x_198 = x_15))
+    use crate::formula::Logic;
+    let x_198 = Ident::fresh();
+    let x_15 = Ident::fresh();
+    let x_14 = Ident::fresh();
+
+    let x_195 = Ident::fresh();
+    let x_196 = Ident::fresh();
+    let x_197 = Ident::fresh();
+
+    let fvs = vec![x_195, x_196, x_197];
+
+    fn o(x: Ident) -> Op {
+        Op::mk_var(x)
+    }
+
+    let x_14_neq_x_15 = Constraint::mk_neq(o(x_14), o(x_15));
+    let z = Op::mk_add(
+        o(x_195),
+        Op::mk_add(Op::mk_mul(o(x_196), o(x_14)), Op::mk_mul(o(x_197), o(x_15))),
+    );
+
+    let x14p1eqz = Constraint::mk_eq(Op::mk_add(o(x_14), Op::mk_const(1)), z.clone());
+    let x198_neq_z = Constraint::mk_neq(o(x_198), z.clone());
+    let x198_eq_x15 = Constraint::mk_eq(o(x_198), o(x_15));
+
+    let c1 = Constraint::mk_disj(x_14_neq_x_15, x14p1eqz);
+    let c2 = Constraint::mk_disj(x198_neq_z, x198_eq_x15);
+    let c = Constraint::mk_conj(c1, c2);
+
+    let c = Constraint::mk_univ_int(x_14, c);
+    let c = Constraint::mk_univ_int(x_15, c);
+    let c = Constraint::mk_univ_int(x_198, c);
+
+    println!("constraint: {c}");
+
+    let fvs = fvs.into_iter().collect();
+    let mut solver = smt_solver(SMTSolverType::Auto);
+    match solver.solve_with_model(&c, &HashSet::new(), &fvs) {
+        Ok(model) => {
+            panic!("test failed. model: \n{}", model)
+        }
+        Err(_) => (),
     }
 }
 
