@@ -76,7 +76,6 @@ fn transform_predicate(c: &Constraint) -> Constraint {
 // 2. o1 + o2 + ...
 // 3. expand all the expression like (o1 + o2) * x1
 fn pred_to_vec(constr: &Constraint, m: &HashMap<Ident, usize>) -> Vec<Op> {
-    debug!("pred_to_vec: {constr}");
     // Assumption: o only contains operation muls (if other ops exist, then it panics)
     // if o contains multiple variables in m, then returns None
     // otherwise, returns coefficient of the variable, and variable name if exists

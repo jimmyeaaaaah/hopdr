@@ -6,7 +6,8 @@ use std::time::Duration;
 use super::util;
 use super::{Model, SMTSolverType, SolverResult};
 use crate::formula::{
-    Constraint, ConstraintExpr, Ident, Op, OpExpr, OpKind, PredKind, QuantifierKind,
+    Constraint, ConstraintExpr, FirstOrderLogic, Ident, Op, OpExpr, OpKind, PredKind,
+    QuantifierKind,
 };
 use lexpr;
 use lexpr::Value;

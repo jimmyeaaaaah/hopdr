@@ -730,10 +730,6 @@ fn handle_app(
                             debug!("instantiate_type ienv: {:?}", ienv);
                             debug!("instantiated: {t}");
 
-                            debug!("before: {t}");
-                            let t = t.avoid_collision(ienv);
-                            debug!("before: {t}");
-
                             CandidateDerivation::new(
                                 t,
                                 coefficients.clone(),
@@ -788,7 +784,8 @@ fn handle_app(
                     let mut tmp_cts = vec![result_ct];
                     // check if there exists a derivation for all types in the intersection type.
                     for t in arg_t {
-                        let arg_constraint = Atom::mk_conj(t.rty_no_exists(), constraint.clone());
+                        let arg_constraint = constraint.clone();
+                        //let arg_constraint = Atom::mk_conj(t.rty_no_exists(), constraint.clone());
                         //debug!("t: {}", t);
                         // check if arg_constraint |- argg: arg_t
                         let pt = handle_abs(&arg_constraint, tenv, ienv, all_coefficients, argg, t);
@@ -859,10 +856,6 @@ fn type_check_inner(
                         let ty = ty.instantiate(ienv, &mut coefficients, all_coefficients);
                         debug!("instantiate_type ienv: {:?}", ienv);
                         debug!("instantiated: {ty}");
-
-                        debug!("before: {ty}");
-                        let ty = ty.avoid_collision(ienv);
-                        debug!("before: {ty}");
 
                         let cd = CandidateDerivation::new(
                             ty,

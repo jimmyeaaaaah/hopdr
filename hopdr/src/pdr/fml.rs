@@ -5,9 +5,7 @@ use crate::formula::fofml;
 use crate::formula::hes::Problem;
 use crate::formula::hes::{Goal, GoalKind};
 use crate::formula::{Constraint, Fv, Ident, Logic, Op, Subst, Type as SType, Variable};
-use crate::pdr::rtype::{
-    least_fml, types_check, tys_check, Refinement, Tau, TyEnv, TypeEnvironment,
-};
+use crate::pdr::rtype::{least_fml, types_check, Refinement, Tau, TypeEnvironment};
 use crate::solver;
 use crate::solver::smt;
 

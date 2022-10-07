@@ -449,19 +449,18 @@ impl<C: Refinement> Tau<C> {
     fn _disjoin(self, t: Self) -> Self {
         self._merge_inner(t, Method::Disj)
     }
-    pub fn avoid_collision(&self, ienv: &HashSet<Ident>) -> Self {
+    pub fn avoid_collision(&self) -> Self {
         match self.kind() {
             TauKind::Proposition(_) => self.clone(),
-            TauKind::IArrow(x, t) if ienv.contains(x) => {
+            TauKind::IArrow(x, t) => {
                 let new_x = Ident::fresh();
                 let t = t.rename(x, &new_x);
-                let t = t.avoid_collision(ienv);
+                let t = t.avoid_collision();
                 Tau::mk_iarrow(new_x, t)
             }
-            TauKind::IArrow(x, t) => Tau::mk_iarrow(*x, t.avoid_collision(ienv)),
             TauKind::Arrow(ts, t) => {
-                let ts = ts.iter().map(|t| t.avoid_collision(ienv)).collect();
-                let t = t.avoid_collision(ienv);
+                let ts = ts.iter().map(|t| t.avoid_collision()).collect();
+                let t = t.avoid_collision();
                 Tau::mk_arrow(ts, t)
             }
         }
@@ -825,6 +824,7 @@ impl<T> PolymorphicType<T> {
         }
     }
 }
+
 impl<T: Fv<Id = Ident>> PolymorphicType<T> {
     /// each variable freely appears in `ty` is generalized
     pub fn poly(ty: T) -> PolymorphicType<T> {
@@ -832,6 +832,7 @@ impl<T: Fv<Id = Ident>> PolymorphicType<T> {
         PolymorphicType { vars, ty }
     }
 }
+
 impl PTy {
     pub fn check_subtype_polymorphic(t: &Self, s: &Self) -> bool {
         // Assumption: polymorphic type appears only at the top level of types.
@@ -893,17 +894,17 @@ impl PTy {
         }
     }
 }
-impl<Ty: Subst<Id = Ident, Item = Op> + Display + Fv<Id = Ident>> PolymorphicType<Ty> {
+impl<C: Refinement> PolymorphicType<Tau<C>> {
     pub fn instantiate(
         &self,
         ints: &HashSet<Ident>,
         coefficients: &mut Stack<Ident>,
         all_coefficients: &mut HashSet<Ident>,
-    ) -> Ty {
+    ) -> Tau<C> {
         crate::title!("instatiate_type");
-        debug!("type={}", self.ty);
+        debug!("type={}", self);
         debug!("ints: {:?}", ints);
-        let mut ts = self.ty.clone();
+        let mut ts = self.ty.avoid_collision();
         for fv in self.vars.iter() {
             let o = generate_arithmetic_template(ints, coefficients, all_coefficients);
             debug!("template: {}", o);
