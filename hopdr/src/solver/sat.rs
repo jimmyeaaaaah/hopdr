@@ -87,12 +87,16 @@ pub enum Solver {
 pub struct SATSolver {
     bit_size: u32,
     solver: Solver,
+    integer_min: i64,
+    integer_max: i64,
 }
 
 impl SATSolver {
-    pub fn default_solver(bit_size: u32) -> Self {
+    pub fn default_solver(integer_min: i64, integer_max: i64, bit_size: u32) -> Self {
         Self {
             bit_size,
+            integer_min,
+            integer_max,
             solver: Solver::Z3,
         }
     }
@@ -135,6 +139,19 @@ impl SATSolver {
             Err(SolverResult::Unknown)
         }
     }
+    fn decl_range(&mut self, decl_vars: &HashSet<Ident>) -> String {
+        let c_s = decl_vars
+            .iter()
+            .map(|x| {
+                let x = &ident_2_smt2(x);
+                let min = self.int_2_smt2(self.integer_min);
+                let max = self.int_2_smt2(self.integer_max);
+                format!("(bvsle {min} {x}) (bvsle {x} {max})")
+            })
+            .collect::<Vec<_>>()
+            .join("");
+        format!("(and {c_s})")
+    }
     fn constraint_to_smt2(&mut self, c: &Constraint, fvs: &HashSet<Ident>) -> String {
         let c_s = self.constraint_to_smt2_inner(c);
 
@@ -149,10 +166,10 @@ impl SATSolver {
             })
             .collect::<Vec<_>>()
             .join("\n");
+        let decl_range = self.decl_range(fvs);
 
         format!(
-            "(set-logic QF_BV)\n{}\n(assert {})\n(check-sat)\n(get-model)\n",
-            decls, c_s
+            "(set-logic QF_BV)\n{decls}\n(assert {decl_range}) (assert {c_s})\n(check-sat)\n(get-model)\n"
         )
     }
     fn constraint_to_smt2_inner(&mut self, c: &Constraint) -> String {
@@ -234,7 +251,7 @@ fn z3_sat_model() {
     (check-sat)
     (get-model)"
         .to_string();
-    let mut sol = SATSolver::default_solver(bit_size);
+    let mut sol = SATSolver::default_solver(-256, 256, bit_size);
     let r = sol.z3_solver(s);
     debug!("{}", r);
     assert!(r.starts_with("sat"));
@@ -257,7 +274,7 @@ fn z3_sat_model_from_constraint() {
         Constraint::mk_pred(PredKind::Gt, vec![x1, x2.clone()]),
         Constraint::mk_pred(PredKind::Eq, vec![x2, Op::mk_const(0)]),
     );
-    let mut solver = SATSolver::default_solver(bit_size);
+    let mut solver = SATSolver::default_solver(-256, 256, bit_size);
     match solver.solve(&c) {
         Ok(model) => {
             assert_eq!(model.get(&i2).unwrap(), 0)

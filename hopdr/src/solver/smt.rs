@@ -278,8 +278,9 @@ fn z3_solver(smt_string: String) -> String {
 
 impl AutoSolver {
     /// Check if satisfiable up to over AutoSolver::MAX_BIT_SIZE bit integers
-    const MIN_BIT_SIZE: u32 = 5;
-    const MAX_BIT_SIZE: u32 = 8;
+    const MIN_INT: i64 = -256;
+    const MAX_INT: i64 = -256;
+    const BIT_SIZE: u32 = 32;
 
     fn farkas_transform(&self, c: &Constraint, vars: &HashSet<Ident>) -> Constraint {
         use crate::formula::farkas;
@@ -295,15 +296,9 @@ impl AutoSolver {
 
     fn solve_inner(&self, constraint: &Constraint) -> Result<Model, SolverResult> {
         debug!("check if {constraint} is sat");
-        let mut result = SolverResult::Unknown;
-        for bit_size in Self::MIN_BIT_SIZE..Self::MAX_BIT_SIZE + 1 {
-            let mut sat_solver = super::sat::SATSolver::default_solver(bit_size);
-            match sat_solver.solve(&constraint) {
-                Ok(r) => return Ok(r),
-                Err(r) => result = r,
-            }
-        }
-        Err(result)
+        let mut sat_solver =
+            super::sat::SATSolver::default_solver(Self::MIN_INT, Self::MAX_INT, Self::BIT_SIZE);
+        sat_solver.solve(&constraint)
     }
 }
 
