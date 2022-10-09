@@ -322,7 +322,6 @@ impl SMTSolver for AutoSolver {
             sat_solver.solve_with_model(c, vars, fvs)
         } else {
             let constraint = self.farkas_transform(c, vars);
-            println!("transformed: {constraint}");
             self.solve_inner(&constraint)
         }
     }

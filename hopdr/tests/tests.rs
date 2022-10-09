@@ -92,11 +92,11 @@ fn type_check_1() {
     let mut env = TyEnv::new();
 
     for (fml, ty) in vc.clauses.iter().zip(types.iter()) {
-        env.add(fml.head.id, ty.clone());
+        env.add(fml.head.id, PolymorphicType::poly(ty.clone()));
     }
 
     let vc = vc.into();
-    assert!(pdr::fml::check_inductive(&env, &vc))
+    assert!(pdr::derivation::check_inductive(&env, &vc))
 }
 
 /*
@@ -178,7 +178,7 @@ fn gen_tyenv_for_test(
 
     for (fml, ty) in clauses.iter().zip(types.iter()) {
         println!("{}: {}", fml.head.id, ty.clone());
-        env.add(fml.head.id, ty.clone());
+        env.add(fml.head.id, PolymorphicType::poly(ty.clone()));
     }
     env
 }
@@ -211,7 +211,7 @@ fn type_check_2() {
 
     let env = gen_tyenv_for_test(&vc.clauses);
     let vc = vc.into();
-    assert!(pdr::fml::check_inductive(&env, &vc))
+    assert!(pdr::derivation::check_inductive(&env, &vc))
 }
 
 #[test]
@@ -265,11 +265,11 @@ fn type_check_poly() {
 
     for (fml, ty) in vc.clauses.iter().zip(types.iter()) {
         println!("{}: {}", fml.head.id, ty.clone());
-        env.add(fml.head.id, ty.clone());
+        env.add(fml.head.id, PolymorphicType::poly(ty.clone()));
     }
 
     let vc = vc.into();
-    assert!(pdr::fml::check_inductive(&env, &vc))
+    assert!(pdr::derivation::check_inductive(&env, &vc))
 }
 #[test]
 fn type_check_e() {
@@ -298,7 +298,7 @@ fn type_check_e() {
     }
     let env = gen_tyenv_for_test(&vc.clauses);
     let vc = vc.into();
-    assert!(!pdr::fml::check_inductive(&env, &vc))
+    assert!(!pdr::derivation::check_inductive(&env, &vc))
 }
 
 // #[test]

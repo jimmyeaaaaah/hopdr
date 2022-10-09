@@ -282,3 +282,28 @@ fn z3_sat_model_from_constraint() {
         Err(_) => panic!("test failed"),
     }
 }
+
+#[test]
+fn z3_unsat() {
+    use crate::formula::{Logic, PredKind};
+
+    let bit_size = 32;
+
+    let i1 = Ident::fresh();
+    let i2 = Ident::fresh();
+    let x1 = Op::mk_var(i1);
+    let x2 = Op::mk_var(i2);
+    // x1 = 255 /\ x2 = x1 + 2
+    let c = Constraint::mk_conj(
+        Constraint::mk_pred(
+            PredKind::Eq,
+            vec![Op::mk_add(x1.clone(), Op::mk_const(2)), x2.clone()],
+        ),
+        Constraint::mk_pred(PredKind::Eq, vec![x1.clone(), Op::mk_const(255)]),
+    );
+    let mut solver = SATSolver::default_solver(-256, 256, bit_size);
+    match solver.solve(&c) {
+        Err(SolverResult::Unsat) => (),
+        Err(_) | Ok(_) => panic!("test failed"),
+    }
+}
