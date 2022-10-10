@@ -279,7 +279,7 @@ fn z3_solver(smt_string: String) -> String {
 impl AutoSolver {
     /// Check if satisfiable up to over AutoSolver::MAX_BIT_SIZE bit integers
     const MIN_INT: i64 = -256;
-    const MAX_INT: i64 = -256;
+    const MAX_INT: i64 = 256;
     const BIT_SIZE: u32 = 32;
 
     fn farkas_transform(&self, c: &Constraint, vars: &HashSet<Ident>) -> Constraint {
@@ -289,6 +289,7 @@ impl AutoSolver {
         for var in vars {
             constraint = Constraint::mk_univ_int(*var, constraint);
         }
+        debug!("smt::auto_solver quantified: {constraint}");
 
         // farkas transform
         farkas::farkas_transform(&constraint)
@@ -317,6 +318,7 @@ impl SMTSolver for AutoSolver {
         vars: &HashSet<Ident>,
         fvs: &HashSet<Ident>,
     ) -> Result<Model, SolverResult> {
+        debug!("smt::auto_solver: {c}");
         if fvs.is_empty() {
             let mut sat_solver = smt_solver(SMTSolverType::Z3);
             sat_solver.solve_with_model(c, vars, fvs)
@@ -372,6 +374,40 @@ fn test_auto_solver_bug() {
             panic!("test failed. model: \n{}", model)
         }
         Err(_) => (),
+    }
+}
+
+#[test]
+fn test_auto_solver_bug2() {
+    // ∀x: i.∀y: i.∀z: i.(y = ((c + (b * y)) + (a * x))) ∧ ((z != ((c + (b * y)) + (a * x))) ∨ (z = y))
+    use crate::formula::Logic;
+    let x = Ident::fresh();
+    let y = Ident::fresh();
+    let z = Ident::fresh();
+    let a = Ident::fresh();
+    let b = Ident::fresh();
+    let c = Ident::fresh();
+    let vars = [x, y, z].iter().cloned().collect();
+    fn o(x: Ident) -> Op {
+        Op::mk_var(x)
+    }
+
+    let w = Op::mk_add(
+        o(c),
+        Op::mk_add(Op::mk_mul(o(a), o(x)), Op::mk_mul(o(b), o(y))),
+    );
+
+    let c1 = Constraint::mk_eq(w.clone(), o(y));
+    let c2 = Constraint::mk_neq(o(z), w.clone());
+    let c3 = Constraint::mk_eq(o(z), o(y));
+    let c4 = Constraint::mk_disj(c2, c3);
+    let c5 = Constraint::mk_conj(c1, c4);
+    let mut solver = smt_solver(SMTSolverType::Auto);
+    let fvs = [a, b, c].iter().cloned().collect();
+    println!("{c5}");
+    match solver.solve_with_model(&c5, &vars, &fvs) {
+        Ok(_) => (),
+        Err(_) => panic!("program error"),
     }
 }
 
