@@ -278,9 +278,9 @@ fn z3_solver(smt_string: String) -> String {
 
 impl AutoSolver {
     /// Check if satisfiable up to over AutoSolver::MAX_BIT_SIZE bit integers
-    const MIN_INT: i64 = -256;
-    const MAX_INT: i64 = 256;
-    const BIT_SIZE: u32 = 32;
+    const MIN_INT: i64 = -128;
+    const MAX_INT: i64 = 128;
+    const BIT_SIZE: u32 = 16;
 
     fn farkas_transform(&self, c: &Constraint, vars: &HashSet<Ident>) -> Constraint {
         use crate::formula::farkas;

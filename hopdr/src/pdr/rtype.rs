@@ -728,6 +728,34 @@ fn generate_t_and_its_subtype_for_test() -> (PTy, PTy) {
     (PTy::poly(t1), PTy::poly(t2))
 }
 
+#[cfg(test)]
+fn generate_t_and_its_subtype_for_test2() -> (PTy, PTy) {
+    // x + 1 <= 4
+    // ∀ x₁, x₂. (y:int → •〈y =2x₁+x₂〉)→z:int→ • 〈z=x₁+x₂〉
+    //           ≤ ∀ x₃.(y:int→•〈y=x₃〉)→z:int→•〈z=x₃〉
+    let x1 = Ident::fresh();
+    let x2 = Ident::fresh();
+    let x3 = Ident::fresh();
+
+    let y = Ident::fresh();
+    let z = Ident::fresh();
+
+    let x_1_plus_x2 = Op::mk_add(Op::mk_var(x1), Op::mk_var(x2));
+    let two_x_1_plus_x2 = Op::mk_add(Op::mk_mul(Op::mk_const(2), Op::mk_var(x1)), Op::mk_var(x2));
+    let t = Tau::mk_prop_ty(Constraint::mk_eq(Op::mk_var(y), two_x_1_plus_x2.clone()));
+    let t = Tau::mk_iarrow(y, t);
+    let s = Tau::mk_prop_ty(Constraint::mk_eq(Op::mk_var(z), x_1_plus_x2.clone()));
+    let s = Tau::mk_iarrow(z, s);
+    let t1 = Tau::mk_arrow_single(t, s);
+
+    let t = Tau::mk_prop_ty(Constraint::mk_eq(Op::mk_var(y), Op::mk_var(x3)));
+    let t = Tau::mk_iarrow(y, t);
+    let s = Tau::mk_prop_ty(Constraint::mk_eq(Op::mk_var(z), Op::mk_var(x3)));
+    let s = Tau::mk_iarrow(z, s);
+    let t2 = Tau::mk_arrow_single(t, s);
+    (PTy::poly(t1), PTy::poly(t2))
+}
+
 // template for polymorphic types
 pub fn generate_arithmetic_template(
     ints: &HashSet<Ident>,
@@ -932,6 +960,15 @@ fn test_subtype_polymorphic() {
     let (t1, t2) = generate_t_and_its_subtype_for_test();
     println!("{t1} <= {t2}");
     assert!(PTy::check_subtype_polymorphic(&t1, &t2));
+    assert!(PTy::check_subtype_polymorphic(&t2, &t1));
+}
+
+#[test]
+fn test_subtype_polymorphic2() {
+    let (t1, t2) = generate_t_and_its_subtype_for_test2();
+    println!("{t1} <= {t2}");
+    assert!(PTy::check_subtype_polymorphic(&t1, &t2));
+    println!("ok");
     assert!(!PTy::check_subtype_polymorphic(&t2, &t1));
 }
 
