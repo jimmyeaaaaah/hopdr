@@ -243,6 +243,14 @@ impl Op {
         Op::new(OpExpr::Const(x))
     }
 
+    pub fn zero() -> Op {
+        Op::mk_const(0)
+    }
+
+    pub fn one() -> Op {
+        Op::mk_const(1)
+    }
+
     pub fn mk_var(x: Ident) -> Op {
         Op::new(OpExpr::Var(x))
     }
