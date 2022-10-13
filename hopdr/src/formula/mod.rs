@@ -865,7 +865,6 @@ impl Constraint {
                 let (mut v, c) = c.prenex_normal_form_raw(env);
                 debug_assert!(v.iter().find(|(_, y)| { x.id == y.id }).is_none());
                 v.push((*q, x.clone()));
-                env.remove(&x.id);
                 (v, c)
             }
         }
@@ -901,6 +900,19 @@ impl Constraint {
             ConstraintExpr::Quantifier(_, _, _) => unimplemented!(),
         }
     }
+}
+
+#[test]
+fn test_prenex_normal_form() {
+    // (∀x. x = 0) ∨ (∀x. x = 0)
+    let x = Ident::fresh();
+    let c = Constraint::mk_eq(Op::mk_var(x), Op::mk_const(0));
+    let c2 = Constraint::mk_univ_int(x, c.clone());
+    let c3 = Constraint::mk_disj(c2.clone(), c2);
+    let (v, c5) = c3.prenex_normal_form_raw(&mut HashSet::new());
+    println!("{c5}");
+    assert_eq!(v.len(), 2);
+    assert!(v[0].1.id != v[1].1.id);
 }
 impl DerefPtr for Constraint {
     fn deref_ptr(&self, id: &Ident) -> Constraint {

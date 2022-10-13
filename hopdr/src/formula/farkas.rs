@@ -152,6 +152,7 @@ pub fn farkas_transform(c: &Constraint) -> Constraint {
     for (idx, (q, var)) in v.iter().enumerate() {
         assert_eq!(*q, super::QuantifierKind::Universal);
         assert!(var.ty.is_int());
+        debug!("{}: {idx}", var.id);
         univ_vars.insert(var.id, idx);
     }
     // first replace all the predicates except for >= by constraints that only contain < (which will be negated below, so that will produce
