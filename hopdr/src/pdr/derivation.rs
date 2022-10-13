@@ -784,8 +784,7 @@ fn handle_app(
                     let mut tmp_cts = vec![result_ct];
                     // check if there exists a derivation for all types in the intersection type.
                     for t in arg_t {
-                        let arg_constraint = constraint.clone();
-                        //let arg_constraint = Atom::mk_conj(t.rty_no_exists(), constraint.clone());
+                        let arg_constraint = Atom::mk_conj(t.rty_no_exists(), constraint.clone());
                         //debug!("t: {}", t);
                         // check if arg_constraint |- argg: arg_t
                         let pt = handle_abs(&arg_constraint, tenv, ienv, all_coefficients, argg, t);
