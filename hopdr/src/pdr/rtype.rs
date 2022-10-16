@@ -3,7 +3,7 @@ use std::{
     fmt::{self, Display},
 };
 
-use crate::formula::{fofml, TeXFormat, TeXPrinter, Variable};
+use crate::formula::{fofml, PredKind, TeXFormat, TeXPrinter, Variable};
 use crate::formula::{
     Constraint, DerefPtr, FirstOrderLogic, Fv, Ident, Logic, Negation, Op, Polarity, Rename, Subst,
     Top, Type as SType, TypeKind as STypeKind,
@@ -945,6 +945,106 @@ impl PTy {
         debug!("vprime: {vprime:?}");
         let m = sol.solve_with_model(&constraint, &vprime, &coefficients);
         m.is_ok()
+    }
+
+    fn optimize_trivial_ty(&self) -> Self {
+        // ∀x_18. (x_150: int -> ((x_19: int -> bool[(0 <= x_19) ∧ (x_18 <= 0)])-> bool[x_150 = x_18]))
+        // ---> x_150: int -> ((x_19: int -> bool[(0 <= x_19) ∧ (x_150 <= 0)])-> bool[T])
+
+        // Tr(*[θ], args, (xᵢ=oᵢ)ᵢ)
+        //     = for each xᵢ=oᵢ,  *[[θᵢ/xᵢ]θ] if fv(oᵢ) ⊂ args, *[θ] otherwise
+        // Tr(x:int → τ, args, (xᵢ=oᵢ)ᵢ)
+        //     = x:int → Tr(τ, x::args,  (xᵢ=oᵢ)ᵢ)
+        // Tr(∧τᵢ → τ, args, (xᵢ=oᵢ)ᵢ)
+        //     = τᵢ'  → Tr(τ, args, (xᵢ=oᵢ)ᵢ)
+        //        where τᵢ'  = Tr(τᵢ, args, eq(rty(τᵢ)) ⊕ (xᵢ=oᵢ)ᵢ)
+
+        fn tr(
+            t: &Ty,
+            args: &mut HashSet<Ident>,
+            eqs: Stack<(Ident, Op)>,
+            vars: &HashSet<Ident>,
+        ) -> Ty {
+            match t.kind() {
+                TauKind::Proposition(c) => {
+                    let mut c = c.clone();
+                    for (x, o) in eqs.iter() {
+                        if args.is_subset(&o.fv()) {
+                            c = c.subst(x, o);
+                        }
+                    }
+                    Ty::mk_prop_ty(c)
+                }
+                TauKind::IArrow(x, t) => {
+                    let should_remove = args.insert(*x);
+                    let t = tr(t, args, eqs, vars);
+                    if should_remove {
+                        args.remove(x);
+                    }
+                    Ty::mk_iarrow(*x, t)
+                }
+                TauKind::Arrow(ts, t) => {
+                    let t = tr(t, args, eqs.clone(), vars);
+                    let ts = ts
+                        .into_iter()
+                        .map(|t| tr(t, args, eq(&t.rty_no_exists(), eqs.clone(), vars), vars))
+                        .collect();
+                    Ty::mk_arrow(ts, t)
+                }
+            }
+        }
+
+        // search for x == y where x in vars and y's free variables are a set set of args
+        fn search(c: &Constraint, pairs: &mut Stack<(Ident, Op)>, vars: &HashSet<Ident>) {
+            match c.kind() {
+                formula::ConstraintExpr::Pred(PredKind::Eq, l) if l.len() == 2 => {
+                    match (l[0].kind(), l[1].kind()) {
+                        (formula::OpExpr::Var(x), o) | (o, formula::OpExpr::Var(x)) => {
+                            let o = Op::new(*o);
+                            // if o.fv() does not contain any polymorphic variables,
+                            // o only contains args.
+                            if vars.contains(x) && o.fv().is_disjoint(vars) {
+                                pairs.push_mut((*x, o))
+                            }
+                        }
+                        (_, _) => (),
+                    }
+                }
+                formula::ConstraintExpr::True
+                | formula::ConstraintExpr::False
+                | formula::ConstraintExpr::Pred(_, _) => (),
+                formula::ConstraintExpr::Conj(c1, c2) => {
+                    search(c1, pairs, vars);
+                    search(c2, pairs, vars);
+                }
+                formula::ConstraintExpr::Disj(_, _) => (),
+                formula::ConstraintExpr::Quantifier(_, _, _) => (),
+            }
+        }
+
+        fn eq(
+            c: &Constraint,
+            mut s: Stack<(Ident, Op)>,
+            vars: &HashSet<Ident>,
+        ) -> Stack<(Ident, Op)> {
+            search(c, &mut s, vars);
+            s
+        }
+
+        fn go(t: &Ty, arg_idents: &mut HashSet<Ident>) -> Constraint {
+            match t.kind() {
+                TauKind::Proposition(c) => c.clone(),
+                TauKind::IArrow(i, t) => {
+                    assert!(arg_idents.insert(*i));
+                    go(t, arg_idents)
+                }
+                TauKind::Arrow(_, t) => go(t, arg_idents),
+            }
+        }
+        let mut arg_idents = HashSet::new();
+        let c = go(&self.ty, &mut arg_idents);
+
+        unimplemented!()
     }
     pub fn optimize(&self) -> Self {
         let ty = self.ty.optimize();
