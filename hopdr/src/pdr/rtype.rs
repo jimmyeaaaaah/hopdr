@@ -947,68 +947,85 @@ impl PTy {
         m.is_ok()
     }
 
+    /// This optimization tries to remove polymorphic variable by using equational constraints
+    ///
+    /// ## Example
+    ///
+    /// ∀x_18. (x_150: int -> ((x_19: int -> bool[(0 <= x_19) ∧ (x_18 <= 0)])-> bool[x_150 = x_18]))
+    /// ---> x_150: int -> ((x_19: int -> bool[(0 <= x_19) ∧ (x_150 <= 0)])-> bool[T])
+    ///
     fn optimize_trivial_ty(&self) -> Self {
-        // ∀x_18. (x_150: int -> ((x_19: int -> bool[(0 <= x_19) ∧ (x_18 <= 0)])-> bool[x_150 = x_18]))
-        // ---> x_150: int -> ((x_19: int -> bool[(0 <= x_19) ∧ (x_150 <= 0)])-> bool[T])
-
         // Tr(*[θ], args, (xᵢ=oᵢ)ᵢ)
-        //     = for each xᵢ=oᵢ,  *[[θᵢ/xᵢ]θ] if fv(oᵢ) ⊂ args, *[θ] otherwise
+        //     = (eq(θₙ') ⊕ (xᵢ=oᵢ)ᵢ, *[θₙ']) for each xᵢ=oᵢ,  θᵢ₊₁'=[oᵢ/xᵢ]θᵢ' if fv(oᵢ) ⊂ args, otherwise θᵢ'
         // Tr(x:int → τ, args, (xᵢ=oᵢ)ᵢ)
-        //     = x:int → Tr(τ, x::args,  (xᵢ=oᵢ)ᵢ)
+        //     = (c, x:int → τ') where (c, τ') = Tr(τ, x::args,  (xᵢ=oᵢ)ᵢ)
         // Tr(∧τᵢ → τ, args, (xᵢ=oᵢ)ᵢ)
-        //     = τᵢ'  → Tr(τ, args, (xᵢ=oᵢ)ᵢ)
-        //        where τᵢ'  = Tr(τᵢ, args, eq(rty(τᵢ)) ⊕ (xᵢ=oᵢ)ᵢ)
+        //     = (eqs', τᵢ' → τ')
+        //        where
+        //          (eqs', τ') = Tr(τ, args, (xᵢ=oᵢ)ᵢ)
+        //        and
+        //          (_, τᵢ')  = Tr(τᵢ, args, eqs')
+        //
+        // ty.optimize_trivial_ty = ty where (_, ty) = Tr(ty, [], [])
 
-        fn tr(
-            t: &Ty,
-            args: &mut HashSet<Ident>,
-            eqs: Stack<(Ident, Op)>,
-            vars: &HashSet<Ident>,
-        ) -> Ty {
+        type Eqs = Stack<(Ident, Op)>;
+        fn tr(t: &Ty, args: &mut HashSet<Ident>, eqs: Eqs, vars: &HashSet<Ident>) -> (Eqs, Ty) {
             match t.kind() {
                 TauKind::Proposition(c) => {
                     let mut c = c.clone();
+                    println!("translating: {c}");
+                    println!("args: {args:?}");
                     for (x, o) in eqs.iter() {
-                        if args.is_subset(&o.fv()) {
+                        println!("replace: {x} = {o}");
+                        if o.fv().is_subset(args) {
                             c = c.subst(x, o);
                         }
                     }
-                    Ty::mk_prop_ty(c)
+                    (eq(&c, eqs.clone(), vars), Ty::mk_prop_ty(c))
                 }
                 TauKind::IArrow(x, t) => {
                     let should_remove = args.insert(*x);
-                    let t = tr(t, args, eqs, vars);
+                    let (eqs, t) = tr(t, args, eqs, vars);
                     if should_remove {
                         args.remove(x);
                     }
-                    Ty::mk_iarrow(*x, t)
+                    (eqs, Ty::mk_iarrow(*x, t))
                 }
                 TauKind::Arrow(ts, t) => {
-                    let t = tr(t, args, eqs.clone(), vars);
+                    let (eqs, t) = tr(t, args, eqs.clone(), vars);
                     let ts = ts
                         .into_iter()
-                        .map(|t| tr(t, args, eq(&t.rty_no_exists(), eqs.clone(), vars), vars))
+                        .map(|t| {
+                            let (_, t) =
+                                tr(t, args, eq(&t.rty_no_exists(), eqs.clone(), vars), vars);
+                            t
+                        })
                         .collect();
-                    Ty::mk_arrow(ts, t)
+                    (eqs, Ty::mk_arrow(ts, t))
                 }
             }
         }
 
         // search for x == y where x in vars and y's free variables are a set set of args
+        // if disjunctions appear, `search` won't search for eqs anymore.
         fn search(c: &Constraint, pairs: &mut Stack<(Ident, Op)>, vars: &HashSet<Ident>) {
             match c.kind() {
                 formula::ConstraintExpr::Pred(PredKind::Eq, l) if l.len() == 2 => {
                     match (l[0].kind(), l[1].kind()) {
-                        (formula::OpExpr::Var(x), o) | (o, formula::OpExpr::Var(x)) => {
-                            let o = Op::new(*o);
-                            // if o.fv() does not contain any polymorphic variables,
-                            // o only contains args.
-                            if vars.contains(x) && o.fv().is_disjoint(vars) {
-                                pairs.push_mut((*x, o))
-                            }
+                        (formula::OpExpr::Var(x), _)
+                            if vars.contains(&x) && l[1].fv().is_disjoint(vars) =>
+                        {
+                            println!("{x} = {}", l[1]);
+                            pairs.push_mut((*x, l[1].clone()))
                         }
-                        (_, _) => (),
-                    }
+                        (_, formula::OpExpr::Var(x))
+                            if vars.contains(&x) && l[0].fv().is_disjoint(vars) =>
+                        {
+                            println!("{x} = {}", l[0]);
+                            pairs.push_mut((*x, l[0].clone()))
+                        }
+                        (_, _) => return,
+                    };
                 }
                 formula::ConstraintExpr::True
                 | formula::ConstraintExpr::False
@@ -1027,24 +1044,21 @@ impl PTy {
             mut s: Stack<(Ident, Op)>,
             vars: &HashSet<Ident>,
         ) -> Stack<(Ident, Op)> {
+            println!("eq: {c}");
             search(c, &mut s, vars);
             s
         }
 
-        fn go(t: &Ty, arg_idents: &mut HashSet<Ident>) -> Constraint {
-            match t.kind() {
-                TauKind::Proposition(c) => c.clone(),
-                TauKind::IArrow(i, t) => {
-                    assert!(arg_idents.insert(*i));
-                    go(t, arg_idents)
-                }
-                TauKind::Arrow(_, t) => go(t, arg_idents),
-            }
-        }
-        let mut arg_idents = HashSet::new();
-        let c = go(&self.ty, &mut arg_idents);
+        let mut args = HashSet::new();
+        let vars = &self.vars;
+        let ty = &self.ty;
+        // Make sure there is no variable name collison such as
+        // // ∀z. (x: int → *[x = z]) → x: int → *[x = z]
+        let ty = ty.avoid_collision();
 
-        unimplemented!()
+        let (_, new_ty) = tr(&ty, &mut args, Stack::new(), vars);
+
+        PTy::poly(new_ty)
     }
     pub fn optimize(&self) -> Self {
         let ty = self.ty.optimize();
@@ -1070,6 +1084,43 @@ fn test_subtype_polymorphic2() {
     assert!(PTy::check_subtype_polymorphic(&t1, &t2));
     println!("ok");
     assert!(!PTy::check_subtype_polymorphic(&t2, &t1));
+}
+
+#[test]
+fn test_optimize_polymorphic_ty() {
+    let x_18 = Ident::fresh();
+    let x_150 = Ident::fresh();
+    let x_19 = Ident::fresh();
+    let zero = Op::mk_const(0);
+    let c1 = Constraint::mk_lt(zero.clone(), Op::mk_var(x_19));
+    let c2 = Constraint::mk_lt(Op::mk_var(x_18), zero.clone());
+    let c3 = Constraint::mk_conj(c1.clone(), c2.clone());
+    let c4 = Constraint::mk_eq(Op::mk_var(x_150), Op::mk_var(x_18));
+    let t1 = Ty::mk_iarrow(x_19, Ty::mk_prop_ty(c3.clone()));
+    let t2 = Ty::mk_arrow_single(t1, Ty::mk_prop_ty(c4.clone()));
+    let t3 = Ty::mk_iarrow(x_150, t2);
+    let pty = PTy::poly(t3);
+    println!("before: {pty}");
+    let pty2 = pty.optimize_trivial_ty();
+    println!("after: {pty2}");
+    assert_eq!(pty2.vars.len(), 0)
+}
+
+#[test]
+fn test_optimize_polymorphic_ty_negative() {
+    // ∀z. (x: int → *[x = z]) → x: int → *[x = z]
+    let z = Ident::fresh();
+    let x = Ident::fresh();
+
+    let eq = Constraint::mk_eq(Op::mk_var(x), Op::mk_var(z));
+    let eqt = Ty::mk_prop_ty(eq);
+    let t = Ty::mk_iarrow(x, eqt);
+    let t = Ty::mk_arrow_single(t.clone(), t);
+    let p = PTy::poly(t);
+    let p2 = p.optimize_trivial_ty();
+    println!("before: {p}");
+    println!("after: {p2}");
+    assert_eq!(p2.vars.len(), p.vars.len());
 }
 
 impl<C: Refinement> PolymorphicType<Tau<C>> {
