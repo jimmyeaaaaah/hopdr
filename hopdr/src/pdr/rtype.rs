@@ -3,13 +3,16 @@ use std::{
     fmt::{self, Display},
 };
 
-use crate::formula::{fofml, PredKind, TeXFormat, TeXPrinter, Variable};
 use crate::formula::{
     Constraint, DerefPtr, FirstOrderLogic, Fv, Ident, Logic, Negation, Op, Polarity, Rename, Subst,
     Top, Type as SType, TypeKind as STypeKind,
 };
 use crate::util::P;
 use crate::{formula, formula::hes::Goal, solver, solver::smt};
+use crate::{
+    formula::{fofml, PredKind, TeXFormat, TeXPrinter, Variable},
+    title,
+};
 
 use rpds::Stack;
 
@@ -956,52 +959,58 @@ impl PTy {
     ///
     fn optimize_trivial_ty(&self) -> Self {
         // Tr(*[θ], args, (xᵢ=oᵢ)ᵢ)
-        //     = (eq(θₙ') ⊕ (xᵢ=oᵢ)ᵢ, *[θₙ']) for each xᵢ=oᵢ,  θᵢ₊₁'=[oᵢ/xᵢ]θᵢ' if fv(oᵢ) ⊂ args, otherwise θᵢ'
+        //     = *[θₙ'] for each xᵢ=oᵢ,  θᵢ₊₁'=[oᵢ/xᵢ]θᵢ' if fv(oᵢ) ⊂ args, otherwise θᵢ'
         // Tr(x:int → τ, args, (xᵢ=oᵢ)ᵢ)
-        //     = (c, x:int → τ') where (c, τ') = Tr(τ, x::args,  (xᵢ=oᵢ)ᵢ)
-        // Tr(∧τᵢ → τ, args, (xᵢ=oᵢ)ᵢ)
-        //     = (eqs', τᵢ' → τ')
+        //     = x:int → τ' where τ' = Tr(τ, x::args, eqs)
+        // Tr(∧τᵢ → τ, args, eqs)
+        //     = τᵢ' → τ'
         //        where
-        //          (eqs', τ') = Tr(τ, args, (xᵢ=oᵢ)ᵢ)
+        //          τ' = Tr(τ, args, eqs)
         //        and
-        //          (_, τᵢ')  = Tr(τᵢ, args, eqs')
+        //          τᵢ' = Tr(τᵢ, args, eqs)
         //
-        // ty.optimize_trivial_ty = ty where (_, ty) = Tr(ty, [], [])
 
         type Eqs = Stack<(Ident, Op)>;
-        fn tr(t: &Ty, args: &mut HashSet<Ident>, eqs: Eqs, vars: &HashSet<Ident>) -> (Eqs, Ty) {
+        fn tr(
+            t: &Ty,
+            args: &mut HashSet<Ident>,
+            eqs: Eqs,
+            vars: &HashSet<Ident>,
+            toplevel: bool,
+        ) -> Ty {
             match t.kind() {
                 TauKind::Proposition(c) => {
-                    let mut c = c.clone();
-                    println!("translating: {c}");
-                    println!("args: {args:?}");
-                    for (x, o) in eqs.iter() {
-                        println!("replace: {x} = {o}");
-                        if o.fv().is_subset(args) {
-                            c = c.subst(x, o);
+                    let c = if !toplevel {
+                        let mut c = c.clone();
+                        debug!("translating: {c}");
+                        debug!("args: {args:?}");
+                        for (x, o) in eqs.iter() {
+                            debug!("replace: {x} = {o}");
+                            if o.fv().is_subset(args) {
+                                c = c.subst(x, o);
+                            }
                         }
-                    }
-                    (eq(&c, eqs.clone(), vars), Ty::mk_prop_ty(c))
+                        c
+                    } else {
+                        c.clone()
+                    };
+                    Ty::mk_prop_ty(c)
                 }
                 TauKind::IArrow(x, t) => {
                     let should_remove = args.insert(*x);
-                    let (eqs, t) = tr(t, args, eqs, vars);
+                    let t = tr(t, args, eqs, vars, toplevel);
                     if should_remove {
                         args.remove(x);
                     }
-                    (eqs, Ty::mk_iarrow(*x, t))
+                    Ty::mk_iarrow(*x, t)
                 }
                 TauKind::Arrow(ts, t) => {
-                    let (eqs, t) = tr(t, args, eqs.clone(), vars);
+                    let t = tr(t, args, eqs.clone(), vars, toplevel);
                     let ts = ts
                         .into_iter()
-                        .map(|t| {
-                            let (_, t) =
-                                tr(t, args, eq(&t.rty_no_exists(), eqs.clone(), vars), vars);
-                            t
-                        })
+                        .map(|t| tr(t, args, eqs.clone(), vars, false))
                         .collect();
-                    (eqs, Ty::mk_arrow(ts, t))
+                    Ty::mk_arrow(ts, t)
                 }
             }
         }
@@ -1011,17 +1020,16 @@ impl PTy {
         fn search(c: &Constraint, pairs: &mut Stack<(Ident, Op)>, vars: &HashSet<Ident>) {
             match c.kind() {
                 formula::ConstraintExpr::Pred(PredKind::Eq, l) if l.len() == 2 => {
-                    match (l[0].kind(), l[1].kind()) {
+                    debug!("eq: {} == {}", l[0], l[1]);
+                    match (l[0].flatten().kind(), l[1].flatten().kind()) {
                         (formula::OpExpr::Var(x), _)
                             if vars.contains(&x) && l[1].fv().is_disjoint(vars) =>
                         {
-                            println!("{x} = {}", l[1]);
                             pairs.push_mut((*x, l[1].clone()))
                         }
                         (_, formula::OpExpr::Var(x))
                             if vars.contains(&x) && l[0].fv().is_disjoint(vars) =>
                         {
-                            println!("{x} = {}", l[0]);
                             pairs.push_mut((*x, l[0].clone()))
                         }
                         (_, _) => return,
@@ -1044,7 +1052,6 @@ impl PTy {
             mut s: Stack<(Ident, Op)>,
             vars: &HashSet<Ident>,
         ) -> Stack<(Ident, Op)> {
-            println!("eq: {c}");
             search(c, &mut s, vars);
             s
         }
@@ -1055,16 +1062,55 @@ impl PTy {
         // Make sure there is no variable name collison such as
         // // ∀z. (x: int → *[x = z]) → x: int → *[x = z]
         let ty = ty.avoid_collision();
+        let eqs = eq(&ty.rty_no_exists(), Stack::new(), vars);
 
-        let (_, new_ty) = tr(&ty, &mut args, Stack::new(), vars);
+        title!("optimize_trivial_ty::tr");
+        debug!("eqs");
+        for (x, o) in eqs.iter() {
+            debug!("- {x} = {o}");
+        }
+
+        let mut new_ty = tr(&ty, &mut args, eqs.clone(), vars, true);
+
+        fn check_if_removable(ty: &Ty, x: Ident, toplevel: bool) -> bool {
+            match ty.kind() {
+                TauKind::Proposition(_) if toplevel => true,
+                TauKind::Proposition(c) => !c.fv().contains(&x),
+                TauKind::IArrow(_, r) => check_if_removable(r, x, toplevel),
+                TauKind::Arrow(ts, t) => {
+                    for t in ts.iter() {
+                        if !check_if_removable(t, x, false) {
+                            return false;
+                        }
+                    }
+                    check_if_removable(t, x, toplevel)
+                }
+            }
+        }
+        let mut eq_idents = HashMap::new();
+        for (x, o) in eqs.iter() {
+            eq_idents
+                .entry(*x)
+                .or_insert_with(|| vec![])
+                .push(o.clone())
+        }
+
+        for (x, os) in eq_idents {
+            if os.len() == 1 && check_if_removable(&new_ty, x, true) {
+                new_ty = new_ty.subst(&x, &os[0])
+            }
+        }
 
         PTy::poly(new_ty)
     }
     pub fn optimize(&self) -> Self {
-        let ty = self.ty.optimize();
+        println!("before: {self}");
+        let pty = self.optimize_trivial_ty();
+        println!("after: {pty}");
+        let ty = pty.ty.optimize();
         Self {
             ty,
-            vars: self.vars.clone(),
+            vars: pty.vars.clone(),
         }
     }
 }
