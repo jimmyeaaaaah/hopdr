@@ -223,6 +223,16 @@ impl Op {
         }
     }
 
+    pub fn mk_sub(x: Op, y: Op) -> Op {
+        if x.check_const(0) {
+            Op::mk_minus(y)
+        } else if y.check_const(0) {
+            x
+        } else {
+            Op::new(OpExpr::Op(OpKind::Sub, x, y))
+        }
+    }
+
     pub fn mk_mul(x: Op, y: Op) -> Op {
         if x.check_const(1) {
             y
@@ -297,6 +307,8 @@ impl Op {
             }
         }
     }
+    // expand to term vectors which can be reduced to op by `add`.
+    // that is, given `x + y`, expand_expr_to_vec returns [x, y]
     pub fn expand_expr_to_vec(&self) -> Vec<Op> {
         match self.kind() {
             OpExpr::Var(_) | OpExpr::Const(_) => vec![self.clone()],

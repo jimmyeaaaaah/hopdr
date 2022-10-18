@@ -4,8 +4,8 @@ use std::{
 };
 
 use crate::formula::{
-    Constraint, DerefPtr, FirstOrderLogic, Fv, Ident, Logic, Negation, Op, Polarity, Rename, Subst,
-    Top, Type as SType, TypeKind as STypeKind,
+    Constraint, ConstraintExpr, DerefPtr, FirstOrderLogic, Fv, Ident, Logic, Negation, Op, OpExpr,
+    OpKind, Polarity, Rename, Subst, Top, Type as SType, TypeKind as STypeKind,
 };
 use crate::util::P;
 use crate::{formula, formula::hes::Goal, solver, solver::smt};
@@ -898,6 +898,76 @@ impl<T: Fv<Id = Ident>> PolymorphicType<T> {
     }
 }
 
+/// given left = right, by transposing terms, returns (ident, op) where
+/// ident in `vars`
+/// assumption: no OpExpr::Ptr  (ops are `flatten`ed)
+///
+/// this is intended to be an auxiliary function for PTy::optimize_trivial_ty
+fn preprocess_eq(left: &Op, right: &Op, vars: &HashSet<Ident>) -> Option<(Ident, Op)> {
+    // 0 = right - left
+    let right = Op::mk_sub(right.clone(), left.clone());
+    let additions = right.expand_expr_to_vec();
+    let mut result_ops = Op::mk_const(0);
+    let mut already_found = None; // Option<(ident, is_neg)>
+    fn check(c: &Op, o: &Op) -> Option<(Ident, bool)> {
+        let is_neg = match c.kind() {
+            OpExpr::Const(-1) => true,
+            OpExpr::Const(1) => false,
+            OpExpr::Const(_) | OpExpr::Op(_, _, _) | OpExpr::Var(_) | OpExpr::Ptr(_, _) => {
+                return None
+            }
+        };
+        match o.kind() {
+            OpExpr::Var(x) => Some((*x, is_neg)),
+            OpExpr::Op(_, _, _) | OpExpr::Const(_) | OpExpr::Ptr(_, _) => None,
+        }
+    }
+    for v in additions {
+        match v.kind() {
+            OpExpr::Var(x) if already_found.is_none() && vars.contains(x) => {
+                already_found = Some((*x, false));
+            }
+            OpExpr::Op(OpKind::Mul, o1, o2) => match check(o1, o2).or_else(|| check(o2, o1)) {
+                Some((x, is_neg)) if already_found.is_none() && vars.contains(&x) => {
+                    already_found = Some((x, is_neg))
+                }
+                Some(_) | None => result_ops = Op::mk_add(result_ops, v.clone()),
+            },
+            OpExpr::Op(_, _, _) | OpExpr::Var(_) | OpExpr::Const(_) => {
+                result_ops = Op::mk_add(result_ops, v.clone())
+            }
+            OpExpr::Ptr(_, _) => panic!("assumption violated: ptrs are flattened"),
+        }
+    }
+    already_found.map(|(ident, is_neg)| {
+        (
+            ident,
+            // a little complicated, but if is_neg is true,
+            // that is -x + ... = 0; therefore, ... will not be negated.
+            if is_neg {
+                result_ops
+            } else {
+                result_ops.negate()
+            },
+        )
+    })
+}
+
+#[test]
+fn test_preprocess_eq() {
+    use formula::Env;
+    // x - 1 = 0  => x = 1 + 0
+    let x = Ident::fresh();
+    let left = Op::mk_sub(Op::mk_var(x), Op::one());
+    let right = Op::zero();
+    let mut var = HashSet::new();
+    assert!(preprocess_eq(&left, &right, &var).is_none());
+    var.insert(x);
+    let (ident, o) = preprocess_eq(&left, &right, &var).unwrap();
+    assert_eq!(ident, x);
+    assert_eq!(o.eval(&Env::new()), Some(1))
+}
+
 impl PTy {
     pub fn check_subtype_polymorphic(t: &Self, s: &Self) -> bool {
         // Assumption: polymorphic type appears only at the top level of types.
@@ -1019,31 +1089,25 @@ impl PTy {
         // if disjunctions appear, `search` won't search for eqs anymore.
         fn search(c: &Constraint, pairs: &mut Stack<(Ident, Op)>, vars: &HashSet<Ident>) {
             match c.kind() {
-                formula::ConstraintExpr::Pred(PredKind::Eq, l) if l.len() == 2 => {
+                ConstraintExpr::Pred(PredKind::Eq, l) if l.len() == 2 => {
                     debug!("eq: {} == {}", l[0], l[1]);
                     match (l[0].flatten().kind(), l[1].flatten().kind()) {
-                        (formula::OpExpr::Var(x), _)
-                            if vars.contains(&x) && l[1].fv().is_disjoint(vars) =>
-                        {
+                        (OpExpr::Var(x), _) if vars.contains(&x) && l[1].fv().is_disjoint(vars) => {
                             pairs.push_mut((*x, l[1].clone()))
                         }
-                        (_, formula::OpExpr::Var(x))
-                            if vars.contains(&x) && l[0].fv().is_disjoint(vars) =>
-                        {
+                        (_, OpExpr::Var(x)) if vars.contains(&x) && l[0].fv().is_disjoint(vars) => {
                             pairs.push_mut((*x, l[0].clone()))
                         }
                         (_, _) => return,
                     };
                 }
-                formula::ConstraintExpr::True
-                | formula::ConstraintExpr::False
-                | formula::ConstraintExpr::Pred(_, _) => (),
-                formula::ConstraintExpr::Conj(c1, c2) => {
+                ConstraintExpr::True | ConstraintExpr::False | ConstraintExpr::Pred(_, _) => (),
+                ConstraintExpr::Conj(c1, c2) => {
                     search(c1, pairs, vars);
                     search(c2, pairs, vars);
                 }
-                formula::ConstraintExpr::Disj(_, _) => (),
-                formula::ConstraintExpr::Quantifier(_, _, _) => (),
+                ConstraintExpr::Disj(_, _) => (),
+                ConstraintExpr::Quantifier(_, _, _) => (),
             }
         }
 
@@ -1104,9 +1168,7 @@ impl PTy {
         PTy::poly(new_ty)
     }
     pub fn optimize(&self) -> Self {
-        println!("before: {self}");
         let pty = self.optimize_trivial_ty();
-        println!("after: {pty}");
         let ty = pty.ty.optimize();
         Self {
             ty,
