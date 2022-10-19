@@ -1091,14 +1091,21 @@ impl PTy {
             match c.kind() {
                 ConstraintExpr::Pred(PredKind::Eq, l) if l.len() == 2 => {
                     debug!("eq: {} == {}", l[0], l[1]);
-                    match (l[0].flatten().kind(), l[1].flatten().kind()) {
+                    let left = l[0].flatten();
+                    let right = l[1].flatten();
+                    match (left.kind(), right.kind()) {
                         (OpExpr::Var(x), _) if vars.contains(&x) && l[1].fv().is_disjoint(vars) => {
                             pairs.push_mut((*x, l[1].clone()))
                         }
                         (_, OpExpr::Var(x)) if vars.contains(&x) && l[0].fv().is_disjoint(vars) => {
                             pairs.push_mut((*x, l[0].clone()))
                         }
-                        (_, _) => return,
+                        (_, _) => match preprocess_eq(&left, &right, vars) {
+                            Some((x, o)) if vars.contains(&x) && o.fv().is_disjoint(vars) => {
+                                pairs.push_mut((x, o))
+                            }
+                            Some(_) | None => (),
+                        },
                     };
                 }
                 ConstraintExpr::True | ConstraintExpr::False | ConstraintExpr::Pred(_, _) => (),
@@ -1211,7 +1218,20 @@ fn test_optimize_polymorphic_ty() {
     println!("before: {pty}");
     let pty2 = pty.optimize_trivial_ty();
     println!("after: {pty2}");
-    assert_eq!(pty2.vars.len(), 0)
+    assert_eq!(pty2.vars.len(), 0);
+
+    let c5 = Constraint::mk_eq(
+        Op::mk_add(Op::mk_var(x_150), Op::one()),
+        Op::mk_sub(Op::mk_var(x_18), Op::one()),
+    );
+    let t1 = Ty::mk_iarrow(x_19, Ty::mk_prop_ty(c3.clone()));
+    let t2 = Ty::mk_arrow_single(t1, Ty::mk_prop_ty(c5.clone()));
+    let t3 = Ty::mk_iarrow(x_150, t2);
+    let pty = PTy::poly(t3);
+    println!("before: {pty}");
+    let pty2 = pty.optimize_trivial_ty();
+    println!("after: {pty2}");
+    assert_eq!(pty2.vars.len(), 0);
 }
 
 #[test]

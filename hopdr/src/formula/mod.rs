@@ -241,7 +241,10 @@ impl Op {
         } else if x.check_const(0) || y.check_const(0) {
             Op::mk_const(0)
         } else {
-            Op::new(OpExpr::Op(OpKind::Mul, x, y))
+            match (x.kind(), y.kind()) {
+                (OpExpr::Const(x), OpExpr::Const(y)) => Op::mk_const(x * y),
+                _ => Op::new(OpExpr::Op(OpKind::Mul, x, y)),
+            }
         }
     }
 
@@ -300,10 +303,10 @@ impl Op {
         match self.kind() {
             OpExpr::Op(OpKind::Mul, o1, o2) => match o1.kind() {
                 OpExpr::Const(-1) => o2.clone(),
-                _ => Op::mk_bin_op(OpKind::Mul, Op::mk_const(-1), self.clone()),
+                _ => Op::mk_mul(Op::mk_const(-1), self.clone()),
             },
             OpExpr::Op(_, _, _) | OpExpr::Var(_) | OpExpr::Const(_) | OpExpr::Ptr(_, _) => {
-                Op::mk_bin_op(OpKind::Mul, Op::mk_const(-1), self.clone())
+                Op::mk_mul(Op::mk_const(-1), self.clone())
             }
         }
     }
