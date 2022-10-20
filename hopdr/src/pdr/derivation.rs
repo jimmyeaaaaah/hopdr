@@ -664,7 +664,7 @@ fn handle_abs(
     arg_expr: &G,
     t: &Ty,
 ) -> PossibleDerivation<Atom> {
-    let pt = match arg_expr.kind() {
+    let mut pt = match arg_expr.kind() {
         GoalKind::Abs(v, g) if v.ty.is_int() => match t.kind() {
             TauKind::IArrow(id, t) if v.ty.is_int() => {
                 let t = t.rename(id, &v.id);
@@ -696,6 +696,14 @@ fn handle_abs(
             pt
         }
     };
+    for level in arg_expr.aux.level_arg.iter() {
+        for ct in pt.types.iter_mut() {
+            ct.memorize(*level);
+        }
+    }
+    for ct in pt.types.iter_mut() {
+        ct.set_types(arg_expr, constraint.clone());
+    }
     debug!("handle_abs: {} |- {} : {} ", constraint, arg_expr, pt);
     pt
 }
