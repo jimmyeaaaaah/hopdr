@@ -6,8 +6,8 @@ use std::time::Duration;
 use super::util;
 use super::{Model, SMTSolverType, SolverResult};
 use crate::formula::{
-    Constraint, ConstraintExpr, FirstOrderLogic, Ident, Op, OpExpr, OpKind, PredKind,
-    QuantifierKind,
+    Constraint, ConstraintExpr, FirstOrderLogic, Fv, Ident, Logic, Op, OpExpr, OpKind, PredKind,
+    QuantifierKind, Subst, Top,
 };
 use lexpr;
 use lexpr::Value;
@@ -116,7 +116,6 @@ pub trait SMTSolver {
     ///
     /// all free variables are to be universally quantified
     fn check_equivalent(&mut self, left: &Constraint, right: &Constraint) -> SolverResult {
-        use crate::formula::Logic;
         let rightarrow = Constraint::mk_implies(left.clone(), right.clone());
         let leftarrow = Constraint::mk_implies(right.clone(), left.clone());
         let equivalent = Constraint::mk_conj(rightarrow, leftarrow);
@@ -126,7 +125,6 @@ pub trait SMTSolver {
     /// check if the constraint is satisfiable where all free variables are quantified by universal
     /// quantifiers
     fn solve_with_universal_quantifiers(&mut self, constraint: &Constraint) -> SolverResult {
-        use crate::formula::Fv;
         let fvs = constraint.fv();
         self.solve(constraint, &fvs)
     }
@@ -295,11 +293,58 @@ impl AutoSolver {
         farkas::farkas_transform(&constraint)
     }
 
+    /// check if the given model is actually a valid model for constraint
+    /// by using SMT solver (Model is assumed to be given by SAT solver)
+    fn validate(&self, constraint: &Constraint, model: &Model) -> bool {
+        let mut constraint = constraint.clone();
+        for (var, val) in model.model.iter() {
+            constraint = constraint.subst(var, &Op::mk_const(*val));
+        }
+        let mut sat_solver = smt_solver(SMTSolverType::Z3);
+        for fv in constraint.fv() {
+            // there is no constraint on fv, so any number is ok to substitute.
+            constraint = constraint.subst(&fv, &Op::mk_const(0));
+        }
+        sat_solver
+            .solve_with_model(&constraint, &HashSet::new(), &HashSet::new())
+            .is_ok()
+    }
+
+    fn add_range_to_fv(constraint: &Constraint, min: i64, max: i64) -> Constraint {
+        let fvs = constraint.fv();
+        let mut range_constr = Constraint::mk_true();
+        let max = Op::mk_const(max);
+        let min = Op::mk_const(min);
+        for fv in fvs {
+            let x = Op::mk_var(fv);
+            let c1 = Constraint::mk_geq(max.clone(), x.clone());
+            let c2 = Constraint::mk_geq(x.clone(), min.clone());
+            let c = Constraint::mk_conj(c1, c2);
+            range_constr = Constraint::mk_conj(range_constr, c);
+        }
+        Constraint::mk_conj(constraint.clone(), range_constr)
+    }
+
+    fn solve_by_smt(&self, constraint: &Constraint) -> Result<Model, SolverResult> {
+        let c = Self::add_range_to_fv(constraint, -256, 256);
+        let mut sat_solver = smt_solver(SMTSolverType::Z3);
+        sat_solver.solve_with_model(&c, &HashSet::new(), &c.fv())
+    }
+
     fn solve_inner(&self, constraint: &Constraint) -> Result<Model, SolverResult> {
         debug!("check if {constraint} is sat");
         let mut sat_solver =
             super::sat::SATSolver::default_solver(Self::MIN_INT, Self::MAX_INT, Self::BIT_SIZE);
-        sat_solver.solve(&constraint)
+        let m = sat_solver.solve(&constraint)?;
+
+        if !self.validate(constraint, &m) {
+            warn!("failed to solve by sat since bit size is too small");
+            let m = self.solve_by_smt(constraint);
+            warn!("but smt could make it");
+            m
+        } else {
+            Ok(m)
+        }
     }
 }
 
@@ -413,7 +458,6 @@ fn test_auto_solver_bug2() {
 
 impl SMTSolver for Z3Solver {
     fn solve(&mut self, c: &Constraint, vars: &HashSet<Ident>) -> SolverResult {
-        use crate::formula::Fv;
         debug!("smt_solve: {}", c);
         let fvs = c.fv();
         let fvs = &fvs - vars;

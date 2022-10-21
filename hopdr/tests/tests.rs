@@ -108,6 +108,7 @@ fn type_check_1() {
    Z x =v X x E || Y x E.
    M =v ∀x. x = 0 || Z x.
 */
+#[allow(dead_code)]
 fn gen_tyenv_for_test(
     clauses: &[hopdr::formula::hes::Clause<hopdr::formula::Constraint>],
 ) -> hopdr::pdr::rtype::TyEnv {
