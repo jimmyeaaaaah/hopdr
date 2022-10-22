@@ -377,13 +377,14 @@ impl<C: Refinement> Tau<C> {
                 Tau::check_subtype(constraint, t1, &t2)
             }
             (TauKind::Arrow(ts1, t1), TauKind::Arrow(ts2, t2)) => {
+                // check ts2 <: ts1
                 let mut result_constraint = Tau::check_subtype(constraint, t1, t2);
-                // ⋀ᵢ tᵢ ≺ ⋀ⱼt'ⱼ ⇔∀ tᵢ. ∃ t'ⱼ. tᵢ ≺ t'ⱼ
+                // ⋀ᵢ tᵢ ≺ ⋀ⱼt'ⱼ ⇔∀ t'ⱼ. ∃ tᵢ. tᵢ ≺ t'ⱼ
                 let arg_constraint = C::mk_conj(constraint.clone(), t2.rty());
-                for tx in ts2 {
+                for tj in ts1 {
                     let mut tmpc = C::mk_false();
-                    for ty in ts1 {
-                        tmpc = C::mk_disj(tmpc, Tau::check_subtype(&arg_constraint, tx, ty));
+                    for ti in ts2 {
+                        tmpc = C::mk_disj(tmpc, Tau::check_subtype(&arg_constraint, ti, tj));
                     }
                     result_constraint = C::mk_conj(result_constraint, tmpc);
                 }
@@ -1017,6 +1018,10 @@ impl PTy {
         }
         debug!("vprime: {vprime:?}");
         let m = sol.solve_with_model(&constraint, &vprime, &coefficients);
+        match &m {
+            Ok(model) => debug!("model: {model}"),
+            Err(_) => (),
+        }
         m.is_ok()
     }
 
@@ -1199,6 +1204,42 @@ fn test_subtype_polymorphic2() {
     assert!(PTy::check_subtype_polymorphic(&t1, &t2));
     println!("ok");
     assert!(!PTy::check_subtype_polymorphic(&t2, &t1));
+}
+
+#[test]
+fn test_subtype_polymorphic_negative2() {
+    // ∀z. (((x: int -> *[z = x]) /\ (y: int -> *[y = (1 + z)]))-> (w: int -> *[w = z]))
+    //     <: ∀z. ((v: int -> *[v = z])-> (w: int -> *[z = w]))
+
+    let x = Ident::fresh();
+    let y = Ident::fresh();
+    let z = Ident::fresh();
+    let w = Ident::fresh();
+    let v = Ident::fresh();
+
+    fn o(x: Ident) -> Op {
+        Op::mk_var(x)
+    }
+    fn p(c: Constraint) -> Ty {
+        Ty::mk_prop_ty(c)
+    }
+
+    let c1 = Constraint::mk_eq(o(z), o(x));
+    let c2 = Constraint::mk_eq(o(y), Op::mk_add(o(z), Op::one()));
+    let c3 = Constraint::mk_eq(o(w), o(z));
+    let c4 = Constraint::mk_eq(o(v), o(z));
+
+    let t1 = Ty::mk_iarrow(x, p(c1));
+    let t2 = Ty::mk_iarrow(y, p(c2));
+    let t3 = Ty::mk_iarrow(w, p(c3.clone()));
+    let t = Ty::mk_arrow(vec![t1, t2], t3.clone());
+    let t = PTy::poly(t);
+
+    let t4 = Ty::mk_iarrow(v, p(c4));
+    let s = Ty::mk_arrow_single(t4, t3);
+    let s = PTy::poly(s);
+
+    assert!(!PTy::check_subtype_polymorphic(&t, &s));
 }
 
 #[test]
