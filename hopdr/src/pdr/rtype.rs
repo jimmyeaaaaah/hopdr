@@ -806,7 +806,7 @@ fn test_optimize_reducing() {
         TauKind::IArrow(_, t) => match t.kind() {
             TauKind::Arrow(ts, t) => {
                 println!("ts: {}", ts[0]);
-                assert_eq!(ts.len(), 2)
+                assert_eq!(ts.len(), 1)
             }
             _ => panic!("program error"),
         },
