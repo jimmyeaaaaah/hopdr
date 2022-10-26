@@ -780,6 +780,40 @@ fn test_optimize_constraint_reduction() {
     assert_eq!(t1, t2);
 }
 
+#[test]
+fn test_optimize_reducing() {
+    // ∀ z: x:int → (y: int → *[x=y]) ∧   (y: int → *[x=y+1]) → *[T]
+    let x = Ident::fresh();
+    let y = Ident::fresh();
+    let z = Ident::fresh();
+
+    let t1 = Ty::mk_iarrow(
+        y,
+        Ty::mk_prop_ty(Constraint::mk_eq(Op::mk_var(x), Op::mk_var(y))),
+    );
+    let t2 = Ty::mk_iarrow(
+        y,
+        Ty::mk_prop_ty(Constraint::mk_eq(
+            Op::mk_var(x),
+            Op::mk_add(Op::one(), Op::mk_var(y)),
+        )),
+    );
+
+    let t = Ty::mk_arrow(vec![t1, t2], Ty::mk_prop_ty(Constraint::mk_true()));
+    let t = Ty::mk_iarrow(x, t);
+    let t = t.optimize_reducing_intersection();
+    match t.kind() {
+        TauKind::IArrow(_, t) => match t.kind() {
+            TauKind::Arrow(ts, t) => {
+                println!("ts: {}", ts[0]);
+                assert_eq!(ts.len(), 2)
+            }
+            _ => panic!("program error"),
+        },
+        _ => panic!("program error"),
+    }
+}
+
 /// `generate_t_and_its_subtype_for_test` return the following two refinement types
 ///   - t: ∀ x₁, x₂. (y:int → •〈y =x₁+x₂〉)→z:int→ • 〈z=x₁+x₂〉
 ///   - s: ∀ x₃.(y:int→•〈y=x₃〉)→z:int→•〈z=x₃〉
