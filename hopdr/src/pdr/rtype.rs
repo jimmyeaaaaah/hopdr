@@ -599,6 +599,7 @@ impl<C> Tau<C> {
     }
 }
 
+// optimization methods of Ty
 impl Tau<Constraint> {
     pub fn constraint_rty(&self) -> Constraint {
         self.rty()
@@ -652,6 +653,84 @@ impl Tau<Constraint> {
                 Ty::mk_arrow(ts_new, t)
             }
         }
+    }
+    /// for all intersection types θ |- t1 /\ t2, this method tries to find a type t
+    /// such that θ |- t <: t1 and θ |- t <: t2
+    fn optimize_reducing_intersection(&self) -> Self {
+        use fofml::Atom;
+        debug!("optimize_reducing_intersection: {self}");
+
+        fn try_generate_new_type(
+            polarity: formula::Polarity,
+            env: &mut HashSet<Ident>,
+            constraint: &Constraint,
+            ts: &Vec<Ty>,
+        ) -> Vec<Ty> {
+            let t = &ts[0].clone_with_template(env);
+            let constraint = constraint.clone().into();
+            let mut clauses = Vec::new();
+            for s in ts.iter().cloned() {
+                let c = match polarity {
+                    Polarity::Positive => Tau::check_subtype(&constraint, t, &s.into()),
+                    Polarity::Negative => Tau::check_subtype(&constraint, &s.into(), t),
+                };
+                match c.to_chcs_or_pcsps() {
+                    either::Either::Left(chcs) => {
+                        for chc in chcs {
+                            clauses.push(chc);
+                        }
+                    }
+                    either::Either::Right(_) => panic!("program error"),
+                }
+            }
+            let _ = match solver::chc::default_solver().solve(&clauses) {
+                solver::chc::CHCResult::Sat(m) => m,
+                solver::chc::CHCResult::Unsat => return ts.clone(),
+                solver::chc::CHCResult::Unknown | solver::chc::CHCResult::Timeout => {
+                    panic!("panic")
+                }
+            };
+            let model = solver::interpolation::solve(&clauses);
+            let t = t.assign(&model.model);
+            vec![t]
+        }
+
+        fn go(
+            polarity: formula::Polarity,
+            env: &mut HashSet<Ident>,
+            constraint: &Constraint,
+            ty: &Ty,
+        ) -> Ty {
+            match ty.kind() {
+                TauKind::Proposition(_) => ty.clone(),
+                TauKind::IArrow(x, t) => {
+                    let t = go(polarity, env, constraint, t);
+                    Ty::mk_iarrow(*x, t)
+                }
+                TauKind::Arrow(ts, t) => {
+                    let t = go(polarity, env, constraint, t);
+                    let constraint = Constraint::mk_conj(constraint.clone(), t.rty());
+                    let ts: Vec<_> = ts
+                        .iter()
+                        .map(|t| go(polarity.rev(), env, &constraint, t))
+                        .collect();
+                    let ts = if ts.len() <= 1 {
+                        ts
+                    } else {
+                        try_generate_new_type(polarity, env, &constraint, &ts)
+                    };
+
+                    Ty::mk_arrow(ts, t)
+                }
+            }
+        }
+
+        go(
+            formula::Polarity::Positive,
+            &mut HashSet::new(),
+            &Constraint::mk_true(),
+            self,
+        )
     }
 
     pub fn optimize(&self) -> Self {
