@@ -252,6 +252,14 @@ impl Op {
         Op::new(OpExpr::Op(OpKind::Sub, Op::mk_const(0), x))
     }
 
+    pub fn mk_inc(x: Op) -> Op {
+        Op::mk_add(x, Op::one())
+    }
+
+    pub fn mk_dec(x: Op) -> Op {
+        Op::mk_sub(x, Op::one())
+    }
+
     pub fn mk_const(x: i64) -> Op {
         Op::new(OpExpr::Const(x))
     }
@@ -813,6 +821,9 @@ impl Constraint {
     pub fn mk_lt(left: Op, right: Op) -> Constraint {
         Self::mk_bin_pred(PredKind::Lt, left, right)
     }
+    pub fn mk_leq(left: Op, right: Op) -> Constraint {
+        Self::mk_bin_pred(PredKind::Leq, left, right)
+    }
     pub fn mk_geq(left: Op, right: Op) -> Constraint {
         Self::mk_bin_pred(PredKind::Geq, left, right)
     }
@@ -1217,7 +1228,7 @@ impl Constraint {
             ConstraintExpr::Quantifier(_, _, x) => x.eval(env),
         }
     }
-    pub fn simplify(&self) -> Self {
+    pub fn simplify_trivial(&self) -> Self {
         match self.eval(&Env::new()) {
             Some(b) if b => return Constraint::mk_true(),
             Some(_) => return Constraint::mk_false(),
@@ -1225,17 +1236,17 @@ impl Constraint {
         };
         match self.kind() {
             ConstraintExpr::Conj(x, y) => {
-                let x = x.simplify();
-                let y = y.simplify();
+                let x = x.simplify_trivial();
+                let y = y.simplify_trivial();
                 Constraint::mk_conj(x, y)
             }
             ConstraintExpr::Disj(x, y) => {
-                let x = x.simplify();
-                let y = y.simplify();
+                let x = x.simplify_trivial();
+                let y = y.simplify_trivial();
                 Constraint::mk_disj(x, y)
             }
             ConstraintExpr::Quantifier(q, x, c) => {
-                let c = c.simplify();
+                let c = c.simplify_trivial();
                 let fvs = c.fv();
                 if !fvs.contains(&x.id) {
                     c
@@ -1253,6 +1264,125 @@ impl Constraint {
             ConstraintExpr::True | ConstraintExpr::False => self.clone(),
         }
     }
+    // o1 <= o2 && o2 <= o1 => o1 == o2
+    fn simplify_geq_geq(&self) -> Self {
+        // dnf
+        let dnf = self.to_dnf();
+        // too big?
+        if dnf.len() > 3 {
+            return self.clone();
+        }
+        let mut result_constraint = Constraint::mk_false();
+        for clause in dnf {
+            let mut geq_track = Vec::new();
+            // (left, right, flag) where flag is
+            // used for tracking whether left == right has already conjoined.
+            let mut eqs = Vec::new();
+            let cnf = clause.to_cnf();
+            for c in cnf.iter() {
+                let (left, right) = match c.kind() {
+                    ConstraintExpr::Pred(PredKind::Geq, xs) if xs.len() == 2 => {
+                        let left = xs[0].clone();
+                        let right = xs[1].clone();
+                        (left, right)
+                    }
+                    ConstraintExpr::Pred(PredKind::Leq, xs) if xs.len() == 2 => {
+                        let left = xs[1].clone();
+                        let right = xs[0].clone();
+                        (left, right)
+                    }
+                    _ => continue,
+                };
+                println!("{left} <= {right}");
+                let mut geq_track_new = Vec::new();
+                let mut inserted = false;
+                for (l, r) in geq_track.into_iter() {
+                    println!(
+                        "{left} == {r}: {}, {right} == {l}: {}",
+                        &left == &r,
+                        &right == &l
+                    );
+                    if &left == &r && &right == &l {
+                        inserted = true;
+                        eqs.push((left.clone(), right.clone(), false))
+                    } else if &left == &l && &right == &r {
+                        // already inserted
+                        inserted = true;
+                    }
+                }
+                if !inserted {
+                    geq_track_new.push((left.clone(), right.clone()));
+                }
+                geq_track = geq_track_new;
+            }
+            for (left, right, _) in eqs.iter() {
+                println!("- {left} = {right}");
+            }
+            let mut constraint = Constraint::mk_true();
+            'outer: for c in cnf {
+                match c.kind() {
+                    ConstraintExpr::Pred(PredKind::Geq, xs)
+                    | ConstraintExpr::Pred(PredKind::Leq, xs)
+                        if xs.len() == 2 =>
+                    {
+                        let left = &xs[0];
+                        let right = &xs[1];
+                        for (l, r, flag) in eqs.iter_mut() {
+                            if (left == l && right == r) || (left == r && right == l) {
+                                if !*flag {
+                                    let c = Constraint::mk_eq(left.clone(), right.clone());
+                                    constraint = Constraint::mk_conj(c, constraint);
+                                    *flag = true;
+                                }
+                                continue 'outer;
+                            }
+                        }
+                        // no entry in eqs
+                        constraint = Constraint::mk_conj(c.clone(), constraint);
+                    }
+                    _ => constraint = Constraint::mk_conj(c.clone(), constraint),
+                };
+            }
+            result_constraint = Constraint::mk_disj(result_constraint, constraint);
+        }
+        result_constraint
+    }
+    pub fn simplify(&self) -> Self {
+        let c = self.simplify_trivial();
+        c
+    }
+}
+
+#[test]
+fn test_simplify_geq_geq() {
+    // x <= y && y +1 = 0 && y <= x
+    let x = Ident::fresh();
+    let y = Ident::fresh();
+    let xgy = Constraint::mk_leq(Op::mk_var(x), Op::mk_var(y));
+    let yp10 = Constraint::mk_eq(Op::mk_inc(Op::mk_var(y)), Op::zero());
+    let ygx = Constraint::mk_leq(Op::mk_var(y), Op::mk_var(x));
+    let c = Constraint::mk_conj(Constraint::mk_conj(xgy.clone(), yp10.clone()), ygx.clone());
+    println!("before: {c}");
+    let c = c.simplify_geq_geq();
+    println!("after: {c}");
+    let cnf = c.to_cnf();
+    assert_eq!(cnf.len(), 2);
+
+    // (x <= y \/ y + 1 = 0) /\ y <= x
+    let c = Constraint::mk_conj(Constraint::mk_disj(xgy.clone(), yp10.clone()), ygx.clone());
+    println!("before: {c}");
+    let c = c.simplify_geq_geq();
+    println!("after: {c}");
+    let dnf = c.to_dnf();
+    let mut existence = false;
+    for clause in dnf {
+        let cnf = clause.to_cnf();
+        if cnf.len() == 1 {
+            existence = true;
+            assert_eq!(&cnf[0], &Constraint::mk_eq(Op::mk_var(x), Op::mk_var(y)));
+        }
+    }
+    assert!(existence);
 }
 
 #[test]
@@ -1289,7 +1419,7 @@ fn test_constraint_simplify() {
 
     let c = Constraint::mk_eq(o.clone(), Op::mk_const(12));
     let c2 = Constraint::mk_eq(o2.clone(), Op::mk_const(12));
-    let c = c.simplify();
+    let c = c.simplify_trivial();
     assert_eq!(c, c2);
 
     let c = Constraint::mk_quantifier_int(
@@ -1298,7 +1428,7 @@ fn test_constraint_simplify() {
         Constraint::mk_eq(o2.clone(), Op::mk_const(12)),
     );
     let c2 = Constraint::mk_eq(o2.clone(), Op::mk_const(12));
-    let c = c.simplify();
+    let c = c.simplify_trivial();
     assert_eq!(c, c2);
 
     let lhs = Constraint::mk_eq(Op::mk_var(Ident::fresh()), Op::mk_const(0));

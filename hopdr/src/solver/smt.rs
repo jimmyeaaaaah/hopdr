@@ -289,7 +289,7 @@ impl AutoSolver {
     fn farkas_transform(&self, c: &Constraint, vars: &HashSet<Ident>) -> Constraint {
         use crate::formula::farkas;
 
-        let mut constraint = c.simplify();
+        let mut constraint = c.simplify_trivial();
         for var in vars {
             constraint = Constraint::mk_univ_int(*var, constraint);
         }
