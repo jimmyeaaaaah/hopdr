@@ -656,8 +656,8 @@ impl Tau<Constraint> {
     }
     /// for all intersection types θ |- t1 /\ t2, this method tries to find a type t
     /// such that θ |- t <: t1 and θ |- t <: t2
+    #[allow(dead_code)]
     fn optimize_reducing_intersection(&self) -> Self {
-        use fofml::Atom;
         debug!("optimize_reducing_intersection: {self}");
 
         fn try_generate_new_type(
@@ -785,7 +785,6 @@ fn test_optimize_reducing() {
     // ∀ z: x:int → (y: int → *[x=y]) ∧   (y: int → *[x=y+1]) → *[T]
     let x = Ident::fresh();
     let y = Ident::fresh();
-    let z = Ident::fresh();
 
     let t1 = Ty::mk_iarrow(
         y,
@@ -804,7 +803,7 @@ fn test_optimize_reducing() {
     let t = t.optimize_reducing_intersection();
     match t.kind() {
         TauKind::IArrow(_, t) => match t.kind() {
-            TauKind::Arrow(ts, t) => {
+            TauKind::Arrow(ts, _) => {
                 println!("ts: {}", ts[0]);
                 assert_eq!(ts.len(), 1)
             }
