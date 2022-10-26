@@ -338,13 +338,19 @@ fn parse_body(s: &str, fvs: HashSet<Ident>) -> Constraint {
 /// helper macro for measuring total time for execution
 macro_rules! interp_execution {
     ( $b:block ) => {{
-        crate::stat::interpolation::count();
+        #[cfg(not(debug_assertions))]
+        {
+            crate::stat::interpolation::count();
 
-        crate::stat::interpolation::start_clock();
+            crate::stat::interpolation::start_clock();
+        }
 
         let out = $b;
 
-        crate::stat::interpolation::end_clock();
+        #[cfg(not(debug_assertions))]
+        {
+            crate::stat::interpolation::end_clock();
+        }
         out
     }};
 }

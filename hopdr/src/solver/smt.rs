@@ -264,12 +264,18 @@ fn z3_solver(smt_string: String) -> String {
     // debug
     debug!("filename: {}", &args[0]);
 
-    crate::stat::smt::smt_count();
-    crate::stat::smt::start_clock();
+    #[cfg(not(debug_assertions))]
+    {
+        crate::stat::smt::smt_count();
+        crate::stat::smt::start_clock();
+    }
 
     let out = util::exec_with_timeout("z3", &args, Duration::from_secs(1));
 
-    crate::stat::smt::end_clock();
+    #[cfg(not(debug_assertions))]
+    {
+        crate::stat::smt::end_clock();
+    }
 
     String::from_utf8(out).unwrap()
 }
