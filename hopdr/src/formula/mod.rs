@@ -824,6 +824,9 @@ impl Constraint {
     pub fn mk_leq(left: Op, right: Op) -> Constraint {
         Self::mk_bin_pred(PredKind::Leq, left, right)
     }
+    pub fn mk_gt(left: Op, right: Op) -> Constraint {
+        Self::mk_bin_pred(PredKind::Gt, left, right)
+    }
     pub fn mk_geq(left: Op, right: Op) -> Constraint {
         Self::mk_bin_pred(PredKind::Geq, left, right)
     }
@@ -1265,6 +1268,7 @@ impl Constraint {
         }
     }
     // o1 <= o2 && o2 <= o1 => o1 == o2
+    // o1 <= o2 && o1 > o2 -> remove it and conjoin false
     fn simplify_geq_geq(&self) -> Self {
         // dnf
         let dnf = self.to_dnf();
@@ -1331,6 +1335,46 @@ impl Constraint {
                         // no entry in eqs
                         constraint = Constraint::mk_conj(c.clone(), constraint);
                     }
+                    ConstraintExpr::Pred(PredKind::Lt, xs) if xs.len() == 2 => {
+                        let left = &xs[1];
+                        let right = &xs[0];
+                        // left < right
+                        // check if right <= left exists
+
+                        for (l, r) in geq_track.iter() {
+                            if left == r && right == l {
+                                constraint = Constraint::mk_false();
+                                continue 'outer;
+                            }
+                        }
+                        for (l, r, _) in eqs.iter() {
+                            if (left == l && right == r) || (left == r && right == l) {
+                                constraint = Constraint::mk_false();
+                                continue 'outer;
+                            }
+                        }
+                        constraint = Constraint::mk_conj(c.clone(), constraint);
+                    }
+                    ConstraintExpr::Pred(PredKind::Gt, xs) if xs.len() == 2 => {
+                        let left = &xs[0];
+                        let right = &xs[1];
+                        // left < right
+                        // check if right <= left exists
+
+                        for (l, r) in geq_track.iter() {
+                            if left == r && right == l {
+                                constraint = Constraint::mk_false();
+                                continue 'outer;
+                            }
+                        }
+                        for (l, r, _) in eqs.iter() {
+                            if (left == l && right == r) || (left == r && right == l) {
+                                constraint = Constraint::mk_false();
+                                continue 'outer;
+                            }
+                        }
+                        constraint = Constraint::mk_conj(c.clone(), constraint);
+                    }
                     _ => constraint = Constraint::mk_conj(c.clone(), constraint),
                 };
             }
@@ -1375,6 +1419,15 @@ fn test_simplify_geq_geq() {
         }
     }
     assert!(existence);
+    // (x <= y \/ y + 1 = 0) /\ x > y
+    let ygtx = Constraint::mk_gt(Op::mk_var(x), Op::mk_var(y));
+    let c = Constraint::mk_conj(Constraint::mk_disj(xgy.clone(), yp10.clone()), ygtx.clone());
+    println!("before: {c}");
+    let c = c.simplify_geq_geq();
+    println!("after: {c}");
+    let dnf = c.to_dnf();
+    assert_eq!(dnf.len(), 1);
+    assert_eq!(dnf[0].to_cnf().len(), 2);
 }
 
 #[test]
