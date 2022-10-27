@@ -1293,15 +1293,9 @@ impl Constraint {
                     }
                     _ => continue,
                 };
-                println!("{left} <= {right}");
                 let mut geq_track_new = Vec::new();
                 let mut inserted = false;
                 for (l, r) in geq_track.into_iter() {
-                    println!(
-                        "{left} == {r}: {}, {right} == {l}: {}",
-                        &left == &r,
-                        &right == &l
-                    );
                     if &left == &r && &right == &l {
                         inserted = true;
                         eqs.push((left.clone(), right.clone(), false))
@@ -1314,9 +1308,6 @@ impl Constraint {
                     geq_track_new.push((left.clone(), right.clone()));
                 }
                 geq_track = geq_track_new;
-            }
-            for (left, right, _) in eqs.iter() {
-                println!("- {left} = {right}");
             }
             let mut constraint = Constraint::mk_true();
             'outer: for c in cnf {
@@ -1349,6 +1340,7 @@ impl Constraint {
     }
     pub fn simplify(&self) -> Self {
         let c = self.simplify_trivial();
+        let c = c.simplify_geq_geq();
         c
     }
 }
