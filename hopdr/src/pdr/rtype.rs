@@ -4,8 +4,8 @@ use std::{
 };
 
 use crate::formula::{
-    Constraint, ConstraintExpr, DerefPtr, FirstOrderLogic, Fv, Ident, Logic, Negation, Op, OpExpr,
-    OpKind, Polarity, Rename, Subst, Top, Type as SType, TypeKind as STypeKind,
+    Bot, Constraint, ConstraintExpr, DerefPtr, FirstOrderLogic, Fv, Ident, Logic, Negation, Op,
+    OpExpr, OpKind, Polarity, Rename, Subst, Top, Type as SType, TypeKind as STypeKind,
 };
 use crate::util::P;
 use crate::{formula, formula::hes::Goal, solver, solver::smt};
@@ -1291,6 +1291,81 @@ impl PTy {
 
         PTy::poly(new_ty)
     }
+
+    // replace with `Top` all the occurence of the clause in cnf which contains
+    // ident in `var` (polymorphic).
+    pub fn optimize_replace_top(&self) -> Self {
+        // check if `var` is not contained in args of `t`
+        fn check(t: &Ty, var: &Ident, toplevel: bool) -> bool {
+            match t.kind() {
+                TauKind::Proposition(_) if toplevel => false,
+                TauKind::Proposition(c) => c.fv().contains(var),
+                TauKind::IArrow(x, _) if x == var => false,
+                TauKind::IArrow(_, t) => check(t, var, toplevel),
+                TauKind::Arrow(ts, t) => {
+                    check(t, var, toplevel)
+                        || ts
+                            .iter()
+                            .map(|t| check(t, var, false))
+                            .fold(false, |x, y| x || y)
+                }
+            }
+        }
+        fn replace(t: &Ty, var: &Ident, toplevel: bool) -> Ty {
+            match t.kind() {
+                TauKind::Proposition(c) if toplevel => {
+                    c.to_dnf().into_iter().fold(
+                        (Constraint::mk_false(), false),
+                        |(result_constraint, already_replaced), dclause| {
+                            dclause.to_cnf().into_iter().fold(
+                                (Constraint::mk_true(), already_replaced),
+                                |(constraint, already_replaced), clause| {
+                                    if !already_replaced && clause.fv().contains(var) {
+                                        // 1. transposing `var` <Pred> op
+                                        // 2. check !op.contains(var) to make sure "`var` <Pred> op" holds for some op'
+                                        // 3. if so, returns `constraint` without conjoining clause;
+                                        //    otherwise, conjoins the clause and constraint.
+                                        //    also, already_replaced is enabled to avoid a contradiction
+                                        //    (e.g. x != 0 /\ x = 0  ----> T /\ T)
+                                        unimplemented!()
+                                    } else {
+                                        (Constraint::mk_conj(constraint, clause), already_replaced)
+                                    }
+                                },
+                            )
+                        },
+                    );
+                    unimplemented!()
+                }
+                TauKind::Proposition(_) => t.clone(),
+                TauKind::IArrow(x, t) => {
+                    let t = replace(t, var, toplevel);
+                    Ty::mk_iarrow(*x, t)
+                }
+                TauKind::Arrow(ts, t) => {
+                    let ts = ts.iter().map(|t| replace(t, var, false)).collect();
+                    let t = replace(t, var, toplevel);
+                    Ty::mk_arrow(ts, t)
+                }
+            }
+        }
+        let mut ty = self.ty.clone();
+        let mut replaced = false;
+        for v in self.vars.iter() {
+            if !check(&ty, v, true) && ty.rty().fv().contains(v) {
+                // Should check everytime ty is generated?
+                ty = replace(&ty, v, true);
+                replaced = true;
+            }
+        }
+        println!("replaced: {replaced}, ty: {ty}");
+        let new_pty = PTy::poly(ty);
+        if replaced && PTy::check_subtype_polymorphic(&new_pty, &self) {
+            new_pty
+        } else {
+            self.clone()
+        }
+    }
     pub fn optimize(&self) -> Self {
         let pty = self.optimize_trivial_ty();
         let ty = pty.ty.optimize();
@@ -1402,6 +1477,26 @@ fn test_optimize_polymorphic_ty_negative() {
     println!("before: {p}");
     println!("after: {p2}");
     assert_eq!(p2.vars.len(), p.vars.len());
+}
+
+#[test]
+fn test_optimize_replace_top() {
+    // ∀z. (x: int → *[x = 0]) → x: int → *[z = 0]
+    let z = Ident::fresh();
+    let x = Ident::fresh();
+
+    let xeq = Constraint::mk_eq(Op::mk_var(x), Op::mk_const(0));
+    let zeq = Constraint::mk_eq(Op::mk_var(z), Op::mk_const(0));
+    let zeqt = Ty::mk_prop_ty(zeq);
+    let xeqt = Ty::mk_prop_ty(xeq);
+    let t1 = Ty::mk_iarrow(x, zeqt);
+    let t2 = Ty::mk_iarrow(x, xeqt);
+    let t = Ty::mk_arrow_single(t2, t1);
+    let p = PTy::poly(t);
+    let p2 = p.optimize_replace_top();
+    println!("before: {p}");
+    println!("after: {p2}");
+    assert!(false)
 }
 
 impl<C: Refinement> PolymorphicType<Tau<C>> {
