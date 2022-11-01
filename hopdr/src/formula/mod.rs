@@ -361,6 +361,57 @@ impl Op {
         }
         o
     }
+    // Given an linear op (of type Op) and a vector of variables x₁, …, xₙ,
+    // op.normalize returns a vector of Ops `v`.
+    // This method normalizes the given op to `o₀x₁ + ⋯ + o_n-1 xₙ `
+    // v[i] is the coefficient for xᵢ in the normalized `op`(i.e. oᵢ).
+    // v[n] is the constant part of `o_normalized` (i.e. o₀).
+    pub fn normalize(&self, variables: &Vec<Ident>) -> Vec<Op> {
+        use std::collections::HashMap;
+        fn parse_mult(o: &Op, m: &HashMap<Ident, usize>) -> Option<(Op, Option<Ident>)> {
+            match o.kind() {
+                crate::formula::OpExpr::Op(OpKind::Mul, o1, o2) => {
+                    let (coef1, v1) = parse_mult(o1, m)?;
+                    let (coef2, v2) = parse_mult(o2, m)?;
+                    match (v1, v2) {
+                        (Some(_), Some(_)) => None,
+                        (Some(v), None) | (None, Some(v)) => {
+                            Some((Op::mk_mul(coef1, coef2), Some(v)))
+                        }
+                        (None, None) => Some((Op::mk_mul(coef1, coef2), None)),
+                    }
+                }
+                crate::formula::OpExpr::Var(v) if m.contains_key(v) => {
+                    Some((Op::mk_const(1), Some(*v)))
+                }
+                crate::formula::OpExpr::Var(_) | crate::formula::OpExpr::Const(_) => {
+                    Some((o.clone(), None))
+                }
+                crate::formula::OpExpr::Ptr(_, o) => parse_mult(o, m),
+                crate::formula::OpExpr::Op(_, _, _) => panic!("program error"),
+            }
+        }
+        // assumption v.len() == m.len() + 1
+        // v's m[id]-th element is the coefficient for the variable `id`
+        // v's m.len()-th element is the constant
+        let mut result_vec = vec![Op::mk_const(0); variables.len() + 1];
+        let mut m = HashMap::new();
+        for (i, v) in variables.iter().enumerate() {
+            m.insert(*v, i);
+        }
+        let additions = self.expand_expr_to_vec();
+        let constant_index = variables.len();
+        for addition in additions {
+            let (coef, v) = parse_mult(&addition, &m).expect(&format!(
+                "there is non-linear exprresion, which is note supported: {addition}"
+            ));
+            let id = v.map_or(constant_index, |v| *m.get(&v).unwrap());
+            result_vec[id] = Op::mk_add(result_vec[id].clone(), coef);
+        }
+        debug_assert!(result_vec.len() == variables.len() + 1);
+        println!("len: {}", result_vec.len());
+        result_vec
+    }
 }
 #[test]
 fn test_expansion() {
@@ -413,6 +464,34 @@ fn test_op_deref_ptr() {
     let o3 = o.subst(&x, &o2);
     let o4 = o3.deref_ptr(&x);
     assert_eq!(o4, o);
+}
+
+#[test]
+fn test_normalize() {
+    // 5 x + 4 y + x + 2 (x + y + 1)
+    // = 8 x + 6 y + 2
+    let x = Ident::fresh();
+    let y = Ident::fresh();
+    let vars = vec![x, y];
+    fn o(c: i64, id: Ident) -> Op {
+        Op::mk_mul(Op::mk_const(c), Op::mk_var(id))
+    }
+    let o1 = o(5, x);
+    let o2 = o(4, y);
+    let o3 = o(1, x);
+    let o4 = Op::mk_mul(
+        Op::mk_const(2),
+        Op::mk_add(Op::mk_const(1), Op::mk_add(Op::mk_var(x), Op::mk_var(y))),
+    );
+    let o = Op::mk_add(Op::mk_add(Op::mk_add(o1, o2), o3), o4);
+    let v = o.normalize(&vars);
+
+    assert_eq!(v.len(), 3);
+
+    let empty = Env::new();
+    assert_eq!(v[0].eval(&empty).unwrap(), 8);
+    assert_eq!(v[1].eval(&empty).unwrap(), 6);
+    assert_eq!(v[2].eval(&empty).unwrap(), 2);
 }
 
 impl Subst for Op {
