@@ -1395,7 +1395,7 @@ impl PTy {
                 replaced = true;
             }
         }
-        println!("replaced: {replaced}, ty: {ty}");
+        debug!("replaced: {replaced}, ty: {ty}");
         let new_pty = PTy::poly(ty);
         if replaced && PTy::check_subtype_polymorphic(&new_pty, &self) {
             new_pty
@@ -1406,6 +1406,7 @@ impl PTy {
     pub fn optimize(&self) -> Self {
         let pty = self.optimize_trivial_ty();
         let ty = pty.ty.optimize();
+        let pty = pty.optimize_replace_top();
         Self {
             ty,
             vars: pty.vars.clone(),
