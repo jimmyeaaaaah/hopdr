@@ -146,11 +146,7 @@ pub fn farkas_transform(c: &Constraint) -> Constraint {
             // check if it is trivial or not
             let matrix: Vec<_> = dnf
                 .into_iter()
-                .map(|atom| {
-                    let v = pred_to_vec(&atom.negate().unwrap(), &univ_vars);
-                    println!("uo: {}", v.len());
-                    v
-                })
+                .map(|atom| pred_to_vec(&atom.negate().unwrap(), &univ_vars))
                 .collect();
             let coefs: Vec<_> = (0..matrix.len()).map(|_| Ident::fresh()).collect();
             let mut result_constraint = Constraint::mk_true();

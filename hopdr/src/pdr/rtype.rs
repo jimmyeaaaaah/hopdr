@@ -1314,28 +1314,65 @@ impl PTy {
         fn replace(t: &Ty, var: &Ident, toplevel: bool) -> Ty {
             match t.kind() {
                 TauKind::Proposition(c) if toplevel => {
-                    c.to_dnf().into_iter().fold(
-                        (Constraint::mk_false(), false),
+                    let (v, c) = c.to_pnf_raw();
+                    let (mut c, replaced) = c.to_dnf().into_iter().fold(
+                        (Constraint::mk_false(), 0), // how many times var appeared
                         |(result_constraint, already_replaced), dclause| {
-                            dclause.to_cnf().into_iter().fold(
+                            let (c, already_replaced) = dclause.to_cnf().into_iter().fold(
                                 (Constraint::mk_true(), already_replaced),
-                                |(constraint, already_replaced), clause| {
-                                    if !already_replaced && clause.fv().contains(var) {
-                                        // 1. transposing `var` <Pred> op
-                                        // 2. check !op.contains(var) to make sure "`var` <Pred> op" holds for some op'
-                                        // 3. if so, returns `constraint` without conjoining clause;
-                                        //    otherwise, conjoins the clause and constraint.
-                                        //    also, already_replaced is enabled to avoid a contradiction
-                                        //    (e.g. x != 0 /\ x = 0  ----> T /\ T)
-                                        unimplemented!()
+                                |(constraint, mut already_replaced), clause| {
+                                    if clause.fv().contains(var) {
+                                        already_replaced += 1;
+                                        if already_replaced == 1 {
+                                            // 1. transposing c * `var` <Pred> op
+                                            // 2. check c can be evaluated to 1
+                                            // 3. if so, returns `constraint` without conjoining clause;
+                                            //    otherwise, conjoins the clause and constraint.
+                                            //    also, already_replaced is enabled to avoid a contradiction
+                                            //    (e.g. x != 0 /\ x = 0  ----> T /\ T)
+                                            let clause_new = match clause.kind() {
+                                                ConstraintExpr::Pred(_, l) if l.len() == 2 => {
+                                                    let left = l[0].clone();
+                                                    let right = l[1].clone();
+                                                    let l = Op::mk_sub(left, right);
+                                                    let vars = vec![*var];
+                                                    let l = l.normalize(&vars);
+                                                    let coef = &l[0];
+                                                    coef.eval_with_empty_env().map_or(clause.clone(), |x| {
+                                                        if x == 1 {
+                                                            Constraint::mk_true()
+                                                        } else {
+                                                            clause.clone()
+                                                        }
+                                                    })
+                                                }
+                                                ConstraintExpr::Pred(_, _) |
+                                                ConstraintExpr::True |
+                                                ConstraintExpr::False  | // should not contain any variable
+                                                ConstraintExpr::Conj(_, _) |
+                                                ConstraintExpr::Disj(_, _) |
+                                                ConstraintExpr::Quantifier(_, _, _) => panic!("program error"),
+                                            };
+                                            (Constraint::mk_conj(constraint, clause_new), already_replaced)
+                                        } else {
+                                            (Constraint::mk_conj(constraint, clause), already_replaced)
+                                        }
                                     } else {
                                         (Constraint::mk_conj(constraint, clause), already_replaced)
-                                    }
+                                    } 
                                 },
-                            )
+                            );
+                            (Constraint::mk_disj(result_constraint, c), already_replaced)
                         },
                     );
-                    unimplemented!()
+                    if replaced == 1 {
+                        for (q, x) in v {
+                            c = Constraint::mk_quantifier(q, x, c);
+                        }
+                        Ty::mk_prop_ty(c)
+                    } else {
+                        t.clone()
+                    }
                 }
                 TauKind::Proposition(_) => t.clone(),
                 TauKind::IArrow(x, t) => {
@@ -1487,16 +1524,45 @@ fn test_optimize_replace_top() {
 
     let xeq = Constraint::mk_eq(Op::mk_var(x), Op::mk_const(0));
     let zeq = Constraint::mk_eq(Op::mk_var(z), Op::mk_const(0));
-    let zeqt = Ty::mk_prop_ty(zeq);
-    let xeqt = Ty::mk_prop_ty(xeq);
-    let t1 = Ty::mk_iarrow(x, zeqt);
-    let t2 = Ty::mk_iarrow(x, xeqt);
-    let t = Ty::mk_arrow_single(t2, t1);
+    let zeqt = Ty::mk_prop_ty(zeq.clone());
+    let xeqt = Ty::mk_prop_ty(xeq.clone());
+    let t1 = Ty::mk_iarrow(x, zeqt.clone());
+    let t2 = Ty::mk_iarrow(x, xeqt.clone());
+    let t = Ty::mk_arrow_single(t2.clone(), t1.clone());
     let p = PTy::poly(t);
     let p2 = p.optimize_replace_top();
     println!("before: {p}");
     println!("after: {p2}");
-    assert!(false)
+    assert!(p2.ty.rty_no_exists().eval_with_empty_env().unwrap());
+
+    // ∀z. (x: int → *[x = 0]) → x: int → *[z = 0 /\ z != 0]
+    let zneq = Constraint::mk_neq(Op::mk_var(z), Op::mk_const(0));
+    let zneqeq = Constraint::mk_conj(zeq.clone(), zneq.clone());
+
+    let zneqeqt = Ty::mk_prop_ty(zneqeq.clone());
+    let t1 = Ty::mk_iarrow(x, zneqeqt.clone());
+    let t2 = Ty::mk_iarrow(x, xeqt.clone());
+    let t = Ty::mk_arrow_single(t2.clone(), t1.clone());
+    let p = PTy::poly(t);
+    let p2 = p.optimize_replace_top();
+    println!("before: {p}");
+    println!("after: {p2}");
+    assert_eq!(p2.ty.rty_no_exists(), p.ty.rty_no_exists());
+
+    // ∀z. (x: int → *[x = 0]) → x: int → *[x = 0 \/ (z = 0 /\ x = 1)]
+    let xeq01= Constraint::mk_conj(Constraint::mk_eq(Op::mk_var(z), Op::zero()), Constraint::mk_eq(Op::mk_var(x), Op::one()));
+    let c = Constraint::mk_disj(Constraint::mk_eq(Op::mk_var(x), Op::zero()), xeq01);
+    let ct = Ty::mk_prop_ty(c.clone());
+    let t1 = Ty::mk_iarrow(x, ct.clone());
+    let t2 = Ty::mk_iarrow(x, xeqt.clone());
+    let t = Ty::mk_arrow_single(t2.clone(), t1.clone());
+    let p = PTy::poly(t);
+    let p2 = p.optimize_replace_top();
+    println!("before: {p}");
+    println!("after: {p2}");
+    let mut e = formula::Env::new();
+    e.add(x, 1);
+    assert!(p2.ty.rty_no_exists().eval(&e).unwrap());
 }
 
 impl<C: Refinement> PolymorphicType<Tau<C>> {

@@ -409,7 +409,6 @@ impl Op {
             result_vec[id] = Op::mk_add(result_vec[id].clone(), coef);
         }
         debug_assert!(result_vec.len() == variables.len() + 1);
-        println!("len: {}", result_vec.len());
         result_vec
     }
 }
@@ -981,6 +980,9 @@ impl Constraint {
         let (_, c) = self.prenex_normal_form_raw(&mut HashSet::new());
         c
     }
+    pub fn to_pnf_raw(&self) -> (Vec<(QuantifierKind, Variable)>, Constraint) {
+        self.prenex_normal_form_raw(&mut HashSet::new())
+    }
     pub fn to_hes_format(&self) -> String {
         match self.kind() {
             ConstraintExpr::True => "true".to_string(),
@@ -1228,6 +1230,9 @@ impl Op {
             OpExpr::Ptr(_, x) => x.eval(env),
         }
     }
+    pub fn eval_with_empty_env(&self) -> Option<i64> {
+        self.eval(&Env::new())
+    }
     /// simplifies the expression and reduce Ptr
     pub fn simplify(&self) -> Op {
         match self.eval(&Env::new()) {
@@ -1309,6 +1314,9 @@ impl Constraint {
             }
             ConstraintExpr::Quantifier(_, _, x) => x.eval(env),
         }
+    }
+    pub fn eval_with_empty_env(&self) -> Option<bool> {
+        self.eval(&Env::new())
     }
     pub fn simplify_trivial(&self) -> Self {
         match self.eval(&Env::new()) {
