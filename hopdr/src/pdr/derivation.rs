@@ -1,4 +1,4 @@
-use super::optimizer::{Optimizer, VoidOptimizer};
+use super::optimizer::{variable_info, InferenceResult, Optimizer, VoidOptimizer};
 use super::rtype::{PolymorphicType, Refinement, TBot, Tau, TauKind, TyEnv, TypeEnvironment};
 
 use crate::formula::hes::{Goal, GoalBase, GoalKind, Problem as ProblemBase};
@@ -6,6 +6,7 @@ use crate::formula::{self, DerefPtr, FirstOrderLogic};
 use crate::formula::{
     chc, fofml, Constraint, Fv, Ident, Logic, Negation, Op, Rename, Subst, Top, Variable,
 };
+use crate::pdr::optimizer;
 use crate::solver;
 use crate::title;
 
@@ -177,21 +178,21 @@ impl Reduction {
 struct TypeMemory {
     level_arg: Stack<usize>,
     id: Ident,
-    ty: Option<Ty>,
+    tys: Option<Vec<Ty>>,
 }
 impl TypeMemory {
     fn new() -> TypeMemory {
         TypeMemory {
             level_arg: Stack::new(),
             id: Ident::fresh(),
-            ty: None,
+            tys: None,
         }
     }
     fn add_arg_level(&mut self, level: usize) {
         self.level_arg = self.level_arg.push(level)
     }
-    fn set_ty(&mut self, ty: Ty) {
-        self.ty = Some(ty);
+    fn set_tys(&mut self, tys: Option<Vec<Ty>>) {
+        self.tys = tys;
     }
 }
 
@@ -230,11 +231,12 @@ impl From<Candidate> for G {
 fn generate_reduction_sequence(goal: &G, optimizer: &mut dyn Optimizer) -> (Vec<Reduction>, G) {
     // Some(Candidate): substituted an app
     // None: not yet
-    fn go(goal: &G, level: &mut usize) -> Option<(G, Reduction)> {
+    fn go(optimizer: &mut dyn Optimizer, goal: &G, level: &mut usize) -> Option<(G, Reduction)> {
         /// returns Some(_) if reduction happens in goal; otherwise None
         /// left of the return value: the reduced term
         /// right of the return value: the abstraction in the redux.
         fn go_(
+            optimizer: &mut dyn Optimizer,
             goal: &G,
             level: usize,
             fvints: &mut HashSet<Ident>,
@@ -242,9 +244,11 @@ fn generate_reduction_sequence(goal: &G, optimizer: &mut dyn Optimizer) -> (Vec<
             constraint: Constraint,
         ) -> Option<(G, Reduction)> {
             fn generate_reduction_info(
+                optimizer: &mut dyn Optimizer,
                 level: usize,
                 predicate: &G,
                 arg: &G,
+                idents: &HashSet<Ident>, // idents passed to optimizer when generating a shared type template
             ) -> Option<(G, ReductionInfo)> {
                 match predicate.kind() {
                     GoalKind::Abs(x, g) => {
@@ -255,9 +259,16 @@ fn generate_reduction_sequence(goal: &G, optimizer: &mut dyn Optimizer) -> (Vec<
                         let new_var = Variable::fresh(x.ty.clone());
                         let new_g = g.rename(&x.id, &new_var.id);
                         let old_id = x.id;
+
+                        // introduce type sharing
+                        let vi = variable_info(level, new_var.clone(), idents);
+                        let tys = optimizer.gen_type(&vi);
+                        arg.aux.set_tys(tys);
+
                         let mut ret = new_g.subst(&new_var, &arg);
                         // introduce a new fresh variable to identify this expr
                         ret.aux.id = Ident::fresh();
+
                         let reduction_info =
                             ReductionInfo::new(level, arg.clone(), new_var, old_id);
                         Some((ret.clone(), reduction_info))
@@ -267,7 +278,8 @@ fn generate_reduction_sequence(goal: &G, optimizer: &mut dyn Optimizer) -> (Vec<
             }
             match goal.kind() {
                 GoalKind::App(predicate, arg) => {
-                    match generate_reduction_info(level, predicate, arg) {
+                    // TODO: fvints & argints <- polymorphic_type config should be used to determine which to use
+                    match generate_reduction_info(optimizer, level, predicate, arg, fvints) {
                         // App(App(...(Abs(...) arg1) .. argn)
                         Some((ret, reduction_info)) => {
                             let mut reduction = Reduction::new(
@@ -278,15 +290,30 @@ fn generate_reduction_sequence(goal: &G, optimizer: &mut dyn Optimizer) -> (Vec<
                                 argints.clone(),
                                 constraint.clone(),
                             );
+
                             reduction.append_reduction(reduction_info, ret.clone(), goal.clone());
                             return Some((ret.clone(), reduction));
                         }
                         None => (),
                     };
-                    match go_(predicate, level, fvints, argints, constraint.clone()) {
+                    match go_(
+                        optimizer,
+                        predicate,
+                        level,
+                        fvints,
+                        argints,
+                        constraint.clone(),
+                    ) {
                         Some((ret, mut reduction)) => {
                             // case reduced above like App(App(Abs, arg)) -> App(Abs, arg)
-                            return match generate_reduction_info(reduction.level() + 1, &ret, arg) {
+                            // TODO: fvints & argints <- polymorphic_type config should be used to determine which to use
+                            return match generate_reduction_info(
+                                optimizer,
+                                reduction.level() + 1,
+                                &ret,
+                                arg,
+                                fvints,
+                            ) {
                                 Some((ret, reduction_info)) => {
                                     reduction.append_reduction(
                                         reduction_info,
@@ -303,22 +330,24 @@ fn generate_reduction_sequence(goal: &G, optimizer: &mut dyn Optimizer) -> (Vec<
                         }
                         None => (),
                     };
-                    go_(arg, level, fvints, argints, constraint.clone()).map(|(arg, pred)| {
-                        (G::mk_app_t(predicate.clone(), arg, goal.aux.clone()), pred)
-                    })
+                    go_(optimizer, arg, level, fvints, argints, constraint.clone()).map(
+                        |(arg, pred)| (G::mk_app_t(predicate.clone(), arg, goal.aux.clone()), pred),
+                    )
                 }
-                GoalKind::Conj(g1, g2) => go_(g1, level, fvints, argints, constraint.clone())
-                    .map(|(g1, p)| (G::mk_conj_t(g1, g2.clone(), goal.aux.clone()), p))
-                    .or_else(|| {
-                        go_(g2, level, fvints, argints, constraint.clone())
-                            .map(|(g2, p)| (G::mk_conj_t(g1.clone(), g2, goal.aux.clone()), p))
-                    }),
+                GoalKind::Conj(g1, g2) => {
+                    go_(optimizer, g1, level, fvints, argints, constraint.clone())
+                        .map(|(g1, p)| (G::mk_conj_t(g1, g2.clone(), goal.aux.clone()), p))
+                        .or_else(|| {
+                            go_(optimizer, g2, level, fvints, argints, constraint.clone())
+                                .map(|(g2, p)| (G::mk_conj_t(g1.clone(), g2, goal.aux.clone()), p))
+                        })
+                }
                 GoalKind::Disj(g1, g2) => {
                     let c1: Option<Constraint> = g1.clone().into();
                     match c1 {
                         Some(c1) => {
                             let constraint = Constraint::mk_conj(c1.negate().unwrap(), constraint);
-                            go_(g2, level, fvints, argints, constraint).map(|(g2, p)| {
+                            go_(optimizer, g2, level, fvints, argints, constraint).map(|(g2, p)| {
                                 (G::mk_disj_t(g1.clone(), g2.clone(), goal.aux.clone()), p)
                             })
                         }
@@ -328,9 +357,18 @@ fn generate_reduction_sequence(goal: &G, optimizer: &mut dyn Optimizer) -> (Vec<
                                 Some(c2) => {
                                     let constraint =
                                         Constraint::mk_conj(c2.negate().unwrap(), constraint);
-                                    go_(g1, level, fvints, argints, constraint).map(|(g1, p)| {
-                                        (G::mk_disj_t(g1.clone(), g2.clone(), goal.aux.clone()), p)
-                                    })
+                                    go_(optimizer, g1, level, fvints, argints, constraint).map(
+                                        |(g1, p)| {
+                                            (
+                                                G::mk_disj_t(
+                                                    g1.clone(),
+                                                    g2.clone(),
+                                                    goal.aux.clone(),
+                                                ),
+                                                p,
+                                            )
+                                        },
+                                    )
                                 }
                                 None => {
                                     panic!("fatal: g1 = {}, g2 = {}", g1, g2)
@@ -345,7 +383,7 @@ fn generate_reduction_sequence(goal: &G, optimizer: &mut dyn Optimizer) -> (Vec<
                         // x is type int and fvints already has x.id
                         saved = true;
                     }
-                    let r = go_(g, level, fvints, argints, constraint)
+                    let r = go_(optimizer, g, level, fvints, argints, constraint)
                         .map(|(g, p)| (G::mk_univ_t(x.clone(), g, goal.aux.clone()), p));
                     if x.ty.is_int() && !saved {
                         fvints.remove(&x.id);
@@ -364,7 +402,7 @@ fn generate_reduction_sequence(goal: &G, optimizer: &mut dyn Optimizer) -> (Vec<
                         saved_arg = true;
                     }
 
-                    let r = go_(g, level, fvints, argints, constraint)
+                    let r = go_(optimizer, g, level, fvints, argints, constraint)
                         .map(|(g, p)| (G::mk_abs_t(x.clone(), g, goal.aux.clone()), p));
                     if x.ty.is_int() && !saved {
                         fvints.remove(&x.id);
@@ -379,6 +417,7 @@ fn generate_reduction_sequence(goal: &G, optimizer: &mut dyn Optimizer) -> (Vec<
             }
         }
         go_(
+            optimizer,
             goal,
             *level,
             &mut HashSet::new(),
@@ -395,7 +434,7 @@ fn generate_reduction_sequence(goal: &G, optimizer: &mut dyn Optimizer) -> (Vec<
     let mut reduced = goal.clone();
 
     debug!("{}", reduced);
-    while let Some((g, r)) = go(&reduced, &mut level) {
+    while let Some((g, r)) = go(optimizer, &reduced, &mut level) {
         reduced = g.clone();
         //debug!("-> {}", reduced);
         //debug!("-> {}", r);
@@ -1437,6 +1476,7 @@ impl PossibleDerivation<Atom> {
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct InferenceConfig {
     pub infer_polymorphic_type: bool,
 }
@@ -1463,15 +1503,25 @@ pub fn search_for_type(
     let infer_polymorphic_type = config.infer_polymorphic_type;
     // TODO: expand candidate once based on problem.
     let mut void_optimizer = VoidOptimizer::new();
-    let mut ctx = reduce_until_normal_form(candidate, problem, config, &mut void_optimizer);
-    debug!("{}", ctx.normal_form);
-    //let candidate = ctx.normal_form.clone();
-    let derivation = type_check_top_with_derivation(&ctx.normal_form, tenv)?;
+    while void_optimizer.continuable() {
+        let mut ctx = reduce_until_normal_form(candidate, problem, config, &mut void_optimizer);
+        debug!("{}", ctx.normal_form);
+        //let candidate = ctx.normal_form.clone();
+        let derivation = type_check_top_with_derivation(&ctx.normal_form, tenv)?;
+        match ctx.infer_type(derivation) {
+            Some(x) => {
+                void_optimizer.report_inference_result(InferenceResult::new(true));
+                return Some(x);
+            }
+            None => (),
+        }
+        void_optimizer.report_inference_result(InferenceResult::new(false));
+    }
     if infer_polymorphic_type {
         // must succeed in theory
-        Some(ctx.infer_type(derivation).unwrap())
+        panic!("program error: constructing derivation failed")
     } else {
-        ctx.infer_type(derivation)
+        None
     }
 }
 

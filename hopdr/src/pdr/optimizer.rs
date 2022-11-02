@@ -9,10 +9,27 @@ pub struct InferenceResult {
     succeeded: bool,
 }
 
+impl InferenceResult {
+    pub fn new(succeeded: bool) -> Self {
+        Self { succeeded }
+    }
+}
+
 pub struct VariableInfo<'a> {
     pub reduction_id: usize,
     pub variable: Variable,
     pub idents: &'a HashSet<Ident>,
+}
+pub fn variable_info<'a>(
+    reduction_id: usize,
+    variable: Variable,
+    idents: &'a HashSet<Ident>,
+) -> VariableInfo<'a> {
+    VariableInfo {
+        reduction_id,
+        variable,
+        idents,
+    }
 }
 pub trait Optimizer {
     fn continuable(&self) -> bool;
