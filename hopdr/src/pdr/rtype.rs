@@ -1365,7 +1365,7 @@ impl PTy {
                                         }
                                     } else {
                                         (Constraint::mk_conj(constraint, clause), already_replaced)
-                                    } 
+                                    }
                                 },
                             );
                             (Constraint::mk_disj(result_constraint, c), already_replaced)
@@ -1557,7 +1557,10 @@ fn test_optimize_replace_top() {
     assert_eq!(p2.ty.rty_no_exists(), p.ty.rty_no_exists());
 
     // ∀z. (x: int → *[x = 0]) → x: int → *[x = 0 \/ (z = 0 /\ x = 1)]
-    let xeq01= Constraint::mk_conj(Constraint::mk_eq(Op::mk_var(z), Op::zero()), Constraint::mk_eq(Op::mk_var(x), Op::one()));
+    let xeq01 = Constraint::mk_conj(
+        Constraint::mk_eq(Op::mk_var(z), Op::zero()),
+        Constraint::mk_eq(Op::mk_var(x), Op::one()),
+    );
     let c = Constraint::mk_disj(Constraint::mk_eq(Op::mk_var(x), Op::zero()), xeq01);
     let ct = Ty::mk_prop_ty(c.clone());
     let t1 = Ty::mk_iarrow(x, ct.clone());
