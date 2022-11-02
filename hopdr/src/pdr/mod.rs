@@ -1,6 +1,7 @@
 pub mod derivation;
 pub mod fml;
 mod infer;
+mod optimizer;
 pub mod pdr;
 pub mod rtype;
 

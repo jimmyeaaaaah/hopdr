@@ -437,6 +437,12 @@ impl<C: Refinement> Tau<C> {
             }
         }
     }
+    /// generates a refinement type that holds template variables for the prop_ty's constraints
+    pub fn from_sty(sty: &SType, fvs: &HashSet<Ident>) -> Tau<fofml::Atom> {
+        let b: Tau<fofml::Atom> = Tau::mk_bot(sty);
+        let mut fvs = fvs.clone();
+        b.clone_with_template(&mut fvs)
+    }
     fn _merge_inner(self, c: Self, method: Method) -> Self {
         match (self.kind(), c.kind()) {
             (TauKind::Proposition(c1), TauKind::Proposition(c2)) => match method {

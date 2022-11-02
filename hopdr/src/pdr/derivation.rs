@@ -1,3 +1,4 @@
+use super::optimizer::{Optimizer, VoidOptimizer};
 use super::rtype::{PolymorphicType, Refinement, TBot, Tau, TauKind, TyEnv, TypeEnvironment};
 
 use crate::formula::hes::{Goal, GoalBase, GoalKind, Problem as ProblemBase};
@@ -16,7 +17,7 @@ use std::fmt::Formatter;
 
 type Atom = fofml::Atom;
 type Candidate = Goal<Constraint>;
-type Ty = Tau<Atom>;
+pub(crate) type Ty = Tau<Atom>;
 type PTy = PolymorphicType<Tau<Atom>>;
 type Env = TypeEnvironment<PTy>;
 type Problem = ProblemBase<Constraint>;
@@ -176,16 +177,21 @@ impl Reduction {
 struct TypeMemory {
     level_arg: Stack<usize>,
     id: Ident,
+    ty: Option<Ty>,
 }
 impl TypeMemory {
     fn new() -> TypeMemory {
         TypeMemory {
             level_arg: Stack::new(),
             id: Ident::fresh(),
+            ty: None,
         }
     }
     fn add_arg_level(&mut self, level: usize) {
         self.level_arg = self.level_arg.push(level)
+    }
+    fn set_ty(&mut self, ty: Ty) {
+        self.ty = Some(ty);
     }
 }
 
@@ -221,7 +227,7 @@ impl From<Candidate> for G {
     }
 }
 
-fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
+fn generate_reduction_sequence(goal: &G, optimizer: &mut dyn Optimizer) -> (Vec<Reduction>, G) {
     // Some(Candidate): substituted an app
     // None: not yet
     fn go(goal: &G, level: &mut usize) -> Option<(G, Reduction)> {
@@ -1022,13 +1028,14 @@ fn reduce_until_normal_form(
     candidate: &Candidate,
     problem: &Problem,
     config: InferenceConfig,
+    optimizer: &mut dyn Optimizer,
 ) -> Context {
     let mut track_idents = HashMap::new();
     let candidate = candidate.clone().into(); // assign `aux` to candidate.
     let goal = subst_predicate(&candidate, problem, &mut track_idents);
     let goal = goal.alpha_renaming();
     title!("generate_reduction_sequence");
-    let (reduction_sequence, normal_form) = generate_reduction_sequence(&goal);
+    let (reduction_sequence, normal_form) = generate_reduction_sequence(&goal, optimizer);
     Context::new(normal_form, track_idents, reduction_sequence, config)
 }
 
@@ -1455,7 +1462,8 @@ pub fn search_for_type(
     debug!("{}", candidate);
     let infer_polymorphic_type = config.infer_polymorphic_type;
     // TODO: expand candidate once based on problem.
-    let mut ctx = reduce_until_normal_form(candidate, problem, config);
+    let mut void_optimizer = VoidOptimizer::new();
+    let mut ctx = reduce_until_normal_form(candidate, problem, config, &mut void_optimizer);
     debug!("{}", ctx.normal_form);
     //let candidate = ctx.normal_form.clone();
     let derivation = type_check_top_with_derivation(&ctx.normal_form, tenv)?;
