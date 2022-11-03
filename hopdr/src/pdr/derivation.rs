@@ -1,4 +1,4 @@
-use super::optimizer::{variable_info, InferenceResult, Optimizer, VoidOptimizer};
+use super::optimizer::{variable_info, InferenceResult, NaiveOptimizer, Optimizer};
 use super::rtype::{PolymorphicType, Refinement, TBot, Tau, TauKind, TyEnv, TypeEnvironment};
 
 use crate::formula::hes::{Goal, GoalBase, GoalKind, Problem as ProblemBase};
@@ -505,18 +505,20 @@ impl Context {
                 title!("no ret_tys");
                 panic!("fatal");
             }
-
             let mut arg_tys = Vec::new();
             for reduction in reduction.args.iter().rev() {
                 let arg_ty = if reduction.arg_var.ty.is_int() {
                     either::Left(reduction.arg_var.id)
                 } else {
                     // 1. get the corresponding types
-                    let arg_ty: Vec<Ty> = derivation
-                        .get_arg(&reduction.level)
-                        .iter()
-                        .cloned()
-                        .collect();
+                    let arg_ty = match &reduction.arg.aux.tys {
+                        Some(tys) => tys.clone(),
+                        None => derivation
+                            .get_arg(&reduction.level)
+                            .iter()
+                            .cloned()
+                            .collect(),
+                    };
                     let arg_ty = if arg_ty.len() == 0 {
                         vec![Ty::mk_bot(&reduction.arg_var.ty)]
                     } else {
@@ -549,15 +551,20 @@ impl Context {
                     constraint: ret_ty_constraint,
                 } = ret_ty.clone();
 
-                let tmp_ret_ty = ret_ty.clone_with_rty_template(
-                    ret_ty_constraint.clone(),
-                    //Atom::mk_true(),
-                    &mut if self.infer_polymorphic_type {
-                        reduction.fvints.clone()
-                    } else {
-                        reduction.argints.clone()
-                    },
-                );
+                let tmp_ret_ty = match &reduction.predicate.aux.tys {
+                    Some(tys) => tys[0].clone(),
+                    None => {
+                        ret_ty.clone_with_rty_template(
+                            ret_ty_constraint.clone(),
+                            //Atom::mk_true(),
+                            &mut if self.infer_polymorphic_type {
+                                reduction.fvints.clone()
+                            } else {
+                                reduction.argints.clone()
+                            },
+                        )
+                    }
+                };
 
                 let mut tmp_ty = tmp_ret_ty.clone();
                 let mut body_ty = ret_ty.clone();
@@ -708,48 +715,67 @@ fn handle_abs(
     arg_expr: &G,
     t: &Ty,
 ) -> PossibleDerivation<Atom> {
-    let mut pt = match arg_expr.kind() {
-        GoalKind::Abs(v, g) if v.ty.is_int() => match t.kind() {
-            TauKind::IArrow(id, t) if v.ty.is_int() => {
-                let t = t.rename(id, &v.id);
-                let constraint = constraint.rename(id, &v.id);
-                let b = ienv.insert(v.id);
-                let pt = handle_abs(&constraint, tenv, ienv, all_coefficients, g, &t);
-                if !b {
-                    ienv.remove(&v.id);
+    fn handle_abs_inner(
+        constraint: &Atom,
+        tenv: &mut Env,
+        ienv: &mut HashSet<Ident>,
+        all_coefficients: &mut HashSet<Ident>,
+        arg_expr: &G,
+        t: &Ty,
+    ) -> PossibleDerivation<Atom> {
+        let mut pt = match arg_expr.kind() {
+            GoalKind::Abs(v, g) if v.ty.is_int() => match t.kind() {
+                TauKind::IArrow(id, t) if v.ty.is_int() => {
+                    let t = t.rename(id, &v.id);
+                    let constraint = constraint.rename(id, &v.id);
+                    let b = ienv.insert(v.id);
+                    let pt = handle_abs_inner(&constraint, tenv, ienv, all_coefficients, g, &t);
+                    if !b {
+                        ienv.remove(&v.id);
+                    }
+                    pt.iarrow(&v.id)
                 }
-                pt.iarrow(&v.id)
-            }
-            _ => panic!("program error"),
-        },
-        GoalKind::Abs(v, g) => match t.kind() {
-            TauKind::Arrow(ts, t) if !v.ty.is_int() => {
-                let mut tenv = tenv.clone();
-                for t in ts {
-                    debug!("adding type {t} to tenv");
-                    tenv.add(v.id, PolymorphicType::mono(t.clone()));
+                _ => panic!("program error"),
+            },
+            GoalKind::Abs(v, g) => match t.kind() {
+                TauKind::Arrow(ts, t) if !v.ty.is_int() => {
+                    let mut tenv = tenv.clone();
+                    for t in ts {
+                        debug!("adding type {t} to tenv");
+                        tenv.add(v.id, PolymorphicType::mono(t.clone()));
+                    }
+                    let pt = handle_abs_inner(constraint, &mut tenv, ienv, all_coefficients, g, t);
+                    pt.arrow(ts)
                 }
-                let pt = handle_abs(constraint, &mut tenv, ienv, all_coefficients, g, t);
-                pt.arrow(ts)
+                _ => panic!("fatal"),
+            },
+            _ => {
+                let mut pt = type_check_inner(constraint, tenv, ienv, all_coefficients, arg_expr);
+                pt.coarse_type(constraint, t);
+                pt
             }
-            _ => panic!("fatal"),
-        },
-        _ => {
-            let mut pt = type_check_inner(constraint, tenv, ienv, all_coefficients, arg_expr);
+        };
+        for level in arg_expr.aux.level_arg.iter() {
+            for ct in pt.types.iter_mut() {
+                ct.memorize(*level);
+            }
+        }
+        for ct in pt.types.iter_mut() {
+            ct.set_types(arg_expr, constraint.clone());
+        }
+        debug!("handle_abs: {} |- {} : {} ", constraint, arg_expr, pt);
+        pt
+    }
+    match &arg_expr.aux.tys {
+        Some(tys) if tys.len() == 1 => {
+            let mut pt =
+                handle_abs_inner(constraint, tenv, ienv, all_coefficients, arg_expr, &tys[0]);
             pt.coarse_type(constraint, t);
             pt
         }
-    };
-    for level in arg_expr.aux.level_arg.iter() {
-        for ct in pt.types.iter_mut() {
-            ct.memorize(*level);
-        }
+        Some(_) => unimplemented!(),
+        None => handle_abs_inner(constraint, tenv, ienv, all_coefficients, arg_expr, t),
     }
-    for ct in pt.types.iter_mut() {
-        ct.set_types(arg_expr, constraint.clone());
-    }
-    debug!("handle_abs: {} |- {} : {} ", constraint, arg_expr, pt);
-    pt
 }
 // tenv+ienv; constraint |- App(arg, ret): t
 /// returns possible types for app_expr under constraint
@@ -866,6 +892,13 @@ fn handle_app(
         }
     }
     let mut pt = handle_inner(constraint, tenv, ienv, all_coefficients, app_expr);
+    // [feature] template type sharing
+    // if there is a shared type registered, coarse pt to obey the type.
+    match &app_expr.aux.tys {
+        Some(tys) if tys.len() == 0 => pt.coarse_type(constraint, &tys[0]),
+        Some(_) => unimplemented!(),
+        None => (),
+    }
     for level in app_expr.aux.level_arg.iter() {
         for ct in pt.types.iter_mut() {
             ct.memorize(*level);
@@ -990,6 +1023,15 @@ fn type_check_inner(
         }
     }
     let mut pt = go_inner(constraint, tenv, ienv, all_coefficients, c);
+
+    // [feature] template type sharing
+    // if there is a shared type registered, coarse pt to obey the type.
+    match &c.aux.tys {
+        Some(tys) if tys.len() == 0 => pt.coarse_type(constraint, &tys[0]),
+        Some(_) => unimplemented!(),
+        None => (),
+    }
+
     for ct in pt.types.iter_mut() {
         debug!(
             "type_check_go({}): {} |- {} : {}",
@@ -1449,7 +1491,9 @@ impl PossibleDerivation<Atom> {
     fn check_derivation(&self) -> Option<Derivation> {
         for ct in self.types.iter() {
             let mut constraint = Constraint::mk_true();
+            debug!("check_derivation");
             for c in ct.constraints.iter() {
+                debug!("- {c}");
                 constraint = Constraint::mk_conj(constraint, c.clone().into());
             }
             debug!("check_derivation constraint: {constraint}");
@@ -1501,20 +1545,20 @@ pub fn search_for_type(
     debug!("{}", candidate);
     let infer_polymorphic_type = config.infer_polymorphic_type;
     // TODO: expand candidate once based on problem.
-    let mut void_optimizer = VoidOptimizer::new();
-    while void_optimizer.continuable() {
-        let mut ctx = reduce_until_normal_form(candidate, problem, config, &mut void_optimizer);
+    let mut optimizer = NaiveOptimizer::new();
+    while optimizer.continuable() {
+        let mut ctx = reduce_until_normal_form(candidate, problem, config, &mut optimizer);
         debug!("{}", ctx.normal_form);
         //let candidate = ctx.normal_form.clone();
         let derivation = type_check_top_with_derivation(&ctx.normal_form, tenv)?;
         match ctx.infer_type(derivation) {
             Some(x) => {
-                void_optimizer.report_inference_result(InferenceResult::new(true));
+                optimizer.report_inference_result(InferenceResult::new(true));
                 return Some(x);
             }
             None => (),
         }
-        void_optimizer.report_inference_result(InferenceResult::new(false));
+        optimizer.report_inference_result(InferenceResult::new(false));
     }
     if infer_polymorphic_type {
         // must succeed in theory

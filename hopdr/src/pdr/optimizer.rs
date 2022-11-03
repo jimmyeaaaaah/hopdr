@@ -68,6 +68,12 @@ impl Optimizer for NaiveOptimizer {
     }
 
     fn gen_type(&mut self, info: &VariableInfo) -> Option<Vec<derivation::Ty>> {
+        match &info.variable.ty.kind() {
+            crate::formula::TypeKind::Proposition | crate::formula::TypeKind::Integer => {
+                return None
+            }
+            crate::formula::TypeKind::Arrow(_, _) => (),
+        };
         // always do not generate a common type when
         if self.already_attempted_once {
             return None;
@@ -124,6 +130,7 @@ pub struct VoidOptimizer {
 }
 
 impl VoidOptimizer {
+    #[allow(dead_code)]
     pub fn new() -> Self {
         Self { fail: false }
     }
