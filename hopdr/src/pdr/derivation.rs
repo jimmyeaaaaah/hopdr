@@ -1,4 +1,4 @@
-use super::optimizer::{variable_info, InferenceResult, NaiveOptimizer, Optimizer};
+use super::optimizer::{variable_info, InferenceResult, Optimizer, VoidOptimizer};
 use super::rtype::{PolymorphicType, Refinement, TBot, Tau, TauKind, TyEnv, TypeEnvironment};
 
 use crate::formula::hes::{Goal, GoalBase, GoalKind, Problem as ProblemBase};
@@ -1491,9 +1491,7 @@ impl PossibleDerivation<Atom> {
     fn check_derivation(&self) -> Option<Derivation> {
         for ct in self.types.iter() {
             let mut constraint = Constraint::mk_true();
-            debug!("check_derivation");
             for c in ct.constraints.iter() {
-                debug!("- {c}");
                 constraint = Constraint::mk_conj(constraint, c.clone().into());
             }
             debug!("check_derivation constraint: {constraint}");
@@ -1545,7 +1543,7 @@ pub fn search_for_type(
     debug!("{}", candidate);
     let infer_polymorphic_type = config.infer_polymorphic_type;
     // TODO: expand candidate once based on problem.
-    let mut optimizer = NaiveOptimizer::new();
+    let mut optimizer = VoidOptimizer::new();
     while optimizer.continuable() {
         let mut ctx = reduce_until_normal_form(candidate, problem, config, &mut optimizer);
         debug!("{}", ctx.normal_form);

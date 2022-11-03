@@ -1072,6 +1072,43 @@ fn preprocess_eq(left: &Op, right: &Op, vars: &HashSet<Ident>) -> Option<(Ident,
     })
 }
 
+// search for x == y where x in vars and y's free variables are a set set of args
+// if disjunctions appear, `search` won't search for eqs anymore.
+fn search_eqs_from_constraint(
+    c: &Constraint,
+    pairs: &mut Stack<(Ident, Op)>,
+    vars: &HashSet<Ident>,
+) {
+    match c.kind() {
+        ConstraintExpr::Pred(PredKind::Eq, l) if l.len() == 2 => {
+            debug!("eq: {} == {}", l[0], l[1]);
+            let left = l[0].flatten();
+            let right = l[1].flatten();
+            match (left.kind(), right.kind()) {
+                (OpExpr::Var(x), _) if vars.contains(&x) && l[1].fv().is_disjoint(vars) => {
+                    pairs.push_mut((*x, l[1].clone()))
+                }
+                (_, OpExpr::Var(x)) if vars.contains(&x) && l[0].fv().is_disjoint(vars) => {
+                    pairs.push_mut((*x, l[0].clone()))
+                }
+                (_, _) => match preprocess_eq(&left, &right, vars) {
+                    Some((x, o)) if vars.contains(&x) && o.fv().is_disjoint(vars) => {
+                        pairs.push_mut((x, o))
+                    }
+                    Some(_) | None => (),
+                },
+            };
+        }
+        ConstraintExpr::True | ConstraintExpr::False | ConstraintExpr::Pred(_, _) => (),
+        ConstraintExpr::Conj(c1, c2) => {
+            search_eqs_from_constraint(c1, pairs, vars);
+            search_eqs_from_constraint(c2, pairs, vars);
+        }
+        ConstraintExpr::Disj(_, _) => (),
+        ConstraintExpr::Quantifier(_, _, _) => (),
+    }
+}
+
 #[test]
 fn test_preprocess_eq() {
     use formula::Env;
@@ -1208,45 +1245,12 @@ impl PTy {
             }
         }
 
-        // search for x == y where x in vars and y's free variables are a set set of args
-        // if disjunctions appear, `search` won't search for eqs anymore.
-        fn search(c: &Constraint, pairs: &mut Stack<(Ident, Op)>, vars: &HashSet<Ident>) {
-            match c.kind() {
-                ConstraintExpr::Pred(PredKind::Eq, l) if l.len() == 2 => {
-                    debug!("eq: {} == {}", l[0], l[1]);
-                    let left = l[0].flatten();
-                    let right = l[1].flatten();
-                    match (left.kind(), right.kind()) {
-                        (OpExpr::Var(x), _) if vars.contains(&x) && l[1].fv().is_disjoint(vars) => {
-                            pairs.push_mut((*x, l[1].clone()))
-                        }
-                        (_, OpExpr::Var(x)) if vars.contains(&x) && l[0].fv().is_disjoint(vars) => {
-                            pairs.push_mut((*x, l[0].clone()))
-                        }
-                        (_, _) => match preprocess_eq(&left, &right, vars) {
-                            Some((x, o)) if vars.contains(&x) && o.fv().is_disjoint(vars) => {
-                                pairs.push_mut((x, o))
-                            }
-                            Some(_) | None => (),
-                        },
-                    };
-                }
-                ConstraintExpr::True | ConstraintExpr::False | ConstraintExpr::Pred(_, _) => (),
-                ConstraintExpr::Conj(c1, c2) => {
-                    search(c1, pairs, vars);
-                    search(c2, pairs, vars);
-                }
-                ConstraintExpr::Disj(_, _) => (),
-                ConstraintExpr::Quantifier(_, _, _) => (),
-            }
-        }
-
         fn eq(
             c: &Constraint,
             mut s: Stack<(Ident, Op)>,
             vars: &HashSet<Ident>,
         ) -> Stack<(Ident, Op)> {
-            search(c, &mut s, vars);
+            search_eqs_from_constraint(c, &mut s, vars);
             s
         }
 
@@ -1296,6 +1300,52 @@ impl PTy {
         }
 
         PTy::poly(new_ty)
+    }
+
+    /// Using equalities that appear in the argument position of the given type,
+    /// this function instantiates some types.
+    /// ex. ∀z. x: int -> (y: int -> *[z=x]) -> *[z >= x]
+    ///   -> x:int -> (y: int -> *[T]) -> *[x >= x]
+    pub fn generate_trivial_types_by_eq(&self) -> Vec<Self> {
+        // collect eqs
+        fn get_eqs_from_ty(ty: &Ty, eqs: &mut Stack<(Ident, Op)>, vars: &HashSet<Ident>) {
+            match ty.kind() {
+                TauKind::Proposition(c) => {
+                    search_eqs_from_constraint(c, eqs, vars);
+                }
+                TauKind::IArrow(x, t) => {
+                    get_eqs_from_ty(t, eqs, vars);
+                }
+                TauKind::Arrow(ts, t) => {
+                    for t in ts.iter() {
+                        get_eqs_from_ty(t, eqs, vars);
+                    }
+                    get_eqs_from_ty(t, eqs, vars);
+                }
+            }
+        }
+        if self.vars.len() != 1 {
+            return Vec::new();
+        }
+        let mut eqs = Stack::new();
+        get_eqs_from_ty(&self.ty, &mut eqs, &self.vars);
+
+        let mut result = Vec::new();
+        for (v, eq) in eqs.iter() {
+            if !self.vars.contains(v) {
+                continue;
+            }
+            let t = self.ty.subst(v, eq);
+            let pty = PTy::poly(t);
+            result.push(pty);
+        }
+        if result.len() > 0 {
+            title!("generate_trivial_types_by_eq");
+            for t in result.iter() {
+                debug!("- {t}");
+            }
+        }
+        result
     }
 
     // replace with `Top` all the occurence of the clause in cnf which contains
@@ -1575,6 +1625,31 @@ fn test_optimize_replace_top() {
     assert!(p2.ty.rty_no_exists().eval(&e).unwrap());
 }
 
+/// Using equalities that appear in the argument position of the given type,
+/// this function instantiates some types.
+/// ex. ∀z. x: int -> (y: int -> *[z=x]) -> *[z >= x]
+///   -> x:int -> (y: int -> *[T]) -> *[x >= x]
+#[test]
+fn test_generate_trivial_types_by_eq() {
+    let z = Ident::fresh();
+    let x = Ident::fresh();
+    let y = Ident::fresh();
+
+    let zgeqx = Constraint::mk_geq(Op::mk_var(z), Op::mk_var(x));
+    let zeqx = Constraint::mk_eq(Op::mk_var(z), Op::mk_var(x));
+    let t1 = Ty::mk_prop_ty(zgeqx);
+    let t2 = Ty::mk_prop_ty(zeqx);
+    let t3 = Ty::mk_iarrow(y, t2);
+    let t4 = Ty::mk_arrow_single(t3, t1);
+    let t5 = Ty::mk_iarrow(x, t4);
+    let pty = PTy::poly(t5);
+    println!("before: {pty}");
+    let ptys = pty.generate_trivial_types_by_eq();
+    assert_eq!(ptys.len(), 1);
+    let pty = ptys[0].clone();
+    println!("after: {pty}");
+}
+
 impl<C: Refinement> PolymorphicType<Tau<C>> {
     pub fn instantiate(
         &self,
@@ -1794,8 +1869,13 @@ impl TyEnv {
     pub fn optimize(&mut self) {
         let mut new_map = HashMap::new();
         for (k, ts) in self.map.iter() {
-            let ts = ts.iter().map(|t| t.optimize()).collect();
-            new_map.insert(*k, ts);
+            let mut new_ts: Vec<_> = ts.iter().map(|t| t.optimize()).collect();
+
+            for t in ts.iter() {
+                new_ts.append(&mut t.generate_trivial_types_by_eq());
+            }
+
+            new_map.insert(*k, new_ts);
         }
         self.map = new_map;
     }
