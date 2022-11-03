@@ -5,7 +5,7 @@ pub mod hes;
 pub mod pcsp;
 pub mod ty;
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 use colored::Colorize;
@@ -361,13 +361,12 @@ impl Op {
         }
         o
     }
-    // Given an linear op (of type Op) and a vector of variables x₁, …, xₙ,
-    // op.normalize returns a vector of Ops `v`.
-    // This method normalizes the given op to `o₀x₁ + ⋯ + o_n-1 xₙ `
-    // v[i] is the coefficient for xᵢ in the normalized `op`(i.e. oᵢ).
-    // v[n] is the constant part of `o_normalized` (i.e. o₀).
+    /// Given an linear op (of type Op) and a vector of variables x₁, …, xₙ,
+    /// op.normalize returns a vector of Ops `v`.
+    /// This method normalizes the given op to `o₀x₁ + ⋯ + o_n-1 xₙ `
+    /// v[i] is the coefficient for xᵢ in the normalized `op`(i.e. oᵢ).
+    /// v[n] is the constant part of `o_normalized` (i.e. o₀).
     pub fn normalize(&self, variables: &Vec<Ident>) -> Vec<Op> {
-        use std::collections::HashMap;
         fn parse_mult(o: &Op, m: &HashMap<Ident, usize>) -> Option<(Op, Option<Ident>)> {
             match o.kind() {
                 crate::formula::OpExpr::Op(OpKind::Mul, o1, o2) => {
@@ -1469,6 +1468,133 @@ impl Constraint {
         }
         result_constraint
     }
+    // x > 0 /\ x <= 1 -> x = 1
+    pub fn simplify_by_finding_eq(&self) -> Constraint {
+        fn update(
+            pred: PredKind,
+            x: Ident,
+            v: i64,
+            table: &mut HashMap<Ident, (Option<i64>, Option<i64>, HashSet<i64>)>, // [x.0, x.1], neqs
+        ) {
+            let entry = table.entry(x).or_insert((None, None, HashSet::new()));
+            // check if still it's valid range.
+            match entry {
+                (Some(x), Some(y), _) if *y > *x => return,
+                _ => (),
+            }
+            let (left, right, neqs) = entry;
+            match pred {
+                PredKind::Eq => {
+                    match left {
+                        Some(x) if *x <= v => *left = Some(v),
+                        None => *left = Some(v),
+                        _ => (),
+                    };
+                    match right {
+                        Some(x) if v <= *x => *right = Some(v),
+                        None => *right = Some(v),
+                        _ => (),
+                    }
+                }
+                PredKind::Neq => {
+                    neqs.insert(v);
+                }
+                // target_var < v
+                // <=> target_var <= v - 1
+                // target_var <= v
+                // left <= target_var <= right
+                PredKind::Lt | PredKind::Leq => {
+                    let v = match pred {
+                        PredKind::Lt => v - 1,
+                        PredKind::Leq => v,
+                        _ => panic!("err"),
+                    };
+                    match right {
+                        Some(x) if v <= *x => *right = Some(v),
+                        None => *right = Some(v),
+                        _ => (),
+                    }
+                }
+                PredKind::Gt | PredKind::Geq => {
+                    let v = match pred {
+                        PredKind::Gt => v + 1,
+                        PredKind::Geq => v,
+                        _ => panic!("err"),
+                    };
+                    match left {
+                        Some(x) if *x <= v => *left = Some(v),
+                        None => *left = Some(v),
+                        _ => (),
+                    }
+                }
+            }
+        }
+        let (qs, c) = self.to_pnf_raw();
+        let dnf = c.to_dnf();
+        let mut result_constraint = Constraint::mk_false();
+        for dclause in dnf {
+            let cnf = dclause.to_cnf();
+            // HaseMap<(Ident, (Option<i64>, Option<i64>))>
+            let mut table = HashMap::new();
+            for clause in cnf.iter() {
+                let fvs = clause.fv();
+                if fvs.len() != 1 {
+                    continue;
+                }
+                let target_var = *fvs.iter().next().unwrap();
+
+                match clause.kind() {
+                    ConstraintExpr::Pred(pred, l) if l.len() == 2 => {
+                        let left = &l[0];
+                        let right = &l[1];
+                        let normalized =
+                            Op::mk_sub(left.clone(), right.clone()).normalize(&vec![target_var]);
+                        match (
+                            normalized[0].eval_with_empty_env(),
+                            normalized[1].eval_with_empty_env(),
+                        ) {
+                            (Some(1), Some(x)) => {
+                                // Note that we have to transpose v so that x <pred> v
+                                update(*pred, target_var, -x, &mut table);
+                            }
+                            _ => (),
+                        }
+                    }
+                    ConstraintExpr::Pred(_, _) | ConstraintExpr::True | ConstraintExpr::False => (),
+                    ConstraintExpr::Conj(_, _)
+                    | ConstraintExpr::Disj(_, _)
+                    | ConstraintExpr::Quantifier(_, _, _) => todo!(),
+                }
+            }
+            // check contradiction
+            let mut is_false = false;
+            let mut assignment = HashMap::new();
+            for (var, (left, right, neqs)) in table.iter() {
+                match (left, right) {
+                    (Some(left), Some(right)) if left > right => {
+                        is_false = true;
+                        break;
+                    }
+                    (Some(left), Some(right)) if left == right && !neqs.contains(left) => {
+                        assignment.insert(*var, *left);
+                    }
+                    (_, _) => (),
+                }
+            }
+            if !is_false {
+                let mut new_dclause = dclause.clone();
+                for (x, v) in assignment.into_iter() {
+                    new_dclause = new_dclause.subst(&x, &Op::mk_const(v));
+                }
+                result_constraint = Constraint::mk_disj(result_constraint, new_dclause);
+            }
+        }
+
+        for (q, v) in qs {
+            result_constraint = Constraint::mk_quantifier(q, v, result_constraint);
+        }
+        result_constraint
+    }
     pub fn simplify(&self) -> Self {
         let c = self.simplify_trivial();
         let c = c.simplify_geq_geq();
@@ -1515,6 +1641,23 @@ fn test_simplify_geq_geq() {
     let dnf = c.to_dnf();
     assert_eq!(dnf.len(), 1);
     assert_eq!(dnf[0].to_cnf().len(), 2);
+}
+
+#[test]
+fn test_simplify_by_finding_eq() {
+    // x > 0 /\ x <= 1 /\ y = x => y = 1
+    let x = Ident::fresh();
+    let y = Ident::fresh();
+    let xz = Constraint::mk_gt(Op::mk_var(x), Op::zero());
+    let x1 = Constraint::mk_leq(Op::mk_var(x), Op::one());
+    let yx = Constraint::mk_eq(Op::mk_var(x), Op::mk_var(y));
+    let c = Constraint::mk_conj(Constraint::mk_conj(xz, x1), yx);
+    println!("before {c}");
+    let c = c.simplify_by_finding_eq();
+    println!("after {c}");
+    let c = c.simplify();
+    println!("simplified {c}");
+    assert_eq!(c.to_cnf().len(), 1);
 }
 
 #[test]

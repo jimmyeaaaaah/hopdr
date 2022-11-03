@@ -1313,7 +1313,7 @@ impl PTy {
                 TauKind::Proposition(c) => {
                     search_eqs_from_constraint(c, eqs, vars);
                 }
-                TauKind::IArrow(x, t) => {
+                TauKind::IArrow(_, t) => {
                     get_eqs_from_ty(t, eqs, vars);
                 }
                 TauKind::Arrow(ts, t) => {
