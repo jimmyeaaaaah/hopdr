@@ -6,6 +6,7 @@ use crate::formula::{Ident, Variable};
 use std::collections::HashSet;
 
 pub struct InferenceResult {
+    #[allow(dead_code)]
     succeeded: bool,
 }
 
@@ -44,6 +45,7 @@ pub struct NaiveOptimizer {
     fail: bool,
 }
 impl NaiveOptimizer {
+    #[allow(dead_code)]
     pub fn new() -> Self {
         NaiveOptimizer {
             already_attempted_once: false,

@@ -6,7 +6,6 @@ use crate::formula::{self, DerefPtr, FirstOrderLogic};
 use crate::formula::{
     chc, fofml, Constraint, Fv, Ident, Logic, Negation, Op, Rename, Subst, Top, Variable,
 };
-use crate::pdr::optimizer;
 use crate::solver;
 use crate::title;
 
