@@ -133,11 +133,16 @@ impl<C: TeXFormat> TeXFormat for Tau<C> {
     }
 }
 
-impl<C: PartialEq + Display> PartialEq for Tau<C> {
+impl<C: Refinement> PartialEq for Tau<C> {
     fn eq(&self, other: &Self) -> bool {
         let r = match (self.kind(), other.kind()) {
             (TauKind::Proposition(c), TauKind::Proposition(c2)) => c == c2,
-            (TauKind::IArrow(x1, t1), TauKind::IArrow(x2, t2)) => x1 == x2 && t1 == t2,
+            (TauKind::IArrow(x1, t1), TauKind::IArrow(x2, t2)) => {
+                let y = Ident::fresh();
+                let t1 = t1.rename(&x1, &y);
+                let t2 = t2.rename(&x2, &y);
+                t1 == t2
+            }
             (TauKind::Arrow(ts1, t1), TauKind::Arrow(ts2, t2)) => t1 == t2 && ts1 == ts2,
             (_, _) => false,
         };
