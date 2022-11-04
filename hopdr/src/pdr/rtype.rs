@@ -174,6 +174,9 @@ impl<C: Refinement> TBot for Tau<C> {
         Tau::new(TyKind::new_bot(st))
     }
     fn is_bot(&self) -> bool {
+        if self.rty().is_false() {
+            return true;
+        }
         match self.kind() {
             TauKind::Proposition(c) => c.is_false(),
             TauKind::IArrow(_, t) => t.is_bot(),
@@ -652,10 +655,11 @@ impl Tau<Constraint> {
                         ts_new.push(s.clone());
                     }
                 }
-                let ts_new = ts_new
+                let ts_new: Vec<_> = ts_new
                     .iter()
                     .map(|t| t.optimize_intersection_trivial())
                     .collect();
+
                 Ty::mk_arrow(ts_new, t)
             }
         }
