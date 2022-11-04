@@ -754,7 +754,9 @@ impl Bot for Constraint {
 
 impl Logic for Constraint {
     fn mk_conj(x: Constraint, y: Constraint) -> Constraint {
-        if x.is_true() {
+        if x.is_false() || y.is_false() {
+            Constraint::mk_false()
+        } else if x.is_true() {
             y
         } else if y.is_true() {
             x
@@ -1318,16 +1320,16 @@ impl Constraint {
         self.eval(&Env::new())
     }
     pub fn simplify_trivial(&self) -> Self {
-        match self.eval(&Env::new()) {
+        match self.eval_with_empty_env() {
             Some(b) if b => return Constraint::mk_true(),
             Some(_) => return Constraint::mk_false(),
             _ => (),
         };
         match self.kind() {
             ConstraintExpr::Conj(x, y) => {
-                let x = x.simplify_trivial();
-                let y = y.simplify_trivial();
-                Constraint::mk_conj(x, y)
+                let x2 = x.simplify_trivial();
+                let y2 = y.simplify_trivial();
+                Constraint::mk_conj(x2, y2)
             }
             ConstraintExpr::Disj(x, y) => {
                 let x = x.simplify_trivial();
@@ -1482,7 +1484,7 @@ impl Constraint {
                 .or_insert((None, None, HashSet::new(), HashSet::new()));
             // check if still it's valid range.
             match entry {
-                (Some(x), Some(y), _, idxs) if *y > *x => return,
+                (Some(x), Some(y), _, _) if *y > *x => return,
                 _ => (),
             }
             let (left, right, neqs, idxs) = entry;

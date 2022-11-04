@@ -1351,7 +1351,7 @@ impl PTy {
     // replace with `Top` all the occurence of the clause in cnf which contains
     // ident in `var` (polymorphic).
     pub fn optimize_replace_top(&self) -> Self {
-        println!("optimize_replace_top: {self}");
+        debug!("optimize_replace_top: {self}");
         // check if `var` is not contained in args of `t`
         fn check(t: &Ty, var: &Ident, toplevel: bool) -> bool {
             match t.kind() {
