@@ -1351,6 +1351,7 @@ impl PTy {
     // replace with `Top` all the occurence of the clause in cnf which contains
     // ident in `var` (polymorphic).
     pub fn optimize_replace_top(&self) -> Self {
+        println!("optimize_replace_top: {self}");
         // check if `var` is not contained in args of `t`
         fn check(t: &Ty, var: &Ident, toplevel: bool) -> bool {
             match t.kind() {
@@ -1869,11 +1870,16 @@ impl TyEnv {
     pub fn optimize(&mut self) {
         let mut new_map = HashMap::new();
         for (k, ts) in self.map.iter() {
-            let mut new_ts: Vec<_> = ts.iter().map(|t| t.optimize()).collect();
-
-            for t in ts.iter() {
-                new_ts.append(&mut t.generate_trivial_types_by_eq());
-            }
+            let new_ts: Vec<_> = ts
+                .iter()
+                .map(|t| {
+                    let t = t.optimize();
+                    let mut ts = t.generate_trivial_types_by_eq();
+                    ts.push(t);
+                    ts.into_iter()
+                })
+                .flatten()
+                .collect();
 
             new_map.insert(*k, new_ts);
         }

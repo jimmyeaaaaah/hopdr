@@ -1474,15 +1474,19 @@ impl Constraint {
             pred: PredKind,
             x: Ident,
             v: i64,
-            table: &mut HashMap<Ident, (Option<i64>, Option<i64>, HashSet<i64>)>, // [x.0, x.1], neqs
+            table: &mut HashMap<Ident, (Option<i64>, Option<i64>, HashSet<i64>, HashSet<usize>)>, // [x.0, x.1], neqs, clause indices
+            idx: usize, // clause index
         ) {
-            let entry = table.entry(x).or_insert((None, None, HashSet::new()));
+            let entry = table
+                .entry(x)
+                .or_insert((None, None, HashSet::new(), HashSet::new()));
             // check if still it's valid range.
             match entry {
-                (Some(x), Some(y), _) if *y > *x => return,
+                (Some(x), Some(y), _, idxs) if *y > *x => return,
                 _ => (),
             }
-            let (left, right, neqs) = entry;
+            let (left, right, neqs, idxs) = entry;
+            idxs.insert(idx);
             match pred {
                 PredKind::Eq => {
                     match left {
@@ -1536,7 +1540,7 @@ impl Constraint {
             let cnf = dclause.to_cnf();
             // HaseMap<(Ident, (Option<i64>, Option<i64>))>
             let mut table = HashMap::new();
-            for clause in cnf.iter() {
+            for (id, clause) in cnf.iter().enumerate() {
                 let fvs = clause.fv();
                 if fvs.len() != 1 {
                     continue;
@@ -1555,7 +1559,7 @@ impl Constraint {
                         ) {
                             (Some(1), Some(x)) => {
                                 // Note that we have to transpose v so that x <pred> v
-                                update(*pred, target_var, -x, &mut table);
+                                update(*pred, target_var, -x, &mut table, id);
                             }
                             _ => (),
                         }
@@ -1569,7 +1573,8 @@ impl Constraint {
             // check contradiction
             let mut is_false = false;
             let mut assignment = HashMap::new();
-            for (var, (left, right, neqs)) in table.iter() {
+            let mut all_indices = HashSet::new();
+            for (var, (left, right, neqs, indices)) in table.iter() {
                 match (left, right) {
                     (Some(left), Some(right)) if left > right => {
                         is_false = true;
@@ -1577,15 +1582,23 @@ impl Constraint {
                     }
                     (Some(left), Some(right)) if left == right && !neqs.contains(left) => {
                         assignment.insert(*var, *left);
+                        all_indices.extend(indices.iter().cloned())
                     }
                     (_, _) => (),
                 }
             }
             if !is_false {
-                let mut new_dclause = dclause.clone();
+                let mut new_dclause = Constraint::mk_true();
                 for (x, v) in assignment.into_iter() {
-                    new_dclause = new_dclause.subst(&x, &Op::mk_const(v));
+                    let c = Constraint::mk_eq(Op::mk_var(x), Op::mk_const(v));
+                    new_dclause = Constraint::mk_conj(c, new_dclause);
                 }
+                for (id, clause) in cnf.iter().enumerate() {
+                    if !all_indices.contains(&id) {
+                        new_dclause = Constraint::mk_conj(new_dclause, clause.clone());
+                    }
+                }
+
                 result_constraint = Constraint::mk_disj(result_constraint, new_dclause);
             }
         }
@@ -1598,6 +1611,8 @@ impl Constraint {
     pub fn simplify(&self) -> Self {
         let c = self.simplify_trivial();
         let c = c.simplify_geq_geq();
+        let c = c.simplify_by_finding_eq();
+        let c = c.simplify_trivial();
         c
     }
 }
@@ -1645,7 +1660,7 @@ fn test_simplify_geq_geq() {
 
 #[test]
 fn test_simplify_by_finding_eq() {
-    // x > 0 /\ x <= 1 /\ y = x => y = 1
+    // x > 0 /\ x <= 1 /\ y = x => y = 1 /\ x = 1
     let x = Ident::fresh();
     let y = Ident::fresh();
     let xz = Constraint::mk_gt(Op::mk_var(x), Op::zero());
@@ -1657,7 +1672,68 @@ fn test_simplify_by_finding_eq() {
     println!("after {c}");
     let c = c.simplify();
     println!("simplified {c}");
-    assert_eq!(c.to_cnf().len(), 1);
+    assert_eq!(c.to_cnf().len(), 2);
+
+    // x > 0 /\ x <= 2 /\ y = x does not change
+    let xz = Constraint::mk_gt(Op::mk_var(x), Op::zero());
+    let x1 = Constraint::mk_leq(Op::mk_var(x), Op::mk_const(2));
+    let yx = Constraint::mk_eq(Op::mk_var(x), Op::mk_var(y));
+    let c = Constraint::mk_conj(Constraint::mk_conj(xz, x1), yx);
+    println!("before {c}");
+    let c = c.simplify_by_finding_eq();
+    println!("after {c}");
+    let c = c.simplify();
+    println!("simplified {c}");
+    assert_eq!(c.to_cnf().len(), 3);
+
+    // x > 0 /\ x = 0 /\ y = x does not change
+    let mut e = Env::new();
+    e.add(x, 5);
+    e.add(y, 8);
+    let xz = Constraint::mk_gt(Op::mk_var(x), Op::zero());
+    let x1 = Constraint::mk_eq(Op::mk_var(x), Op::mk_const(0));
+    let yx = Constraint::mk_eq(Op::mk_var(x), Op::mk_var(y));
+    let c = Constraint::mk_conj(Constraint::mk_conj(xz, x1), yx);
+    println!("before {c}");
+    let c = c.simplify_by_finding_eq();
+    println!("after {c}");
+    let c = c.simplify();
+    println!("simplified {c}");
+    assert!(!c.eval(&e).unwrap());
+
+    // y >= 0 /\ x = 0 /\ y = x -> y >= 0 /\ y = 0 /\ x = 0
+    let xz = Constraint::mk_geq(Op::mk_var(y), Op::zero());
+    let x1 = Constraint::mk_eq(Op::mk_var(x), Op::mk_const(0));
+    let yx = Constraint::mk_eq(Op::mk_var(x), Op::mk_var(y));
+    let c = Constraint::mk_conj(Constraint::mk_conj(xz, x1), yx);
+    println!("before {c}");
+    let c = c.simplify_by_finding_eq();
+    println!("after {c}");
+    let c = c.simplify();
+    println!("simplified {c}");
+    assert_eq!(c.to_cnf().len(), 3);
+
+    // x < 1 /\ x >= 0 /\ y = x => y = 1 /\ x = 0
+    let xz = Constraint::mk_lt(Op::mk_var(x), Op::one());
+    let x1 = Constraint::mk_geq(Op::mk_var(x), Op::zero());
+    let yx = Constraint::mk_eq(Op::mk_var(x), Op::mk_var(y));
+    let c_ = Constraint::mk_conj(Constraint::mk_conj(xz, x1), yx);
+    println!("before {c}");
+    let c = c_.simplify_by_finding_eq();
+    println!("after {c}");
+    let c = c.simplify();
+    println!("simplified {c}");
+    assert_eq!(c.to_cnf().len(), 2);
+
+    // x < 1 /\ x >= 0 /\ y = x /\ x != 0 does not change
+    let yx = Constraint::mk_neq(Op::mk_var(x), Op::zero());
+    let c = Constraint::mk_conj(c_, yx);
+    println!("before {c}");
+    let c = c.simplify_by_finding_eq();
+    println!("after {c}");
+    let c = c.simplify();
+    println!("simplified {c}");
+    assert_eq!(c.to_cnf().len(), 4);
 }
 
 #[test]
