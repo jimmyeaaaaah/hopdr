@@ -548,8 +548,12 @@ impl Context {
                 debug!("ret_ty: {}", ret_ty);
                 let SavedTy {
                     ty: ret_ty,
+                    shared_ty,
                     constraint: ret_ty_constraint,
                 } = ret_ty.clone();
+
+                // if there is a shared_ty, we have to use it
+                unimplemented!();
 
                 let tmp_ret_ty = match &reduction.predicate.aux.tys {
                     Some(tys) => tys[0].clone(),
@@ -651,8 +655,9 @@ impl Context {
                     .zip(expr_ids.iter().rev())
                 {
                     debug!("saving({}): {}", expr_id, temporal_ty);
+                    // [feature shared_ty] in the infer_type phase, we no longer have to track both shared_ty and ty.
                     let temporal_saved_ty =
-                        SavedTy::mk(temporal_ty.clone(), ret_ty_constraint.clone());
+                        SavedTy::mk(temporal_ty.clone(), None, ret_ty_constraint.clone());
                     derivation.expr.set(*expr_id, temporal_saved_ty);
                     match arg_ty {
                         either::Left(_) => {
@@ -671,7 +676,9 @@ impl Context {
                         }
                     };
                 }
-                let app_expr_saved_ty = SavedTy::mk(app_expr_ty.clone(), ret_ty_constraint.clone());
+                // [feature shared_ty] in the infer_type phase, we no longer have to track both shared_ty and ty.
+                let app_expr_saved_ty =
+                    SavedTy::mk(app_expr_ty.clone(), None, ret_ty_constraint.clone());
                 derivation
                     .expr
                     .set(reduction.app_expr.aux.id, app_expr_saved_ty);
@@ -810,6 +817,7 @@ fn handle_app(
 
                             CandidateDerivation::new(
                                 t,
+                                None,
                                 coefficients.clone(),
                                 Stack::new(),
                                 Derivation::new(),
@@ -832,6 +840,7 @@ fn handle_app(
                             .map(|t| match t.ty.kind() {
                                 TauKind::IArrow(x, t2) => CandidateDerivation::new(
                                     t2.subst(x, &op),
+                                    None,
                                     t.coefficients.clone(),
                                     t.constraints.clone(),
                                     t.derivation.clone(),
@@ -855,6 +864,7 @@ fn handle_app(
                     };
                     let result_ct = CandidateDerivation::new(
                         result_t.clone(),
+                        None,
                         ty.coefficients.clone(),
                         ty.constraints.clone(),
                         ty.derivation.clone(),
@@ -929,7 +939,13 @@ fn type_check_inner(
             formula::hes::GoalKind::Constr(c) => {
                 let constraint = c.clone().into();
                 let t = Ty::mk_prop_ty(constraint);
-                let cd = CandidateDerivation::new(t, Stack::new(), Stack::new(), Derivation::new());
+                let cd = CandidateDerivation::new(
+                    t,
+                    None,
+                    Stack::new(),
+                    Stack::new(),
+                    Derivation::new(),
+                );
                 PossibleDerivation::singleton(cd)
             }
             formula::hes::GoalKind::Var(x) => match tenv.get(x) {
@@ -943,6 +959,7 @@ fn type_check_inner(
 
                         let cd = CandidateDerivation::new(
                             ty,
+                            None,
                             coefficients,
                             Stack::new(),
                             Derivation::new(),
@@ -1122,6 +1139,7 @@ fn reduce_until_normal_form(
 #[derive(Clone, Debug)]
 struct SavedTy {
     ty: Ty,
+    shared_ty: Option<Ty>, // ty <: shared_ty
     constraint: Atom,
 }
 
@@ -1136,22 +1154,32 @@ impl formula::Subst for SavedTy {
 
     fn subst(&self, x: &Self::Id, v: &Self::Item) -> Self {
         let ty = self.ty.subst(x, v);
+        let shared_ty = self.shared_ty.clone().map(|t| t.subst(x, v));
         let constraint = self.constraint.subst(x, v);
-        SavedTy { ty, constraint }
+        SavedTy {
+            ty,
+            shared_ty,
+            constraint,
+        }
     }
 }
 
 impl SavedTy {
-    fn mk(ty: Ty, constraint: Atom) -> SavedTy {
-        SavedTy { ty, constraint }
+    fn mk(ty: Ty, shared_ty: Option<Ty>, constraint: Atom) -> SavedTy {
+        SavedTy {
+            ty,
+            shared_ty,
+            constraint,
+        }
     }
 }
 
 impl Rename for SavedTy {
     fn rename(&self, x: &Ident, y: &Ident) -> Self {
         let ty = self.ty.rename(x, y);
+        let shared_ty = self.shared_ty.clone().map(|t| t.rename(x, y));
         let constraint = self.constraint.rename(x, y);
-        SavedTy::mk(ty, constraint)
+        SavedTy::mk(ty, shared_ty, constraint)
     }
 }
 
@@ -1273,6 +1301,7 @@ impl Derivation {
 #[derive(Clone, Debug)]
 struct CandidateDerivation<C> {
     ty: Ty,
+    shared_ty: Option<Ty>,
     coefficients: Stack<Ident>,
     constraints: Stack<C>,
     // level -> type map appeared in the derivation of ty so far.
@@ -1287,12 +1316,14 @@ enum Method {
 impl<C: Refinement> CandidateDerivation<C> {
     fn new(
         ty: Ty,
+        shared_ty: Option<Ty>,
         coefficients: Stack<Ident>,
         constraints: Stack<C>,
         derivation: Derivation,
     ) -> CandidateDerivation<C> {
         CandidateDerivation {
             ty,
+            shared_ty,
             coefficients,
             constraints,
             derivation,
@@ -1303,7 +1334,7 @@ impl<C: Refinement> CandidateDerivation<C> {
     }
     fn set_types(&mut self, expr: &G, constraint: Atom) {
         let ty = self.ty.clone();
-        let saved_ty = SavedTy::mk(ty, constraint);
+        let saved_ty = SavedTy::mk(ty, self.shared_ty.clone(), constraint);
         self.derivation.memorize_type_judgement(expr, saved_ty);
     }
     fn merge_derivation(&mut self, derivation: &Derivation) {
