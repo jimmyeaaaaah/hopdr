@@ -738,6 +738,7 @@ impl Context {
 }
 
 fn handle_abs(
+    config: &TCConfig,
     constraint: &Atom,
     tenv: &mut Env,
     ienv: &mut HashSet<Ident>,
@@ -746,6 +747,7 @@ fn handle_abs(
     t: &Ty,
 ) -> PossibleDerivation<Atom> {
     fn handle_abs_inner(
+        config: &TCConfig,
         constraint: &Atom,
         tenv: &mut Env,
         ienv: &mut HashSet<Ident>,
@@ -759,7 +761,8 @@ fn handle_abs(
                     let t = t.rename(id, &v.id);
                     let constraint = constraint.rename(id, &v.id);
                     let b = ienv.insert(v.id);
-                    let pt = handle_abs_inner(&constraint, tenv, ienv, all_coefficients, g, &t);
+                    let pt =
+                        handle_abs_inner(config, &constraint, tenv, ienv, all_coefficients, g, &t);
                     if !b {
                         ienv.remove(&v.id);
                     }
@@ -774,13 +777,22 @@ fn handle_abs(
                         debug!("adding type {t} to tenv");
                         tenv.add(v.id, PolymorphicType::mono(t.clone()));
                     }
-                    let pt = handle_abs_inner(constraint, &mut tenv, ienv, all_coefficients, g, t);
+                    let pt = handle_abs_inner(
+                        config,
+                        constraint,
+                        &mut tenv,
+                        ienv,
+                        all_coefficients,
+                        g,
+                        t,
+                    );
                     pt.arrow(ts)
                 }
                 _ => panic!("fatal"),
             },
             _ => {
-                let mut pt = type_check_inner(constraint, tenv, ienv, all_coefficients, arg_expr);
+                let mut pt =
+                    type_check_inner(config, constraint, tenv, ienv, all_coefficients, arg_expr);
                 pt.coarse_type(constraint, t);
                 pt
             }
@@ -797,20 +809,51 @@ fn handle_abs(
         pt
     }
     // [feature shared_ty]
-    match &arg_expr.aux.tys {
-        Some(tys) if tys.len() == 1 => {
-            let mut pt =
-                handle_abs_inner(constraint, tenv, ienv, all_coefficients, arg_expr, &tys[0]);
-            pt.coarse_shared_type(constraint, t);
+    match (&config.tc_mode, &arg_expr.aux.tys) {
+        (TCFlag::Normal, _) | (_, None) => handle_abs_inner(
+            config,
+            constraint,
+            tenv,
+            ienv,
+            all_coefficients,
+            arg_expr,
+            t,
+        ),
+        (TCFlag::Shared(_), Some(tys)) if tys.len() == 1 => {
+            let mut pt = handle_abs_inner(
+                config,
+                constraint,
+                tenv,
+                ienv,
+                all_coefficients,
+                arg_expr,
+                &tys[0],
+            );
+            pt.coarse_type(constraint, t);
             pt
         }
-        Some(_) => unimplemented!(),
-        None => handle_abs_inner(constraint, tenv, ienv, all_coefficients, arg_expr, t),
+        (_, _) => panic!("program error"),
     }
 }
+
+#[derive(Clone, Copy, Debug)]
+struct TCConfig {
+    tc_mode: TCFlag,
+}
+
+#[derive(Copy, Clone, Debug)]
+struct InstantiationConfig {}
+
+#[derive(Copy, Clone, Debug)]
+enum TCFlag {
+    Normal,
+    Shared(InstantiationConfig),
+}
+
 // tenv+ienv; constraint |- App(arg, ret): t
 /// returns possible types for app_expr under constraint
 fn handle_app(
+    config: &TCConfig,
     constraint: &Atom,
     tenv: &mut Env,
     ienv: &mut HashSet<Ident>,
@@ -818,6 +861,7 @@ fn handle_app(
     app_expr: &G,
 ) -> PossibleDerivation<Atom> {
     fn handle_inner(
+        config: &TCConfig,
         constraint: &Atom,
         tenv: &mut Env,
         ienv: &mut HashSet<Ident>,
@@ -835,7 +879,15 @@ fn handle_app(
                             // debug!("before add_context(constraint={}) = {}", constraint, t);
                             // let t = t.add_context(constraint);
                             // debug!("after add_context = {}", t);
-                            let t = t.instantiate(ienv, &mut coefficients, all_coefficients);
+
+                            // [feature shared_ty] if shared type mode is enabled, instantiate the polymorphic types
+                            // in the same way as the previous instantiation that succeeded.
+                            let t = match &config.tc_mode {
+                                TCFlag::Normal => {
+                                    t.instantiate(ienv, &mut coefficients, all_coefficients)
+                                }
+                                TCFlag::Shared(_) => todo!(),
+                            };
                             debug!("instantiate_type ienv: {:?}", ienv);
                             debug!("instantiated: {t}");
 
@@ -852,7 +904,7 @@ fn handle_app(
                 None => PossibleDerivation::empty(),
             },
             formula::hes::GoalKind::App(predg, argg) => {
-                let pred_pt = handle_app(constraint, tenv, ienv, all_coefficients, predg);
+                let pred_pt = handle_app(config, constraint, tenv, ienv, all_coefficients, predg);
                 // Case: the argument is integer
                 match argg.check_int_expr(ienv) {
                     // Case: the type of argument is int
@@ -896,7 +948,15 @@ fn handle_app(
                         let arg_constraint = Atom::mk_conj(t.rty_no_exists(), constraint.clone());
                         //debug!("t: {}", t);
                         // check if arg_constraint |- argg: arg_t
-                        let pt = handle_abs(&arg_constraint, tenv, ienv, all_coefficients, argg, t);
+                        let pt = handle_abs(
+                            config,
+                            &arg_constraint,
+                            tenv,
+                            ienv,
+                            all_coefficients,
+                            argg,
+                            t,
+                        );
 
                         // permutation
                         let mut new_tmp_cts = Vec::new();
@@ -922,13 +982,13 @@ fn handle_app(
             | formula::hes::GoalKind::Univ(_, _) => panic!("fatal: {}", pred),
         }
     }
-    let mut pt = handle_inner(constraint, tenv, ienv, all_coefficients, app_expr);
+    let mut pt = handle_inner(config, constraint, tenv, ienv, all_coefficients, app_expr);
     // [feature shared_ty] template type sharing
     // if there is a shared type registered, coarse pt to obey the type.
-    match &app_expr.aux.tys {
-        Some(tys) if tys.len() == 0 => pt.coarse_shared_type(constraint, &tys[0]),
-        Some(_) => unimplemented!(),
-        None => (),
+    match (&config.tc_mode, &app_expr.aux.tys) {
+        (TCFlag::Shared(_), Some(tys)) if tys.len() == 0 => pt.coarse_type(constraint, &tys[0]),
+        (_, None) => (),
+        (_, _) => unimplemented!(),
     }
     for level in app_expr.aux.level_arg.iter() {
         for ct in pt.types.iter_mut() {
@@ -943,6 +1003,7 @@ fn handle_app(
 }
 
 fn type_check_inner(
+    config: &TCConfig,
     constraint: &Atom, // Θ
     tenv: &mut Env,
     ienv: &mut HashSet<Ident>, // V
@@ -950,6 +1011,7 @@ fn type_check_inner(
     c: &G,
 ) -> PossibleDerivation<Atom> {
     fn go_inner(
+        config: &TCConfig,
         constraint: &Atom,
         tenv: &mut Env,
         ienv: &mut HashSet<Ident>,
@@ -968,7 +1030,15 @@ fn type_check_inner(
                     let mut tys = Vec::new();
                     for ty in ts {
                         let mut coefficients = Stack::new();
-                        let ty = ty.instantiate(ienv, &mut coefficients, all_coefficients);
+
+                        // [feature shared_ty] if shared type mode is enabled, instantiate the polymorphic types
+                        // in the same way as the previous instantiation that succeeded.
+                        let ty = match &config.tc_mode {
+                            TCFlag::Normal => {
+                                ty.instantiate(ienv, &mut coefficients, all_coefficients)
+                            }
+                            TCFlag::Shared(_) => todo!(),
+                        };
                         debug!("instantiate_type ienv: {:?}", ienv);
                         debug!("instantiated: {ty}");
 
@@ -985,8 +1055,8 @@ fn type_check_inner(
                 None => PossibleDerivation::empty(),
             },
             formula::hes::GoalKind::Conj(g1, g2) => {
-                let t1 = type_check_inner(constraint, tenv, ienv, all_coefficients, g1);
-                let t2 = type_check_inner(constraint, tenv, ienv, all_coefficients, g2);
+                let t1 = type_check_inner(config, constraint, tenv, ienv, all_coefficients, g1);
+                let t2 = type_check_inner(config, constraint, tenv, ienv, all_coefficients, g2);
                 PossibleDerivation::conjoin(t1, t2)
             }
             formula::hes::GoalKind::Disj(g1, g2) => {
@@ -997,6 +1067,7 @@ fn type_check_inner(
                 };
                 let c_neg = c.negate().unwrap();
                 let t1 = type_check_inner(
+                    config,
                     &Atom::mk_conj(c_neg.into(), constraint.clone()),
                     tenv,
                     ienv,
@@ -1005,6 +1076,7 @@ fn type_check_inner(
                 );
                 // type check of constraints (to track the type derivation, checking g2 is necessary)
                 let t2 = type_check_inner(
+                    config,
                     &Atom::mk_conj(c.into(), constraint.clone()),
                     tenv,
                     ienv,
@@ -1016,7 +1088,7 @@ fn type_check_inner(
             formula::hes::GoalKind::Univ(x, g) => {
                 // to avoid the collision, we rename the variable.
                 let b = ienv.insert(x.id);
-                let mut pt = type_check_inner(constraint, tenv, ienv, all_coefficients, &g);
+                let mut pt = type_check_inner(config, constraint, tenv, ienv, all_coefficients, &g);
                 if b {
                     ienv.remove(&x.id);
                 }
@@ -1025,7 +1097,7 @@ fn type_check_inner(
                 pt
             }
             formula::hes::GoalKind::App(_, _) => {
-                handle_app(constraint, tenv, ienv, all_coefficients, c)
+                handle_app(config, constraint, tenv, ienv, all_coefficients, c)
             }
             formula::hes::GoalKind::Abs(_v, _g) => {
                 // abs can appear in the argument of application
@@ -1053,14 +1125,14 @@ fn type_check_inner(
             formula::hes::GoalKind::Op(_) => panic!("fatal error"),
         }
     }
-    let mut pt = go_inner(constraint, tenv, ienv, all_coefficients, c);
+    let mut pt = go_inner(config, constraint, tenv, ienv, all_coefficients, c);
 
     // [feature shared_ty] template type sharing
     // if there is a shared type registered, coarse pt to obey the type.
-    match &c.aux.tys {
-        Some(tys) if tys.len() == 0 => pt.coarse_shared_type(constraint, &tys[0]),
-        Some(_) => unimplemented!(),
-        None => (),
+    match (&config.tc_mode, &c.aux.tys) {
+        (TCFlag::Shared(_), Some(tys)) if tys.len() == 0 => pt.coarse_type(constraint, &tys[0]),
+        (_, None) => (),
+        (_, _) => unimplemented!(),
     }
 
     for ct in pt.types.iter_mut() {
@@ -1094,7 +1166,18 @@ fn type_check(
         debug!("type_check ienv: {ienv:?}");
     }
     let mut all_coefficients = HashSet::new();
-    let pt = handle_abs(constraint, tenv, ienv, &mut all_coefficients, c, &t.ty);
+    let config = TCConfig {
+        tc_mode: TCFlag::Normal,
+    };
+    let pt = handle_abs(
+        &config,
+        constraint,
+        tenv,
+        ienv,
+        &mut all_coefficients,
+        c,
+        &t.ty,
+    );
     //pt.coarse_type(constraint, t);
     pt.check_derivation().is_some()
 }
@@ -1110,7 +1193,11 @@ fn type_check_top_with_derivation(psi: &G, tenv: &mut Env) -> Option<Derivation>
     debug!("target: {}", psi);
     let mut ienv = HashSet::new();
     let mut all_coefficients = HashSet::new();
+    let config = TCConfig {
+        tc_mode: TCFlag::Normal,
+    };
     let mut pt = type_check_inner(
+        &config,
         &Atom::mk_true(),
         tenv,
         &mut ienv,
@@ -1121,6 +1208,21 @@ fn type_check_top_with_derivation(psi: &G, tenv: &mut Env) -> Option<Derivation>
 
     // check if there is an actually possible derivation
     pt.check_derivation()
+}
+
+/// ε; true ; Γ ⊢ ψ : •<T>
+///
+/// tenv: Γ
+/// candidate: ψ
+/// assumption: candidate has a beta-normal form of type *.
+fn type_check_top_with_derivation_and_constraints(
+    previous_derivation: Derivation,
+    psi: &G,
+    tenv: &mut Env,
+) -> Option<(Derivation, Stack<Atom>)> {
+    // using previous derivation,
+    // constraints that are required for shared types can be generated.
+    unimplemented!()
 }
 
 /// Γ ⊢ ψ : •<T>
@@ -1415,9 +1517,6 @@ impl CandidateDerivation<Atom> {
         self.constraints.push_mut(constraint_ty);
         self.ty = t.clone();
     }
-    fn coarse_shared_type(&mut self, constraint: &Atom, shared_ty: &Ty) {
-        unimplemented!()
-    }
 }
 
 // impl<C: Refinement> From<Ty> for CandidateDerivation<C> {
@@ -1524,9 +1623,6 @@ impl PossibleDerivation<Atom> {
         for ct in self.types.iter_mut() {
             ct.coarse_type(constraint, t);
         }
-    }
-    fn coarse_shared_type(&mut self, constraint: &Atom, t: &Ty) {
-        unimplemented!()
     }
     /// check
     fn check_derivation(&self) -> Option<Derivation> {
