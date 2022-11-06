@@ -279,6 +279,7 @@ impl HoPDR {
         }
         loop {
             self.dump_state();
+            self.loop_cnt += 1;
             if self.config.dump_tex_progress {
                 self.tex_dump_state();
             }
