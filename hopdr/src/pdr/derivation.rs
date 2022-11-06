@@ -757,6 +757,7 @@ fn handle_abs(
         ienv: &mut HashSet<Ident>,
         all_coefficients: &mut HashSet<Ident>,
         arg_expr: &G,
+        shared_ty: bool,
         t: &Ty,
     ) -> PossibleDerivation<Atom> {
         let mut pt = match arg_expr.kind() {
@@ -765,7 +766,15 @@ fn handle_abs(
                     let t = t.rename(id, &v.id);
                     let constraint = constraint.rename(id, &v.id);
                     let b = ienv.insert(v.id);
-                    let pt = handle_abs_inner(&constraint, tenv, ienv, all_coefficients, g, &t);
+                    let pt = handle_abs_inner(
+                        &constraint,
+                        tenv,
+                        ienv,
+                        all_coefficients,
+                        g,
+                        shared_ty, 
+                        &t,
+                    );
                     if !b {
                         ienv.remove(&v.id);
                     }
@@ -780,14 +789,26 @@ fn handle_abs(
                         debug!("adding type {t} to tenv");
                         tenv.add(v.id, PolymorphicType::mono(t.clone()));
                     }
-                    let pt = handle_abs_inner(constraint, &mut tenv, ienv, all_coefficients, g, t);
+                    let pt = handle_abs_inner(
+                        constraint,
+                        &mut tenv,
+                        ienv,
+                        all_coefficients,
+                        g,
+                        shared_ty,
+                        t,
+                    );
                     pt.arrow(ts)
                 }
                 _ => panic!("fatal"),
             },
             _ => {
                 let mut pt = type_check_inner(constraint, tenv, ienv, all_coefficients, arg_expr);
-                pt.coarse_type(constraint, t);
+                if shared_ty {
+                    pt.coarse_shared_type(constraint, t);
+                } else {
+                    pt.coarse_type(constraint, t);
+                }
                 pt
             }
         };
@@ -805,8 +826,16 @@ fn handle_abs(
     // [feature shared_ty]
     match &arg_expr.aux.tys {
         Some(tys) if tys.len() == 1 => {
-            let mut pt =
-                handle_abs_inner(constraint, tenv, ienv, all_coefficients, arg_expr, &tys[0]);
+            let mut pt = handle_abs_inner(
+                constraint,
+                tenv,
+                ienv,
+                all_coefficients,
+                arg_expr,
+                true,
+                &tys[0],
+            );
+            unimplemented!()
             pt.coarse_shared_type(constraint, t);
             pt
         }
@@ -1333,10 +1362,23 @@ impl Derivation {
         self.expr.update_with_model(&m);
     }
 }
+
+
+#[derive(Clone, Debug)]
+struct ParallelTy {
+    ty: Ty,
+    shared_ty: Ty
+}
+
+impl ParallelTy {
+    fn kind<'a>(&'a self) -> (&'a TauKind<Atom>, &'a TauKind<Atom>) {
+        (self.ty.kind(), self.shared_ty.kind())
+    }
+}
+
 #[derive(Clone, Debug)]
 struct CandidateDerivation<C> {
-    ty: Ty,
-    shared_ty: Option<Ty>,
+    ty: ParallelTy,
     coefficients: Stack<Ident>,
     constraints: Stack<C>,
     shared_ty_constraints: Stack<C>,
@@ -1351,8 +1393,7 @@ enum Method {
 }
 impl<C: Refinement> CandidateDerivation<C> {
     fn new(
-        ty: Ty,
-        shared_ty: Option<Ty>,
+        ty: ParallelTy,
         coefficients: Stack<Ident>,
         constraints: Stack<C>,
         shared_ty_constraints: Stack<C>,
@@ -1360,7 +1401,6 @@ impl<C: Refinement> CandidateDerivation<C> {
     ) -> CandidateDerivation<C> {
         CandidateDerivation {
             ty,
-            shared_ty,
             coefficients,
             constraints,
             shared_ty_constraints,
@@ -1427,14 +1467,18 @@ impl<C: Refinement> CandidateDerivation<C> {
     }
     fn quantify(&mut self, x: Ident) {
         let ty = match self.ty.kind() {
-            TauKind::Proposition(c) => Ty::mk_prop_ty(Atom::mk_quantifier_int(
+            (TauKind::Proposition(c1), TauKind::Proposition(c2)) => (
+                Ty::mk_prop_ty(Atom::mk_quantifier_int(
                 crate::formula::QuantifierKind::Universal,
                 x,
-                c.clone(),
-            )),
+                c1.clone(),
+            )), Ty::mk_prop_ty(Atom::mk_quantifier_int(
+                crate::formula::QuantifierKind::Universal,
+                x,
+                c2.clone()))),
             TauKind::IArrow(_, _) | TauKind::Arrow(_, _) => panic!("fatal"),
         };
-        self.ty = ty;
+        self.ty = ;
 
         let ty = self.shared_ty.clone().map(|t| match t.kind() {
             TauKind::Proposition(c) => Ty::mk_prop_ty(Atom::mk_quantifier_int(
