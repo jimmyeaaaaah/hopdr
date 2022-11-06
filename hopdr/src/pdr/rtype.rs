@@ -1895,7 +1895,12 @@ impl TyEnv {
                 .iter()
                 .map(|t| {
                     let t = t.optimize();
-                    let mut ts = t.generate_trivial_types_by_eq();
+                    let mut ts: Vec<_> = t
+                        .generate_trivial_types_by_eq()
+                        .into_iter()
+                        // filter out non-polymophic type
+                        .filter(|t| t.vars.len() == 0)
+                        .collect();
                     ts.push(t);
                     ts.into_iter()
                 })
