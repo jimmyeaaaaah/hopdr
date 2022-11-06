@@ -579,17 +579,20 @@ impl Context {
                 debug!("ret_ty: {}", ret_ty);
 
                 // if there is a shared_ty, we have to use it
-                let tmp_ret_ty = match &reduction.predicate.aux.tys {
-                    Some(tys) => tys[0].clone(),
+                let (tmp_ret_ty, is_shared_ty) = match &reduction.predicate.aux.tys {
+                    Some(tys) => (tys[0].clone(), true),
                     None => {
-                        ret_ty.clone_with_rty_template(
-                            ret_ty_constraint.clone(),
-                            //Atom::mk_true(),
-                            &mut if self.infer_polymorphic_type {
-                                reduction.fvints.clone()
-                            } else {
-                                reduction.argints.clone()
-                            },
+                        (
+                            ret_ty.clone_with_rty_template(
+                                ret_ty_constraint.clone(),
+                                //Atom::mk_true(),
+                                &mut if self.infer_polymorphic_type {
+                                    reduction.fvints.clone()
+                                } else {
+                                    reduction.argints.clone()
+                                },
+                            ),
+                            false,
                         )
                     }
                 };
@@ -603,10 +606,21 @@ impl Context {
                         either::Left(ident) => {
                             body_ty = body_ty.deref_ptr(ident).rename(&ident, &reduction.old_id);
 
-                            tmp_ty = Tau::mk_iarrow(reduction.old_id, tmp_ty);
-
                             let op: Op = reduction.arg.clone().into();
-                            app_expr_ty = app_expr_ty.subst(&reduction.old_id, &op);
+                            if is_shared_ty {
+                                match app_expr_ty.kind() {
+                                    TauKind::IArrow(id, t) => {
+                                        body_ty = body_ty.rename(&reduction.old_id, id);
+                                        app_expr_ty = t.subst(id, &op);
+                                    }
+                                    TauKind::Arrow(_, _) | TauKind::Proposition(_) => {
+                                        panic!("program error")
+                                    }
+                                }
+                            } else {
+                                tmp_ty = Tau::mk_iarrow(reduction.old_id, tmp_ty);
+                                app_expr_ty = app_expr_ty.subst(&reduction.old_id, &op);
+                            }
                         }
                         either::Right(arg_ty) => {
                             tmp_ty = Ty::mk_arrow(arg_ty.clone(), tmp_ty);
@@ -1576,7 +1590,7 @@ impl CandidateDerivation<Atom> {
         let s = self.ty.clone();
         debug!("coarse_type: {constraint} |- {s} <: {t}");
         let constraint_ty = Ty::check_subtype(constraint, &s, t);
-        debug!("constraint: {constraint}");
+        debug!("constraint: {constraint_ty}");
         self.constraints.push_mut(constraint_ty);
         self.ty = t.clone();
     }
