@@ -177,7 +177,7 @@ impl Reduction {
 #[derive(Clone, Debug)]
 struct TypeMemory {
     level_arg: Stack<usize>,
-    id: Ident,
+    id: Ident, // unique id for each sub expression of the formula
     tys: Option<Vec<Ty>>,
 }
 impl TypeMemory {
@@ -836,15 +836,17 @@ fn handle_abs(
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 struct TCConfig {
     tc_mode: TCFlag,
 }
 
-#[derive(Copy, Clone, Debug)]
-struct InstantiationConfig {}
+#[derive(Clone, Debug)]
+struct InstantiationConfig {
+    derivation: Derivation,
+}
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug)]
 enum TCFlag {
     Normal,
     Shared(InstantiationConfig),
@@ -871,34 +873,53 @@ fn handle_app(
         match pred.kind() {
             formula::hes::GoalKind::Var(x) => match tenv.get(x) {
                 Some(ts) => {
-                    debug!("search {x} from tenv");
-                    let mut coefficients = Stack::new();
-                    let types = ts
-                        .iter()
-                        .map(|t| {
-                            // debug!("before add_context(constraint={}) = {}", constraint, t);
-                            // let t = t.add_context(constraint);
-                            // debug!("after add_context = {}", t);
+                    // [feature shared_ty] if shared type mode is enabled, instantiate the polymorphic types
+                    // in the same way as the previous instantiation that succeeded.
+                    let types = match &config.tc_mode {
+                        TCFlag::Normal => {
+                            debug!("search {x} from tenv");
+                            let mut coefficients = Stack::new();
+                            let types = ts
+                                .iter()
+                                .map(|t| {
+                                    // debug!("before add_context(constraint={}) = {}", constraint, t);
+                                    // let t = t.add_context(constraint);
+                                    // debug!("after add_context = {}", t);
 
-                            // [feature shared_ty] if shared type mode is enabled, instantiate the polymorphic types
-                            // in the same way as the previous instantiation that succeeded.
-                            let t = match &config.tc_mode {
-                                TCFlag::Normal => {
-                                    t.instantiate(ienv, &mut coefficients, all_coefficients)
-                                }
-                                TCFlag::Shared(_) => todo!(),
-                            };
-                            debug!("instantiate_type ienv: {:?}", ienv);
-                            debug!("instantiated: {t}");
+                                    let t =
+                                        t.instantiate(ienv, &mut coefficients, all_coefficients);
+                                    debug!("instantiate_type ienv: {:?}", ienv);
+                                    debug!("instantiated: {t}");
 
-                            CandidateDerivation::new(
-                                t,
-                                coefficients.clone(),
-                                Stack::new(),
-                                Derivation::new(),
-                            )
-                        })
-                        .collect();
+                                    CandidateDerivation::new(
+                                        t,
+                                        coefficients.clone(),
+                                        Stack::new(),
+                                        Derivation::new(),
+                                    )
+                                })
+                                .collect();
+                            types
+                        }
+                        TCFlag::Shared(d) => {
+                            let ct = d
+                                .derivation
+                                .get_expr_ty(&pred.aux.id)
+                                .iter()
+                                .cloned()
+                                .map(|t| {
+                                    CandidateDerivation::new(
+                                        t.ty,
+                                        Stack::new(),
+                                        Stack::new(),
+                                        Derivation::new(),
+                                    )
+                                })
+                                .next()
+                                .unwrap();
+                            vec![ct]
+                        }
+                    };
                     PossibleDerivation::new(types)
                 }
                 None => PossibleDerivation::empty(),
@@ -1027,29 +1048,46 @@ fn type_check_inner(
             }
             formula::hes::GoalKind::Var(x) => match tenv.get(x) {
                 Some(ts) => {
-                    let mut tys = Vec::new();
-                    for ty in ts {
-                        let mut coefficients = Stack::new();
+                    // [feature shared_ty] if shared type mode is enabled, instantiate the polymorphic types
+                    // in the same way as the previous instantiation that succeeded.
+                    let tys = match &config.tc_mode {
+                        TCFlag::Normal => {
+                            let mut tys = Vec::new();
+                            for ty in ts {
+                                let mut coefficients = Stack::new();
+                                let ty = ty.instantiate(ienv, &mut coefficients, all_coefficients);
+                                debug!("instantiate_type ienv: {:?}", ienv);
+                                debug!("instantiated: {ty}");
 
-                        // [feature shared_ty] if shared type mode is enabled, instantiate the polymorphic types
-                        // in the same way as the previous instantiation that succeeded.
-                        let ty = match &config.tc_mode {
-                            TCFlag::Normal => {
-                                ty.instantiate(ienv, &mut coefficients, all_coefficients)
+                                let cd = CandidateDerivation::new(
+                                    ty,
+                                    coefficients,
+                                    Stack::new(),
+                                    Derivation::new(),
+                                );
+                                tys.push(cd);
                             }
-                            TCFlag::Shared(_) => todo!(),
-                        };
-                        debug!("instantiate_type ienv: {:?}", ienv);
-                        debug!("instantiated: {ty}");
-
-                        let cd = CandidateDerivation::new(
-                            ty,
-                            coefficients,
-                            Stack::new(),
-                            Derivation::new(),
-                        );
-                        tys.push(cd);
-                    }
+                            tys
+                        }
+                        TCFlag::Shared(d) => {
+                            let ty = d
+                                .derivation
+                                .get_expr_ty(&c.aux.id)
+                                .iter()
+                                .cloned()
+                                .map(|t| {
+                                    CandidateDerivation::new(
+                                        t.ty,
+                                        Stack::new(),
+                                        Stack::new(),
+                                        Derivation::new(),
+                                    )
+                                })
+                                .next()
+                                .unwrap();
+                            vec![ty]
+                        }
+                    };
                     PossibleDerivation::new(tys)
                 }
                 None => PossibleDerivation::empty(),
@@ -1219,10 +1257,34 @@ fn type_check_top_with_derivation_and_constraints(
     previous_derivation: Derivation,
     psi: &G,
     tenv: &mut Env,
-) -> Option<(Derivation, Stack<Atom>)> {
+) -> (Derivation, Stack<Atom>) {
     // using previous derivation,
     // constraints that are required for shared types can be generated.
-    unimplemented!()
+    let mut ienv = HashSet::new();
+    let mut all_coefficients = HashSet::new();
+    let ic = InstantiationConfig {
+        derivation: previous_derivation,
+    };
+    let config = TCConfig {
+        tc_mode: TCFlag::Shared(ic),
+    };
+    let mut pt = type_check_inner(
+        &config,
+        &Atom::mk_true(),
+        tenv,
+        &mut ienv,
+        &mut all_coefficients,
+        &psi,
+    );
+    pt.coarse_type(&Atom::mk_true(), &Ty::mk_prop_ty(Atom::mk_true()));
+
+    // check if there is an actually possible derivation
+    // since the derivation has the same shape as `previous_derivation`,
+    // we do not have more than one derivation in pt.
+    assert!(pt.types.len() == 1);
+    let derivation = pt.types[0].derivation.clone();
+    let constraints = pt.types[0].constraints.clone();
+    (derivation, constraints)
 }
 
 /// Γ ⊢ ψ : •<T>
@@ -1687,7 +1749,8 @@ pub fn search_for_type(
         debug!("{}", ctx.normal_form);
         //let candidate = ctx.normal_form.clone();
         let derivation = type_check_top_with_derivation(&ctx.normal_form, tenv)?;
-        let constraints = unimplemented!();
+        let (derivation, constraints) =
+            type_check_top_with_derivation_and_constraints(derivation, &ctx.normal_form, tenv);
         match ctx.infer_type(derivation, constraints) {
             Some(x) => {
                 optimizer.report_inference_result(InferenceResult::new(true));
