@@ -1258,6 +1258,7 @@ fn type_check_top_with_derivation_and_constraints(
     psi: &G,
     tenv: &mut Env,
 ) -> (Derivation, Stack<Atom>) {
+    title!("type_check_top_with_derivation_and_constraints");
     // using previous derivation,
     // constraints that are required for shared types can be generated.
     let mut ienv = HashSet::new();

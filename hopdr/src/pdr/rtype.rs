@@ -303,21 +303,25 @@ impl<C: Refinement> Fv for Tau<C> {
     type Id = Ident;
 
     fn fv_with_vec(&self, fvs: &mut HashSet<Self::Id>) {
-        match self.kind() {
-            TauKind::Proposition(c) => {
-                c.fv_with_vec(fvs);
-            }
-            TauKind::IArrow(i, t) => {
-                t.fv_with_vec(fvs);
-                fvs.remove(i);
-            }
-            TauKind::Arrow(ts, t) => {
-                for s in ts {
-                    s.fv_with_vec(fvs);
+        fn inner<C: Refinement>(t: &Tau<C>, fvs: &mut HashSet<Ident>) {
+            match t.kind() {
+                TauKind::Proposition(c) => {
+                    c.fv_with_vec(fvs);
                 }
-                t.fv_with_vec(fvs);
+                TauKind::IArrow(i, t) => {
+                    t.fv_with_vec(fvs);
+                    fvs.remove(i);
+                }
+                TauKind::Arrow(ts, t) => {
+                    for s in ts {
+                        s.fv_with_vec(fvs);
+                    }
+                    t.fv_with_vec(fvs);
+                }
             }
         }
+        let t = self.alpha_renaming();
+        inner(&t, fvs)
     }
 }
 
@@ -467,18 +471,18 @@ impl<C: Refinement> Tau<C> {
     fn _disjoin(self, t: Self) -> Self {
         self._merge_inner(t, Method::Disj)
     }
-    pub fn avoid_collision(&self) -> Self {
+    pub fn alpha_renaming(&self) -> Self {
         match self.kind() {
             TauKind::Proposition(_) => self.clone(),
             TauKind::IArrow(x, t) => {
                 let new_x = Ident::fresh();
                 let t = t.rename(x, &new_x);
-                let t = t.avoid_collision();
+                let t = t.alpha_renaming();
                 Tau::mk_iarrow(new_x, t)
             }
             TauKind::Arrow(ts, t) => {
-                let ts = ts.iter().map(|t| t.avoid_collision()).collect();
-                let t = t.avoid_collision();
+                let ts = ts.iter().map(|t| t.alpha_renaming()).collect();
+                let t = t.alpha_renaming();
                 Tau::mk_arrow(ts, t)
             }
         }
@@ -754,8 +758,11 @@ impl Tau<Constraint> {
         //  - optimize_intersection_trivial
         //  # - optimize_intersection_subsumption
         let t = self.clone();
+        debug!("Ty::optimize before: {t}");
         let t = t.optimize_constraint_reduction();
+        debug!("optimizeed by optimize_constraint_reduction: {t}");
         let t = t.optimize_intersection_trivial();
+        debug!("optimizeed by optimize_intersection_trivial: {t}");
         t
     }
 }
@@ -1268,7 +1275,7 @@ impl PTy {
         let ty = &self.ty;
         // Make sure there is no variable name collison such as
         // // ∀z. (x: int → *[x = z]) → x: int → *[x = z]
-        let ty = ty.avoid_collision();
+        let ty = ty.alpha_renaming();
         let eqs = eq(&ty.rty_no_exists(), Stack::new(), vars);
 
         title!("optimize_trivial_ty::tr");
@@ -1470,13 +1477,18 @@ impl PTy {
         }
     }
     pub fn optimize(&self) -> Self {
+        debug!("PTy optimize before: {self}");
         let pty = self.optimize_trivial_ty();
+        debug!("PTy optimized by optimize_trivial_ty: {pty}");
         let ty = pty.ty.optimize();
-        let pty = pty.optimize_replace_top();
-        Self {
+        let pty = Self {
             ty,
             vars: pty.vars.clone(),
-        }
+        };
+        debug!("PTy optimized by ty optimize: {pty}");
+        let pty = pty.optimize_replace_top();
+        debug!("PTy optimized by optimize_replace_top: {pty}");
+        pty
     }
 }
 
@@ -1670,7 +1682,7 @@ impl<C: Refinement> PolymorphicType<Tau<C>> {
         crate::title!("instatiate_type");
         debug!("type={}", self);
         debug!("ints: {:?}", ints);
-        let mut ts = self.ty.avoid_collision();
+        let mut ts = self.ty.alpha_renaming();
         for fv in self.vars.iter() {
             let o = generate_arithmetic_template(ints, coefficients, all_coefficients);
             debug!("template: {}", o);
