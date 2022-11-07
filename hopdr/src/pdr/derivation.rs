@@ -619,12 +619,46 @@ impl Context {
                                     }
                                 }
                             }
-                            either::Right(_) => match app_expr_ty.kind() {
-                                TauKind::Arrow(_, t) => app_expr_ty = t.clone(),
-                                TauKind::IArrow(_, _) | TauKind::Proposition(_) => {
-                                    panic!("program error")
+                            either::Right(arg_ty) => {
+                                match app_expr_ty.kind() {
+                                    TauKind::Arrow(ts, t_result) => {
+                                        if ts.len() != 1 {
+                                            unimplemented!()
+                                        }
+                                        let t = &ts[0];
+                                        // arg_ty -> result -> <: ts -> t(arg_ty)
+                                        // ts <: arg_ty
+                                        for s in arg_ty.iter() {
+                                            let constraint = Tau::check_subtype(
+                                                &app_expr_ty.rty_no_exists(),
+                                                t,
+                                                s,
+                                            );
+                                            match constraint.to_chcs_or_pcsps() {
+                                                either::Left(chcs) => {
+                                                    debug!("constraints");
+                                                    for c in chcs {
+                                                        debug!("  - {}", c);
+                                                        clauses.push(c);
+                                                    }
+                                                }
+                                                either::Right(pcsps) => {
+                                                    debug!("constriant: {}", constraint);
+                                                    debug!("failed to translate the constraint to chcs");
+                                                    for c in pcsps {
+                                                        debug!("{}", c)
+                                                    }
+                                                    panic!("fatal")
+                                                }
+                                            }
+                                        }
+                                        app_expr_ty = t_result.clone()
+                                    }
+                                    TauKind::IArrow(_, _) | TauKind::Proposition(_) => {
+                                        panic!("program error")
+                                    }
                                 }
-                            },
+                            }
                         }
                     }
                 } else {
