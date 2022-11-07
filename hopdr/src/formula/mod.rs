@@ -1619,9 +1619,19 @@ impl Constraint {
         let (qs, pnf) = self.to_pnf_raw();
 
         let mut dclauses = Vec::new();
-        for dclause in pnf.to_dnf() {
+        let mut dnf = pnf.to_dnf();
+        dnf.sort_by(|x, y| format!("{x}").cmp(&format!("{y}")));
+
+        for dclause in dnf {
             let mut clauses = Vec::new();
             for clause in dclause.to_cnf() {
+                // if clause has already been in dclauses, we only have to consider the case where
+                // clause does not hold; i.e., we do not have to disjoin `dclause` further, so
+                // just assume it as false.
+                if dclauses.iter().find(|&c| c == &clause).is_some() {
+                    clauses = vec![Constraint::mk_false()];
+                    break;
+                }
                 if clauses.iter().find(|&c| c == &clause).is_none() {
                     clauses.push(clause.clone());
                 }
@@ -1867,6 +1877,19 @@ fn test_simplify_same_clause() {
     let dnf = c_aft.to_dnf();
     assert_eq!(dnf.len(), 1);
     assert_eq!(dnf[0].to_cnf().len(), 2);
+
+    // (x = y /\ x + 1 = y) \/ x = y \/ x + 1 = y
+    let c11 = Constraint::mk_disj(xeqy.clone(), xp1eqy.clone());
+    let c12 = Constraint::mk_disj(c11.clone(), c1.clone());
+    let c_bef = c12.clone();
+    println!("before : {c_bef}");
+    let c_aft = c_bef.simplify_same_clause();
+    println!("after c_aft: {c_aft}");
+    let dnf = c_aft.to_dnf();
+    assert_eq!(dnf.len(), 2);
+    for c in dnf {
+        assert_eq!(c.to_cnf().len(), 1);
+    }
 }
 
 // // Generate Template with the configuration

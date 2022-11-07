@@ -601,13 +601,14 @@ impl Context {
                 let mut body_ty = ret_ty.clone();
                 let mut app_expr_ty = tmp_ret_ty.clone();
 
-                for (arg_ty, reduction) in arg_tys.iter().zip(reduction.args.iter().rev()) {
-                    match arg_ty {
-                        either::Left(ident) => {
-                            body_ty = body_ty.deref_ptr(ident).rename(&ident, &reduction.old_id);
-
-                            let op: Op = reduction.arg.clone().into();
-                            if is_shared_ty {
+                if is_shared_ty {
+                    for (arg_ty, reduction) in arg_tys.iter().rev().zip(reduction.args.iter()) {
+                        //println!("arg_ty: {arg_ty}");
+                        match arg_ty {
+                            either::Left(ident) => {
+                                body_ty =
+                                    body_ty.deref_ptr(ident).rename(&ident, &reduction.old_id);
+                                let op: Op = reduction.arg.clone().into();
                                 match app_expr_ty.kind() {
                                     TauKind::IArrow(id, t) => {
                                         body_ty = body_ty.rename(&reduction.old_id, id);
@@ -617,15 +618,30 @@ impl Context {
                                         panic!("program error")
                                     }
                                 }
-                            } else {
+                            }
+                            either::Right(_) => match app_expr_ty.kind() {
+                                TauKind::Arrow(_, t) => app_expr_ty = t.clone(),
+                                TauKind::IArrow(_, _) | TauKind::Proposition(_) => {
+                                    panic!("program error")
+                                }
+                            },
+                        }
+                    }
+                } else {
+                    for (arg_ty, reduction) in arg_tys.iter().zip(reduction.args.iter().rev()) {
+                        match arg_ty {
+                            either::Left(ident) => {
+                                body_ty =
+                                    body_ty.deref_ptr(ident).rename(&ident, &reduction.old_id);
+                                let op: Op = reduction.arg.clone().into();
                                 tmp_ty = Tau::mk_iarrow(reduction.old_id, tmp_ty);
                                 app_expr_ty = app_expr_ty.subst(&reduction.old_id, &op);
                             }
-                        }
-                        either::Right(arg_ty) => {
-                            tmp_ty = Ty::mk_arrow(arg_ty.clone(), tmp_ty);
-                        }
-                    };
+                            either::Right(arg_ty) => {
+                                tmp_ty = Ty::mk_arrow(arg_ty.clone(), tmp_ty);
+                            }
+                        };
+                    }
                 }
                 // 3. generate constraint from subtyping t <: arg_ty -> ret_ty, and append them to constraints
                 // constrain by `old <= new_tmpty <= top`
@@ -1021,8 +1037,8 @@ fn handle_app(
     // [feature shared_ty] template type sharing
     // if there is a shared type registered, coarse pt to obey the type.
     match (&config.tc_mode, &app_expr.aux.tys) {
-        (TCFlag::Shared(_), Some(tys)) if tys.len() == 0 => pt.coarse_type(constraint, &tys[0]),
-        (_, None) => (),
+        (TCFlag::Shared(_), Some(tys)) if tys.len() == 1 => pt.coarse_type(constraint, &tys[0]),
+        (TCFlag::Normal, _) | (_, None) => (),
         (_, _) => unimplemented!(),
     }
     for level in app_expr.aux.level_arg.iter() {
@@ -1183,7 +1199,7 @@ fn type_check_inner(
     // if there is a shared type registered, coarse pt to obey the type.
     match (&config.tc_mode, &c.aux.tys) {
         (TCFlag::Shared(_), Some(tys)) if tys.len() == 0 => pt.coarse_type(constraint, &tys[0]),
-        (_, None) => (),
+        (TCFlag::Normal, _) | (_, None) => (),
         (_, _) => unimplemented!(),
     }
 
