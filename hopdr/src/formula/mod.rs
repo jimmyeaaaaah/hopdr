@@ -1610,11 +1610,41 @@ impl Constraint {
         }
         result_constraint
     }
+    /// simplifies the same clause in cnf/dnf
+    ///
+    /// Examples
+    /// - x = y /\ x + 1 = y \/ x = y /\ x + 1 = y ---> x = y /\ x + 1 = y
+    /// - x = y /\ x = y \/ x = y /\ x = y ---> x = y
+    fn simplify_same_clause(&self) -> Self {
+        let (qs, pnf) = self.to_pnf_raw();
+
+        let mut result_constraint = Constraint::mk_false();
+        let mut dclauses = Vec::new();
+        for dclause in pnf.to_dnf() {
+            let mut clauses = Vec::new();
+            let mut constraint = Constraint::mk_true();
+            for clause in dclause.to_cnf() {
+                if clauses.iter().find(|&c| c == &clause).is_none() {
+                    clauses.push(clause.clone());
+                    constraint = Constraint::mk_conj(constraint, clause);
+                }
+            }
+            if dclauses.iter().find(|&c| c == &constraint).is_none() {
+                dclauses.push(constraint.clone());
+                result_constraint = Constraint::mk_disj(result_constraint, constraint);
+            }
+        }
+        for (q, v) in qs {
+            result_constraint = Constraint::mk_quantifier(q, v, result_constraint);
+        }
+        result_constraint
+    }
     pub fn simplify(&self) -> Self {
         let c = self.simplify_trivial();
         let c = c.simplify_geq_geq();
         let c = c.simplify_by_finding_eq();
         let c = c.simplify_trivial();
+        let c = c.simplify_same_clause();
         c
     }
 }
@@ -1788,6 +1818,41 @@ fn test_constraint_simplify() {
     let c = Constraint::mk_conj(lhs.clone(), Constraint::mk_eq(o.clone(), Op::mk_const(12)));
     let c2 = Constraint::mk_conj(lhs, Constraint::mk_eq(o2.clone(), Op::mk_const(12)));
     assert_eq!(c, c2);
+}
+
+#[test]
+fn test_simplify_same_clause() {
+    // x = y /\ x + 1 = y \/ x = y /\ x + 1 = y
+    let x = Ident::fresh();
+    let y = Ident::fresh();
+
+    let xeqy = Constraint::mk_eq(Op::mk_var(x), Op::mk_var(y));
+    let xp1eqy = Constraint::mk_eq(Op::mk_inc(Op::mk_var(x)), Op::mk_var(y));
+    let c1 = Constraint::mk_conj(xeqy.clone(), xp1eqy.clone());
+    let c2 = Constraint::mk_disj(c1.clone(), c1.clone());
+    println!("before c2: {c2}");
+    let c3 = c2.simplify_same_clause();
+    println!("after c3: {c3}");
+    assert_eq!(c3.to_dnf().len(), 1);
+
+    // x = y /\ x + 1 = y \/ x = y /\ y + 1 = x
+    let yp1eqx = Constraint::mk_eq(Op::mk_inc(Op::mk_var(y)), Op::mk_var(x));
+    let c4 = Constraint::mk_conj(xeqy.clone(), yp1eqx.clone());
+    let c5 = Constraint::mk_disj(c1.clone(), c4.clone());
+    println!("before c5: {c5}");
+    let c6 = c5.simplify_same_clause();
+    println!("after c6: {c6}");
+    assert_eq!(c6.to_dnf().len(), 2);
+
+    // x = y /\ x = y \/ x = y /\ x = y
+    let c7 = Constraint::mk_conj(xeqy.clone(), xeqy.clone());
+    let c8 = Constraint::mk_disj(c7.clone(), c7.clone());
+    println!("before c8: {c8}");
+    let c9 = c8.simplify_same_clause();
+    println!("after c9: {c9}");
+    let dnf = c9.to_dnf();
+    assert_eq!(dnf.len(), 1);
+    assert_eq!(dnf[0].to_cnf().len(), 1);
 }
 
 // // Generate Template with the configuration
