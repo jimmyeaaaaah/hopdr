@@ -1618,22 +1618,26 @@ impl Constraint {
     fn simplify_same_clause(&self) -> Self {
         let (qs, pnf) = self.to_pnf_raw();
 
-        let mut result_constraint = Constraint::mk_false();
         let mut dclauses = Vec::new();
         for dclause in pnf.to_dnf() {
             let mut clauses = Vec::new();
-            let mut constraint = Constraint::mk_true();
             for clause in dclause.to_cnf() {
                 if clauses.iter().find(|&c| c == &clause).is_none() {
                     clauses.push(clause.clone());
-                    constraint = Constraint::mk_conj(constraint, clause);
                 }
             }
+            clauses.sort_by(|x, y| format!("{x}").cmp(&format!("{y}")));
+            let constraint = clauses
+                .into_iter()
+                .fold(Constraint::mk_true(), |x, y| Constraint::mk_conj(x, y));
             if dclauses.iter().find(|&c| c == &constraint).is_none() {
                 dclauses.push(constraint.clone());
-                result_constraint = Constraint::mk_disj(result_constraint, constraint);
             }
         }
+        dclauses.sort_by(|x, y| format!("{x}").cmp(&format!("{y}")));
+        let mut result_constraint = dclauses
+            .into_iter()
+            .fold(Constraint::mk_false(), |x, y| Constraint::mk_disj(x, y));
         for (q, v) in qs {
             result_constraint = Constraint::mk_quantifier(q, v, result_constraint);
         }
@@ -1853,6 +1857,16 @@ fn test_simplify_same_clause() {
     let dnf = c9.to_dnf();
     assert_eq!(dnf.len(), 1);
     assert_eq!(dnf[0].to_cnf().len(), 1);
+
+    // x = y /\ x + 1 = y \/ y + 1 = x /\ x = y
+    let c10 = Constraint::mk_conj(xp1eqy.clone(), xeqy.clone());
+    let c_bef = Constraint::mk_disj(c1.clone(), c10.clone());
+    println!("before c_bef: {c_bef}");
+    let c_aft = c_bef.simplify_same_clause();
+    println!("after c_aft: {c_aft}");
+    let dnf = c_aft.to_dnf();
+    assert_eq!(dnf.len(), 1);
+    assert_eq!(dnf[0].to_cnf().len(), 2);
 }
 
 // // Generate Template with the configuration

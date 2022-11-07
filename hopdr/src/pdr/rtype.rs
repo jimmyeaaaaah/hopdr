@@ -1476,18 +1476,23 @@ impl PTy {
             self.clone()
         }
     }
+    fn optimize_ty(&self) -> Self {
+        let ty = self.ty.optimize();
+        let pty = Self {
+            ty,
+            vars: self.vars.clone(),
+        };
+        pty
+    }
     pub fn optimize(&self) -> Self {
         debug!("PTy optimize before: {self}");
         let pty = self.optimize_trivial_ty();
         debug!("PTy optimized by optimize_trivial_ty: {pty}");
-        let ty = pty.ty.optimize();
-        let pty = Self {
-            ty,
-            vars: pty.vars.clone(),
-        };
+        let pty = pty.optimize_ty();
         debug!("PTy optimized by ty optimize: {pty}");
         let pty = pty.optimize_replace_top();
         debug!("PTy optimized by optimize_replace_top: {pty}");
+        let pty = pty.optimize_ty();
         pty
     }
 }
