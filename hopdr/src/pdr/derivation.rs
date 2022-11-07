@@ -260,10 +260,17 @@ fn generate_reduction_sequence(goal: &G, optimizer: &mut dyn Optimizer) -> (Vec<
                         let new_g = g.rename(&x.id, &new_var.id);
                         let old_id = x.id;
 
+                        // [feature shared_ty]
                         // introduce type sharing
-                        let vi = variable_info(level, new_var.clone(), idents);
-                        let tys = optimizer.gen_type(&vi);
-                        arg.aux.set_tys(tys);
+                        match arg.aux.tys {
+                            // if a shared type exists, we reuse it.
+                            Some(_) => (),
+                            None => {
+                                let vi = variable_info(level, new_var.clone(), idents);
+                                let tys = optimizer.gen_type(&vi);
+                                arg.aux.set_tys(tys);
+                            }
+                        }
 
                         let mut ret = new_g.subst(&new_var, &arg);
                         // introduce a new fresh variable to identify this expr
@@ -306,6 +313,7 @@ fn generate_reduction_sequence(goal: &G, optimizer: &mut dyn Optimizer) -> (Vec<
                     ) {
                         Some((ret, mut reduction)) => {
                             // case reduced above like App(App(Abs, arg)) -> App(Abs, arg)
+                            // [feature shared_ty]
                             // TODO: fvints & argints <- polymorphic_type config should be used to determine which to use
                             return match generate_reduction_info(
                                 optimizer,
@@ -1232,7 +1240,7 @@ fn type_check_inner(
     // [feature shared_ty] template type sharing
     // if there is a shared type registered, coarse pt to obey the type.
     match (&config.tc_mode, &c.aux.tys) {
-        (TCFlag::Shared(_), Some(tys)) if tys.len() == 0 => pt.coarse_type(constraint, &tys[0]),
+        (TCFlag::Shared(_), Some(tys)) if tys.len() == 1 => pt.coarse_type(constraint, &tys[0]),
         (TCFlag::Normal, _) | (_, None) => (),
         (_, _) => unimplemented!(),
     }
