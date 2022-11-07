@@ -631,8 +631,8 @@ impl Context {
                                         for s in arg_ty.iter() {
                                             let constraint = Tau::check_subtype(
                                                 &app_expr_ty.rty_no_exists(),
-                                                t,
                                                 s,
+                                                t,
                                             );
                                             match constraint.to_chcs_or_pcsps() {
                                                 either::Left(chcs) => {
