@@ -64,6 +64,19 @@ impl Type {
     }
 }
 
+#[test]
+fn test_type_order() {
+    let t = Type::mk_type_prop();
+    let t2 = Type::mk_type_arrow(Type::mk_type_int(), t);
+    assert_eq!(t2.order(), 1);
+
+    let t3 = Type::mk_type_arrow(
+        Type::mk_type_arrow(Type::mk_type_int(), t2),
+        Type::mk_type_prop(),
+    );
+    assert_eq!(t3.order(), 2);
+}
+
 #[derive(Clone, Debug)]
 pub struct TyEnv {
     map: HashTrieMap<Ident, Type>,

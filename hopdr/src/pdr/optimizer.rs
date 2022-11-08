@@ -68,6 +68,7 @@ impl Optimizer for NaiveOptimizer {
     }
 
     fn gen_type(&mut self, info: &VariableInfo) -> Option<Vec<derivation::Ty>> {
+        debug!("optimizer: gen type shared type {}", info.variable);
         match &info.variable.ty.kind() {
             crate::formula::TypeKind::Proposition | crate::formula::TypeKind::Integer => {
                 return None
@@ -76,6 +77,10 @@ impl Optimizer for NaiveOptimizer {
         };
         // always do not generate a common type when
         if self.already_attempted_once {
+            return None;
+        }
+
+        if info.variable.ty.order() >= 2 {
             return None;
         }
 
