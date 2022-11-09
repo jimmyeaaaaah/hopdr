@@ -80,9 +80,10 @@ impl Optimizer for NaiveOptimizer {
             return None;
         }
 
-        if info.variable.ty.order() >= 2 {
-            return None;
-        }
+        // do not handle higher-order ones
+        // if info.variable.ty.order() >= 2 {
+        //     return None;
+        // }
 
         // singleton template
         Some(vec![derivation::Ty::from_sty(

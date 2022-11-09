@@ -637,11 +637,18 @@ impl Context {
                                         // arg_ty -> result -> <: ts -> t(arg_ty)
                                         // ts <: arg_ty
                                         for s in arg_ty.iter() {
-                                            let constraint = Tau::check_subtype(
+                                            let constraint1 = Tau::check_subtype(
                                                 &app_expr_ty.rty_no_exists(),
                                                 s,
                                                 t,
                                             );
+                                            let constraint2 = Tau::check_subtype(
+                                                &app_expr_ty.rty_no_exists(),
+                                                t,
+                                                s,
+                                            );
+                                            let constraint =
+                                                Atom::mk_conj(constraint1, constraint2);
                                             match constraint.to_chcs_or_pcsps() {
                                                 either::Left(chcs) => {
                                                     debug!("constraints");
