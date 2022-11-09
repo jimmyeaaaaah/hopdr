@@ -15,6 +15,7 @@ use crate::formula::Fv;
 use crate::formula::Op;
 use crate::formula::Subst;
 use crate::formula::{Bot, Constraint, FirstOrderLogic, Ident, Logic, Negation, Top};
+use crate::solver;
 use crate::solver::interpolation::InterpolationSolver::SMTInterpol;
 use crate::solver::smt::ident_2_smt2;
 use crate::solver::util;
@@ -697,28 +698,61 @@ fn interpolate_preds(
     model
 }
 
+pub struct InterpolationConfig {
+    use_chc_if_requied: bool,
+}
+
+impl InterpolationConfig {
+    pub fn new() -> Self {
+        InterpolationConfig {
+            use_chc_if_requied: false,
+        }
+    }
+    pub fn use_chc_if_requied(mut self) -> Self {
+        self.use_chc_if_requied = true;
+        self
+    }
+}
+
+impl Default for InterpolationConfig {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// interpolate predicates under the given CHC constraints.
 ///
 /// Assumption: `chc' is satisfiable.
-pub fn solve(chc: &Vec<CHC>) -> Model {
+pub fn solve(chc: &Vec<CHC>, config: &InterpolationConfig) -> Model {
     debug!("[interpolation::solve]");
     for c in chc {
         debug!("- {}", c);
     }
     let chc: Vec<_> = chc.iter().map(|c| c.fresh_variables()).collect();
     let chc = &chc;
-    let (preds, n_args) =
-        topological_sort(chc).unwrap_or_else(|| panic!("constraints contain a cycle"));
+    match topological_sort(chc) {
+        Some((preds, n_args)) => {
+            let least_model = generate_least_solution(chc, &preds, &n_args);
 
-    let least_model = generate_least_solution(chc, &preds, &n_args);
-
-    interpolate_preds(
-        chc,
-        &preds,
-        &n_args,
-        &least_model,
-        InterpolationSolver::default_solver(),
-    )
+            interpolate_preds(
+                chc,
+                &preds,
+                &n_args,
+                &least_model,
+                InterpolationSolver::default_solver(),
+            )
+        }
+        None if config.use_chc_if_requied => {
+            let mut solver = solver::chc::default_solver();
+            match solver.solve(chc) {
+                solver::chc::CHCResult::Sat(m) => m,
+                solver::chc::CHCResult::Unsat
+                | solver::chc::CHCResult::Unknown
+                | solver::chc::CHCResult::Timeout => panic!("program error"),
+            }
+        }
+        None => panic!("constraints contain a cycle"),
+    }
 }
 
 #[test]
@@ -759,7 +793,8 @@ fn test_interpolation() {
     debug!("- {}", clause2);
     let clauses = vec![clause1, clause2];
 
-    let m = solve(&clauses);
+    let config = InterpolationConfig::new().use_chc_if_requied();
+    let m = solve(&clauses, &config);
 
     for (x, (_, z)) in m.model {
         debug!("{} => {}", x, z)

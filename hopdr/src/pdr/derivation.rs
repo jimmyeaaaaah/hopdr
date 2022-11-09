@@ -799,7 +799,8 @@ impl Context {
         crate::title!("model from CHC solver");
         // TODO: Display model
         debug!("{}", m);
-        let model = solver::interpolation::solve(&clauses);
+        let config = solver::interpolation::InterpolationConfig::new().use_chc_if_requied();
+        let model = solver::interpolation::solve(&clauses, &config);
         debug!("interpolated:");
         debug!("{}", model);
 

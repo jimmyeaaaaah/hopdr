@@ -214,7 +214,8 @@ pub(super) fn infer(
             title!("model from CHC solver");
             // TODO: Display model
             debug!("{}", m);
-            let m = solver::interpolation::solve(&clauses);
+            let config = solver::interpolation::InterpolationConfig::new().use_chc_if_requied();
+            let m = solver::interpolation::solve(&clauses, &config);
             debug!("interpolated:");
             debug!("{}", m);
             m

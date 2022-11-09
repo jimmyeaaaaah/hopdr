@@ -709,7 +709,7 @@ impl Tau<Constraint> {
                     panic!("panic")
                 }
             };
-            let model = solver::interpolation::solve(&clauses);
+            let model = solver::interpolation::solve(&clauses, &Default::default());
             let t = t.assign(&model.model);
             vec![t]
         }
