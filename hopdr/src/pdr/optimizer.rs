@@ -3,7 +3,7 @@
 use super::derivation;
 use crate::formula::{Ident, Variable};
 
-use std::{collections::HashSet, sync::Arc};
+use std::collections::HashSet;
 
 pub struct InferenceResult {
     #[allow(dead_code)]
