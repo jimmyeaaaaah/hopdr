@@ -3,7 +3,7 @@
 use super::derivation;
 use crate::formula::{Ident, Variable};
 
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::Arc};
 
 pub struct InferenceResult {
     #[allow(dead_code)]
@@ -36,6 +36,122 @@ pub trait Optimizer {
     fn continuable(&self) -> bool;
     fn report_inference_result(&mut self, result: InferenceResult);
     fn gen_type(&mut self, info: &VariableInfo) -> Option<Vec<derivation::Ty>>;
+}
+
+// Assume that for a candidate c, there is no nonderterminism on the reduction sequence of c ->* normal form of c,
+// we can distinguish the reduction by how many times gen_type is called in the derivation generation.
+pub struct RepetitiveOptimizer {
+    end: bool,
+    current_idx: u64,
+    next_index: u64,
+    already_generated_in_current_derivation: bool,
+}
+
+impl RepetitiveOptimizer {
+    #[allow(dead_code)]
+    pub fn new() -> Self {
+        RepetitiveOptimizer {
+            end: false,
+            current_idx: 0,
+            next_index: 0,
+            already_generated_in_current_derivation: false,
+        }
+    }
+}
+
+impl Optimizer for RepetitiveOptimizer {
+    fn continuable(&self) -> bool {
+        !self.end
+    }
+
+    fn report_inference_result(&mut self, _result: InferenceResult) {
+        if !self.already_generated_in_current_derivation {
+            self.end = true;
+        }
+        self.current_idx = 0;
+        self.already_generated_in_current_derivation = false;
+    }
+
+    fn gen_type(&mut self, info: &VariableInfo) -> Option<Vec<derivation::Ty>> {
+        if self.already_generated_in_current_derivation {
+            return None;
+        }
+        if self.current_idx < self.next_index {
+            self.current_idx += 1;
+            return None;
+        }
+        self.already_generated_in_current_derivation = true;
+        self.next_index += 1;
+
+        debug!("optimizer: gen type shared type {}", info.variable);
+        match &info.variable.ty.kind() {
+            crate::formula::TypeKind::Proposition | crate::formula::TypeKind::Integer => {
+                return None
+            }
+            crate::formula::TypeKind::Arrow(_, _) => (),
+        };
+
+        // singleton template
+        Some(vec![derivation::Ty::from_sty(
+            &info.variable.ty,
+            &info.idents,
+        )])
+    }
+}
+#[test]
+fn test_repetitive_optimizer() {
+    use crate::formula::Type;
+    let mut o = RepetitiveOptimizer::new();
+    let st = Type::mk_type_arrow(Type::mk_type_int(), Type::mk_type_prop());
+    assert!(o.continuable());
+    let mut vars = HashSet::new();
+    vars.insert(Ident::fresh());
+    let vi = VariableInfo {
+        reduction_id: 0,
+        variable: Variable::fresh(st.clone()),
+        idents: &vars,
+    };
+    let ts = o.gen_type(&vi).unwrap();
+    assert_eq!(ts.len(), 1);
+    let t = &ts[0];
+    assert!(t.to_sty() == st);
+    let c = t.rty_no_exists();
+    match c.kind() {
+        crate::formula::fofml::AtomKind::Predicate(_, l) if l.len() == 2 => (),
+        _ => panic!("fail"),
+    }
+
+    let ts = o.gen_type(&vi);
+    assert!(ts.is_none());
+    let ts = o.gen_type(&vi);
+    assert!(ts.is_none());
+
+    // tick
+    o.report_inference_result(InferenceResult { succeeded: false });
+    assert!(o.continuable());
+    assert!(o.gen_type(&vi).is_none());
+    assert!(o.gen_type(&vi).is_some());
+    assert!(o.gen_type(&vi).is_none());
+
+    // tick
+    o.report_inference_result(InferenceResult { succeeded: false });
+    assert!(o.continuable());
+    assert!(o.gen_type(&vi).is_none());
+    assert!(o.gen_type(&vi).is_none());
+    assert!(o.gen_type(&vi).is_some());
+
+    o.report_inference_result(InferenceResult { succeeded: false });
+    assert!(o.continuable());
+    assert!(o.gen_type(&vi).is_none());
+    assert!(o.gen_type(&vi).is_none());
+    assert!(o.gen_type(&vi).is_none());
+
+    // tick
+    o.report_inference_result(InferenceResult { succeeded: false });
+    assert!(!o.continuable());
+    // tick
+    o.report_inference_result(InferenceResult { succeeded: false });
+    assert!(!o.continuable());
 }
 
 // first attempt: always introduce a common type
