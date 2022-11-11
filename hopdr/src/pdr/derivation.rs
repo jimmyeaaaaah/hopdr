@@ -1824,7 +1824,7 @@ pub fn search_for_type(
     debug!("{}", candidate);
     let infer_polymorphic_type = config.infer_polymorphic_type;
     // TODO: expand candidate once based on problem.
-    let mut optimizer = optimizer::NaiveOptimizer::new();
+    let mut optimizer = optimizer::VoidOptimizer::new();
     while optimizer.continuable() {
         let mut ctx = reduce_until_normal_form(candidate, problem, config, &mut optimizer);
         debug!("{}", ctx.normal_form);
