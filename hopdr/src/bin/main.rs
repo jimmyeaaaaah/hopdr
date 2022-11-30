@@ -3,11 +3,13 @@ extern crate hopdr;
 extern crate lazy_static;
 #[macro_use]
 extern crate log;
+extern crate ctrlc;
 
 use hopdr::*;
 
 use clap::Parser;
 use colored::Colorize;
+use hopdr::pdr::PDRConfig;
 use hopdr::title;
 use nom::error::VerboseError;
 
@@ -21,16 +23,24 @@ struct Args {
     /// Name of the person to greet
     #[clap(short, long)]
     input: String,
-    #[clap(short, long)]
+    #[clap(long)]
     no_preprocess: bool,
-    #[clap(short, long)]
+    #[clap(long)]
     print_stat: bool,
     /// Timeout (sec); if set to 0, no timeout
     #[clap(short, long, default_value_t = 0)]
     timeout: u64,
+    #[clap(long)]
+    dump_tex_progress: bool,
+    #[clap(long)]
+    no_inlining: bool,
+    #[clap(long)]
+    remove_disjunction: bool,
+    #[clap(long)]
+    smt_interpol: Option<String>,
 }
 
-fn pdr_main(contents: String) -> hopdr::pdr::VerificationResult {
+fn pdr_main(contents: String, config: PDRConfig) -> hopdr::pdr::VerificationResult {
     debug!("starting PDR...");
     let (_, f) = parse::parse::<VerboseError<&str>>(&contents).unwrap();
 
@@ -50,11 +60,16 @@ fn pdr_main(contents: String) -> hopdr::pdr::VerificationResult {
         debug!("{}", fml);
     }
 
-    pdr::run(vc)
+    pdr::run(vc, config)
+}
+
+fn gen_configuration_from_args(args: &Args) -> hopdr::Configuration {
+    hopdr::Configuration::new()
+        .inlining(!args.no_inlining)
+        .remove_disjunction(args.remove_disjunction)
 }
 
 fn main() {
-    let solver_total_time = std::time::Instant::now();
     // setting logs
     env_logger::builder()
         .format_timestamp(None)
@@ -69,11 +84,21 @@ fn main() {
     // parsing command line args
     let args = Args::parse();
 
-    let contents = if args.no_preprocess || true {
+    // FIXME: adhoc
+    match &args.smt_interpol {
+        Some(s) => hopdr::solver::interpolation::set_smt_interpol_path(s.clone()),
+        None => (),
+    }
+
+    let config = gen_configuration_from_args(&args);
+
+    let contents = if args.no_preprocess {
         fs::read_to_string(&args.input).expect("Something went wrong reading the file")
     } else {
-        preprocess::hfl_preprocessor::open_file_with_preprocess(&args.input).unwrap()
+        preprocess::hfl_preprocessor::open_file_with_preprocess(&args.input, &config).unwrap()
     };
+
+    let config = pdr::PDRConfig::new().dump_tex_progress(args.dump_tex_progress);
 
     // RUST_LOG=info (trace, debug, etc..)
 
@@ -81,10 +106,10 @@ fn main() {
     // following https://gist.github.com/junha1/8ebaf53f46ea6fc14ab6797b9939b0f8
 
     let r = if args.timeout == 0 {
-        Ok(pdr_main(contents))
+        util::executes_with_timeout_and_ctrlc(move || pdr_main(contents, config), None)
     } else {
         let timeout = time::Duration::from_secs(args.timeout);
-        util::executes_with_timeout(move || pdr_main(contents), timeout)
+        util::executes_with_timeout_and_ctrlc(move || pdr_main(contents, config), Some(timeout))
     };
     match r {
         Ok(pdr::VerificationResult::Valid) => {
@@ -102,8 +127,11 @@ fn main() {
         Err(util::ExecutionError::Panic) => {
             println!("{}", "Fail".red());
         }
+        Err(util::ExecutionError::Ctrlc) => {
+            println!("{}", "Execution terminated".white());
+        }
     }
-    crate::stat::overall::register_total_time(solver_total_time.elapsed());
+    crate::stat::finalize();
 
     if args.print_stat {
         crate::stat::dump();

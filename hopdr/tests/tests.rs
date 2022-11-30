@@ -92,11 +92,11 @@ fn type_check_1() {
     let mut env = TyEnv::new();
 
     for (fml, ty) in vc.clauses.iter().zip(types.iter()) {
-        env.add(fml.head.id, ty.clone());
+        env.add(fml.head.id, PolymorphicType::poly(ty.clone()));
     }
 
     let vc = vc.into();
-    assert!(pdr::fml::check_inductive(&env, &vc))
+    assert!(pdr::derivation::check_inductive(&env, &vc))
 }
 
 /*
@@ -108,6 +108,7 @@ fn type_check_1() {
    Z x =v X x E || Y x E.
    M =v ∀x. x = 0 || Z x.
 */
+#[allow(dead_code)]
 fn gen_tyenv_for_test(
     clauses: &[hopdr::formula::hes::Clause<hopdr::formula::Constraint>],
 ) -> hopdr::pdr::rtype::TyEnv {
@@ -178,41 +179,43 @@ fn gen_tyenv_for_test(
 
     for (fml, ty) in clauses.iter().zip(types.iter()) {
         println!("{}: {}", fml.head.id, ty.clone());
-        env.add(fml.head.id, ty.clone());
+        env.add(fml.head.id, PolymorphicType::poly(ty.clone()));
     }
     env
 }
 
-#[test]
-fn type_check_2() {
-    let (_, f) = parse::parse::<VerboseError<&str>>(
-        "
-        %HES
-	    M =v ∀x. x = 0 || Z x.
-	    X n f =v f n && X (n + 1) f.
-	    Y n f =v f n && Y (n - 1) f.
-	    E n =v n != 0.
-	    Z x =v X x E || Y x E.
-	     ",
-    )
-    .unwrap();
-    match &f {
-        parse::Problem::NuHFLZValidityChecking(vc) => {
-            for fml in vc.formulas.iter() {
-                println!("{}", fml);
-            }
-        }
-    }
-
-    let (vc, _ctx) = preprocess::hes::preprocess(f);
-    for fml in vc.clauses.iter() {
-        println!("{}", fml);
-    }
-
-    let env = gen_tyenv_for_test(&vc.clauses);
-    let vc = vc.into();
-    assert!(pdr::fml::check_inductive(&env, &vc))
-}
+// [Note] 2022-10-12
+// this test is currently unavailable since the input is not conjunctive-nu-HFLZ
+// #[test]
+// fn type_check_2() {
+//     let (_, f) = parse::parse::<VerboseError<&str>>(
+//         "
+//         %HES
+// 	    M =v ∀x. x = 0 || Z x.
+// 	    X n f =v f n && X (n + 1) f.
+// 	    Y n f =v f n && Y (n - 1) f.
+// 	    E n =v n != 0.
+// 	    Z x =v X x E || Y x E.
+// 	     ",
+//     )
+//     .unwrap();
+//     match &f {
+//         parse::Problem::NuHFLZValidityChecking(vc) => {
+//             for fml in vc.formulas.iter() {
+//                 println!("{}", fml);
+//             }
+//         }
+//     }
+//
+//     let (vc, _ctx) = preprocess::hes::preprocess(f);
+//     for fml in vc.clauses.iter() {
+//         println!("{}", fml);
+//     }
+//
+//     let env = gen_tyenv_for_test(&vc.clauses);
+//     let vc = vc.into();
+//     assert!(pdr::derivation::check_inductive(&env, &vc))
+// }
 
 #[test]
 fn type_check_poly() {
@@ -265,41 +268,43 @@ fn type_check_poly() {
 
     for (fml, ty) in vc.clauses.iter().zip(types.iter()) {
         println!("{}: {}", fml.head.id, ty.clone());
-        env.add(fml.head.id, ty.clone());
+        env.add(fml.head.id, PolymorphicType::poly(ty.clone()));
     }
 
     let vc = vc.into();
-    assert!(pdr::fml::check_inductive(&env, &vc))
+    assert!(pdr::derivation::check_inductive(&env, &vc))
 }
-#[test]
-fn type_check_e() {
-    let (_, f) = parse::parse::<VerboseError<&str>>(
-        "
-        %HES
-	    M =v ∀x. x = 0 || Z x.
-	    X n f =v f n && X (n + 1) f.
-	    Y n f =v f n && X (n - 1) f.
-	    E n =v n != 0.
-	    Z x =v X x E || Y x E.
-	     ",
-    )
-    .unwrap();
-    match &f {
-        parse::Problem::NuHFLZValidityChecking(vc) => {
-            for fml in vc.formulas.iter() {
-                println!("{}", fml);
-            }
-        }
-    }
-
-    let (vc, _ctx) = preprocess::hes::preprocess(f);
-    for fml in vc.clauses.iter() {
-        println!("{}", fml);
-    }
-    let env = gen_tyenv_for_test(&vc.clauses);
-    let vc = vc.into();
-    assert!(!pdr::fml::check_inductive(&env, &vc))
-}
+// [Note] 2022-10-12
+// this test is currently unavailable since the input is not conjunctive-nu-HFLZ
+// #[test]
+// fn type_check_e() {
+//     let (_, f) = parse::parse::<VerboseError<&str>>(
+//         "
+//         %HES
+// 	    M =v ∀x. x = 0 || Z x.
+// 	    X n f =v f n && X (n + 1) f.
+// 	    Y n f =v f n && X (n - 1) f.
+// 	    E n =v n != 0.
+// 	    Z x =v X x E || Y x E.
+// 	     ",
+//     )
+//     .unwrap();
+//     match &f {
+//         parse::Problem::NuHFLZValidityChecking(vc) => {
+//             for fml in vc.formulas.iter() {
+//                 println!("{}", fml);
+//             }
+//         }
+//     }
+//
+//     let (vc, _ctx) = preprocess::hes::preprocess(f);
+//     for fml in vc.clauses.iter() {
+//         println!("{}", fml);
+//     }
+//     let env = gen_tyenv_for_test(&vc.clauses);
+//     let vc = vc.into();
+//     assert!(!pdr::derivation::check_inductive(&env, &vc))
+// }
 
 // #[test]
 // fn test_pdr() {

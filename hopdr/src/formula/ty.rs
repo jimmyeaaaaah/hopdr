@@ -1,7 +1,9 @@
+use rpds::HashTrieMap;
+
 use crate::util::P;
 use std::fmt;
 
-use super::{TeXFormat, TeXPrinter};
+use super::{Ident, TeXFormat, TeXPrinter};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum TypeKind {
@@ -60,4 +62,57 @@ impl Type {
             TypeKind::Arrow(x, y) => std::cmp::max(x.order() + 1, y.order()),
         }
     }
+}
+
+#[test]
+fn test_type_order() {
+    let t = Type::mk_type_prop();
+    let t2 = Type::mk_type_arrow(Type::mk_type_int(), t);
+    assert_eq!(t2.order(), 1);
+
+    let t3 = Type::mk_type_arrow(
+        Type::mk_type_arrow(Type::mk_type_int(), t2),
+        Type::mk_type_prop(),
+    );
+    assert_eq!(t3.order(), 2);
+}
+
+#[derive(Clone, Debug)]
+pub struct TyEnv {
+    map: HashTrieMap<Ident, Type>,
+}
+
+impl fmt::Display for TyEnv {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "[")?;
+        for (i, t) in self.map.iter() {
+            write!(f, "{}: {}, ", i, t)?;
+        }
+        write!(f, "]")
+    }
+}
+
+impl<'a> TyEnv {
+    pub fn new() -> TyEnv {
+        TyEnv {
+            map: HashTrieMap::new(),
+        }
+    }
+    pub fn add(&mut self, id: Ident, ty: Type) {
+        self.map = self.map.insert(id, ty);
+    }
+    pub fn del(&mut self, id: &Ident) {
+        self.map = self.map.remove(id);
+    }
+    pub fn get(&self, id: &Ident) -> Option<Type> {
+        self.map.get(id).cloned()
+    }
+}
+
+pub fn generate_global_environment<C>(formulas: &Vec<super::hes::Clause<C>>) -> TyEnv {
+    let mut env = TyEnv::new();
+    for formula in formulas.iter() {
+        env.add(formula.head.id, formula.head.ty.clone());
+    }
+    env
 }

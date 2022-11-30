@@ -1,6 +1,7 @@
-mod derivation;
+pub mod derivation;
 pub mod fml;
 mod infer;
+mod optimizer;
 pub mod pdr;
 pub mod rtype;
 
@@ -26,6 +27,28 @@ impl fmt::Display for VerificationResult {
                 Unknown => "unknown",
             }
         )
+    }
+}
+
+pub struct PDRConfig {
+    dump_tex_progress: bool,
+}
+
+impl Default for PDRConfig {
+    fn default() -> Self {
+        PDRConfig {
+            dump_tex_progress: false,
+        }
+    }
+}
+
+impl PDRConfig {
+    pub fn new() -> Self {
+        Self::default()
+    }
+    pub fn dump_tex_progress(mut self, dump_tex_progress: bool) -> Self {
+        self.dump_tex_progress = dump_tex_progress;
+        self
     }
 }
 

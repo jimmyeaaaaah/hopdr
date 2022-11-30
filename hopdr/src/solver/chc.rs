@@ -2,7 +2,7 @@ use super::smt;
 use super::smt::constraint_to_smt2_inner;
 use super::smt::ident_2_smt2;
 use super::util;
-use super::SMT2Style;
+use super::SMTSolverType;
 use crate::formula::chc;
 use crate::formula::chc::Model;
 use crate::formula::fofml;
@@ -67,7 +67,7 @@ fn predicate_to_smt2(p: &Ident, args: &[Op]) -> String {
 }
 
 fn atom_to_smt2(p: &pcsp::Atom) -> String {
-    const STYLE: SMT2Style = SMT2Style::Z3;
+    const STYLE: SMTSolverType = SMTSolverType::Z3;
     match p.kind() {
         pcsp::AtomKind::True => "true".to_string(),
         pcsp::AtomKind::Constraint(c) => constraint_to_smt2_inner(c, STYLE),
@@ -93,7 +93,7 @@ fn chc_to_smt2(chc: &CHC, style: CHCStyle) -> String {
     let head_smt2 = match &chc.head {
         chc::CHCHead::Constraint(c) => {
             c.fv_with_vec(&mut fvs);
-            smt::constraint_to_smt2_inner(c, SMT2Style::Z3)
+            smt::constraint_to_smt2_inner(c, SMTSolverType::Z3)
         }
         chc::CHCHead::Predicate(a) => {
             for i in a.args.iter() {
@@ -730,6 +730,33 @@ fn test_parse_model() {
             assert!(m.model.len() == 2);
         }
         Err(_) => panic!("model is broken"),
+    }
+    let model = "(model
+  (define-fun xx_2
+    ( (v_0 Int) ) Bool
+    true
+  )
+  (define-fun xx_3
+    ( (v_0 Int) (v_1 Int) ) Bool
+    (or (and (= (+ v_0 (* (- 1) v_1) 10) 0) (or (= (+ v_0 (- 91)) 0) (>= v_1 102))) (and (>= (* (- 1) v_1) (- 101)) (or (= (+ v_0 (- 91)) 0) (>= v_1 102)) (not (= (+ v_0 (* (- 1) v_1) 10) 0))))
+  )
+  (define-fun xx_4
+    ( (v_0 Int) (v_1 Int) ) Bool
+    (and (xx_2 v_1) (xx_3 v_0 v_1))
+  ))";
+    let m = match Model::parse_hoice_model(model) {
+        Ok(m) => {
+            assert!(m.model.len() == 3);
+            m
+        }
+        Err(_) => panic!("model is broken"),
+    };
+    for (id, (args, c)) in m.model.iter() {
+        print!("{id}(");
+        for arg in args.iter() {
+            print!("{arg},");
+        }
+        println!(") = {c}");
     }
 }
 

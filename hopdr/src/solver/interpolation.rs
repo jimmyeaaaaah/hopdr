@@ -15,10 +15,11 @@ use crate::formula::Fv;
 use crate::formula::Op;
 use crate::formula::Subst;
 use crate::formula::{Bot, Constraint, FirstOrderLogic, Ident, Logic, Negation, Top};
+use crate::solver;
 use crate::solver::interpolation::InterpolationSolver::SMTInterpol;
 use crate::solver::smt::ident_2_smt2;
 use crate::solver::util;
-use crate::solver::{smt, SMT2Style};
+use crate::solver::{smt, SMTSolverType};
 
 use home::home_dir;
 
@@ -28,6 +29,22 @@ use std::time::Duration;
 type CHC = chc::CHC<chc::Atom, Constraint>;
 type CHCBody = chc::CHCBody<chc::Atom, Constraint>;
 
+static mut SMTINTERPOL_PATH: Option<String> = None;
+pub fn set_smt_interpol_path(path: String) {
+    unsafe {
+        SMTINTERPOL_PATH = Some(path);
+    }
+}
+fn get_smt_interpol_path() -> String {
+    match unsafe { &SMTINTERPOL_PATH } {
+        Some(s) => s.clone(),
+        None => {
+            let mut home = home_dir().unwrap();
+            home.push(".local/share/hopdr/smtinterpol.jar");
+            home.into_os_string().into_string().unwrap()
+        }
+    }
+}
 pub enum InterpolationSolver {
     SMTInterpol,
     Csisat,
@@ -322,14 +339,19 @@ fn parse_body(s: &str, fvs: HashSet<Ident>) -> Constraint {
 /// helper macro for measuring total time for execution
 macro_rules! interp_execution {
     ( $b:block ) => {{
-        crate::stat::interpolation::count();
-        use std::time::Instant;
-        let now = Instant::now();
+        #[cfg(not(debug_assertions))]
+        {
+            crate::stat::interpolation::count();
+
+            crate::stat::interpolation::start_clock();
+        }
 
         let out = $b;
 
-        let duration = now.elapsed();
-        crate::stat::interpolation::total_time(duration);
+        #[cfg(not(debug_assertions))]
+        {
+            crate::stat::interpolation::end_clock();
+        }
         out
     }};
 }
@@ -386,9 +408,9 @@ impl SMTInterpolSolver {
         for var in fvs.iter() {
             result += &format!("(declare-fun {} () Int)\n", smt::ident_2_smt2(var));
         }
-        let left_s = smt::constraint_to_smt2_inner(left, SMT2Style::Z3);
+        let left_s = smt::constraint_to_smt2_inner(left, SMTSolverType::Z3);
         result += &format!("(assert (! {} :named IP_0))\n", left_s);
-        let right_s = smt::constraint_to_smt2_inner(right, SMT2Style::Z3);
+        let right_s = smt::constraint_to_smt2_inner(right, SMTSolverType::Z3);
         result += &format!("(assert (! {} :named IP_1))\n", right_s);
 
         result += "(check-sat)\n(get-interpolants IP_0 IP_1)\n";
@@ -399,9 +421,7 @@ impl SMTInterpolSolver {
         debug!("smt_string: {}", &smt_string);
         let f = smt::save_smt2(smt_string);
         // TODO: determine the path when it's compiled
-        let mut home = home_dir().unwrap();
-        home.push(".local/share/hopdr/smtinterpol.jar");
-        let s = home.into_os_string().into_string().unwrap();
+        let s = get_smt_interpol_path();
         let args = vec!["-jar", &s, f.path().to_str().unwrap()];
         debug!("filename: {}", &args[0]);
         let out = interp_execution!({
@@ -678,28 +698,61 @@ fn interpolate_preds(
     model
 }
 
+pub struct InterpolationConfig {
+    use_chc_if_requied: bool,
+}
+
+impl InterpolationConfig {
+    pub fn new() -> Self {
+        InterpolationConfig {
+            use_chc_if_requied: false,
+        }
+    }
+    pub fn use_chc_if_requied(mut self) -> Self {
+        self.use_chc_if_requied = true;
+        self
+    }
+}
+
+impl Default for InterpolationConfig {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// interpolate predicates under the given CHC constraints.
 ///
 /// Assumption: `chc' is satisfiable.
-pub fn solve(chc: &Vec<CHC>) -> Model {
+pub fn solve(chc: &Vec<CHC>, config: &InterpolationConfig) -> Model {
     debug!("[interpolation::solve]");
     for c in chc {
         debug!("- {}", c);
     }
     let chc: Vec<_> = chc.iter().map(|c| c.fresh_variables()).collect();
     let chc = &chc;
-    let (preds, n_args) =
-        topological_sort(chc).unwrap_or_else(|| panic!("constraints contain a cycle"));
+    match topological_sort(chc) {
+        Some((preds, n_args)) => {
+            let least_model = generate_least_solution(chc, &preds, &n_args);
 
-    let least_model = generate_least_solution(chc, &preds, &n_args);
-
-    interpolate_preds(
-        chc,
-        &preds,
-        &n_args,
-        &least_model,
-        InterpolationSolver::default_solver(),
-    )
+            interpolate_preds(
+                chc,
+                &preds,
+                &n_args,
+                &least_model,
+                InterpolationSolver::default_solver(),
+            )
+        }
+        None if config.use_chc_if_requied => {
+            let mut solver = solver::chc::default_solver();
+            match solver.solve(chc) {
+                solver::chc::CHCResult::Sat(m) => m,
+                solver::chc::CHCResult::Unsat
+                | solver::chc::CHCResult::Unknown
+                | solver::chc::CHCResult::Timeout => panic!("program error"),
+            }
+        }
+        None => panic!("constraints contain a cycle"),
+    }
 }
 
 #[test]
@@ -740,7 +793,8 @@ fn test_interpolation() {
     debug!("- {}", clause2);
     let clauses = vec![clause1, clause2];
 
-    let m = solve(&clauses);
+    let config = InterpolationConfig::new().use_chc_if_requied();
+    let m = solve(&clauses, &config);
 
     for (x, (_, z)) in m.model {
         debug!("{} => {}", x, z)

@@ -1,4 +1,6 @@
 mod alpha;
+mod eta;
+mod extravar;
 pub mod hes;
 pub mod hfl_preprocessor;
 mod safety;
