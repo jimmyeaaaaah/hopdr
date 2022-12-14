@@ -505,6 +505,47 @@ impl Context {
         reduction: &Reduction,
         clauses: &mut Vec<chc::CHC<chc::Atom, Constraint>>,
     ) {
+        ///// aux functions
+        fn append_clauses(clauses: &mut Vec<chc::CHC<chc::Atom, Constraint>>, constraint: &Atom) {
+            match constraint.to_chcs_or_pcsps() {
+                either::Left(chcs) => {
+                    debug!("constraints");
+                    for c in chcs {
+                        debug!("  - {}", c);
+                        clauses.push(c);
+                    }
+                }
+                either::Right(pcsps) => {
+                    debug!("constriant: {}", constraint);
+                    debug!("failed to translate the constraint to chcs");
+                    for c in pcsps {
+                        debug!("{}", c)
+                    }
+                    panic!("fatal")
+                }
+            }
+        }
+        fn append_clauses_by_subst(
+            clauses: &mut Vec<chc::CHC<chc::Atom, Constraint>>,
+            ts: &Vec<Ty>,
+            arg_ty: &Vec<Ty>,
+            constraint: &Atom,
+        ) {
+            if ts.len() != 1 {
+                unimplemented!()
+            }
+            let t = &ts[0];
+            // arg_ty -> result -> <: ts -> t(arg_ty)
+            // ts <: arg_ty
+            for s in arg_ty.iter() {
+                let constraint1 = Tau::check_subtype(&constraint.clone(), s, t);
+                let constraint2 = Tau::check_subtype(&constraint.clone(), t, s);
+                let constraint = Atom::mk_conj(constraint1, constraint2);
+                append_clauses(clauses, &constraint);
+            }
+        }
+        ///// aux functions end
+
         title!("Reduction");
         debug!("{}", reduction);
         let ret_tys = derivation.get_expr_ty(&reduction.result.aux.id);
@@ -516,6 +557,7 @@ impl Context {
             title!("no ret_tys");
             panic!("fatal");
         }
+        // retrieve argument types
         let mut arg_tys = Vec::new();
         for ri in reduction.args.iter().rev() {
             let arg_ty = if ri.arg_var.ty.is_int() {
@@ -551,12 +593,12 @@ impl Context {
         }
         assert_eq!(expr_ids.len(), arg_tys.len());
 
+        // prepare return type
         for ret_ty in ret_tys.iter() {
             let SavedTy {
                 ty: ret_ty,
                 constraint: ret_ty_constraint,
             } = ret_ty.clone();
-
             debug!("ret_ty: {}", ret_ty);
 
             // if there is a shared_ty, we have to use it
@@ -582,10 +624,12 @@ impl Context {
             let mut body_ty = ret_ty.clone();
             let mut app_expr_ty = tmp_ret_ty.clone();
 
+            // calculate the type for app_expr
             if is_shared_ty {
                 for (arg_ty, reduction) in arg_tys.iter().rev().zip(reduction.args.iter()) {
                     //println!("arg_ty: {arg_ty}");
                     match arg_ty {
+                        // case: arg ty is integer
                         either::Left(ident) => {
                             body_ty = body_ty.deref_ptr(ident).rename(&ident, &reduction.old_id);
                             let op: Op = reduction.arg.clone().into();
@@ -599,48 +643,21 @@ impl Context {
                                 }
                             }
                         }
-                        either::Right(arg_ty) => {
-                            match app_expr_ty.kind() {
-                                TauKind::Arrow(ts, t_result) => {
-                                    if ts.len() != 1 {
-                                        unimplemented!()
-                                    }
-                                    let t = &ts[0];
-                                    // arg_ty -> result -> <: ts -> t(arg_ty)
-                                    // ts <: arg_ty
-                                    for s in arg_ty.iter() {
-                                        let constraint1 =
-                                            Tau::check_subtype(&app_expr_ty.rty_no_exists(), s, t);
-                                        let constraint2 =
-                                            Tau::check_subtype(&app_expr_ty.rty_no_exists(), t, s);
-                                        let constraint = Atom::mk_conj(constraint1, constraint2);
-                                        match constraint.to_chcs_or_pcsps() {
-                                            either::Left(chcs) => {
-                                                debug!("constraints");
-                                                for c in chcs {
-                                                    debug!("  - {}", c);
-                                                    clauses.push(c);
-                                                }
-                                            }
-                                            either::Right(pcsps) => {
-                                                debug!("constriant: {}", constraint);
-                                                debug!(
-                                                    "failed to translate the constraint to chcs"
-                                                );
-                                                for c in pcsps {
-                                                    debug!("{}", c)
-                                                }
-                                                panic!("fatal")
-                                            }
-                                        }
-                                    }
-                                    app_expr_ty = t_result.clone()
-                                }
-                                TauKind::IArrow(_, _) | TauKind::Proposition(_) => {
-                                    panic!("program error")
-                                }
+                        // case: arg ty is higher-order
+                        either::Right(arg_ty) => match app_expr_ty.kind() {
+                            TauKind::Arrow(ts, t_result) => {
+                                append_clauses_by_subst(
+                                    clauses,
+                                    ts,
+                                    arg_ty,
+                                    &app_expr_ty.rty_no_exists(),
+                                );
+                                app_expr_ty = t_result.clone()
                             }
-                        }
+                            TauKind::IArrow(_, _) | TauKind::Proposition(_) => {
+                                panic!("program error")
+                            }
+                        },
                     }
                 }
             } else {
@@ -680,24 +697,8 @@ impl Context {
             debug!("constraint1: {}", constraint);
             debug!("constraint2: {}", constraint2);
             let constraint = Atom::mk_conj(constraint, constraint2);
-            // 2. create a template type from `ty` and free variables `fvints`
-            match constraint.to_chcs_or_pcsps() {
-                either::Left(chcs) => {
-                    debug!("constraints");
-                    for c in chcs {
-                        debug!("  - {}", c);
-                        clauses.push(c);
-                    }
-                }
-                either::Right(pcsps) => {
-                    debug!("constriant: {}", constraint);
-                    debug!("failed to translate the constraint to chcs");
-                    for c in pcsps {
-                        debug!("{}", c)
-                    }
-                    panic!("fatal")
-                }
-            }
+            append_clauses(clauses, &constraint);
+
             // 4. for each `level` in reduction.candidate.aux, we add t to Derivation
             for level in reduction.predicate.aux.level_arg.iter() {
                 derivation.arg.insert(*level, tmp_ty.clone());
@@ -706,16 +707,12 @@ impl Context {
                 derivation.arg.insert(*level, app_expr_ty.clone())
             }
 
-            // let tmp_saved_ty = SavedTy::mk(tmp_ty.clone(), ret_ty_constraint.clone());
-            // derivation
-            //     .expr
-            //     .set(reduction.predicate.aux.id, tmp_saved_ty);
             debug!(
                 "app_expr({}): {}",
                 reduction.app_expr.aux.id, reduction.app_expr
             );
-            // go forward
-            // add types to all the temporal app result
+
+            // finally, add types to all the temporal app result
             let mut temporal_ty = tmp_ty.clone();
             for ((arg_ty, reduction), expr_id) in arg_tys
                 .iter()
@@ -744,6 +741,7 @@ impl Context {
                     }
                 };
             }
+
             // [feature shared_ty] in the infer_type phase, we no longer have to track both shared_ty and ty.
             let app_expr_saved_ty = SavedTy::mk(app_expr_ty.clone(), ret_ty_constraint.clone());
             derivation
