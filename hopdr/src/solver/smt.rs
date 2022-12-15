@@ -370,7 +370,7 @@ impl SMTSolver for AutoSolver {
         fvs: &HashSet<Ident>,
     ) -> Result<Model, SolverResult> {
         debug!("smt::auto_solver: {c}");
-        if fvs.is_empty() {
+        if c.fv().difference(&vars).next().is_none() {
             let mut sat_solver = smt_solver(SMTSolverType::Z3);
             sat_solver.solve_with_model(c, vars, fvs)
         } else {

@@ -607,8 +607,8 @@ impl Context {
                 None => {
                     (
                         ret_ty.clone_with_rty_template(
-                            ret_ty_constraint.clone(),
-                            //Atom::mk_true(),
+                            //ret_ty_constraint.clone(),
+                            Atom::mk_true(),
                             &mut if self.infer_polymorphic_type {
                                 reduction.fvints.clone()
                             } else {
