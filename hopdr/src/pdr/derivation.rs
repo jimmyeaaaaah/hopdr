@@ -557,7 +557,10 @@ impl Context {
             title!("no ret_tys");
             panic!("fatal");
         }
+
         // retrieve argument types
+        // if argument type is non-integer, then make sure that the context of the retrieved type matches
+        // the current context formula.
         let mut arg_tys = Vec::new();
         for ri in reduction.args.iter().rev() {
             let arg_ty = if ri.arg_var.ty.is_int() {
@@ -565,7 +568,7 @@ impl Context {
             } else {
                 // 1. get the corresponding types
                 let arg_ty = match &ri.arg.aux.tys {
-                    Some(tys) => tys.clone(),
+                    Some(tys) => tys.clone(), // when shared type exists
                     None => derivation.get_arg(&ri.level).iter().cloned().collect(),
                 };
                 let arg_ty = if arg_ty.len() == 0 {
@@ -579,6 +582,7 @@ impl Context {
         }
 
         // we have to track all the temporal ids
+        // since there are more than one reductions in Reduction object itself
         let mut expr_ids = Vec::new();
         let mut p = reduction.app_expr.clone();
         loop {
