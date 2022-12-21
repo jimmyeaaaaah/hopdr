@@ -347,7 +347,7 @@ impl<C: Refinement> Tau<C> {
             TauKind::Arrow(_, t) => t.rty_no_exists(),
         }
     }
-    // coarse the rty(self) to be `constraint`
+    /// coarse the rty(self) to be `constraint`
     pub fn add_context(&self, constraint: &C) -> Tau<C> {
         crate::title!("add_context");
         debug!("constraint = {}", constraint);
@@ -378,7 +378,25 @@ impl<C: Refinement> Tau<C> {
         }
         go(self, constraint, Polarity::Positive)
     }
-    // returns the constraint that is equivalent to hold constraint |- t <= s
+    /// conjoin c to rty(self)
+    pub fn conjoin_constraint(&self, c: &C) -> Self {
+        match self.kind() {
+            TauKind::Proposition(c_old) => {
+                let c_new = C::mk_conj(c_old.clone(), c.clone());
+                Self::mk_prop_ty(c_new)
+            }
+            TauKind::IArrow(i, t) => {
+                let t = t.conjoin_constraint(c);
+                Self::mk_iarrow(*i, t)
+            }
+            TauKind::Arrow(ts, t) => {
+                let t = t.conjoin_constraint(c);
+                let ts = ts.clone();
+                Self::mk_arrow(ts, t)
+            }
+        }
+    }
+    /// returns the constraint that is equivalent to hold constraint |- t <= s
     pub fn check_subtype(constraint: &C, t: &Tau<C>, s: &Tau<C>) -> C {
         match (t.kind(), s.kind()) {
             (TauKind::Proposition(c1), TauKind::Proposition(c2)) => {
