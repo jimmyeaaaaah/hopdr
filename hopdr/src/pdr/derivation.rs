@@ -7,7 +7,6 @@ use crate::formula::{self, DerefPtr, FirstOrderLogic};
 use crate::formula::{
     chc, fofml, Constraint, Fv, Ident, Logic, Negation, Op, Rename, Subst, Top, Variable,
 };
-use crate::pdr::rtype::TTop;
 use crate::solver;
 use crate::title;
 
@@ -201,13 +200,6 @@ impl Default for TypeMemory {
     fn default() -> Self {
         TypeMemory::new()
     }
-}
-
-// dfs context
-struct DfsContext {
-    has_modified: bool,
-    // maps from Goal's id to types to be tried
-    to_be_tried: HashMap<Ident, Stack<Ty>>,
 }
 
 /// internal representation of candidate terms.
@@ -1236,12 +1228,10 @@ fn type_check_inner(
 }
 
 // we assume conjunction normal form and has the form (θ => a₁ a₂ ⋯) ∧ ⋯
-// constraint: Θ
-/// V; Θ; Γ ⊢ c : t
+/// V; Γ ⊢ c : t
 /// function go constructs possible derivation trees by induction on the structure of c(ψ)
 ///
 fn type_check(
-    constraint: &Atom, // Θ
     tenv: &mut Env,
     ienv: &mut HashSet<Ident>, // V
     c: &G,
@@ -1784,7 +1774,7 @@ pub fn search_for_type(
     debug!("{}", candidate);
     let infer_polymorphic_type = config.infer_polymorphic_type;
     // TODO: expand candidate once based on problem.
-    let mut optimizer = optimizer::VoidOptimizer::new();
+    let mut optimizer = optimizer::NaiveOptimizer::new();
     while optimizer.continuable() {
         let mut ctx = reduce_until_normal_form(candidate, problem, config, &mut optimizer);
         debug!("{}", ctx.normal_form);
@@ -1811,7 +1801,6 @@ pub fn search_for_type(
 
 // Γ ⊢ Γ
 pub fn check_inductive(env: &TyEnv, problem: &Problem) -> bool {
-    let top = Atom::mk_true();
     let tenv: Env = env.into();
     for (id, ts) in env.map.iter() {
         let clause = problem.get_clause(id).unwrap();
@@ -1819,7 +1808,6 @@ pub fn check_inductive(env: &TyEnv, problem: &Problem) -> bool {
         for t in ts.iter() {
             let t = t.clone().into();
             if !type_check(
-                &top,
                 &mut env,
                 &mut HashSet::new(),
                 &clause.body.clone().into(),
@@ -1833,7 +1821,6 @@ pub fn check_inductive(env: &TyEnv, problem: &Problem) -> bool {
 }
 
 pub fn saturate(env: &TyEnv, problem: &Problem) -> TyEnv {
-    let top = Atom::mk_true();
     let mut current_env = env.clone();
     loop {
         let mut new_env = TypeEnvironment::new();
@@ -1843,7 +1830,6 @@ pub fn saturate(env: &TyEnv, problem: &Problem) -> TyEnv {
             for t in ts.iter() {
                 let mut env: Env = (&current_env).into();
                 if type_check(
-                    &top,
                     &mut env,
                     &mut HashSet::new(),
                     &clause.body.clone().into(),
