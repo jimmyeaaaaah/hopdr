@@ -885,7 +885,7 @@ fn handle_abs(
 struct TCConfig {
     tc_mode: TCFlag,
     // TODO
-    // construct_derivation: bool,
+    construct_derivation: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -1079,11 +1079,16 @@ fn type_check_inner(
         c: &G,
         context_ty: Ty,
     ) -> PossibleDerivation<Atom> {
+        // [pruning]: since we can always derive ψ: ⊥, we do not have to care about this part
+        if !config.construct_derivation && context_ty.is_bot() {
+            let cd = CandidateDerivation::singleton(context_ty.clone());
+            return PossibleDerivation::singleton(cd);
+        }
         match c.kind() {
             formula::hes::GoalKind::Constr(c) => {
                 let constraint = c.clone().into();
                 let t = Ty::mk_prop_ty(constraint);
-                let cd = CandidateDerivation::new(t, Stack::new(), Stack::new(), Derivation::new());
+                let cd = CandidateDerivation::singleton(t);
                 PossibleDerivation::singleton(cd)
             }
             formula::hes::GoalKind::Var(x) => match tenv.get(x) {
@@ -1244,6 +1249,7 @@ fn type_check(
     let mut all_coefficients = HashSet::new();
     let config = TCConfig {
         tc_mode: TCFlag::Normal,
+        construct_derivation: false,
     };
     let pt = handle_abs(&config, tenv, ienv, &mut all_coefficients, c, &t.ty);
     //pt.coarse_type(constraint, t);
@@ -1263,6 +1269,7 @@ fn type_check_top_with_derivation(psi: &G, tenv: &mut Env) -> Option<Derivation>
     let mut all_coefficients = HashSet::new();
     let config = TCConfig {
         tc_mode: TCFlag::Normal,
+        construct_derivation: true,
     };
     let mut pt = type_check_inner(
         &config,
@@ -1298,6 +1305,7 @@ fn type_check_top_with_derivation_and_constraints(
     };
     let config = TCConfig {
         tc_mode: TCFlag::Shared(ic),
+        construct_derivation: true,
     };
     let mut pt = type_check_inner(
         &config,
@@ -1524,6 +1532,9 @@ impl<C: Refinement> CandidateDerivation<C> {
             constraints,
             derivation,
         }
+    }
+    fn singleton(ty: Ty) -> Self {
+        Self::new(ty, Stack::new(), Stack::new(), Derivation::new())
     }
     fn memorize(&mut self, level: usize) {
         self.derivation.memorize(level, self.ty.clone())
