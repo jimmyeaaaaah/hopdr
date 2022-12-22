@@ -1015,7 +1015,9 @@ fn handle_app(
                     for t in arg_t {
                         //debug!("t: {}", t);
                         // check if arg_constraint |- argg: arg_t
-                        let pt = handle_abs(config, tenv, ienv, all_coefficients, argg, t);
+                        let rty = cty.rty_no_exists();
+                        let t_context = t.conjoin_constraint(&rty);
+                        let pt = handle_abs(config, tenv, ienv, all_coefficients, argg, &t_context);
 
                         // permutation
                         let mut new_tmp_cts = Vec::new();

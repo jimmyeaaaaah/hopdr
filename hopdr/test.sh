@@ -5,6 +5,7 @@ set -eu
 cargo build 
 CMD="target/debug/hopdr"
 OPTIONS=--no-preprocess
+RUST_LOG=""
 
 VALID=inputs/valid
 INVALID=inputs/invalid
