@@ -61,7 +61,8 @@ impl Model {
         let model: HashMap<Ident, i64> = match x {
             Value::Cons(x) => x
                 .into_iter()
-                .skip(1)
+                // filter out model from (model (define-fun ...) ...)
+                .filter(|(x, _)| !x.is_symbol())
                 .map(|(v, _)| parse_declare_fun(v))
                 .collect(),
             _ => panic!("parse error: smt2 model: {}", s),
@@ -77,6 +78,27 @@ impl Model {
 #[test]
 fn z3_parse_model() {
     let model = "(model
+        (define-fun x_x1 () Int
+        (- 1))
+        (define-fun x_x2 () Int
+          1)
+      )";
+    match Model::from_z3_model_str(model) {
+        Ok(m) => {
+            let x1 = m.get(&1.into()).unwrap();
+            let x2 = m.get(&2.into()).unwrap();
+            assert_eq!(x1, -1);
+            assert_eq!(x2, 1);
+        }
+        Err(_) => panic!("model is broken"),
+    }
+}
+
+#[test]
+fn z3_new_version_parse_model() {
+    // around z3 version 4.8.9, the style of models changed
+    // (without the `model` keyword at the beginning)
+    let model = "(
         (define-fun x_x1 () Int
         (- 1))
         (define-fun x_x2 () Int
