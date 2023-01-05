@@ -36,6 +36,8 @@ struct Args {
     no_inlining: bool,
     #[clap(long)]
     remove_disjunction: bool,
+    #[clap(long)]
+    smt_interpol: Option<String>,
 }
 
 fn pdr_main(contents: String, config: PDRConfig) -> hopdr::pdr::VerificationResult {
@@ -81,6 +83,12 @@ fn main() {
 
     // parsing command line args
     let args = Args::parse();
+
+    // FIXME: adhoc
+    match &args.smt_interpol {
+        Some(s) => hopdr::solver::interpolation::set_smt_interpol_path(s.clone()),
+        None => (),
+    }
 
     let config = gen_configuration_from_args(&args);
 

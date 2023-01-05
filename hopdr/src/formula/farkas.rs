@@ -1,6 +1,4 @@
-use std::{collections::HashMap, result};
-
-use crate::formula::{Bot, FirstOrderLogic, OpKind};
+use std::collections::HashMap;
 
 /// Given a linear integer arithmetic Constraint,
 /// returns
@@ -76,63 +74,33 @@ fn transform_predicate(c: &Constraint) -> Constraint {
 // 2. o1 + o2 + ...
 // 3. expand all the expression like (o1 + o2) * x1
 fn pred_to_vec(constr: &Constraint, m: &HashMap<Ident, usize>) -> Vec<Op> {
-    debug!("pred_to_vec: {constr}");
-    // Assumption: o only contains operation muls (if other ops exist, then it panics)
-    // if o contains multiple variables in m, then returns None
-    // otherwise, returns coefficient of the variable, and variable name if exists
-    // for a constrant, the results should have a pair (o, None)
-    fn parse_mult(o: &Op, m: &HashMap<Ident, usize>) -> Option<(Op, Option<Ident>)> {
-        match o.kind() {
-            crate::formula::OpExpr::Op(OpKind::Mul, o1, o2) => {
-                let (coef1, v1) = parse_mult(o1, m)?;
-                let (coef2, v2) = parse_mult(o2, m)?;
-                match (v1, v2) {
-                    (Some(_), Some(_)) => None,
-                    (Some(v), None) | (None, Some(v)) => Some((Op::mk_mul(coef1, coef2), Some(v))),
-                    (None, None) => Some((Op::mk_mul(coef1, coef2), None)),
-                }
-            }
-            crate::formula::OpExpr::Var(v) if m.contains_key(v) => {
-                Some((Op::mk_const(1), Some(*v)))
-            }
-            crate::formula::OpExpr::Var(_) | crate::formula::OpExpr::Const(_) => {
-                Some((o.clone(), None))
-            }
-            crate::formula::OpExpr::Ptr(_, o) => parse_mult(o, m),
-            crate::formula::OpExpr::Op(_, _, _) => panic!("program error"),
-        }
-    }
-    // assumption v.len() == m.len() + 1
-    // v's m[id]-th element is the coefficient for the variable `id`
-    // v's m.len()-th element is the constant
-    let mut result_vec = vec![Op::mk_const(0); m.len() + 1];
-    let additions = match constr.kind() {
-        super::ConstraintExpr::True => Vec::new(),
+    let z = match constr.kind() {
+        super::ConstraintExpr::True => return vec![Op::mk_const(0); m.len() + 1],
         super::ConstraintExpr::Pred(PredKind::Geq, l) if l.len() == 2 => {
             let x = l[0].clone();
             let y = l[1].clone();
-            let z = Op::mk_bin_op(super::OpKind::Sub, x, y);
-            z.expand_expr_to_vec()
+            Op::mk_bin_op(super::OpKind::Sub, x, y)
         }
         super::ConstraintExpr::False => {
             // 0 >= 1
-            let o = Op::mk_const(-1);
-            o.expand_expr_to_vec()
+            Op::mk_const(-1)
         }
         super::ConstraintExpr::Pred(_, _)
         | super::ConstraintExpr::Conj(_, _)
         | super::ConstraintExpr::Disj(_, _)
         | super::ConstraintExpr::Quantifier(_, _, _) => panic!("program error: {}", constr),
     };
-    let constant_index = m.len();
-    for addition in additions {
-        let (coef, v) = parse_mult(&addition, m).expect(&format!(
-            "there is non-linear exprresion, which is note supported: {addition}\ngenerated from {constr}"
-        ));
-        let id = v.map_or(constant_index, |v| *m.get(&v).unwrap());
-        result_vec[id] = Op::mk_add(result_vec[id].clone(), coef);
+    let dummy = Ident::fresh();
+    let mut variables = vec![dummy; m.len()]; // dummy
+    for (id, idx) in m {
+        #[cfg(debug_assertions)]
+        {
+            let v = variables[*idx];
+            assert_eq!(v, dummy);
+        }
+        variables[*idx] = *id;
     }
-    result_vec
+    z.normalize(&variables)
 }
 
 /// returns a constraint that does not contain universal quantifiers
@@ -153,6 +121,7 @@ pub fn farkas_transform(c: &Constraint) -> Constraint {
     for (idx, (q, var)) in v.iter().enumerate() {
         assert_eq!(*q, super::QuantifierKind::Universal);
         assert!(var.ty.is_int());
+        debug!("{}: {idx}", var.id);
         univ_vars.insert(var.id, idx);
     }
     // first replace all the predicates except for >= by constraints that only contain < (which will be negated below, so that will produce
@@ -213,6 +182,7 @@ pub fn farkas_transform(c: &Constraint) -> Constraint {
 
 #[test]
 fn test_farkas_transform() {
+    use crate::formula::FirstOrderLogic;
     // example in Section 4.2.2. in the paper by Unno et al.(POPL 2012)
     let x = Ident::fresh();
     let y = Ident::fresh();
@@ -240,8 +210,8 @@ fn test_farkas_transform() {
             Op::mk_const(1),
         ];
         let o = coefs
-            .into_iter()
-            .zip(vars.into_iter())
+            .iter()
+            .zip(vars.iter())
             .fold(Op::mk_const(0), |x, (coef, var)| {
                 Op::mk_add(x, Op::mk_mul(coef.clone(), var.clone()))
             });
@@ -252,7 +222,6 @@ fn test_farkas_transform() {
 
     let p1 = move || -> Op { Op::mk_var(ip1) };
     let p2 = move || -> Op { Op::mk_var(ip2) };
-    let p3 = move || -> Op { Op::mk_var(ip3) };
     let p4 = move || -> Op { Op::mk_var(ip4) };
 
     fn m(x: Op) -> Op {

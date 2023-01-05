@@ -206,7 +206,10 @@ pub enum ExecutionError {
 enum ExecResult {
     Ctrlc,
     Succeeded,
+    Panic,
 }
+
+const STACK_SIZE: usize = 4 * 1024 * 1024;
 
 /// returns Some(x) if `f` finishes within `timeout`; None otherwise.
 /// if timeout is None, the execution continues until ctrl-c or termination of the
@@ -222,10 +225,19 @@ pub fn executes_with_timeout_and_ctrlc<T: Send + 'static, F: FnOnce() -> T + Sen
         ctrlc::set_handler(move || sender.clone().send(ExecResult::Ctrlc).unwrap())
             .expect("Error setting Ctrl-C handler");
     }
+    // thread trampoline to handle panic in `f`
     let join_handler = thread::spawn(move || {
-        let x = f();
-        sender.send(ExecResult::Succeeded).unwrap();
-        x
+        let x = thread::Builder::new()
+            .stack_size(STACK_SIZE)
+            .spawn(move || f())
+            .unwrap()
+            .join();
+        let s = match &x {
+            Ok(_) => ExecResult::Succeeded,
+            Err(_) => ExecResult::Panic,
+        };
+        sender.send(s).unwrap();
+        x.unwrap()
     });
     let r = match timeout {
         Some(timeout) => recv.recv_timeout(timeout),
@@ -237,7 +249,9 @@ pub fn executes_with_timeout_and_ctrlc<T: Send + 'static, F: FnOnce() -> T + Sen
         Ok(ExecResult::Ctrlc) => return Err(ExecutionError::Ctrlc),
         Ok(ExecResult::Succeeded) => (),
         Err(mpsc::RecvTimeoutError::Timeout) => return Err(ExecutionError::Timeout),
-        Err(mpsc::RecvTimeoutError::Disconnected) => return Err(ExecutionError::Panic),
+        Ok(ExecResult::Panic) | Err(mpsc::RecvTimeoutError::Disconnected) => {
+            return Err(ExecutionError::Panic)
+        }
     }
     join_handler.join().map_err(|_| ExecutionError::Panic)
 }

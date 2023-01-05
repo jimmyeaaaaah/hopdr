@@ -1,4 +1,4 @@
-use super::rtype::{Refinement, Tau, TyEnv, TypeEnvironment};
+use super::rtype::{PolymorphicType, Refinement, Tau, TyEnv, TypeEnvironment};
 use super::{PDRConfig, VerificationResult};
 use crate::formula::hes::Problem;
 use crate::formula::{hes, Constraint, TeXPrinter};
@@ -37,8 +37,8 @@ pub struct HoPDR {
     config: PDRConfig,
 }
 
-impl<C: Refinement> TypeEnvironment<Tau<C>> {
-    fn new_top_env(problem: &Problem<C>) -> TypeEnvironment<Tau<C>> {
+impl<C: Refinement> TypeEnvironment<PolymorphicType<Tau<C>>> {
+    fn new_top_env(problem: &Problem<C>) -> TypeEnvironment<PolymorphicType<Tau<C>>> {
         let mut new_env = TypeEnvironment::new();
         for c in problem.clauses.iter() {
             new_env.add_top(c.head.id, &c.head.ty)
@@ -46,7 +46,7 @@ impl<C: Refinement> TypeEnvironment<Tau<C>> {
         new_env
     }
 
-    fn new_bot_env(problem: &Problem<C>) -> TypeEnvironment<Tau<C>> {
+    fn new_bot_env(problem: &Problem<C>) -> TypeEnvironment<PolymorphicType<Tau<C>>> {
         let mut new_env = TypeEnvironment::new();
         for c in problem.clauses.iter() {
             new_env.add_bot(c.head.id, &c.head.ty)
@@ -211,7 +211,7 @@ impl HoPDR {
     // Assumption 1: self.models.len() > 0
     // Assumption 2: ℱ(⌊Γ⌋) ⊧ ψ
     // Assumption 3: self.get_current_cex_level() < N
-    fn conflict(&mut self, mut tyenv_new: TypeEnvironment<Tau<Constraint>>) -> Result<(), Error> {
+    fn conflict(&mut self, mut tyenv_new: TyEnv) -> Result<(), Error> {
         info!("{}", "conflict".blue());
         debug!("{}", tyenv_new);
         if self.config.dump_tex_progress {
@@ -225,7 +225,7 @@ impl HoPDR {
         for i in 0..(self.get_current_cex_level() + 1) {
             self.envs[i].append(&tyenv_new);
             // TODO: remove magic number
-            if self.envs[i].size() > 0 {
+            if self.envs[i].size() > 10 {
                 debug!("before shrink: {}", self.envs[i].size());
                 self.envs[i].shrink();
                 debug!("after shrink: {}", self.envs[i].size());
@@ -279,6 +279,7 @@ impl HoPDR {
         }
         loop {
             self.dump_state();
+            self.loop_cnt += 1;
             if self.config.dump_tex_progress {
                 self.tex_dump_state();
             }

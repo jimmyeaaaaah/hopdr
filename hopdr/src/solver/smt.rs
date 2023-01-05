@@ -4,17 +4,13 @@ use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
 use super::util;
-use super::{SMT2Style, SolverResult};
+use super::{Model, SMTSolverType, SolverResult};
 use crate::formula::{
-    Constraint, ConstraintExpr, Ident, Op, OpExpr, OpKind, PredKind, QuantifierKind,
+    Constraint, ConstraintExpr, FirstOrderLogic, Fv, Ident, Logic, Op, OpExpr, OpKind, PredKind,
+    QuantifierKind, Subst, Top,
 };
 use lexpr;
 use lexpr::Value;
-
-#[derive(Debug)]
-pub struct Model {
-    pub model: HashMap<Ident, i64>,
-}
 
 fn encode_ident(x: &Ident) -> String {
     format!("x{}", x)
@@ -120,7 +116,6 @@ pub trait SMTSolver {
     ///
     /// all free variables are to be universally quantified
     fn check_equivalent(&mut self, left: &Constraint, right: &Constraint) -> SolverResult {
-        use crate::formula::Logic;
         let rightarrow = Constraint::mk_implies(left.clone(), right.clone());
         let leftarrow = Constraint::mk_implies(right.clone(), left.clone());
         let equivalent = Constraint::mk_conj(rightarrow, leftarrow);
@@ -130,7 +125,6 @@ pub trait SMTSolver {
     /// check if the constraint is satisfiable where all free variables are quantified by universal
     /// quantifiers
     fn solve_with_universal_quantifiers(&mut self, constraint: &Constraint) -> SolverResult {
-        use crate::formula::Fv;
         let fvs = constraint.fv();
         self.solve(constraint, &fvs)
     }
@@ -184,7 +178,7 @@ pub(super) fn quantifier_to_smt2(q: &QuantifierKind) -> &'static str {
     }
 }
 
-pub(super) fn constraint_to_smt2_inner(c: &Constraint, style: SMT2Style) -> String {
+pub(super) fn constraint_to_smt2_inner(c: &Constraint, style: SMTSolverType) -> String {
     let f = constraint_to_smt2_inner;
     match c.kind() {
         ConstraintExpr::True => "true".to_string(),
@@ -206,7 +200,7 @@ pub(super) fn constraint_to_smt2_inner(c: &Constraint, style: SMT2Style) -> Stri
 
 fn constraint_to_smt2(
     c: &Constraint,
-    style: SMT2Style,
+    style: SMTSolverType,
     vars: &HashSet<Ident>,
     fvs: Option<&HashSet<Ident>>,
 ) -> String {
@@ -244,14 +238,24 @@ pub(super) fn save_smt2(smt_string: String) -> NamedTempFile {
 
 struct Z3Solver {}
 
-pub fn smt_solver(s: SMT2Style) -> Box<dyn SMTSolver> {
+struct AutoSolver {}
+
+impl AutoSolver {
+    fn new() -> AutoSolver {
+        AutoSolver {}
+    }
+}
+
+pub fn smt_solver(s: SMTSolverType) -> Box<dyn SMTSolver> {
     match s {
-        SMT2Style::Z3 => Box::new(Z3Solver {}),
+        SMTSolverType::Z3 => Box::new(Z3Solver {}),
+        SMTSolverType::Auto => Box::new(AutoSolver::new()),
+        SMTSolverType::CVC => panic!("not supported"),
     }
 }
 
 pub fn default_solver() -> Box<dyn SMTSolver> {
-    smt_solver(SMT2Style::Z3)
+    smt_solver(SMTSolverType::Z3)
 }
 
 fn z3_solver(smt_string: String) -> String {
@@ -260,23 +264,210 @@ fn z3_solver(smt_string: String) -> String {
     // debug
     debug!("filename: {}", &args[0]);
 
-    crate::stat::smt::smt_count();
-    crate::stat::smt::start_clock();
+    #[cfg(not(debug_assertions))]
+    {
+        crate::stat::smt::smt_count();
+        crate::stat::smt::start_clock();
+    }
 
     let out = util::exec_with_timeout("z3", &args, Duration::from_secs(1));
 
-    crate::stat::smt::end_clock();
+    #[cfg(not(debug_assertions))]
+    {
+        crate::stat::smt::end_clock();
+    }
 
     String::from_utf8(out).unwrap()
 }
 
+impl AutoSolver {
+    /// Check if satisfiable up to over AutoSolver::MAX_BIT_SIZE bit integers
+    const MIN_INT: i64 = -8;
+    const MAX_INT: i64 = 8;
+    const BIT_SIZE: u32 = 8;
+
+    fn farkas_transform(&self, c: &Constraint, vars: &HashSet<Ident>) -> Constraint {
+        use crate::formula::farkas;
+
+        let mut constraint = c.simplify_trivial();
+        for var in vars {
+            constraint = Constraint::mk_univ_int(*var, constraint);
+        }
+        debug!("smt::auto_solver quantified: {constraint}");
+
+        // farkas transform
+        farkas::farkas_transform(&constraint)
+    }
+
+    /// check if the given model is actually a valid model for constraint
+    /// by using SMT solver (Model is assumed to be given by SAT solver)
+    fn validate(&self, constraint: &Constraint, model: &Model) -> bool {
+        let mut constraint = constraint.clone();
+        for (var, val) in model.model.iter() {
+            constraint = constraint.subst(var, &Op::mk_const(*val));
+        }
+        let mut sat_solver = smt_solver(SMTSolverType::Z3);
+        for fv in constraint.fv() {
+            // there is no constraint on fv, so any number is ok to substitute.
+            constraint = constraint.subst(&fv, &Op::mk_const(0));
+        }
+        sat_solver
+            .solve_with_model(&constraint, &HashSet::new(), &HashSet::new())
+            .is_ok()
+    }
+
+    fn add_range_to_fv(constraint: &Constraint, min: i64, max: i64) -> Constraint {
+        let fvs = constraint.fv();
+        let mut range_constr = Constraint::mk_true();
+        let max = Op::mk_const(max);
+        let min = Op::mk_const(min);
+        for fv in fvs {
+            let x = Op::mk_var(fv);
+            let c1 = Constraint::mk_geq(max.clone(), x.clone());
+            let c2 = Constraint::mk_geq(x.clone(), min.clone());
+            let c = Constraint::mk_conj(c1, c2);
+            range_constr = Constraint::mk_conj(range_constr, c);
+        }
+        Constraint::mk_conj(constraint.clone(), range_constr)
+    }
+
+    fn solve_by_smt(&self, constraint: &Constraint) -> Result<Model, SolverResult> {
+        let c = Self::add_range_to_fv(constraint, -256, 256);
+        let mut sat_solver = smt_solver(SMTSolverType::Z3);
+        sat_solver.solve_with_model(&c, &HashSet::new(), &c.fv())
+    }
+
+    fn solve_inner(&self, constraint: &Constraint) -> Result<Model, SolverResult> {
+        debug!("check if {constraint} is sat");
+        let mut sat_solver =
+            super::sat::SATSolver::default_solver(Self::MIN_INT, Self::MAX_INT, Self::BIT_SIZE);
+        let m = sat_solver.solve(&constraint)?;
+
+        if !self.validate(constraint, &m) {
+            warn!("failed to solve by sat since bit size is too small");
+            let m = self.solve_by_smt(constraint);
+            warn!("but smt could make it");
+            m
+        } else {
+            Ok(m)
+        }
+    }
+}
+
+impl SMTSolver for AutoSolver {
+    fn solve(&mut self, c: &Constraint, vars: &HashSet<Ident>) -> SolverResult {
+        let constraint = self.farkas_transform(c, vars);
+
+        match self.solve_inner(&constraint) {
+            Ok(_) => SolverResult::Sat,
+            Err(r) => r,
+        }
+    }
+    fn solve_with_model(
+        &mut self,
+        c: &Constraint,
+        vars: &HashSet<Ident>,
+        fvs: &HashSet<Ident>,
+    ) -> Result<Model, SolverResult> {
+        debug!("smt::auto_solver: {c}");
+        if c.fv().difference(&vars).next().is_none() {
+            let mut sat_solver = smt_solver(SMTSolverType::Z3);
+            sat_solver.solve_with_model(c, vars, fvs)
+        } else {
+            let constraint = self.farkas_transform(c, vars);
+            self.solve_inner(&constraint)
+        }
+    }
+}
+
+#[test]
+fn test_auto_solver_bug() {
+    // ∀x_198: i.∀x_15: i.∀x_14: i.((x_14 != x_15) ∨ ((x_14 + 1) = ((x_195 + (x_196 * x_14)) + (x_197 * x_15)))) ∧ ((x_198 != ((x_195 + (x_196 * x_14)) + (x_197 * x_15))) ∨ (x_198 = x_15))
+    use crate::formula::Logic;
+    let x_198 = Ident::fresh();
+    let x_15 = Ident::fresh();
+    let x_14 = Ident::fresh();
+
+    let x_195 = Ident::fresh();
+    let x_196 = Ident::fresh();
+    let x_197 = Ident::fresh();
+
+    let fvs = vec![x_195, x_196, x_197];
+
+    fn o(x: Ident) -> Op {
+        Op::mk_var(x)
+    }
+
+    let x_14_neq_x_15 = Constraint::mk_neq(o(x_14), o(x_15));
+    let z = Op::mk_add(
+        o(x_195),
+        Op::mk_add(Op::mk_mul(o(x_196), o(x_14)), Op::mk_mul(o(x_197), o(x_15))),
+    );
+
+    let x14p1eqz = Constraint::mk_eq(Op::mk_add(o(x_14), Op::mk_const(1)), z.clone());
+    let x198_neq_z = Constraint::mk_neq(o(x_198), z.clone());
+    let x198_eq_x15 = Constraint::mk_eq(o(x_198), o(x_15));
+
+    let c1 = Constraint::mk_disj(x_14_neq_x_15, x14p1eqz);
+    let c2 = Constraint::mk_disj(x198_neq_z, x198_eq_x15);
+    let c = Constraint::mk_conj(c1, c2);
+
+    let c = Constraint::mk_univ_int(x_14, c);
+    let c = Constraint::mk_univ_int(x_15, c);
+    let c = Constraint::mk_univ_int(x_198, c);
+
+    println!("constraint: {c}");
+
+    let fvs = fvs.into_iter().collect();
+    let mut solver = smt_solver(SMTSolverType::Auto);
+    match solver.solve_with_model(&c, &HashSet::new(), &fvs) {
+        Ok(model) => {
+            panic!("test failed. model: \n{}", model)
+        }
+        Err(_) => (),
+    }
+}
+
+#[test]
+fn test_auto_solver_bug2() {
+    // ∀x: i.∀y: i.∀z: i.(y = ((c + (b * y)) + (a * x))) ∧ ((z != ((c + (b * y)) + (a * x))) ∨ (z = y))
+    use crate::formula::Logic;
+    let x = Ident::fresh();
+    let y = Ident::fresh();
+    let z = Ident::fresh();
+    let a = Ident::fresh();
+    let b = Ident::fresh();
+    let c = Ident::fresh();
+    let vars = [x, y, z].iter().cloned().collect();
+    fn o(x: Ident) -> Op {
+        Op::mk_var(x)
+    }
+
+    let w = Op::mk_add(
+        o(c),
+        Op::mk_add(Op::mk_mul(o(a), o(x)), Op::mk_mul(o(b), o(y))),
+    );
+
+    let c1 = Constraint::mk_eq(w.clone(), o(y));
+    let c2 = Constraint::mk_neq(o(z), w.clone());
+    let c3 = Constraint::mk_eq(o(z), o(y));
+    let c4 = Constraint::mk_disj(c2, c3);
+    let c5 = Constraint::mk_conj(c1, c4);
+    let mut solver = smt_solver(SMTSolverType::Auto);
+    let fvs = [a, b, c].iter().cloned().collect();
+    println!("{c5}");
+    match solver.solve_with_model(&c5, &vars, &fvs) {
+        Ok(_) => (),
+        Err(_) => panic!("program error"),
+    }
+}
+
 impl SMTSolver for Z3Solver {
     fn solve(&mut self, c: &Constraint, vars: &HashSet<Ident>) -> SolverResult {
-        use crate::formula::Fv;
         debug!("smt_solve: {}", c);
         let fvs = c.fv();
         let fvs = &fvs - vars;
-        let smt2 = constraint_to_smt2(c, SMT2Style::Z3, vars, Some(&fvs));
+        let smt2 = constraint_to_smt2(c, SMTSolverType::Z3, vars, Some(&fvs));
         debug!("smt2: {}", &smt2);
         let s = z3_solver(smt2);
         debug!("smt_solve result: {:?}", &s);
@@ -294,8 +485,8 @@ impl SMTSolver for Z3Solver {
         vars: &HashSet<Ident>,
         fvs: &HashSet<Ident>,
     ) -> Result<Model, SolverResult> {
-        debug!("smt_solve_with_model: {} {}", c, fvs.len());
-        let smt2 = constraint_to_smt2(c, SMT2Style::Z3, vars, Some(fvs));
+        debug!("smt_solve_with_model: {} fvs.len(): {}", c, fvs.len());
+        let smt2 = constraint_to_smt2(c, SMTSolverType::Z3, vars, Some(fvs));
         debug!("smt2: {}", &smt2);
         let s = z3_solver(smt2);
         debug!("smt_solve result: {:?}", &s);
@@ -339,7 +530,7 @@ fn z3_sat_model_from_constraint() {
         Constraint::mk_pred(PredKind::Gt, vec![x1, x2.clone()]),
         Constraint::mk_pred(PredKind::Eq, vec![x2, Op::mk_const(0)]),
     );
-    let mut solver = smt_solver(SMT2Style::Z3);
+    let mut solver = smt_solver(SMTSolverType::Z3);
     match solver.solve_with_model(&c, &HashSet::new(), &fvs) {
         Ok(model) => {
             assert_eq!(model.get(&i2).unwrap(), 0)

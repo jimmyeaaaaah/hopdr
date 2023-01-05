@@ -12,6 +12,7 @@ fn transform_goal(goal: &hes::Goal<formula::Constraint>) -> hes::Goal<formula::C
     Goal::mk_univ(v, goal.clone())
 }
 
+#[allow(dead_code)]
 pub fn transform(problem: hes::Problem<formula::Constraint>) -> hes::Problem<formula::Constraint> {
     let top = transform_goal(&problem.top);
     hes::Problem { top, ..problem }

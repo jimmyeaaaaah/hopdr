@@ -1,10 +1,11 @@
-use super::rtype::{instantiate_type, Refinement, TBot, Tau, TauKind, TypeEnvironment};
+use super::optimizer;
+use super::optimizer::{variable_info, InferenceResult, Optimizer};
+use super::rtype::{PolymorphicType, Refinement, TBot, Tau, TauKind, TyEnv, TypeEnvironment};
 
 use crate::formula::hes::{Goal, GoalBase, GoalKind, Problem as ProblemBase};
 use crate::formula::{self, DerefPtr, FirstOrderLogic};
 use crate::formula::{
-    chc, farkas, fofml, pcsp, Constraint, Fv, Ident, Logic, Negation, Op, Rename, Subst, Top,
-    Variable,
+    chc, fofml, Constraint, Fv, Ident, Logic, Negation, Op, Rename, Subst, Top, Variable,
 };
 use crate::solver;
 use crate::title;
@@ -14,15 +15,13 @@ use rpds::{HashTrieMap, Stack};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::fmt::Formatter;
-use std::hash::Hash;
 
 type Atom = fofml::Atom;
 type Candidate = Goal<Constraint>;
-type Ty = Tau<Atom>;
-type Env = TypeEnvironment<Ty>;
+pub(crate) type Ty = Tau<Atom>;
+type PTy = PolymorphicType<Tau<Atom>>;
+type Env = TypeEnvironment<PTy>;
 type Problem = ProblemBase<Constraint>;
-type CHC = chc::CHC<chc::Atom, Atom>;
-type PCSP = pcsp::PCSP<fofml::Atom>;
 
 /// track_idents maps predicate in Problem to the idents of lambda abstraction exprs
 ///
@@ -178,17 +177,22 @@ impl Reduction {
 #[derive(Clone, Debug)]
 struct TypeMemory {
     level_arg: Stack<usize>,
-    id: Ident,
+    id: Ident, // unique id for each sub expression of the formula
+    tys: Option<Vec<Ty>>,
 }
 impl TypeMemory {
     fn new() -> TypeMemory {
         TypeMemory {
             level_arg: Stack::new(),
             id: Ident::fresh(),
+            tys: None,
         }
     }
     fn add_arg_level(&mut self, level: usize) {
         self.level_arg = self.level_arg.push(level)
+    }
+    fn set_tys(&mut self, tys: Option<Vec<Ty>>) {
+        self.tys = tys;
     }
 }
 
@@ -224,16 +228,15 @@ impl From<Candidate> for G {
     }
 }
 
-fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
+fn generate_reduction_sequence(goal: &G, optimizer: &mut dyn Optimizer) -> (Vec<Reduction>, G) {
     // Some(Candidate): substituted an app
     // None: not yet
-    use formula::hes::GoalKind;
-
-    fn go(goal: &G, level: &mut usize) -> Option<(G, Reduction)> {
+    fn go(optimizer: &mut dyn Optimizer, goal: &G, level: &mut usize) -> Option<(G, Reduction)> {
         /// returns Some(_) if reduction happens in goal; otherwise None
         /// left of the return value: the reduced term
         /// right of the return value: the abstraction in the redux.
         fn go_(
+            optimizer: &mut dyn Optimizer,
             goal: &G,
             level: usize,
             fvints: &mut HashSet<Ident>,
@@ -241,9 +244,11 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
             constraint: Constraint,
         ) -> Option<(G, Reduction)> {
             fn generate_reduction_info(
+                optimizer: &mut dyn Optimizer,
                 level: usize,
                 predicate: &G,
                 arg: &G,
+                idents: &HashSet<Ident>, // idents passed to optimizer when generating a shared type template
             ) -> Option<(G, ReductionInfo)> {
                 match predicate.kind() {
                     GoalKind::Abs(x, g) => {
@@ -254,9 +259,23 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
                         let new_var = Variable::fresh(x.ty.clone());
                         let new_g = g.rename(&x.id, &new_var.id);
                         let old_id = x.id;
+
+                        // [feature shared_ty]
+                        // introduce type sharing
+                        match arg.aux.tys {
+                            // if a shared type exists, we reuse it.
+                            Some(_) => (),
+                            None => {
+                                let vi = variable_info(level, new_var.clone(), idents);
+                                let tys = optimizer.gen_type(&vi);
+                                arg.aux.set_tys(tys);
+                            }
+                        }
+
                         let mut ret = new_g.subst(&new_var, &arg);
                         // introduce a new fresh variable to identify this expr
                         ret.aux.id = Ident::fresh();
+
                         let reduction_info =
                             ReductionInfo::new(level, arg.clone(), new_var, old_id);
                         Some((ret.clone(), reduction_info))
@@ -266,7 +285,8 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
             }
             match goal.kind() {
                 GoalKind::App(predicate, arg) => {
-                    match generate_reduction_info(level, predicate, arg) {
+                    // TODO: fvints & argints <- polymorphic_type config should be used to determine which to use
+                    match generate_reduction_info(optimizer, level, predicate, arg, fvints) {
                         // App(App(...(Abs(...) arg1) .. argn)
                         Some((ret, reduction_info)) => {
                             let mut reduction = Reduction::new(
@@ -277,15 +297,31 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
                                 argints.clone(),
                                 constraint.clone(),
                             );
+
                             reduction.append_reduction(reduction_info, ret.clone(), goal.clone());
                             return Some((ret.clone(), reduction));
                         }
                         None => (),
                     };
-                    match go_(predicate, level, fvints, argints, constraint.clone()) {
+                    match go_(
+                        optimizer,
+                        predicate,
+                        level,
+                        fvints,
+                        argints,
+                        constraint.clone(),
+                    ) {
                         Some((ret, mut reduction)) => {
                             // case reduced above like App(App(Abs, arg)) -> App(Abs, arg)
-                            return match generate_reduction_info(reduction.level() + 1, &ret, arg) {
+                            // [feature shared_ty]
+                            // TODO: fvints & argints <- polymorphic_type config should be used to determine which to use
+                            return match generate_reduction_info(
+                                optimizer,
+                                reduction.level() + 1,
+                                &ret,
+                                arg,
+                                fvints,
+                            ) {
                                 Some((ret, reduction_info)) => {
                                     reduction.append_reduction(
                                         reduction_info,
@@ -302,22 +338,24 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
                         }
                         None => (),
                     };
-                    go_(arg, level, fvints, argints, constraint.clone()).map(|(arg, pred)| {
-                        (G::mk_app_t(predicate.clone(), arg, goal.aux.clone()), pred)
-                    })
+                    go_(optimizer, arg, level, fvints, argints, constraint.clone()).map(
+                        |(arg, pred)| (G::mk_app_t(predicate.clone(), arg, goal.aux.clone()), pred),
+                    )
                 }
-                GoalKind::Conj(g1, g2) => go_(g1, level, fvints, argints, constraint.clone())
-                    .map(|(g1, p)| (G::mk_conj_t(g1, g2.clone(), goal.aux.clone()), p))
-                    .or_else(|| {
-                        go_(g2, level, fvints, argints, constraint.clone())
-                            .map(|(g2, p)| (G::mk_conj_t(g1.clone(), g2, goal.aux.clone()), p))
-                    }),
+                GoalKind::Conj(g1, g2) => {
+                    go_(optimizer, g1, level, fvints, argints, constraint.clone())
+                        .map(|(g1, p)| (G::mk_conj_t(g1, g2.clone(), goal.aux.clone()), p))
+                        .or_else(|| {
+                            go_(optimizer, g2, level, fvints, argints, constraint.clone())
+                                .map(|(g2, p)| (G::mk_conj_t(g1.clone(), g2, goal.aux.clone()), p))
+                        })
+                }
                 GoalKind::Disj(g1, g2) => {
                     let c1: Option<Constraint> = g1.clone().into();
                     match c1 {
                         Some(c1) => {
                             let constraint = Constraint::mk_conj(c1.negate().unwrap(), constraint);
-                            go_(g2, level, fvints, argints, constraint).map(|(g2, p)| {
+                            go_(optimizer, g2, level, fvints, argints, constraint).map(|(g2, p)| {
                                 (G::mk_disj_t(g1.clone(), g2.clone(), goal.aux.clone()), p)
                             })
                         }
@@ -327,9 +365,18 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
                                 Some(c2) => {
                                     let constraint =
                                         Constraint::mk_conj(c2.negate().unwrap(), constraint);
-                                    go_(g1, level, fvints, argints, constraint).map(|(g1, p)| {
-                                        (G::mk_disj_t(g1.clone(), g2.clone(), goal.aux.clone()), p)
-                                    })
+                                    go_(optimizer, g1, level, fvints, argints, constraint).map(
+                                        |(g1, p)| {
+                                            (
+                                                G::mk_disj_t(
+                                                    g1.clone(),
+                                                    g2.clone(),
+                                                    goal.aux.clone(),
+                                                ),
+                                                p,
+                                            )
+                                        },
+                                    )
                                 }
                                 None => {
                                     panic!("fatal: g1 = {}, g2 = {}", g1, g2)
@@ -344,7 +391,7 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
                         // x is type int and fvints already has x.id
                         saved = true;
                     }
-                    let r = go_(g, level, fvints, argints, constraint)
+                    let r = go_(optimizer, g, level, fvints, argints, constraint)
                         .map(|(g, p)| (G::mk_univ_t(x.clone(), g, goal.aux.clone()), p));
                     if x.ty.is_int() && !saved {
                         fvints.remove(&x.id);
@@ -363,7 +410,7 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
                         saved_arg = true;
                     }
 
-                    let r = go_(g, level, fvints, argints, constraint)
+                    let r = go_(optimizer, g, level, fvints, argints, constraint)
                         .map(|(g, p)| (G::mk_abs_t(x.clone(), g, goal.aux.clone()), p));
                     if x.ty.is_int() && !saved {
                         fvints.remove(&x.id);
@@ -378,6 +425,7 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
             }
         }
         go_(
+            optimizer,
             goal,
             *level,
             &mut HashSet::new(),
@@ -394,7 +442,7 @@ fn generate_reduction_sequence(goal: &G) -> (Vec<Reduction>, G) {
     let mut reduced = goal.clone();
 
     debug!("{}", reduced);
-    while let Some((g, r)) = go(&reduced, &mut level) {
+    while let Some((g, r)) = go(optimizer, &reduced, &mut level) {
         reduced = g.clone();
         //debug!("-> {}", reduced);
         //debug!("-> {}", r);
@@ -428,12 +476,7 @@ impl Context {
             infer_polymorphic_type,
         }
     }
-    fn retrieve_from_track_idents(
-        &self,
-        model: &chc::Model,
-        derivation: &Derivation,
-    ) -> TypeEnvironment<Tau<Constraint>> {
-        // TODO NEXT: we can retrieve it from context.track_idents
+    fn retrieve_from_track_idents(&self, model: &chc::Model, derivation: &Derivation) -> TyEnv {
         let model = &model.model;
         let mut result_env = TypeEnvironment::new();
         for (pred_name, ids) in self.track_idents.iter() {
@@ -444,7 +487,9 @@ impl Context {
                             debug!("{}: {}", pred_name, ty);
                             debug!("{:?}", model);
                             let ty = ty.ty.clone();
-                            result_env.add(*pred_name, ty.assign(&model));
+                            let ty = ty.assign(&model);
+                            let pty = PolymorphicType::poly(ty);
+                            result_env.add(*pred_name, pty);
                         }
                     }
                     None => (),
@@ -453,90 +498,178 @@ impl Context {
         }
         result_env
     }
-    fn infer_type(
-        &mut self,
-        mut derivation: Derivation,
-    ) -> Option<TypeEnvironment<Tau<Constraint>>> {
-        //let mut constraints = Vec::new();
-        let mut clauses = Vec::new();
-        for reduction in self.reduction_sequence.iter().rev() {
-            title!("Reduction");
-            debug!("{}", reduction);
-            let ret_tys = derivation.get_expr_ty(&reduction.result.aux.id);
-            if ret_tys.iter().len() == 0 {
-                debug!(
-                    "search for id={},expr={} ",
-                    reduction.result.aux.id, reduction.result
-                );
-                title!("no ret_tys");
-                panic!("fatal");
-            }
-
-            let mut arg_tys = Vec::new();
-            for reduction in reduction.args.iter().rev() {
-                let arg_ty = if reduction.arg_var.ty.is_int() {
-                    either::Left(reduction.arg_var.id)
-                } else {
-                    // 1. get the corresponding types
-                    let arg_ty: Vec<Ty> = derivation
-                        .get_arg(&reduction.level)
-                        .iter()
-                        .cloned()
-                        .collect();
-                    let arg_ty = if arg_ty.len() == 0 {
-                        vec![Ty::mk_bot(&reduction.arg_var.ty)]
-                    } else {
-                        arg_ty
-                    };
-                    either::Right(arg_ty)
-                };
-                arg_tys.push(arg_ty);
-            }
-
-            // we have to track all the temporal ids
-            let mut expr_ids = Vec::new();
-            let mut p = reduction.app_expr.clone();
-            loop {
-                match p.kind() {
-                    GoalKind::App(g, _) => {
-                        debug!("id={}, g={}", g.aux.id, g);
-                        expr_ids.push(g.aux.id);
-                        p = g.clone();
+    fn infer_type_inner(
+        &self,
+        derivation: &mut Derivation,
+        reduction: &Reduction,
+        clauses: &mut Vec<chc::CHC<chc::Atom, Constraint>>,
+    ) {
+        ///// aux functions
+        fn append_clauses(clauses: &mut Vec<chc::CHC<chc::Atom, Constraint>>, constraint: &Atom) {
+            match constraint.to_chcs_or_pcsps() {
+                either::Left(chcs) => {
+                    debug!("constraints");
+                    for c in chcs {
+                        debug!("  - {}", c);
+                        clauses.push(c);
                     }
-                    _ => break,
+                }
+                either::Right(pcsps) => {
+                    debug!("constriant: {}", constraint);
+                    debug!("failed to translate the constraint to chcs");
+                    for c in pcsps {
+                        debug!("{}", c)
+                    }
+                    panic!("fatal")
                 }
             }
-            assert_eq!(expr_ids.len(), arg_tys.len());
+        }
+        fn append_clauses_by_subst(
+            clauses: &mut Vec<chc::CHC<chc::Atom, Constraint>>,
+            ts: &Vec<Ty>,
+            arg_ty: &Vec<Ty>,
+            constraint: &Atom,
+        ) {
+            if ts.len() != 1 {
+                unimplemented!()
+            }
+            let t = &ts[0];
+            // arg_ty -> result -> <: ts -> t(arg_ty)
+            // ts <: arg_ty
+            for s in arg_ty.iter() {
+                let constraint1 = Tau::check_subtype(&constraint.clone(), s, t);
+                let constraint2 = Tau::check_subtype(&constraint.clone(), t, s);
+                let constraint = Atom::mk_conj(constraint1, constraint2);
+                append_clauses(clauses, &constraint);
+            }
+        }
+        ///// aux functions end
 
-            for ret_ty in ret_tys.iter() {
-                debug!("ret_ty: {}", ret_ty);
-                let SavedTy {
-                    ty: ret_ty,
-                    constraint: ret_ty_constraint,
-                } = ret_ty.clone();
+        title!("Reduction");
+        debug!("{}", reduction);
+        let ret_tys = derivation.get_expr_ty(&reduction.result.aux.id);
+        if ret_tys.iter().len() == 0 {
+            debug!(
+                "search for id={},expr={} ",
+                reduction.result.aux.id, reduction.result
+            );
+            title!("no ret_tys");
+            panic!("fatal");
+        }
 
-                let tmp_ret_ty = ret_ty.clone_with_rty_template(
-                    ret_ty_constraint.clone(),
-                    //Atom::mk_true(),
-                    &mut if self.infer_polymorphic_type {
-                        reduction.fvints.clone()
-                    } else {
-                        reduction.argints.clone()
-                    },
-                );
+        // retrieve argument types
+        // if argument type is non-integer, then make sure that the context of the retrieved type matches
+        // the current context formula.
+        let mut arg_tys = Vec::new();
+        for ri in reduction.args.iter().rev() {
+            let arg_ty = if ri.arg_var.ty.is_int() {
+                either::Left(ri.arg_var.id)
+            } else {
+                // 1. get the corresponding types
+                let arg_ty = match &ri.arg.aux.tys {
+                    Some(tys) => tys.clone(), // when shared type exists
+                    None => derivation.get_arg(&ri.level).iter().cloned().collect(),
+                };
+                let arg_ty = if arg_ty.len() == 0 {
+                    vec![Ty::mk_bot(&ri.arg_var.ty)]
+                } else {
+                    arg_ty
+                };
+                either::Right(arg_ty)
+            };
+            arg_tys.push(arg_ty);
+        }
 
-                let mut tmp_ty = tmp_ret_ty.clone();
-                let mut body_ty = ret_ty.clone();
-                let mut app_expr_ty = tmp_ret_ty.clone();
+        // we have to track all the temporal ids
+        // since there are more than one reductions in Reduction object itself
+        let mut expr_ids = Vec::new();
+        let mut p = reduction.app_expr.clone();
+        loop {
+            match p.kind() {
+                GoalKind::App(g, _) => {
+                    debug!("id={}, g={}", g.aux.id, g);
+                    expr_ids.push(g.aux.id);
+                    p = g.clone();
+                }
+                _ => break,
+            }
+        }
+        assert_eq!(expr_ids.len(), arg_tys.len());
 
+        // prepare return type
+        for ret_ty in ret_tys.iter() {
+            let SavedTy {
+                ty: ret_ty,
+                context_ty,
+            } = ret_ty.clone();
+            debug!("ret_ty: {}", ret_ty);
+
+            // if there is a shared_ty, we have to use it
+            let (tmp_ret_ty, is_shared_ty) = match &reduction.predicate.aux.tys {
+                Some(tys) => (tys[0].clone(), true),
+                None => {
+                    (
+                        ret_ty.clone_with_rty_template(
+                            //ret_ty_constraint.clone(),
+                            Atom::mk_true(),
+                            &mut if self.infer_polymorphic_type {
+                                reduction.fvints.clone()
+                            } else {
+                                reduction.argints.clone()
+                            },
+                        ),
+                        false,
+                    )
+                }
+            };
+
+            let mut tmp_ty = tmp_ret_ty.clone();
+            let mut body_ty = ret_ty.clone();
+            let mut app_expr_ty = tmp_ret_ty.clone();
+
+            // calculate the type for app_expr
+            if is_shared_ty {
+                for (arg_ty, reduction) in arg_tys.iter().rev().zip(reduction.args.iter()) {
+                    //println!("arg_ty: {arg_ty}");
+                    match arg_ty {
+                        // case: arg ty is integer
+                        either::Left(ident) => {
+                            body_ty = body_ty.deref_ptr(ident).rename(&ident, &reduction.old_id);
+                            let op: Op = reduction.arg.clone().into();
+                            match app_expr_ty.kind() {
+                                TauKind::IArrow(id, t) => {
+                                    body_ty = body_ty.rename(&reduction.old_id, id);
+                                    app_expr_ty = t.subst(id, &op);
+                                }
+                                TauKind::Arrow(_, _) | TauKind::Proposition(_) => {
+                                    panic!("program error")
+                                }
+                            }
+                        }
+                        // case: arg ty is higher-order
+                        either::Right(arg_ty) => match app_expr_ty.kind() {
+                            TauKind::Arrow(ts, t_result) => {
+                                append_clauses_by_subst(
+                                    clauses,
+                                    ts,
+                                    arg_ty,
+                                    &app_expr_ty.rty_no_exists(),
+                                );
+                                app_expr_ty = t_result.clone()
+                            }
+                            TauKind::IArrow(_, _) | TauKind::Proposition(_) => {
+                                panic!("program error")
+                            }
+                        },
+                    }
+                }
+            } else {
                 for (arg_ty, reduction) in arg_tys.iter().zip(reduction.args.iter().rev()) {
                     match arg_ty {
                         either::Left(ident) => {
                             body_ty = body_ty.deref_ptr(ident).rename(&ident, &reduction.old_id);
-
-                            tmp_ty = Tau::mk_iarrow(reduction.old_id, tmp_ty);
-
                             let op: Op = reduction.arg.clone().into();
+                            tmp_ty = Tau::mk_iarrow(reduction.old_id, tmp_ty);
                             app_expr_ty = app_expr_ty.subst(&reduction.old_id, &op);
                         }
                         either::Right(arg_ty) => {
@@ -544,99 +677,108 @@ impl Context {
                         }
                     };
                 }
-                // 3. generate constraint from subtyping t <: arg_ty -> ret_ty, and append them to constraints
-                // constrain by `old <= new_tmpty <= top`
-                //let mut argints = reduction.argints.clone();
-
-                debug!("inferred type: {}", tmp_ty);
-                debug!("body type: {}", body_ty);
-                debug!("app_expr_type: {}", app_expr_ty);
-
-                // TODO: I think this is ok
-                //let constraint = Atom::mk_implies_opt(tmp_ty.rty_no_exists(), body_ty.rty()).unwrap();
-                let constraint = Atom::mk_implies_opt(
-                    Atom::mk_conj(tmp_ty.rty_no_exists(), ret_ty_constraint.clone()),
-                    body_ty.rty_no_exists(),
-                )
-                .unwrap();
-
-                let constraint2 =
-                    Atom::mk_implies_opt(ret_ty_constraint.clone(), app_expr_ty.rty_no_exists())
-                        .unwrap();
-                debug!("constraint1: {}", constraint);
-                debug!("constraint2: {}", constraint2);
-                let constraint = Atom::mk_conj(constraint, constraint2);
-                // 2. create a template type from `ty` and free variables `fvints`
-                match constraint.to_chcs_or_pcsps() {
-                    either::Left(chcs) => {
-                        debug!("constraints");
-                        for c in chcs {
-                            debug!("  - {}", c);
-                            clauses.push(c);
-                        }
-                    }
-                    either::Right(pcsps) => {
-                        debug!("constriant: {}", constraint);
-                        debug!("failed to translate the constraint to chcs");
-                        for c in pcsps {
-                            debug!("{}", c)
-                        }
-                        panic!("fatal")
-                    }
-                }
-                // 4. for each `level` in reduction.candidate.aux, we add t to Derivation
-                for level in reduction.predicate.aux.level_arg.iter() {
-                    derivation.arg.insert(*level, tmp_ty.clone());
-                }
-                for level in reduction.app_expr.aux.level_arg.iter() {
-                    derivation.arg.insert(*level, app_expr_ty.clone())
-                }
-
-                // let tmp_saved_ty = SavedTy::mk(tmp_ty.clone(), ret_ty_constraint.clone());
-                // derivation
-                //     .expr
-                //     .set(reduction.predicate.aux.id, tmp_saved_ty);
-                debug!(
-                    "app_expr({}): {}",
-                    reduction.app_expr.aux.id, reduction.app_expr
-                );
-                // go forward
-                // add types to all the temporal app result
-                let mut temporal_ty = tmp_ty.clone();
-                for ((arg_ty, reduction), expr_id) in arg_tys
-                    .iter()
-                    .rev()
-                    .zip(reduction.args.iter())
-                    .zip(expr_ids.iter().rev())
-                {
-                    debug!("saving({}): {}", expr_id, temporal_ty);
-                    let temporal_saved_ty =
-                        SavedTy::mk(temporal_ty.clone(), ret_ty_constraint.clone());
-                    derivation.expr.set(*expr_id, temporal_saved_ty);
-                    match arg_ty {
-                        either::Left(_) => {
-                            let op: Op = reduction.arg.clone().into();
-                            let (id, t) = match temporal_ty.kind() {
-                                TauKind::IArrow(id, t) => (id, t),
-                                _ => panic!("fatal"),
-                            };
-                            temporal_ty = t.subst(id, &op);
-                        }
-                        either::Right(_) => {
-                            temporal_ty = match temporal_ty.kind() {
-                                TauKind::Arrow(_, t) => t.clone(),
-                                _ => panic!("fatal"),
-                            }
-                        }
-                    };
-                }
-                let app_expr_saved_ty = SavedTy::mk(app_expr_ty.clone(), ret_ty_constraint.clone());
-                derivation
-                    .expr
-                    .set(reduction.app_expr.aux.id, app_expr_saved_ty);
-                // the aux.id is saved above, so we don't have to for app_expr
             }
-            debug!("");
+            // 3. generate constraint from subtyping t <: arg_ty -> ret_ty, and append them to constraints
+            // constrain by `old <= new_tmpty <= top`
+            //let mut argints = reduction.argints.clone();
+
+            debug!("inferred type: {}", tmp_ty);
+            debug!("body type: {}", body_ty);
+            debug!("app_expr_type: {}", app_expr_ty);
+
+            let constraint =
+                Atom::mk_implies_opt(tmp_ty.rty_no_exists(), body_ty.rty_no_exists()).unwrap();
+
+            let constraint2 =
+                Atom::mk_implies_opt(context_ty.rty_no_exists(), app_expr_ty.rty_no_exists())
+                    .unwrap();
+            debug!("constraint1: {}", constraint);
+            debug!("constraint2: {}", constraint2);
+            let constraint = Atom::mk_conj(constraint, constraint2);
+            append_clauses(clauses, &constraint);
+
+            // 4. for each `level` in reduction.candidate.aux, we add t to Derivation
+            for level in reduction.predicate.aux.level_arg.iter() {
+                derivation.arg.insert(*level, tmp_ty.clone());
+            }
+            for level in reduction.app_expr.aux.level_arg.iter() {
+                derivation.arg.insert(*level, app_expr_ty.clone())
+            }
+
+            debug!(
+                "app_expr({}): {}",
+                reduction.app_expr.aux.id, reduction.app_expr
+            );
+
+            // finally, add types to all the temporal app result
+            let mut temporal_ty = tmp_ty.clone();
+            for ((arg_ty, reduction), expr_id) in arg_tys
+                .iter()
+                .rev()
+                .zip(reduction.args.iter())
+                .zip(expr_ids.iter().rev())
+            {
+                debug!("saving({}): {}", expr_id, temporal_ty);
+                // [feature shared_ty] in the infer_type phase, we no longer have to track both shared_ty and ty.
+                let temporal_saved_ty = SavedTy::mk(temporal_ty.clone(), context_ty.clone());
+                derivation.expr.set(*expr_id, temporal_saved_ty);
+                match arg_ty {
+                    either::Left(_) => {
+                        let op: Op = reduction.arg.clone().into();
+                        let (id, t) = match temporal_ty.kind() {
+                            TauKind::IArrow(id, t) => (id, t),
+                            _ => panic!("fatal"),
+                        };
+                        temporal_ty = t.subst(id, &op);
+                    }
+                    either::Right(_) => {
+                        temporal_ty = match temporal_ty.kind() {
+                            TauKind::Arrow(_, t) => t.clone(),
+                            _ => panic!("fatal"),
+                        }
+                    }
+                };
+            }
+
+            // [feature shared_ty] in the infer_type phase, we no longer have to track both shared_ty and ty.
+            let app_expr_saved_ty = SavedTy::mk(app_expr_ty.clone(), context_ty.clone());
+            derivation
+                .expr
+                .set(reduction.app_expr.aux.id, app_expr_saved_ty);
+            // the aux.id is saved above, so we don't have to for app_expr
+        }
+        debug!("");
+    }
+    fn infer_type(
+        &mut self,
+        mut derivation: Derivation,
+        constraints: Stack<Atom>, // constraints generated during type checking due to type sharing
+    ) -> Option<TyEnv> {
+        //let mut constraints = Vec::new();
+        let mut clauses = Vec::new();
+        debug!("constraints generated during type checking");
+        for constraint in constraints.iter() {
+            match constraint.to_chcs_or_pcsps() {
+                either::Left(chcs) => {
+                    debug!("constraints");
+                    for c in chcs {
+                        debug!("  - {}", c);
+                        clauses.push(c);
+                    }
+                }
+                either::Right(pcsps) => {
+                    debug!("constriant: {}", constraint);
+                    debug!("failed to translate the constraint to chcs");
+                    for c in pcsps {
+                        debug!("{}", c)
+                    }
+                    panic!("fatal")
+                }
+            }
+        }
+
+        for reduction in self.reduction_sequence.iter().rev() {
+            self.infer_type_inner(&mut derivation, reduction, &mut clauses)
         }
         clauses.iter().for_each(|c| debug!("- {}", c));
         // 4. solve the constraints by using the interpolation solver
@@ -654,9 +796,9 @@ impl Context {
         };
 
         crate::title!("model from CHC solver");
-        // TODO: Display model
         debug!("{}", m);
-        let model = solver::interpolation::solve(&clauses);
+        let config = solver::interpolation::InterpolationConfig::new().use_chc_if_requied();
+        let model = solver::interpolation::solve(&clauses, &config);
         debug!("interpolated:");
         debug!("{}", model);
 
@@ -667,91 +809,170 @@ impl Context {
 }
 
 fn handle_abs(
-    constraint: &Atom,
+    config: &TCConfig,
     tenv: &mut Env,
     ienv: &mut HashSet<Ident>,
     all_coefficients: &mut HashSet<Ident>,
     arg_expr: &G,
     t: &Ty,
 ) -> PossibleDerivation<Atom> {
-    let pt = match arg_expr.kind() {
-        GoalKind::Abs(v, g) if v.ty.is_int() => match t.kind() {
-            TauKind::IArrow(id, t) if v.ty.is_int() => {
-                let t = t.rename(id, &v.id);
-                let constraint = constraint.rename(id, &v.id);
-                let b = ienv.insert(v.id);
-                let pt = handle_abs(&constraint, tenv, ienv, all_coefficients, g, &t);
-                if !b {
-                    ienv.remove(&v.id);
+    fn handle_abs_inner(
+        config: &TCConfig,
+        tenv: &mut Env,
+        ienv: &mut HashSet<Ident>,
+        all_coefficients: &mut HashSet<Ident>,
+        arg_expr: &G,
+        t: &Ty,
+    ) -> PossibleDerivation<Atom> {
+        let mut pt = match arg_expr.kind() {
+            GoalKind::Abs(v, g) if v.ty.is_int() => match t.kind() {
+                TauKind::IArrow(id, t) if v.ty.is_int() => {
+                    let t = t.rename(id, &v.id);
+                    let b = ienv.insert(v.id);
+                    let pt = handle_abs_inner(config, tenv, ienv, all_coefficients, g, &t);
+                    if !b {
+                        ienv.remove(&v.id);
+                    }
+                    pt.iarrow(&v.id)
                 }
-                pt.iarrow(&v.id)
-            }
-            _ => panic!("program error"),
-        },
-        GoalKind::Abs(v, g) => match t.kind() {
-            TauKind::Arrow(ts, t) if !v.ty.is_int() => {
-                let mut tenv = tenv.clone();
-                for t in ts {
-                    debug!("adding type {t} to tenv");
-                    tenv.add(v.id, t.clone());
+                _ => panic!("program error"),
+            },
+            GoalKind::Abs(v, g) => match t.kind() {
+                TauKind::Arrow(ts, t) if !v.ty.is_int() => {
+                    let mut tenv = tenv.clone();
+                    for t in ts {
+                        debug!("adding type {t} to tenv");
+                        tenv.add(v.id, PolymorphicType::mono(t.clone()));
+                    }
+                    let pt = handle_abs_inner(config, &mut tenv, ienv, all_coefficients, g, t);
+                    pt.arrow(ts)
                 }
-                let pt = handle_abs(constraint, &mut tenv, ienv, all_coefficients, g, t);
-                pt.arrow(ts)
+                _ => panic!("fatal"),
+            },
+            _ => {
+                let mut pt =
+                    type_check_inner(config, tenv, ienv, all_coefficients, arg_expr, t.clone());
+                pt.coarse_type(t);
+                pt
             }
-            _ => panic!("fatal"),
-        },
-        _ => {
-            let mut pt = type_check_inner(constraint, tenv, ienv, all_coefficients, arg_expr);
-            pt.coarse_type(constraint, t);
+        };
+        for level in arg_expr.aux.level_arg.iter() {
+            for ct in pt.types.iter_mut() {
+                ct.memorize(*level);
+            }
+        }
+        for ct in pt.types.iter_mut() {
+            ct.set_types(arg_expr, t.clone());
+        }
+        debug!("handle_abs: |- {} : {} ", arg_expr, pt);
+        pt
+    }
+    // [feature shared_ty]
+    match (&config.tc_mode, &arg_expr.aux.tys) {
+        (TCFlag::Normal, _) | (_, None) => {
+            handle_abs_inner(config, tenv, ienv, all_coefficients, arg_expr, t)
+        }
+        (TCFlag::Shared(_), Some(tys)) if tys.len() == 1 => {
+            let mut pt = handle_abs_inner(config, tenv, ienv, all_coefficients, arg_expr, &tys[0]);
+            pt.coarse_type(t);
             pt
         }
-    };
-    debug!("handle_abs: {} |- {} : {} ", constraint, arg_expr, pt);
-    pt
+        (_, _) => panic!("program error"),
+    }
 }
+
+#[derive(Clone, Debug)]
+struct TCConfig {
+    tc_mode: TCFlag,
+    // TODO
+    construct_derivation: bool,
+}
+
+#[derive(Clone, Debug)]
+struct InstantiationConfig {
+    derivation: Derivation,
+}
+
+#[derive(Clone, Debug)]
+enum TCFlag {
+    Normal,
+    Shared(InstantiationConfig),
+}
+
 // tenv+ienv; constraint |- App(arg, ret): t
 /// returns possible types for app_expr under constraint
 fn handle_app(
-    constraint: &Atom,
+    config: &TCConfig,
     tenv: &mut Env,
     ienv: &mut HashSet<Ident>,
     all_coefficients: &mut HashSet<Ident>,
     app_expr: &G,
+    cty: Ty,
 ) -> PossibleDerivation<Atom> {
     fn handle_inner(
-        constraint: &Atom,
+        config: &TCConfig,
         tenv: &mut Env,
         ienv: &mut HashSet<Ident>,
         all_coefficients: &mut HashSet<Ident>,
         pred: &G,
+        cty: Ty, // context ty
     ) -> PossibleDerivation<Atom> {
         match pred.kind() {
             formula::hes::GoalKind::Var(x) => match tenv.get(x) {
                 Some(ts) => {
-                    debug!("search {x} from tenv");
-                    let mut coefficients = Stack::new();
-                    let types = ts
-                        .iter()
-                        .map(|t| {
-                            // debug!("before add_context(constraint={}) = {}", constraint, t);
-                            // let t = t.add_context(constraint);
-                            // debug!("after add_context = {}", t);
-                            let t = t.clone();
-                            let s = instantiate_type(t, ienv, &mut coefficients, all_coefficients);
-                            CandidateDerivation::new(
-                                s,
-                                coefficients.clone(),
-                                Stack::new(),
-                                Derivation::new(),
-                            )
-                        })
-                        .collect();
+                    // [feature shared_ty] if shared type mode is enabled, instantiate the polymorphic types
+                    // in the same way as the previous instantiation that succeeded.
+                    let types = match &config.tc_mode {
+                        TCFlag::Normal => {
+                            debug!("search {x} from tenv");
+                            let mut coefficients = Stack::new();
+                            let types = ts
+                                .iter()
+                                .map(|t| {
+                                    // debug!("before add_context(constraint={}) = {}", constraint, t);
+                                    // let t = t.add_context(constraint);
+                                    // debug!("after add_context = {}", t);
+
+                                    let t =
+                                        t.instantiate(ienv, &mut coefficients, all_coefficients);
+                                    debug!("instantiate_type ienv: {:?}", ienv);
+                                    debug!("instantiated: {t}");
+
+                                    CandidateDerivation::new(
+                                        t,
+                                        coefficients.clone(),
+                                        Stack::new(),
+                                        Derivation::new(),
+                                    )
+                                })
+                                .collect();
+                            types
+                        }
+                        TCFlag::Shared(d) => {
+                            let ct = d
+                                .derivation
+                                .get_expr_ty(&pred.aux.id)
+                                .iter()
+                                .cloned()
+                                .map(|t| {
+                                    CandidateDerivation::new(
+                                        t.ty,
+                                        Stack::new(),
+                                        Stack::new(),
+                                        Derivation::new(),
+                                    )
+                                })
+                                .next()
+                                .unwrap();
+                            vec![ct]
+                        }
+                    };
                     PossibleDerivation::new(types)
                 }
                 None => PossibleDerivation::empty(),
             },
             formula::hes::GoalKind::App(predg, argg) => {
-                let pred_pt = handle_app(constraint, tenv, ienv, all_coefficients, predg);
+                let pred_pt = handle_app(config, tenv, ienv, all_coefficients, predg, cty.clone());
                 // Case: the argument is integer
                 match argg.check_int_expr(ienv) {
                     // Case: the type of argument is int
@@ -792,10 +1013,11 @@ fn handle_app(
                     let mut tmp_cts = vec![result_ct];
                     // check if there exists a derivation for all types in the intersection type.
                     for t in arg_t {
-                        let arg_constraint = Atom::mk_conj(t.rty_no_exists(), constraint.clone());
                         //debug!("t: {}", t);
                         // check if arg_constraint |- argg: arg_t
-                        let pt = handle_abs(&arg_constraint, tenv, ienv, all_coefficients, argg, t);
+                        let rty = cty.rty_no_exists();
+                        let t_context = t.conjoin_constraint(&rty);
+                        let pt = handle_abs(config, tenv, ienv, all_coefficients, argg, &t_context);
 
                         // permutation
                         let mut new_tmp_cts = Vec::new();
@@ -821,62 +1043,107 @@ fn handle_app(
             | formula::hes::GoalKind::Univ(_, _) => panic!("fatal: {}", pred),
         }
     }
-    let mut pt = handle_inner(constraint, tenv, ienv, all_coefficients, app_expr);
+    let mut pt = handle_inner(config, tenv, ienv, all_coefficients, app_expr, cty.clone());
+    // [feature shared_ty] template type sharing
+    // if there is a shared type registered, coarse pt to obey the type.
+    match (&config.tc_mode, &app_expr.aux.tys) {
+        (TCFlag::Shared(_), Some(tys)) if tys.len() == 1 => pt.coarse_type(&tys[0]),
+        (TCFlag::Normal, _) | (_, None) => (),
+        (_, _) => unimplemented!(),
+    }
     for level in app_expr.aux.level_arg.iter() {
         for ct in pt.types.iter_mut() {
             ct.memorize(*level);
         }
     }
     for ct in pt.types.iter_mut() {
-        ct.set_types(app_expr, constraint.clone());
+        ct.set_types(app_expr, cty.clone());
     }
-    debug!("handle_app: {} |- {} : {} ", constraint, app_expr, pt);
+    debug!("handle_app: |- {} : {} ", app_expr, pt);
     pt
 }
 
+// body of type checking;  tenv; ienv |- c : contex_ty
+// do some check in bottom up manner
 fn type_check_inner(
-    constraint: &Atom, // Θ
+    config: &TCConfig,
     tenv: &mut Env,
     ienv: &mut HashSet<Ident>, // V
     all_coefficients: &mut HashSet<Ident>,
     c: &G,
+    context_ty: Ty,
 ) -> PossibleDerivation<Atom> {
     fn go_inner(
-        constraint: &Atom,
+        config: &TCConfig,
         tenv: &mut Env,
         ienv: &mut HashSet<Ident>,
         all_coefficients: &mut HashSet<Ident>,
         c: &G,
+        context_ty: Ty,
     ) -> PossibleDerivation<Atom> {
+        // [pruning]: since we can always derive ψ: ⊥, we do not have to care about this part
+        if !config.construct_derivation && context_ty.is_bot() {
+            let cd = CandidateDerivation::singleton(context_ty.clone());
+            return PossibleDerivation::singleton(cd);
+        }
         match c.kind() {
             formula::hes::GoalKind::Constr(c) => {
                 let constraint = c.clone().into();
                 let t = Ty::mk_prop_ty(constraint);
-                let cd = CandidateDerivation::new(t, Stack::new(), Stack::new(), Derivation::new());
+                let cd = CandidateDerivation::singleton(t);
                 PossibleDerivation::singleton(cd)
             }
             formula::hes::GoalKind::Var(x) => match tenv.get(x) {
                 Some(ts) => {
-                    let mut tys = Vec::new();
-                    for ty in ts {
-                        let mut coefficients = Stack::new();
-                        let s =
-                            instantiate_type(ty.clone(), ienv, &mut coefficients, all_coefficients);
-                        let cd = CandidateDerivation::new(
-                            s,
-                            coefficients,
-                            Stack::new(),
-                            Derivation::new(),
-                        );
-                        tys.push(cd);
-                    }
+                    // [feature shared_ty] if shared type mode is enabled, instantiate the polymorphic types
+                    // in the same way as the previous instantiation that succeeded.
+                    let tys = match &config.tc_mode {
+                        TCFlag::Normal => {
+                            let mut tys = Vec::new();
+                            for ty in ts {
+                                let mut coefficients = Stack::new();
+                                let ty = ty.instantiate(ienv, &mut coefficients, all_coefficients);
+                                debug!("instantiate_type ienv: {:?}", ienv);
+                                debug!("instantiated: {ty}");
+
+                                let cd = CandidateDerivation::new(
+                                    ty,
+                                    coefficients,
+                                    Stack::new(),
+                                    Derivation::new(),
+                                );
+                                tys.push(cd);
+                            }
+                            tys
+                        }
+                        TCFlag::Shared(d) => {
+                            let ty = d
+                                .derivation
+                                .get_expr_ty(&c.aux.id)
+                                .iter()
+                                .cloned()
+                                .map(|t| {
+                                    CandidateDerivation::new(
+                                        t.ty,
+                                        Stack::new(),
+                                        Stack::new(),
+                                        Derivation::new(),
+                                    )
+                                })
+                                .next()
+                                .unwrap();
+                            vec![ty]
+                        }
+                    };
                     PossibleDerivation::new(tys)
                 }
                 None => PossibleDerivation::empty(),
             },
             formula::hes::GoalKind::Conj(g1, g2) => {
-                let t1 = type_check_inner(constraint, tenv, ienv, all_coefficients, g1);
-                let t2 = type_check_inner(constraint, tenv, ienv, all_coefficients, g2);
+                let t1 =
+                    type_check_inner(config, tenv, ienv, all_coefficients, g1, context_ty.clone());
+                let t2 =
+                    type_check_inner(config, tenv, ienv, all_coefficients, g2, context_ty.clone());
                 PossibleDerivation::conjoin(t1, t2)
             }
             formula::hes::GoalKind::Disj(g1, g2) => {
@@ -886,27 +1153,30 @@ fn type_check_inner(
                     None => (g2.clone().into(), g1, g2),
                 };
                 let c_neg = c.negate().unwrap();
+                // TODO: handle disjunction
                 let t1 = type_check_inner(
-                    &Atom::mk_conj(c_neg.into(), constraint.clone()),
+                    config,
                     tenv,
                     ienv,
                     all_coefficients,
                     g,
+                    context_ty.conjoin_constraint(&c_neg.into()),
                 );
                 // type check of constraints (to track the type derivation, checking g2 is necessary)
                 let t2 = type_check_inner(
-                    &Atom::mk_conj(c.into(), constraint.clone()),
+                    config,
                     tenv,
                     ienv,
                     all_coefficients,
                     g_,
+                    context_ty.conjoin_constraint(&c.into()),
                 );
                 PossibleDerivation::disjoin(t1, t2)
             }
             formula::hes::GoalKind::Univ(x, g) => {
-                // to avoid the collision, we rename the variable.
                 let b = ienv.insert(x.id);
-                let mut pt = type_check_inner(constraint, tenv, ienv, all_coefficients, &g);
+                let mut pt =
+                    type_check_inner(config, tenv, ienv, all_coefficients, &g, context_ty.clone());
                 if b {
                     ienv.remove(&x.id);
                 }
@@ -915,7 +1185,7 @@ fn type_check_inner(
                 pt
             }
             formula::hes::GoalKind::App(_, _) => {
-                handle_app(constraint, tenv, ienv, all_coefficients, c)
+                handle_app(config, tenv, ienv, all_coefficients, c, context_ty.clone())
             }
             formula::hes::GoalKind::Abs(_v, _g) => {
                 // abs can appear in the argument of application
@@ -943,39 +1213,47 @@ fn type_check_inner(
             formula::hes::GoalKind::Op(_) => panic!("fatal error"),
         }
     }
-    let mut pt = go_inner(constraint, tenv, ienv, all_coefficients, c);
+    let mut pt = go_inner(config, tenv, ienv, all_coefficients, c, context_ty.clone());
+
+    // [feature shared_ty] template type sharing
+    // if there is a shared type registered, coarse pt to obey the type.
+    match (&config.tc_mode, &c.aux.tys) {
+        (TCFlag::Shared(_), Some(tys)) if tys.len() == 1 => pt.coarse_type(&tys[0]),
+        (TCFlag::Normal, _) | (_, None) => (),
+        (_, _) => unimplemented!(),
+    }
+
     for ct in pt.types.iter_mut() {
-        debug!(
-            "type_check_go({}): {} |- {} : {}",
-            c.aux.id, constraint, c, ct.ty
-        );
+        debug!("type_check_go({}) |- {} : {}", c.aux.id, c, ct.ty);
         // memorize the type assignment to each expr
         for level in c.aux.level_arg.iter() {
             ct.memorize(*level);
         }
-        ct.set_types(c, constraint.clone());
+        ct.set_types(c, context_ty.clone());
     }
     pt
 }
 
 // we assume conjunction normal form and has the form (θ => a₁ a₂ ⋯) ∧ ⋯
-// constraint: Θ
-/// V; Θ; Γ ⊢ c : t
+/// V; Γ ⊢ c : t
 /// function go constructs possible derivation trees by induction on the structure of c(ψ)
 ///
 fn type_check(
-    constraint: &Atom, // Θ
     tenv: &mut Env,
     ienv: &mut HashSet<Ident>, // V
     c: &G,
-    t: &Ty,
+    t: &PTy,
 ) -> bool {
-    for fv in t.fv() {
-        ienv.insert(fv);
+    for fv in t.vars.iter() {
+        ienv.insert(*fv);
         debug!("type_check ienv: {ienv:?}");
     }
     let mut all_coefficients = HashSet::new();
-    let pt = handle_abs(constraint, tenv, ienv, &mut all_coefficients, c, t);
+    let config = TCConfig {
+        tc_mode: TCFlag::Normal,
+        construct_derivation: false,
+    };
+    let pt = handle_abs(&config, tenv, ienv, &mut all_coefficients, c, &t.ty);
     //pt.coarse_type(constraint, t);
     pt.check_derivation().is_some()
 }
@@ -991,17 +1269,63 @@ fn type_check_top_with_derivation(psi: &G, tenv: &mut Env) -> Option<Derivation>
     debug!("target: {}", psi);
     let mut ienv = HashSet::new();
     let mut all_coefficients = HashSet::new();
+    let config = TCConfig {
+        tc_mode: TCFlag::Normal,
+        construct_derivation: true,
+    };
     let mut pt = type_check_inner(
-        &Atom::mk_true(),
+        &config,
         tenv,
         &mut ienv,
         &mut all_coefficients,
         &psi,
+        Ty::mk_prop_ty(Atom::mk_true()),
     );
-    pt.coarse_type(&Atom::mk_true(), &Ty::mk_prop_ty(Atom::mk_true()));
+    pt.coarse_type(&Ty::mk_prop_ty(Atom::mk_true()));
 
     // check if there is an actually possible derivation
     pt.check_derivation()
+}
+
+/// ε; true ; Γ ⊢ ψ : •<T>
+///
+/// tenv: Γ
+/// candidate: ψ
+/// assumption: candidate has a beta-normal form of type *.
+fn type_check_top_with_derivation_and_constraints(
+    previous_derivation: Derivation,
+    psi: &G,
+    tenv: &mut Env,
+) -> (Derivation, Stack<Atom>) {
+    title!("type_check_top_with_derivation_and_constraints");
+    // using previous derivation,
+    // constraints that are required for shared types can be generated.
+    let mut ienv = HashSet::new();
+    let mut all_coefficients = HashSet::new();
+    let ic = InstantiationConfig {
+        derivation: previous_derivation,
+    };
+    let config = TCConfig {
+        tc_mode: TCFlag::Shared(ic),
+        construct_derivation: true,
+    };
+    let mut pt = type_check_inner(
+        &config,
+        tenv,
+        &mut ienv,
+        &mut all_coefficients,
+        &psi,
+        Ty::mk_prop_ty(Atom::mk_true()),
+    );
+    pt.coarse_type(&Ty::mk_prop_ty(Atom::mk_true()));
+
+    // check if there is an actually possible derivation
+    // since the derivation has the same shape as `previous_derivation`,
+    // we do not have more than one derivation in pt.
+    assert!(pt.types.len() == 1);
+    let derivation = pt.types[0].derivation.clone();
+    let constraints = pt.types[0].constraints.clone();
+    (derivation, constraints)
 }
 
 /// Γ ⊢ ψ : •<T>
@@ -1009,7 +1333,7 @@ fn type_check_top_with_derivation(psi: &G, tenv: &mut Env) -> Option<Derivation>
 /// tenv: Γ
 /// candidate: ψ
 /// assumption: candidate has a beta-normal form of type *.
-pub fn type_check_top(candidate: &Candidate, tenv: &TypeEnvironment<Tau<Constraint>>) -> bool {
+pub fn type_check_top(candidate: &Candidate, tenv: &TyEnv) -> bool {
     let g = candidate.clone().into();
     let mut tenv = tenv.into();
     let b = type_check_top_with_derivation(&g, &mut tenv).is_some();
@@ -1020,25 +1344,26 @@ fn reduce_until_normal_form(
     candidate: &Candidate,
     problem: &Problem,
     config: InferenceConfig,
+    optimizer: &mut dyn Optimizer,
 ) -> Context {
     let mut track_idents = HashMap::new();
     let candidate = candidate.clone().into(); // assign `aux` to candidate.
     let goal = subst_predicate(&candidate, problem, &mut track_idents);
     let goal = goal.alpha_renaming();
     title!("generate_reduction_sequence");
-    let (reduction_sequence, normal_form) = generate_reduction_sequence(&goal);
+    let (reduction_sequence, normal_form) = generate_reduction_sequence(&goal, optimizer);
     Context::new(normal_form, track_idents, reduction_sequence, config)
 }
 
 #[derive(Clone, Debug)]
 struct SavedTy {
     ty: Ty,
-    constraint: Atom,
+    context_ty: Ty, // to be coarsed
 }
 
 impl fmt::Display for SavedTy {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}; {}", self.constraint, self.ty)
+        write!(f, "{}", self.ty)
     }
 }
 impl formula::Subst for SavedTy {
@@ -1047,30 +1372,22 @@ impl formula::Subst for SavedTy {
 
     fn subst(&self, x: &Self::Id, v: &Self::Item) -> Self {
         let ty = self.ty.subst(x, v);
-        let constraint = self.constraint.subst(x, v);
-        SavedTy { ty, constraint }
+        let context_ty = self.context_ty.subst(x, v);
+        SavedTy::mk(ty, context_ty)
     }
 }
 
 impl SavedTy {
-    fn kind<'a>(&'a self) -> &'a TauKind<Atom> {
-        self.ty.kind()
-    }
-    fn mk(ty: Ty, constraint: Atom) -> SavedTy {
-        SavedTy { ty, constraint }
-    }
-    fn deref_ptr(&self, ident: &Ident) -> SavedTy {
-        let ty = self.ty.deref_ptr(ident);
-        let constraint = self.constraint.deref_ptr(ident);
-        SavedTy::mk(ty, constraint)
+    fn mk(ty: Ty, context_ty: Ty) -> SavedTy {
+        SavedTy { ty, context_ty }
     }
 }
 
 impl Rename for SavedTy {
     fn rename(&self, x: &Ident, y: &Ident) -> Self {
         let ty = self.ty.rename(x, y);
-        let constraint = self.constraint.rename(x, y);
-        SavedTy::mk(ty, constraint)
+        let context_ty = self.context_ty.rename(x, y);
+        SavedTy::mk(ty, context_ty)
     }
 }
 
@@ -1139,7 +1456,7 @@ impl<ID: Eq + std::hash::Hash + Copy, T: Clone + Subst<Item = Op, Id = Ident>>
     fn get_opt(&self, level: &ID) -> Option<Stack<T>> {
         self.0.get(level).cloned()
     }
-    fn update_with_model(&mut self, m: &solver::smt::Model) {
+    fn update_with_model(&mut self, m: &solver::Model) {
         let mut new_map = HashTrieMap::new();
         for (k, tys) in self.0.iter() {
             let mut new_tys = Stack::new();
@@ -1184,11 +1501,12 @@ impl Derivation {
         self.arg.merge_derivation_map(derivation.arg.clone());
         self.expr.merge_derivation_map(derivation.expr.clone());
     }
-    fn update_with_model(&mut self, m: &solver::smt::Model) {
+    fn update_with_model(&mut self, m: &solver::Model) {
         self.arg.update_with_model(&m);
         self.expr.update_with_model(&m);
     }
 }
+
 #[derive(Clone, Debug)]
 struct CandidateDerivation<C> {
     ty: Ty,
@@ -1217,12 +1535,15 @@ impl<C: Refinement> CandidateDerivation<C> {
             derivation,
         }
     }
+    fn singleton(ty: Ty) -> Self {
+        Self::new(ty, Stack::new(), Stack::new(), Derivation::new())
+    }
     fn memorize(&mut self, level: usize) {
         self.derivation.memorize(level, self.ty.clone())
     }
-    fn set_types(&mut self, expr: &G, constraint: Atom) {
+    fn set_types(&mut self, expr: &G, context_ty: Ty) {
         let ty = self.ty.clone();
-        let saved_ty = SavedTy::mk(ty, constraint);
+        let saved_ty = SavedTy::mk(ty, context_ty);
         self.derivation.memorize_type_judgement(expr, saved_ty);
     }
     fn merge_derivation(&mut self, derivation: &Derivation) {
@@ -1270,10 +1591,10 @@ impl<C: Refinement> CandidateDerivation<C> {
     }
     fn quantify(&mut self, x: Ident) {
         let ty = match self.ty.kind() {
-            TauKind::Proposition(c) => Ty::mk_prop_ty(Atom::mk_quantifier_int(
+            TauKind::Proposition(c1) => Ty::mk_prop_ty(Atom::mk_quantifier_int(
                 crate::formula::QuantifierKind::Universal,
                 x,
-                c.clone(),
+                c1.clone(),
             )),
             TauKind::IArrow(_, _) | TauKind::Arrow(_, _) => panic!("fatal"),
         };
@@ -1282,22 +1603,24 @@ impl<C: Refinement> CandidateDerivation<C> {
     fn iarrow(mut self, x: &Ident) -> Self {
         let ty = self.ty.clone();
         self.ty = Ty::mk_iarrow(*x, ty);
+
         self
     }
     fn arrow(mut self, ts: &Vec<Ty>) -> Self {
         let ty = self.ty.clone();
         self.ty = Ty::mk_arrow(ts.clone(), ty);
+
         self
     }
 }
 impl CandidateDerivation<Atom> {
     // generate constraints from the subsumption rules
-    fn coarse_type(&mut self, constraint: &Atom, t: &Ty) {
+    fn coarse_type(&mut self, t: &Ty) {
         let s = self.ty.clone();
-        debug!("coarse_type: {constraint} |- {s} <: {t}");
-        let constraint = Ty::check_subtype(constraint, &s, t);
-        debug!("constraint: {constraint}");
-        self.constraints.push_mut(constraint);
+        debug!("coarse_type: |- {s} <: {t}");
+        let constraint_ty = Ty::check_subtype(&Atom::mk_true(), &s, t);
+        debug!("constraint: {constraint_ty}");
+        self.constraints.push_mut(constraint_ty);
         self.ty = t.clone();
     }
 }
@@ -1363,10 +1686,6 @@ impl<C: Refinement> PossibleDerivation<C> {
         PossibleDerivation::new(Vec::new())
     }
 
-    fn push(&mut self, ty: CandidateDerivation<C>) {
-        self.types.push(ty);
-    }
-
     fn singleton(cd: CandidateDerivation<C>) -> Self {
         Self::new(vec![cd])
     }
@@ -1406,11 +1725,12 @@ impl<C: Refinement> PossibleDerivation<C> {
     }
 }
 impl PossibleDerivation<Atom> {
-    fn coarse_type(&mut self, constraint: &Atom, t: &Ty) {
+    fn coarse_type(&mut self, t: &Ty) {
         for ct in self.types.iter_mut() {
-            ct.coarse_type(constraint, t);
+            ct.coarse_type(t);
         }
     }
+    /// check
     fn check_derivation(&self) -> Option<Derivation> {
         for ct in self.types.iter() {
             let mut constraint = Constraint::mk_true();
@@ -1420,28 +1740,17 @@ impl PossibleDerivation<Atom> {
             debug!("check_derivation constraint: {constraint}");
             let fvs = constraint.fv();
             let exists: HashSet<Ident> = ct.coefficients.iter().cloned().collect();
-            let vars = fvs.difference(&exists).cloned();
+            let vars = fvs.difference(&exists).cloned().collect();
 
-            let mut solver = solver::smt::default_solver();
-            let m = if true {
-                // introduce universal quantifiers
-                for var in vars {
-                    constraint = Constraint::mk_univ_int(var, constraint);
-                }
-                // farkas transform
-                let constraint = farkas::farkas_transform(&constraint);
-                let fvs = constraint.fv();
-
-                solver.solve_with_model(&constraint, &HashSet::new(), &fvs)
-            } else {
-                let vars = vars.collect();
-                solver.solve_with_model(&constraint, &vars, &exists)
-            };
+            let mut solver = solver::smt::smt_solver(solver::SMTSolverType::Auto);
+            let m = solver.solve_with_model(&constraint, &vars, &fvs);
             match m {
                 Ok(m) => {
                     debug!("constraint was sat: {}", constraint);
+                    debug!("model is {}", m);
                     // replace all the integer coefficient
                     let mut derivation = ct.derivation.clone();
+
                     derivation.update_with_model(&m);
                     return Some(derivation);
                 }
@@ -1452,51 +1761,7 @@ impl PossibleDerivation<Atom> {
     }
 }
 
-fn rename_integer_variable(t1: &Ty, t2: &Ty) -> Ty {
-    match (t1.kind(), t2.kind()) {
-        (TauKind::Proposition(_), TauKind::Proposition(_)) => t2.clone(),
-        (TauKind::IArrow(x, tx), TauKind::IArrow(y, ty)) => {
-            let t = rename_integer_variable(tx, &ty.rename(y, x));
-            Tau::mk_iarrow(*x, t)
-        }
-        (TauKind::Arrow(s1, t1), TauKind::Arrow(s2, t2)) => {
-            let mut args = Vec::new();
-            for (s1, s2) in s1.iter().zip(s2.iter()) {
-                let s2 = rename_integer_variable(s1, s2);
-                args.push(s2);
-            }
-            let t2 = rename_integer_variable(t1, t2);
-            Tau::mk_arrow(args, t2)
-        }
-        _ => panic!("program error"),
-    }
-}
-
-// takes g and formats it and returns (Θ, g') where Θ => g'
-fn format_cnf_clause(g: G) -> (Constraint, G) {
-    match g.kind() {
-        formula::hes::GoalKind::Constr(_)
-        | formula::hes::GoalKind::Var(_)
-        | formula::hes::GoalKind::Abs(_, _)
-        | formula::hes::GoalKind::App(_, _) => (Constraint::mk_true(), g.clone()),
-        formula::hes::GoalKind::Disj(g1, g2) => {
-            let c: Option<Constraint> = g1.clone().into();
-            match c {
-                Some(c) => (c.negate().unwrap(), g2.clone()),
-                None => {
-                    let c: Option<Constraint> = g2.clone().into();
-                    match c {
-                        Some(c) => (c.negate().unwrap(), g1.clone()),
-                        None => panic!("fatal: candidate is non-linear."),
-                    }
-                }
-            }
-        }
-        formula::hes::GoalKind::Conj(_, _)
-        | formula::hes::GoalKind::Univ(_, _)
-        | formula::hes::GoalKind::Op(_) => panic!("fatal"),
-    }
-}
+#[derive(Clone, Copy)]
 pub struct InferenceConfig {
     pub infer_polymorphic_type: bool,
 }
@@ -1517,21 +1782,38 @@ pub fn search_for_type(
     problem: &Problem,
     tenv: &mut Env,
     config: InferenceConfig,
-) -> Option<TypeEnvironment<Tau<Constraint>>> {
+) -> Option<TyEnv> {
     crate::title!("search_for_type");
     debug!("{}", candidate);
+    let infer_polymorphic_type = config.infer_polymorphic_type;
     // TODO: expand candidate once based on problem.
-    let mut ctx = reduce_until_normal_form(candidate, problem, config);
-    debug!("{}", ctx.normal_form);
-    //let candidate = ctx.normal_form.clone();
-    let derivation = type_check_top_with_derivation(&ctx.normal_form, tenv)?;
-    // must succeed in theory
-    Some(ctx.infer_type(derivation).unwrap())
+    let mut optimizer = optimizer::NaiveOptimizer::new();
+    while optimizer.continuable() {
+        let mut ctx = reduce_until_normal_form(candidate, problem, config, &mut optimizer);
+        debug!("{}", ctx.normal_form);
+        //let candidate = ctx.normal_form.clone();
+        let derivation = type_check_top_with_derivation(&ctx.normal_form, tenv)?;
+        let (derivation, constraints) =
+            type_check_top_with_derivation_and_constraints(derivation, &ctx.normal_form, tenv);
+        match ctx.infer_type(derivation, constraints) {
+            Some(x) => {
+                optimizer.report_inference_result(InferenceResult::new(true));
+                return Some(x);
+            }
+            None => (),
+        }
+        optimizer.report_inference_result(InferenceResult::new(false));
+    }
+    if infer_polymorphic_type {
+        // must succeed in theory
+        panic!("program error: constructing derivation failed")
+    } else {
+        None
+    }
 }
 
 // Γ ⊢ Γ
-pub fn check_inductive(env: &TypeEnvironment<Tau<Constraint>>, problem: &Problem) -> bool {
-    let top = Atom::mk_true();
+pub fn check_inductive(env: &TyEnv, problem: &Problem) -> bool {
     let tenv: Env = env.into();
     for (id, ts) in env.map.iter() {
         let clause = problem.get_clause(id).unwrap();
@@ -1539,7 +1821,6 @@ pub fn check_inductive(env: &TypeEnvironment<Tau<Constraint>>, problem: &Problem
         for t in ts.iter() {
             let t = t.clone().into();
             if !type_check(
-                &top,
                 &mut env,
                 &mut HashSet::new(),
                 &clause.body.clone().into(),
@@ -1552,11 +1833,7 @@ pub fn check_inductive(env: &TypeEnvironment<Tau<Constraint>>, problem: &Problem
     true
 }
 
-pub fn saturate(
-    env: &TypeEnvironment<Tau<Constraint>>,
-    problem: &Problem,
-) -> TypeEnvironment<Tau<Constraint>> {
-    let top = Atom::mk_true();
+pub fn saturate(env: &TyEnv, problem: &Problem) -> TyEnv {
     let mut current_env = env.clone();
     loop {
         let mut new_env = TypeEnvironment::new();
@@ -1566,7 +1843,6 @@ pub fn saturate(
             for t in ts.iter() {
                 let mut env: Env = (&current_env).into();
                 if type_check(
-                    &top,
                     &mut env,
                     &mut HashSet::new(),
                     &clause.body.clone().into(),

@@ -10,7 +10,6 @@ fn transform_goal(
 ) -> hes::Goal<formula::Constraint> {
     use formula::Op;
     use hes::GoalKind;
-    let f = translate;
 
     type Goal = hes::Goal<formula::Constraint>;
     use formula::{TyEnv, Type};
@@ -136,7 +135,6 @@ pub fn transform(problem: hes::Problem<formula::Constraint>) -> hes::Problem<for
 
 #[test]
 fn test_transform() {
-    use crate::parse;
     use crate::parse::parse;
     use crate::preprocess;
     use nom::error::VerboseError;

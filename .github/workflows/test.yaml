@@ -22,7 +22,7 @@ jobs:
     - name: Setup tmate session
       uses: mxschmitt/action-tmate@v3
     - name: get hoice
-      run: cargo install --git https://github.com/hopv/hoice
+      run: cargo install --git https://github.com/hopv/hoice --locked
     - name: Format
       run: cargo fmt --all -- --check
     # - name: Clippy
@@ -31,3 +31,5 @@ jobs:
       run: cargo build
     - name: Test
       run: cargo test --verbose
+    - name: Functional Test
+      run: ./test.sh

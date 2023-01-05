@@ -305,7 +305,8 @@ fn solve_chcs(clauses: &Vec<CHC>, current_model: &chc::Model) -> Option<Model> {
     crate::title!("model from CHC solver");
     // TODO: Display model
     debug!("{}", m);
-    let m = solver::interpolation::solve(&clauses);
+    let config = solver::interpolation::InterpolationConfig::new();
+    let m = solver::interpolation::solve(&clauses, &config);
 
     Some(m)
 }
