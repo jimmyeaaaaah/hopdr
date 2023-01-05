@@ -100,7 +100,6 @@ fn z3_new_parse_model() {
     }
 }
 
-
 #[derive(Clone, Copy)]
 pub enum Solver {
     Z3,
