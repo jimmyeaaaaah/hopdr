@@ -25,6 +25,12 @@ impl SMTStatistics {
     }
 }
 
+impl Default for SMTStatistics {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub fn smt_count() {
     STAT.lock().unwrap().smt.smt_count += 1
 }
@@ -42,16 +48,14 @@ pub fn end_clock() {
             .smt
             .clock_starts_at
             .expect("program error")
-            .clone()
     };
     let dur = st.elapsed();
     STAT.lock().unwrap().smt.smt_duration += dur;
 }
 
 pub fn finalize() {
-    let r = { STAT.lock().unwrap().smt.clock_starts_at.clone() };
-    match r {
-        Some(_) => end_clock(),
-        None => (),
+    let r = { STAT.lock().unwrap().smt.clock_starts_at };
+    if r.is_some() {
+        end_clock()
     }
 }

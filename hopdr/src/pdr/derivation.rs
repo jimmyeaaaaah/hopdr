@@ -1596,16 +1596,6 @@ impl CandidateDerivation<Atom> {
     }
 }
 
-// impl<C: Refinement> From<Ty> for CandidateDerivation<C> {
-//     fn from(ty: Ty) -> Self {
-//         CandidateDerivation {
-//             ty,
-//             constraints: Stack::new(),
-//             derivation: Derivation::new(),
-//         }
-//     }
-// }
-
 impl<C: Refinement> fmt::Display for CandidateDerivation<C> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.ty)

@@ -24,7 +24,7 @@ pub fn P<T: 'static>(value: T) -> P<T> {
 }
 
 impl<T> P<T> {
-    pub fn kind<'a>(&'a self) -> &'a T {
+    pub fn kind(&self) -> &T {
         &*self.ptr
     }
     pub fn ptr_id(&self) -> usize {
@@ -89,7 +89,7 @@ pub fn Unique<T: 'static>(value: T) -> Unique<T> {
 }
 
 impl<T> Unique<T> {
-    pub fn kind<'a>(&'a self) -> &'a T {
+    pub fn kind(&self) -> &T {
         &*self.ptr
     }
     pub fn into(self) -> T {
@@ -134,7 +134,7 @@ pub fn PhantomPtr<T: 'static, S>(value: T) -> PhantomPtr<T, S> {
 }
 
 impl<T, S> PhantomPtr<T, S> {
-    pub fn kind<'a>(&'a self) -> &'a T {
+    pub fn kind(&self) -> &T {
         &*self.ptr
     }
 }
@@ -229,7 +229,7 @@ pub fn executes_with_timeout_and_ctrlc<T: Send + 'static, F: FnOnce() -> T + Sen
     let join_handler = thread::spawn(move || {
         let x = thread::Builder::new()
             .stack_size(STACK_SIZE)
-            .spawn(move || f())
+            .spawn(f)
             .unwrap()
             .join();
         let s = match &x {

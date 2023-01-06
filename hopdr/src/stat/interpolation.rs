@@ -25,6 +25,12 @@ impl InterpolationStatistics {
     }
 }
 
+impl Default for InterpolationStatistics {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub fn count() {
     STAT.lock().unwrap().interpolation.count += 1;
 }
@@ -45,8 +51,7 @@ pub fn end_clock() {
 
 pub fn finalize() {
     let r = { STAT.lock().unwrap().interpolation.clock_starts_at };
-    match r {
-        Some(_) => end_clock(),
-        None => (),
+    if r.is_some() {
+        end_clock()
     }
 }

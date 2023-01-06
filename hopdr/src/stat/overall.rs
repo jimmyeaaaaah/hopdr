@@ -29,6 +29,12 @@ impl OverallStatistics {
     }
 }
 
+impl Default for OverallStatistics {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub fn finalize() {
     let duration = match STAT.lock().unwrap().overall.total_time {
         Either::Left(now) => now.elapsed(),
