@@ -52,7 +52,8 @@ impl Model {
         let model: HashMap<Ident, i64> = match x {
             Value::Cons(x) => x
                 .into_iter()
-                .skip(1)
+                // filter out model from (model (define-fun ...) ...)
+                .filter(|(x, _)| !x.is_symbol())
                 .map(|(v, _)| parse_declare_fun(v, bit_size))
                 .collect(),
             _ => panic!("parse error: smt2 model: {}", s),
@@ -64,6 +65,25 @@ impl Model {
 #[test]
 fn z3_parse_model() {
     let model = "(model
+        (define-fun x_x1 () (_ BitVec 32)
+        #xffffffff)
+        (define-fun x_x2 () (_ BitVec 32)
+        #x00000001)
+    )";
+    match Model::from_z3_sat_model_str(model, 32) {
+        Ok(m) => {
+            let x1 = m.get(&1.into()).unwrap();
+            let x2 = m.get(&2.into()).unwrap();
+            assert_eq!(x1, -1);
+            assert_eq!(x2, 1);
+        }
+        Err(_) => panic!("model is broken"),
+    }
+}
+
+#[test]
+fn z3_new_parse_model() {
+    let model = "(
         (define-fun x_x1 () (_ BitVec 32)
         #xffffffff)
         (define-fun x_x2 () (_ BitVec 32)
