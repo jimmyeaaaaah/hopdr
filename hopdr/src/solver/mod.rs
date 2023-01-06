@@ -41,27 +41,15 @@ impl fmt::Display for Model {
 
 impl SolverResult {
     pub fn is_sat(&self) -> bool {
-        match self {
-            SolverResult::Sat => true,
-            _ => false,
-        }
+        matches!(self, SolverResult::Sat)
     }
     pub fn is_unsat(&self) -> bool {
-        match self {
-            SolverResult::Unsat => true,
-            _ => false,
-        }
+        matches!(self, SolverResult::Unsat)
     }
     pub fn is_unknown(&self) -> bool {
-        match self {
-            SolverResult::Unknown => true,
-            _ => false,
-        }
+        matches!(self, SolverResult::Unknown)
     }
     pub fn is_timeout(&self) -> bool {
-        match self {
-            SolverResult::Timeout => true,
-            _ => false,
-        }
+        matches!(self, SolverResult::Timeout)
     }
 }

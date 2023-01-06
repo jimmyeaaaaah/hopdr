@@ -24,7 +24,7 @@ fn parse_variable(v: &str) -> Ident {
 fn parse_declare_fun(v: lexpr::Value) -> (Ident, i64) {
     // parse fail
     const ERRMSG: &str = "smt model parse fail";
-    fn cons_value_to_iter<'a>(v: &'a lexpr::Value) -> impl Iterator<Item = &'a lexpr::Value> {
+    fn cons_value_to_iter(v: &lexpr::Value) -> impl Iterator<Item = &lexpr::Value> {
         v.as_cons()
             .unwrap_or_else(|| panic!("{}({})", ERRMSG, v))
             .iter()
@@ -211,7 +211,7 @@ pub(super) fn constraint_to_smt2_inner(c: &Constraint, style: SMTSolverType) -> 
         ConstraintExpr::True => "true".to_string(),
         ConstraintExpr::False => "false".to_string(),
         ConstraintExpr::Pred(p, l) => {
-            let args = l.iter().map(|op| op_to_smt2(op)).collect::<Vec<_>>();
+            let args = l.iter().map(op_to_smt2).collect::<Vec<_>>();
             pred_to_smt2(p, &args)
         }
         ConstraintExpr::Conj(c1, c2) => format!("(and {} {})", f(c1, style), f(c2, style)),
@@ -250,11 +250,11 @@ fn constraint_to_smt2(
             .map(|ident| format!("(declare-const {} Int)", encode_ident(ident)))
             .collect::<Vec<_>>()
             .join("\n"),
-        None => format!(""),
+        None => String::new(),
     };
     let model = match fvs {
         Some(_) => "(get-model)".to_string(),
-        None => format!(""),
+        None => String::new(),
     };
     format!("{}\n(assert {})\n(check-sat)\n{}\n", decls, c_s, model)
 }
@@ -368,7 +368,7 @@ impl AutoSolver {
         debug!("check if {constraint} is sat");
         let mut sat_solver =
             super::sat::SATSolver::default_solver(Self::MIN_INT, Self::MAX_INT, Self::BIT_SIZE);
-        let m = sat_solver.solve(&constraint)?;
+        let m = sat_solver.solve(constraint)?;
 
         if !self.validate(constraint, &m) {
             warn!("failed to solve by sat since bit size is too small");
@@ -397,7 +397,7 @@ impl SMTSolver for AutoSolver {
         fvs: &HashSet<Ident>,
     ) -> Result<Model, SolverResult> {
         debug!("smt::auto_solver: {c}");
-        if c.fv().difference(&vars).next().is_none() {
+        if c.fv().difference(vars).next().is_none() {
             let mut sat_solver = smt_solver(SMTSolverType::Z3);
             sat_solver.solve_with_model(c, vars, fvs)
         } else {

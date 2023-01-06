@@ -16,7 +16,7 @@ fn parse_variable(v: &str) -> Ident {
 fn parse_declare_fun(v: lexpr::Value, bit_size: u32) -> (Ident, i64) {
     // parse fail
     const ERRMSG: &str = "smt model parse fail";
-    fn cons_value_to_iter<'a>(v: &'a lexpr::Value) -> impl Iterator<Item = &'a lexpr::Value> {
+    fn cons_value_to_iter(v: &lexpr::Value) -> impl Iterator<Item = &lexpr::Value> {
         v.as_cons()
             .unwrap_or_else(|| panic!("{}({})", ERRMSG, v))
             .iter()
@@ -237,7 +237,7 @@ impl SATSolver {
                 format!("({} {} {})", k, o1, o2)
             }
             OpExpr::Var(x) => ident_2_smt2(x),
-            OpExpr::Const(c) => format!("{}", self.int_2_smt2(*c)),
+            OpExpr::Const(c) => self.int_2_smt2(*c).to_string(),
             OpExpr::Ptr(_, o) => self.op_to_smt2(o),
         }
     }
