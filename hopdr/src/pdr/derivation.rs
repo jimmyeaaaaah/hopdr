@@ -229,8 +229,9 @@ impl From<Candidate> for G {
 }
 
 fn generate_reduction_sequence(goal: &G, optimizer: &mut dyn Optimizer) -> (Vec<Reduction>, G) {
-    // Some(Candidate): substituted an app
-    // None: not yet
+    /// returns
+    /// 1. Some(Candidate): substituted an app
+    /// 2. None: not yet
     fn go(optimizer: &mut dyn Optimizer, goal: &G, level: &mut usize) -> Option<(G, Reduction)> {
         /// returns Some(_) if reduction happens in goal; otherwise None
         /// left of the return value: the reduced term
@@ -603,24 +604,22 @@ impl Context {
                 context_ty,
             } = ret_ty.clone();
             debug!("ret_ty: {}", ret_ty);
+            debug!("context_ty: {}", context_ty);
 
             // if there is a shared_ty, we have to use it
             let (tmp_ret_ty, is_shared_ty) = match &reduction.predicate.aux.tys {
                 Some(tys) => (tys[0].clone(), true),
-                None => {
-                    (
-                        ret_ty.clone_with_rty_template(
-                            //ret_ty_constraint.clone(),
-                            Atom::mk_true(),
-                            &mut if self.infer_polymorphic_type {
-                                reduction.fvints.clone()
-                            } else {
-                                reduction.argints.clone()
-                            },
-                        ),
-                        false,
-                    )
-                }
+                None => (
+                    ret_ty.clone_with_rty_template(
+                        Atom::mk_true(),
+                        &mut if self.infer_polymorphic_type {
+                            reduction.fvints.clone()
+                        } else {
+                            reduction.argints.clone()
+                        },
+                    ),
+                    false,
+                ),
             };
 
             let mut tmp_ty = tmp_ret_ty.clone();
@@ -630,7 +629,6 @@ impl Context {
             // calculate the type for app_expr
             if is_shared_ty {
                 for (arg_ty, reduction) in arg_tys.iter().rev().zip(reduction.args.iter()) {
-                    //println!("arg_ty: {arg_ty}");
                     match arg_ty {
                         // case: arg ty is integer
                         either::Left(ident) => {
@@ -680,7 +678,6 @@ impl Context {
             }
             // 3. generate constraint from subtyping t <: arg_ty -> ret_ty, and append them to constraints
             // constrain by `old <= new_tmpty <= top`
-            //let mut argints = reduction.argints.clone();
 
             debug!("inferred type: {}", tmp_ty);
             debug!("body type: {}", body_ty);
@@ -754,7 +751,6 @@ impl Context {
         mut derivation: Derivation,
         constraints: Stack<Atom>, // constraints generated during type checking due to type sharing
     ) -> Option<TyEnv> {
-        //let mut constraints = Vec::new();
         let mut clauses = Vec::new();
         debug!("constraints generated during type checking");
         for constraint in constraints.iter() {
@@ -929,10 +925,6 @@ fn handle_app(
                             let types = ts
                                 .iter()
                                 .map(|t| {
-                                    // debug!("before add_context(constraint={}) = {}", constraint, t);
-                                    // let t = t.add_context(constraint);
-                                    // debug!("after add_context = {}", t);
-
                                     let t =
                                         t.instantiate(ienv, &mut coefficients, all_coefficients);
                                     debug!("instantiate_type ienv: {:?}", ienv);
@@ -1013,7 +1005,6 @@ fn handle_app(
                     let mut tmp_cts = vec![result_ct];
                     // check if there exists a derivation for all types in the intersection type.
                     for t in arg_t {
-                        //debug!("t: {}", t);
                         // check if arg_constraint |- argg: arg_t
                         let rty = cty.rty_no_exists();
                         let t_context = t.conjoin_constraint(&rty);
@@ -1153,7 +1144,6 @@ fn type_check_inner(
                     None => (g2.clone().into(), g1, g2),
                 };
                 let c_neg = c.negate().unwrap();
-                // TODO: handle disjunction
                 let t1 = type_check_inner(
                     config,
                     tenv,
@@ -1188,25 +1178,6 @@ fn type_check_inner(
                 handle_app(config, tenv, ienv, all_coefficients, c, context_ty.clone())
             }
             formula::hes::GoalKind::Abs(_v, _g) => {
-                // abs can appear in the argument of application
-                // they are handled independently
-                //// 1. check t and calculate the argument's type.
-                //// 2.
-                //if v.ty.is_int() {
-                //    assert!(ienv.insert(v.id));
-                //    let pt = go(constraint, tenv, ienv, g);
-                //    ienv.remove(&v.id);
-                //    let ty = Ty::mk_iarrow(v.id, ct.ty);
-                //    PossibleDerivation::int_fun(pt, v.id)
-                //} else {
-                //    for t in ts {
-                //        tenv.add(v.id, t.clone());
-                //    }
-                //    let ct = go(constraint, t, tenv, ienv, g)?;
-                //    let ret_ty = ct.ty;
-                //    let ty = Ty::mk_arrow(ts.clone(), ret_ty);
-                //    Some(CandidateDerivation::new(ty, ct.derivation))
-                //}
                 panic!("fatal error")
             }
             // op is always handled by App(x, op)
@@ -1647,24 +1618,6 @@ impl<C: Refinement> fmt::Display for CandidateDerivation<C> {
 struct PossibleDerivation<C: Refinement> {
     types: Vec<CandidateDerivation<C>>,
 }
-// impl<'a, T: IntoIterator<Item = Ty>, C: Refinement> From<T> for PossibleDerivation<C> {
-//     fn from(ts: T) -> Self {
-//         let mut types = Vec::new();
-//         for t in ts.into_iter() {
-//             let t: CandidateDerivation<C> = t.clone().into();
-//             types.push(t);
-//         }
-//         PossibleDerivation::new(types)
-//     }
-// }
-// impl<C: Refinement> From<Ty> for PossibleDerivation<C> {
-//     fn from(t: Ty) -> Self {
-//         let t = t.into();
-//         let mut types = Vec::new();
-//         types.push(t);
-//         PossibleDerivation::new(types)
-//     }
-// }
 impl<C: Refinement> fmt::Display for PossibleDerivation<C> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.types.len() > 0 {
