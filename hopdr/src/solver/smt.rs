@@ -133,6 +133,7 @@ pub trait SMTSolver {
     /// - constraint: The constraint to be checked by SMT solver
     /// - vars: variables to be bound by universal quantifiers.
     /// - fvs: variables to be bound by existential quantifier
+    /// invariant: dom(returned model) == fv
     fn solve_with_model(
         &mut self,
         constraint: &Constraint,
@@ -398,12 +399,16 @@ impl SMTSolver for AutoSolver {
     ) -> Result<Model, SolverResult> {
         debug!("smt::auto_solver: {c}");
         if c.fv().difference(vars).next().is_none() {
-            let mut sat_solver = smt_solver(SMTSolverType::Z3);
-            sat_solver.solve_with_model(c, vars, fvs)
+            let mut smt_solver = smt_solver(SMTSolverType::Z3);
+            smt_solver.solve_with_model(c, vars, fvs)
         } else {
             let constraint = self.farkas_transform(c, vars);
             self.solve_inner(&constraint)
         }
+        .map(|mut m| {
+            m.compensate(fvs);
+            m
+        })
     }
 }
 

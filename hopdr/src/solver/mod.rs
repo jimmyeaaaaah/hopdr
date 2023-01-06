@@ -1,4 +1,4 @@
-use std::fmt;
+use std::{collections::HashSet, fmt};
 
 pub mod chc;
 pub mod disj;
@@ -36,6 +36,16 @@ impl fmt::Display for Model {
             writeln!(f, "{k}={v};")?;
         }
         Ok(())
+    }
+}
+
+impl Model {
+    fn compensate(&mut self, fvs: &HashSet<crate::formula::Ident>) {
+        for fv in fvs.iter() {
+            if !self.model.contains_key(fv) {
+                self.model.insert(*fv, 0);
+            }
+        }
     }
 }
 

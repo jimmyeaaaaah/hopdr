@@ -157,7 +157,9 @@ impl SATSolver {
         debug!("smt_solve result: {:?}", &s);
         if s.starts_with("sat") {
             let pos = s.find('\n').unwrap();
-            Ok(Model::from_z3_sat_model_str(&s[pos..], self.bit_size).unwrap())
+            let mut m = Model::from_z3_sat_model_str(&s[pos..], self.bit_size).unwrap();
+            m.compensate(&fvs);
+            Ok(m)
         } else if s.starts_with("unsat") {
             Err(SolverResult::Unsat)
         } else {
