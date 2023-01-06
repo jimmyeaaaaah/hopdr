@@ -1684,9 +1684,19 @@ impl PossibleDerivation<Atom> {
             let fvs = constraint.fv();
             let exists: HashSet<Ident> = ct.coefficients.iter().cloned().collect();
             let vars = fvs.difference(&exists).cloned().collect();
+            #[cfg(debug)]
+            {
+                debug!("variables used for coefficients of linear templates");
+                let s = exists
+                    .iter()
+                    .map(|x| x.to_string())
+                    .collect::<Vec<_>>()
+                    .join(",");
+                debug!("exists: {s}");
+            }
 
             let mut solver = solver::smt::smt_solver(solver::SMTSolverType::Auto);
-            let m = solver.solve_with_model(&constraint, &vars, &fvs);
+            let m = solver.solve_with_model(&constraint, &vars, &exists);
             match m {
                 Ok(m) => {
                     debug!("constraint was sat: {}", constraint);
