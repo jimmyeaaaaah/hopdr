@@ -56,6 +56,7 @@ impl Model {
                 .filter(|(x, _)| !x.is_symbol())
                 .map(|(v, _)| parse_declare_fun(v, bit_size))
                 .collect(),
+            Value::Null => HashMap::new(),
             _ => panic!("parse error: smt2 model: {}", s),
         };
         Ok(Model { model })
@@ -98,6 +99,10 @@ fn z3_new_parse_model() {
         }
         Err(_) => panic!("model is broken"),
     }
+
+    let model = "(
+      )";
+    assert!(Model::from_z3_sat_model_str(model, 32).is_ok());
 }
 
 #[derive(Clone, Copy)]

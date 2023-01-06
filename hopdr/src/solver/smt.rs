@@ -65,7 +65,8 @@ impl Model {
                 .filter(|(x, _)| !x.is_symbol())
                 .map(|(v, _)| parse_declare_fun(v))
                 .collect(),
-            _ => panic!("parse error: smt2 model: {}", s),
+            Value::Null => HashMap::new(),
+            _ => panic!("parse error: smt2 model: {} ({:?})", s, x),
         };
         Ok(Model { model })
     }
@@ -113,6 +114,10 @@ fn z3_new_version_parse_model() {
         }
         Err(_) => panic!("model is broken"),
     }
+
+    let model = "(
+      )";
+    assert!(Model::from_z3_model_str(model).is_ok());
 }
 
 pub trait SMTSolver {
