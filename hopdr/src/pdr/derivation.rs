@@ -798,9 +798,25 @@ impl Context {
         debug!("interpolated:");
         debug!("{}", model);
 
-        // collect needed predicate
-        // 5. from the model, generate a type environment
-        Some(self.retrieve_from_track_idents(&model, &derivation))
+        // ** check if the returned model is "tractable" **
+        // Here, tracktable means no constraint in model does not contain existential quantifier.
+        //
+        // If the shared predicate is enabled, the resulting constraints are no longer acyclic-CHCs,
+        // but CHCs (can contain recursive predicates).
+        // Due to the background CHC solvers, in some cases, solutions can contain existential quantifers.
+        // I know that hoice can return such a solution when the the given problem is so easy that its preprocessor
+        // can solve it, and that there is an option to avoid such situations (simplify-clauses: false).
+        // However, it seems totally an experimental feature, and at least currently, it is not functional.
+        // Therefore, if we find that the solution in model contains some existential quanfiers,
+        // we just return None even though it actually exists.
+        if model.is_solution_tractable() {
+            // collect needed predicate
+            // 5. from the model, generate a type environment
+            Some(self.retrieve_from_track_idents(&model, &derivation))
+        } else {
+            warn!("solution from CHC is untractable");
+            None
+        }
     }
 }
 

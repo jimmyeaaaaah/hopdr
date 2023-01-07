@@ -106,6 +106,12 @@ impl QuantifierKind {
             QuantifierKind::Universal => QuantifierKind::Existential,
         }
     }
+    pub fn is_existential(&self) -> bool {
+        matches!(self, Self::Existential)
+    }
+    pub fn is_universal(&self) -> bool {
+        matches!(self, Self::Universal)
+    }
 }
 
 #[derive(Debug)]

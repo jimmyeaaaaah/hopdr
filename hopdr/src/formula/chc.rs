@@ -567,4 +567,51 @@ impl Model {
             self.model.insert(k, v);
         }
     }
+    /// check if model is tracktable
+    ///
+    /// model is tracktable: all constraints in model do not contain any existential quantifier.
+    pub fn is_solution_tractable(&self) -> bool {
+        for (_, (_, c)) in self.model.iter() {
+            let (qs, _) = c.to_pnf_raw();
+            for (q, _) in qs {
+                if q.is_existential() {
+                    return false;
+                }
+            }
+        }
+        true
+    }
+}
+
+#[test]
+fn test_solution_tractability() {
+    use super::{Constraint, FirstOrderLogic, Ident, QuantifierKind};
+    let v = Ident::fresh();
+    let w = Ident::fresh();
+
+    let c = Constraint::mk_quantifier_int(
+        QuantifierKind::Universal,
+        w,
+        Constraint::mk_quantifier_int(
+            QuantifierKind::Existential,
+            v,
+            Constraint::mk_eq(Op::mk_var(v), Op::mk_var(w)),
+        ),
+    );
+    let mut m = Model::new();
+    m.model.insert(Ident::fresh(), (Vec::new(), c));
+    assert!(!m.is_solution_tractable());
+
+    let c = Constraint::mk_quantifier_int(
+        QuantifierKind::Universal,
+        w,
+        Constraint::mk_quantifier_int(
+            QuantifierKind::Universal,
+            v,
+            Constraint::mk_eq(Op::mk_var(v), Op::mk_var(w)),
+        ),
+    );
+    let mut m = Model::new();
+    m.model.insert(Ident::fresh(), (Vec::new(), c));
+    assert!(m.is_solution_tractable());
 }
