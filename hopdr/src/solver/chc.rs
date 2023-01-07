@@ -45,8 +45,7 @@ impl CHCResult {
 type CHC = chc::CHC<chc::Atom, Constraint>;
 
 const PROLOGUE: &'static str = "(set-logic HORN)\n";
-const PROLOGUE_FOR_NO_SIMPLIFY: &'static str =
-    "(set-option :no-simplify-clauses true)\n(set-option :no-inlining true)\n(set-logic HORN)\n";
+const PROLOGUE_FOR_NO_SIMPLIFY: &'static str = "(set-option :no-inlining true)\n";
 
 fn get_prologue(style: CHCStyle) -> String {
     match style {
@@ -54,6 +53,7 @@ fn get_prologue(style: CHCStyle) -> String {
         CHCStyle::HoiceNoSimplify => format!("{}{}", PROLOGUE, PROLOGUE_FOR_NO_SIMPLIFY),
     }
 }
+
 fn get_epilogue(style: CHCStyle) -> &'static str {
     match style {
         CHCStyle::Hoice | CHCStyle::HoiceNoSimplify => "(check-sat)\n(get-model)\n",
@@ -170,14 +170,13 @@ pub trait CHCSolver {
     fn solve(&mut self, clauses: &Vec<CHC>) -> CHCResult;
 }
 struct HoiceSolver {
-    #[allow(dead_code)]
-    no_simplify: bool,
+    style: CHCStyle,
 }
 
-pub fn smt_solver(s: CHCStyle) -> Box<dyn CHCSolver> {
-    match s {
-        CHCStyle::Hoice => Box::new(HoiceSolver { no_simplify: false }),
-        CHCStyle::HoiceNoSimplify => Box::new(HoiceSolver { no_simplify: true }),
+pub fn smt_solver(style: CHCStyle) -> Box<dyn CHCSolver> {
+    match style {
+        CHCStyle::Hoice => Box::new(HoiceSolver { style }),
+        CHCStyle::HoiceNoSimplify => Box::new(HoiceSolver { style }),
         CHCStyle::Spacer => todo!(),
     }
 }
@@ -819,7 +818,7 @@ fn test_is_solution_valid() {
 
 impl CHCSolver for HoiceSolver {
     fn solve(&mut self, clauses: &Vec<CHC>) -> CHCResult {
-        let smt2 = chcs_to_smt2(clauses, CHCStyle::Hoice);
+        let smt2 = chcs_to_smt2(clauses, self.style);
         debug!("smt2: {}", &smt2);
         let s = hoice_solver(smt2);
         debug!("smt_solve result: {:?}", &s);
