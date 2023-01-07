@@ -22,6 +22,7 @@ use std::time::Duration;
 #[derive(Copy, Clone)]
 pub enum CHCStyle {
     Hoice,
+    HoiceNoSimplify,
     Spacer,
 }
 
@@ -43,13 +44,19 @@ impl CHCResult {
 
 type CHC = chc::CHC<chc::Atom, Constraint>;
 
-//const PROLOGUE: &'static str =
-//   "(set-option :no-simplify-clauses true)\n(set-option :no-inlining true)\n(set-logic HORN)\n";
 const PROLOGUE: &'static str = "(set-logic HORN)\n";
+const PROLOGUE_FOR_NO_SIMPLIFY: &'static str =
+    "(set-option :no-simplify-clauses true)\n(set-option :no-inlining true)\n(set-logic HORN)\n";
 
+fn get_prologue(style: CHCStyle) -> String {
+    match style {
+        CHCStyle::Hoice | CHCStyle::Spacer => PROLOGUE.to_string(),
+        CHCStyle::HoiceNoSimplify => format!("{}{}", PROLOGUE, PROLOGUE_FOR_NO_SIMPLIFY),
+    }
+}
 fn get_epilogue(style: CHCStyle) -> &'static str {
     match style {
-        CHCStyle::Hoice => "(check-sat)\n(get-model)\n",
+        CHCStyle::Hoice | CHCStyle::HoiceNoSimplify => "(check-sat)\n(get-model)\n",
         CHCStyle::Spacer => {
             "(check-sat-using (then propagate-values qe-light horn))\n(get-model)\n"
         }
@@ -105,7 +112,7 @@ fn chc_to_smt2(chc: &CHC, style: CHCStyle) -> String {
     let body_smt2 = body_to_smt2(&chc.body);
 
     match style {
-        CHCStyle::Hoice => {
+        CHCStyle::Hoice | CHCStyle::HoiceNoSimplify => {
             let foralls = fvs
                 .iter()
                 .map(|x| format!("({} Int)", smt::ident_2_smt2(x)))
@@ -150,23 +157,37 @@ fn chcs_to_smt2(chcs: &[CHC], style: CHCStyle) -> String {
         .map(|c| chc_to_smt2(c, style))
         .collect::<Vec<_>>()
         .join("\n");
-    format!("{}{}\n{}\n{}", PROLOGUE, defs, body, get_epilogue(style))
+    format!(
+        "{}{}\n{}\n{}",
+        get_prologue(style),
+        defs,
+        body,
+        get_epilogue(style)
+    )
 }
 
 pub trait CHCSolver {
     fn solve(&mut self, clauses: &Vec<CHC>) -> CHCResult;
 }
-struct HoiceSolver {}
+struct HoiceSolver {
+    #[allow(dead_code)]
+    no_simplify: bool,
+}
 
 pub fn smt_solver(s: CHCStyle) -> Box<dyn CHCSolver> {
     match s {
-        CHCStyle::Hoice => Box::new(HoiceSolver {}),
+        CHCStyle::Hoice => Box::new(HoiceSolver { no_simplify: false }),
+        CHCStyle::HoiceNoSimplify => Box::new(HoiceSolver { no_simplify: true }),
         CHCStyle::Spacer => todo!(),
     }
 }
 
 pub fn default_solver() -> Box<dyn CHCSolver> {
     smt_solver(CHCStyle::Hoice)
+}
+
+pub fn interpolating_solver() -> Box<dyn CHCSolver> {
+    smt_solver(CHCStyle::HoiceNoSimplify)
 }
 
 macro_rules! chc_execution {

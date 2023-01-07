@@ -734,7 +734,8 @@ pub fn solve(chc: &Vec<CHC>, config: &InterpolationConfig) -> Model {
             )
         }
         None if config.use_chc_if_requied => {
-            let mut solver = solver::chc::default_solver();
+            debug!("using chc solver since the constraints contain a loop");
+            let mut solver = solver::chc::interpolating_solver();
             match solver.solve(chc) {
                 solver::chc::CHCResult::Sat(m) => m,
                 solver::chc::CHCResult::Unsat
