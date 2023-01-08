@@ -67,7 +67,7 @@ impl chc::CHCHead<Atom, Constraint> {
             chc::CHCHead::Constraint(c) => chc::CHCHead::Constraint(c.clone()),
             chc::CHCHead::Predicate(a) => match a.replace_neg_with_model(model) {
                 Either::Left(atom) => chc::CHCHead::Predicate(atom),
-                Either::Right(c) => chc::CHCHead::Constraint(c.clone()),
+                Either::Right(c) => chc::CHCHead::Constraint(c),
             },
         }
     }
@@ -141,28 +141,7 @@ pub fn generate_clauses(pairs: impl Iterator<Item = (pcsp::Atom, Head)>) -> Vec<
 /// the old one in the topological order of predicates.
 /// temporarily we always assume that the upperbound is top.
 fn calculate_upperbound(_clauses: &[Clause], _p: &chc::Atom) -> Constraint {
-    return Constraint::mk_true();
-    //   use rpds::Stack;
-    //   /// reperesents left[0] /\ ... /\ left[m-1] /\ constraint => right[0] \/ ... \/ right[n-1]
-    //   #[derive(Clone)]
-    //   struct State {
-    //       left: Stack<chc::Atom>,
-    //       right: Stack<chc::Atom>,
-    //       constraint: Constraint,
-    //   }
-    //   let mut left = Stack::new();
-    //   let mut right = Stack::new();
-    //   let mut constraint = Constraint::mk_true();
-    //   let mut state = State{left, right, constraint};
-
-    //   while left.len() != 0 || right.len() != 0{
-    //       match left.pop() {
-    //           Some(l, a) => {
-    //
-    //           }
-    //       }
-    //   }
-    //   constraint.negate().unwrap()
+    Constraint::mk_true()
 }
 
 fn translate_clauses_to_problems(clauses: &[Clause]) -> Vec<Vec<CHC>> {
@@ -184,8 +163,8 @@ fn translate_clauses_to_problems(clauses: &[Clause]) -> Vec<Vec<CHC>> {
                         .cloned()
                         .map(|x| x.into())
                         .collect();
-                    for j in 0..i {
-                        body_preds.push(Atom::Negative(preds[j].clone()));
+                    for p in preds.iter().take(i) {
+                        body_preds.push(Atom::Negative(p.clone()));
                     }
                     let mut body_constr = clause.body.constraint.clone();
                     for p in &preds[i + 1..] {
@@ -282,9 +261,9 @@ fn test_translate_clauses_to_problems() {
     assert!(chcss.len() == 2);
 }
 
-fn solve_chcs(clauses: &Vec<CHC>, current_model: &chc::Model) -> Option<Model> {
+fn solve_chcs(clauses: &[CHC], current_model: &chc::Model) -> Option<Model> {
     // 1. replace negative occurrence of predicates in clauses with its model in current_model
-    let clauses = clauses
+    let clauses: Vec<_> = clauses
         .iter()
         .map(|c| c.replace_with_model(current_model))
         .collect();

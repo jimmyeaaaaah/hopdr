@@ -239,7 +239,7 @@ impl SATSolver {
                 format!("({} {} {})", k, o1, o2)
             }
             OpExpr::Var(x) => ident_2_smt2(x),
-            OpExpr::Const(c) => self.int_2_smt2(*c).to_string(),
+            OpExpr::Const(c) => self.int_2_smt2(*c),
             OpExpr::Ptr(_, o) => self.op_to_smt2(o),
         }
     }

@@ -754,9 +754,9 @@ impl Context {
         let mut clauses = Vec::new();
         debug!("constraints generated during type checking");
         for constraint in constraints.iter() {
+            debug!("constraints: {constraint}");
             match constraint.to_chcs_or_pcsps() {
                 either::Left(chcs) => {
-                    debug!("constraints");
                     for c in chcs {
                         debug!("  - {}", c);
                         clauses.push(c);

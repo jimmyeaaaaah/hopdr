@@ -282,7 +282,7 @@ fn remove_pred_except_for<'a>(
         // replace [q.args/arg_vars]c
         assert_eq!(arg_vars.len(), q.args.len());
         for (i, item) in arg_vars.iter().enumerate() {
-            c = c.subst(&item, &q.args[i]);
+            c = c.subst(item, &q.args[i]);
         }
         debug!("model[{}] = {}", q.predicate, c);
         debug!("args:");
@@ -640,10 +640,9 @@ fn interpolate_preds(
             // case: ... => p(x)
             if let Some(args) = check_contains_head(*p, &clause.head) {
                 debug!("contains_head: {}", clause);
-                let (body, _, args_debug) =
-                    remove_pred_except_for(*p, clause, &least_model, &model);
+                let (body, _, args_debug) = remove_pred_except_for(*p, clause, least_model, &model);
                 debug_assert!(args_debug.is_none());
-                let c = conjoin_args(&arg_vars, &args, body);
+                let c = conjoin_args(&arg_vars, args, body);
                 debug!("{}", c);
                 weakest = Constraint::mk_disj(weakest, c);
             }

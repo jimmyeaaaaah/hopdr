@@ -35,10 +35,7 @@ pub enum CHCResult {
 
 impl CHCResult {
     pub fn is_sat(&self) -> bool {
-        match self {
-            CHCResult::Sat(_) => true,
-            _ => false,
-        }
+        matches!(self, CHCResult::Sat(_))
     }
 }
 
@@ -128,16 +125,16 @@ fn chc_to_smt2(chc: &CHC, style: CHCStyle) -> String {
 }
 
 fn gen_def(id: &Ident, nargs: usize) -> String {
-    let arg = if nargs < 1 {
-        "".to_string()
-    } else if nargs == 1 {
-        "Int".to_string()
-    } else {
-        let mut arg = "Int".to_string();
-        for _ in 1..nargs {
-            arg += " Int";
+    let arg = match nargs.cmp(&1) {
+        std::cmp::Ordering::Less => "".to_string(),
+        std::cmp::Ordering::Equal => "Int".to_string(),
+        std::cmp::Ordering::Greater => {
+            let mut arg = "Int".to_string();
+            for _ in 1..nargs {
+                arg += " Int";
+            }
+            arg
         }
-        arg
     };
     format!("(declare-fun {} ({}) Bool)", ident_2_smt2(id), arg)
 }
@@ -167,7 +164,7 @@ fn chcs_to_smt2(chcs: &[CHC], style: CHCStyle) -> String {
 }
 
 pub trait CHCSolver {
-    fn solve(&mut self, clauses: &Vec<CHC>) -> CHCResult;
+    fn solve(&mut self, clauses: &[CHC]) -> CHCResult;
 }
 struct HoiceSolver {
     style: CHCStyle,
@@ -239,8 +236,8 @@ impl<'a> LetEnv<'a> {
     }
     fn search(self, id: &str) -> Option<(LetEnv<'a>, &'a lexpr::Value)> {
         for v in self.entries.iter() {
-            if &v.id == &id {
-                return Some((v.env.clone(), &v.expr));
+            if v.id == id {
+                return Some((v.env.clone(), v.expr));
             }
         }
         None
@@ -260,19 +257,19 @@ fn parse_predicate_variable(v: &str) -> Ident {
 */
 const ERRMSG: &str = "smt model parse fail";
 
-fn cons_value_to_iter<'a>(v: &'a lexpr::Value) -> impl Iterator<Item = &'a lexpr::Value> {
+fn cons_value_to_iter(v: &lexpr::Value) -> impl Iterator<Item = &lexpr::Value> {
     v.as_cons()
         .unwrap_or_else(|| panic!("{}({})", ERRMSG, v))
         .iter()
         .map(|x| x.car())
 }
-fn parse_arg<'a>(v: &'a lexpr::Value) -> &'a str {
+fn parse_arg(v: &lexpr::Value) -> &str {
     let mut itr = cons_value_to_iter(v);
     let v = itr.next().unwrap_or_else(|| panic!("{}", ERRMSG));
     v.as_symbol().unwrap()
 }
 
-fn parse_args<'a>(v: &'a lexpr::Value) -> (Vec<Ident>, HashMap<&'a str, Ident>) {
+fn parse_args(v: &lexpr::Value) -> (Vec<Ident>, HashMap<&str, Ident>) {
     if v.is_null() {
         return (Vec::new(), HashMap::new());
     }
@@ -350,7 +347,7 @@ fn parse_let_args<'a>(
         letenv: LetEnv<'a>,
     ) -> LetEnv<'a> {
         // (.cse0 (+ xx_193 xx_193))
-        let mut itr = cons_value_to_iter(&v);
+        let mut itr = cons_value_to_iter(v);
         let var = itr.next().unwrap().as_symbol().unwrap();
         // we assume that variable shadowing does not occur.
         assert!(!(env.contains_key(var)));
@@ -358,7 +355,7 @@ fn parse_let_args<'a>(
         letenv.add(var, letenv.clone(), v)
     }
     // ((.cse0 (+ xx_193 xx_193)))
-    let itr = cons_value_to_iter(&v);
+    let itr = cons_value_to_iter(v);
     for v in itr {
         letenv = parse_let_arg(v, env, letenv);
     }
@@ -780,7 +777,7 @@ fn test_parse_model() {
     }
 }
 
-pub fn is_solution_valid(clauses: &Vec<CHC>, model: &Model) -> bool {
+pub fn is_solution_valid(clauses: &[CHC], model: &Model) -> bool {
     crate::title!("is_solution_valid");
     let mut c = Constraint::mk_true();
     for clause in clauses.iter() {
@@ -817,7 +814,7 @@ fn test_is_solution_valid() {
 }
 
 impl CHCSolver for HoiceSolver {
-    fn solve(&mut self, clauses: &Vec<CHC>) -> CHCResult {
+    fn solve(&mut self, clauses: &[CHC]) -> CHCResult {
         let smt2 = chcs_to_smt2(clauses, self.style);
         debug!("smt2: {}", &smt2);
         let s = hoice_solver(smt2);
