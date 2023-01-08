@@ -42,3 +42,9 @@ Required dependencies:
 ```
 wget  http://ultimate.informatik.uni-freiburg.de/smtinterpol/smtinterpol-2.5-1093-g7506c07c.jar -O ~/.local/share/hopdr/smtinterpol.jar
 ```
+
+## clippy
+
+```
+$ cargo clippy -- -D warnings -A clippy::upper-case-acronyms
+```
