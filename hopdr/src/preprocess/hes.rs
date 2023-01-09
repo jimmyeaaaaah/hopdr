@@ -169,7 +169,7 @@ fn quantify_validity_checking(vc: NuHFLzValidityChecking) -> NuHFLzValidityCheck
     NuHFLzValidityChecking { formulas, toplevel }
 }
 
-pub fn preprocess<'a>(vc: parse::Problem) -> (hes::Problem<formula::Constraint>, Context) {
+pub fn preprocess(vc: parse::Problem) -> (hes::Problem<formula::Constraint>, Context) {
     match vc {
         parse::Problem::NuHFLZValidityChecking(vc) => {
             let vc = quantify_validity_checking(vc);

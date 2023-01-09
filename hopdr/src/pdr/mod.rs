@@ -30,16 +30,9 @@ impl fmt::Display for VerificationResult {
     }
 }
 
+#[derive(Default)]
 pub struct PDRConfig {
     dump_tex_progress: bool,
-}
-
-impl Default for PDRConfig {
-    fn default() -> Self {
-        PDRConfig {
-            dump_tex_progress: false,
-        }
-    }
 }
 
 impl PDRConfig {

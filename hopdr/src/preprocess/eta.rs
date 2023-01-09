@@ -37,7 +37,7 @@ fn transform_goal(
                 (Type::mk_type_prop(), Goal::mk_univ(x.clone(), g))
             }
             GoalKind::Var(x) => {
-                let t = env.get(x).expect(&format!("cannot find {}", x));
+                let t = env.get(x).unwrap_or_else(|| panic!("cannot find {}", x));
                 (t, g.clone())
             }
             GoalKind::Abs(x, g) => {
@@ -98,13 +98,13 @@ fn transform_goal(
             GoalKind::App(g1, g2) => {
                 let (s, g1) = handle_abs(g1, env);
                 let g2 = match s.kind() {
-                    formula::TypeKind::Arrow(t1, _) => translate(g2, &t1, env),
+                    formula::TypeKind::Arrow(t1, _) => translate(g2, t1, env),
                     formula::TypeKind::Proposition | formula::TypeKind::Integer => {
                         panic!("program error")
                     }
                 };
                 let g_app = Goal::mk_app(g1, g2);
-                append_args(g_app, &t)
+                append_args(g_app, t)
             }
             GoalKind::Univ(x, g) => Goal::mk_univ(x.clone(), translate(g, t, env)),
             GoalKind::Conj(g1, g2) => Goal::mk_conj(translate(g1, t, env), translate(g2, t, env)),

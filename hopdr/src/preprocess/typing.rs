@@ -316,7 +316,7 @@ impl<'a> Environment<'a> {
     }
 }
 
-fn generate_global_environment<'a>(formulas: &'a Vec<Clause<TmpType>>) -> Environment<'a> {
+fn generate_global_environment(formulas: &Vec<Clause<TmpType>>) -> Environment {
     let mut env = Environment::new();
     for formula in formulas.iter() {
         env.add(&formula.id.id, formula.id.ty.clone());
@@ -339,7 +339,7 @@ impl Constraint {
     fn new(left: TmpType, right: TmpType) -> Constraint {
         Constraint { left, right }
     }
-    fn kind<'a>(&'a self) -> (&'a TmpTypeKind, &'a TmpTypeKind) {
+    fn kind(&self) -> (&TmpTypeKind, &TmpTypeKind) {
         let left = self.left.kind();
         let right = self.right.kind();
         (left, right)
