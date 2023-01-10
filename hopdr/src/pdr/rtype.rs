@@ -244,15 +244,21 @@ impl<C: Refinement> Subst for Tau<C> {
     type Id = Ident;
     type Item = Op;
 
-    fn subst(&self, x: &Self::Id, v: &Self::Item) -> Self {
+    fn subst_hook<F>(&self, x: &Self::Id, f: &F) -> Self
+    where
+        F: Fn() -> Self::Item,
+    {
         match self.kind() {
-            TauKind::Proposition(c) => Self::mk_prop_ty(c.subst(x, v)),
+            TauKind::Proposition(c) => Self::mk_prop_ty(c.subst_hook(x, f)),
             TauKind::IArrow(y, _) if y == x => self.clone(),
-            TauKind::IArrow(y, t) => Self::mk_iarrow(*y, t.subst(x, v)),
+            TauKind::IArrow(y, t) => Self::mk_iarrow(*y, t.subst_hook(x, f)),
             TauKind::Arrow(ts, t) => {
-                let ts = ts.iter().map(|t| t.subst(x, v)).collect();
-                let t = t.subst(x, v);
-                Self::mk_arrow(ts, t)
+                let t = t.subst_hook(x, f);
+                let mut ts_new = Vec::new();
+                for t in ts.iter() {
+                    ts_new.push(t.subst_hook(x, f));
+                }
+                Self::mk_arrow(ts_new, t)
             }
         }
     }

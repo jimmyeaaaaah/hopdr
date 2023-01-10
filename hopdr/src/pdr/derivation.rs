@@ -1378,9 +1378,12 @@ impl formula::Subst for SavedTy {
     type Item = Op;
     type Id = Ident;
 
-    fn subst(&self, x: &Self::Id, v: &Self::Item) -> Self {
-        let ty = self.ty.subst(x, v);
-        let context_ty = self.context_ty.subst(x, v);
+    fn subst_hook<F>(&self, x: &Self::Id, f: &F) -> Self
+    where
+        F: Fn() -> Self::Item,
+    {
+        let ty = self.ty.subst_hook(x, f);
+        let context_ty = self.context_ty.subst_hook(x, f);
         SavedTy::mk(ty, context_ty)
     }
 }

@@ -278,22 +278,27 @@ impl Logic for Atom {
 impl Subst for Atom {
     type Item = super::Op;
     type Id = Ident;
-    fn subst(&self, x: &Ident, v: &super::Op) -> Self {
+    fn subst_hook<F>(&self, x: &Ident, f: &F) -> Self
+    where
+        F: Fn() -> Self::Item,
+    {
         match self.kind() {
             AtomKind::True => self.clone(),
-            AtomKind::Constraint(c) => Atom::mk_constraint(c.subst(x, v)),
+            AtomKind::Constraint(c) => Atom::mk_constraint(c.subst_hook(x, f)),
             AtomKind::Predicate(k, args) => {
-                let _target = match v.kind() {
+                let _target = match f().kind() {
                     super::OpExpr::Var(v) => *v,
                     _ => unimplemented!("not implemented"),
                 };
-                let new_ops = args.iter().map(|op| op.subst(x, v)).collect();
+                let new_ops = args.iter().map(|op| op.subst_hook(x, f)).collect();
                 Atom::mk_pred(*k, new_ops)
             }
-            AtomKind::Conj(r, l) => Atom::mk_conj(r.subst(x, v), l.subst(x, v)),
-            AtomKind::Disj(r, l) => Atom::mk_disj(r.subst(x, v), l.subst(x, v)),
+            AtomKind::Conj(r, l) => Atom::mk_conj(r.subst_hook(x, f), l.subst_hook(x, f)),
+            AtomKind::Disj(r, l) => Atom::mk_disj(r.subst_hook(x, f), l.subst_hook(x, f)),
             // assumption: vars are different each other ?
-            AtomKind::Quantifier(q, var, cstr) => Atom::mk_quantifier(*q, *var, cstr.subst(x, v)),
+            AtomKind::Quantifier(q, var, cstr) => {
+                Atom::mk_quantifier(*q, *var, cstr.subst_hook(x, f))
+            }
         }
     }
 }
