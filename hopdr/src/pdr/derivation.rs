@@ -907,17 +907,11 @@ fn handle_abs(
                 let mut pt =
                     type_check_inner(config, tenv, ienv, all_coefficients, arg_expr, t.clone());
                 pt.coarse_type(t);
-                pt
+                // skip the continuation of this inner function
+                return pt;
             }
         };
-        for level in arg_expr.aux.level_arg.iter() {
-            for ct in pt.types.iter_mut() {
-                ct.memorize(*level);
-            }
-        }
-        for ct in pt.types.iter_mut() {
-            ct.set_types(arg_expr, t.clone());
-        }
+        save_derivation(&mut pt, arg_expr, &t);
         debug!("handle_abs: |- {} : {} ", arg_expr, pt);
         pt
     }
