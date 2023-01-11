@@ -1533,7 +1533,6 @@ impl Derivation {
         if let Some(t) = self.get_expr_ty(&expr.aux.id).iter().next() {
             panic!("already registered!: {}: {}", expr, t);
         }
-        debug!("saving type: {}: {}", expr, ty);
         self.expr.set(expr.aux.id, ty);
     }
     fn get_arg(&self, level: &usize) -> Stack<Ty> {
@@ -1587,7 +1586,6 @@ impl<C: Refinement> CandidateDerivation<C> {
         self.derivation.memorize(level, self.ty.clone())
     }
     fn set_types(&mut self, expr: &G, context_ty: Ty) {
-        debug!("set_types(expr={}) {}: {}", expr.aux.id, expr, self.ty);
         let ty = self.ty.clone();
         let saved_ty = SavedTy::mk(ty, context_ty);
         self.derivation.memorize_type_judgement(expr, saved_ty);
