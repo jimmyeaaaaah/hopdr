@@ -228,6 +228,50 @@ impl From<Candidate> for G {
     }
 }
 
+impl TypeMemory {
+    fn update_id(&self) -> Self {
+        let mut tm = self.clone();
+        tm.id = Ident::fresh();
+        tm
+    }
+}
+
+impl GoalBase<Constraint, TypeMemory> {
+    fn update_ids(&self) -> Self {
+        let mut expr = match self.kind() {
+            GoalKind::Constr(_) | GoalKind::Op(_) | GoalKind::Var(_) => self.clone(),
+            GoalKind::App(x, y) => {
+                let x = x.update_ids();
+                let y = y.update_ids();
+                Self::mk_app(x, y)
+            }
+            GoalKind::Conj(x, y) => {
+                let x = x.update_ids();
+                let y = y.update_ids();
+                Self::mk_conj(x, y)
+            }
+            GoalKind::Disj(x, y) => {
+                let x = x.update_ids();
+                let y = y.update_ids();
+                Self::mk_disj(x, y)
+            }
+            GoalKind::Abs(v, x) => {
+                let x = x.update_ids();
+                Self::mk_abs(v.clone(), x)
+            }
+            GoalKind::Univ(v, x) => {
+                let x = x.update_ids();
+                Self::mk_univ(v.clone(), x)
+            }
+        };
+        expr.aux = self.aux.update_id();
+        expr
+    }
+    fn subst_with_new_id(&self, x: &Variable, expr: &Self) -> Self {
+        self.subst_hook(x, &|| expr.update_ids())
+    }
+}
+
 fn generate_reduction_sequence(goal: &G, optimizer: &mut dyn Optimizer) -> (Vec<Reduction>, G) {
     /// returns
     /// 1. Some(Candidate): substituted an app
@@ -273,7 +317,7 @@ fn generate_reduction_sequence(goal: &G, optimizer: &mut dyn Optimizer) -> (Vec<
                             }
                         }
 
-                        let mut ret = new_g.subst(&new_var, &arg);
+                        let mut ret = new_g.subst_with_new_id(&new_var, &arg);
                         // introduce a new fresh variable to identify this expr
                         ret.aux.id = Ident::fresh();
 
