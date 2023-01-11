@@ -593,7 +593,7 @@ impl Context {
         title!("Reduction");
         debug!("{}", reduction);
         let ret_tys = derivation.get_expr_ty(&reduction.result.aux.id);
-        if ret_tys.iter().len() != 1 {
+        if ret_tys.iter().len() == 0 {
             debug!(
                 "search for id={},expr={} ",
                 reduction.result.aux.id, reduction.result
@@ -601,7 +601,6 @@ impl Context {
             title!("no ret_tys");
             panic!("fatal");
         }
-        let ret_ty = ret_tys.iter().next().unwrap();
 
         // retrieve argument types
         // if argument type is non-integer, then make sure that the context of the retrieved type matches
@@ -642,151 +641,153 @@ impl Context {
         }
         assert_eq!(expr_ids.len(), arg_tys.len());
 
-        // old: ret_tys loop
-        let SavedTy {
-            ty: ret_ty,
-            context_ty,
-        } = ret_ty.clone();
-        debug!("ret_ty: {}", ret_ty);
-        debug!("context_ty: {}", context_ty);
+        for ret_ty in ret_tys.iter() {
+            let SavedTy {
+                ty: ret_ty,
+                context_ty,
+            } = ret_ty.clone();
+            debug!("ret_ty: {}", ret_ty);
+            debug!("context_ty: {}", context_ty);
 
-        // if there is a shared_ty, we have to use it
-        let (tmp_ret_ty, is_shared_ty) = match &reduction.predicate.aux.tys {
-            Some(tys) => (tys[0].clone(), true),
-            None => (
-                ret_ty.clone_with_rty_template(
-                    Atom::mk_true(),
-                    &mut if self.infer_polymorphic_type {
-                        reduction.fvints.clone()
-                    } else {
-                        reduction.argints.clone()
-                    },
+            // if there is a shared_ty, we have to use it
+            let (tmp_ret_ty, is_shared_ty) = match &reduction.predicate.aux.tys {
+                Some(tys) => (tys[0].clone(), true),
+                None => (
+                    ret_ty.clone_with_rty_template(
+                        Atom::mk_true(),
+                        &mut if self.infer_polymorphic_type {
+                            reduction.fvints.clone()
+                        } else {
+                            reduction.argints.clone()
+                        },
+                    ),
+                    false,
                 ),
-                false,
-            ),
-        };
+            };
 
-        let mut tmp_ty = tmp_ret_ty.clone();
-        let mut body_ty = ret_ty.clone();
-        let mut app_expr_ty = tmp_ret_ty.clone();
+            let mut tmp_ty = tmp_ret_ty.clone();
+            let mut body_ty = ret_ty.clone();
+            let mut app_expr_ty = tmp_ret_ty.clone();
 
-        // calculate the type for app_expr
-        if is_shared_ty {
-            for (arg_ty, reduction) in arg_tys.iter().rev().zip(reduction.args.iter()) {
-                match arg_ty {
-                    // case: arg ty is integer
-                    either::Left(ident) => {
-                        body_ty = body_ty.deref_ptr(ident).rename(&ident, &reduction.old_id);
-                        let op: Op = reduction.arg.clone().into();
-                        match app_expr_ty.kind() {
-                            TauKind::IArrow(id, t) => {
-                                body_ty = body_ty.rename(&reduction.old_id, id);
-                                app_expr_ty = t.subst(id, &op);
+            // calculate the type for app_expr
+            if is_shared_ty {
+                for (arg_ty, reduction) in arg_tys.iter().rev().zip(reduction.args.iter()) {
+                    match arg_ty {
+                        // case: arg ty is integer
+                        either::Left(ident) => {
+                            body_ty = body_ty.deref_ptr(ident).rename(&ident, &reduction.old_id);
+                            let op: Op = reduction.arg.clone().into();
+                            match app_expr_ty.kind() {
+                                TauKind::IArrow(id, t) => {
+                                    body_ty = body_ty.rename(&reduction.old_id, id);
+                                    app_expr_ty = t.subst(id, &op);
+                                }
+                                TauKind::Arrow(_, _) | TauKind::Proposition(_) => {
+                                    panic!("program error")
+                                }
                             }
-                            TauKind::Arrow(_, _) | TauKind::Proposition(_) => {
+                        }
+                        // case: arg ty is higher-order
+                        either::Right(arg_ty) => match app_expr_ty.kind() {
+                            TauKind::Arrow(ts, t_result) => {
+                                append_clauses_by_subst(
+                                    clauses,
+                                    ts,
+                                    arg_ty,
+                                    &app_expr_ty.rty_no_exists(),
+                                );
+                                app_expr_ty = t_result.clone()
+                            }
+                            TauKind::IArrow(_, _) | TauKind::Proposition(_) => {
                                 panic!("program error")
                             }
-                        }
+                        },
                     }
-                    // case: arg ty is higher-order
-                    either::Right(arg_ty) => match app_expr_ty.kind() {
-                        TauKind::Arrow(ts, t_result) => {
-                            append_clauses_by_subst(
-                                clauses,
-                                ts,
-                                arg_ty,
-                                &app_expr_ty.rty_no_exists(),
-                            );
-                            app_expr_ty = t_result.clone()
+                }
+            } else {
+                for (arg_ty, reduction) in arg_tys.iter().zip(reduction.args.iter().rev()) {
+                    match arg_ty {
+                        either::Left(ident) => {
+                            body_ty = body_ty.deref_ptr(ident).rename(&ident, &reduction.old_id);
+                            let op: Op = reduction.arg.clone().into();
+                            tmp_ty = Tau::mk_iarrow(reduction.old_id, tmp_ty);
+                            app_expr_ty = app_expr_ty.subst(&reduction.old_id, &op);
                         }
-                        TauKind::IArrow(_, _) | TauKind::Proposition(_) => {
-                            panic!("program error")
+                        either::Right(arg_ty) => {
+                            tmp_ty = Ty::mk_arrow(arg_ty.clone(), tmp_ty);
                         }
-                    },
+                    };
                 }
             }
-        } else {
-            for (arg_ty, reduction) in arg_tys.iter().zip(reduction.args.iter().rev()) {
+            // 3. generate constraint from subtyping t <: arg_ty -> ret_ty, and append them to constraints
+            // constrain by `old <= new_tmpty <= top`
+
+            debug!("inferred type: {}", tmp_ty);
+            debug!("body type: {}", body_ty);
+            debug!("app_expr_type: {}", app_expr_ty);
+
+            let constraint =
+                Atom::mk_implies_opt(tmp_ty.rty_no_exists(), body_ty.rty_no_exists()).unwrap();
+
+            let constraint2 =
+                Atom::mk_implies_opt(context_ty.rty_no_exists(), app_expr_ty.rty_no_exists())
+                    .unwrap();
+            debug!("constraint1: {}", constraint);
+            debug!("constraint2: {}", constraint2);
+            let constraint = Atom::mk_conj(constraint, constraint2);
+            append_clauses(clauses, &constraint);
+
+            // 4. for each `level` in reduction.candidate.aux, we add t to Derivation
+            for level in reduction.predicate.aux.level_arg.iter() {
+                derivation.arg.insert(*level, tmp_ty.clone());
+            }
+            for level in reduction.app_expr.aux.level_arg.iter() {
+                derivation.arg.insert(*level, app_expr_ty.clone())
+            }
+
+            debug!(
+                "app_expr({}): {}",
+                reduction.app_expr.aux.id, reduction.app_expr
+            );
+
+            // finally, add types to all the temporal app result
+            let mut temporal_ty = tmp_ty.clone();
+            for ((arg_ty, reduction), expr_id) in arg_tys
+                .iter()
+                .rev()
+                .zip(reduction.args.iter())
+                .zip(expr_ids.iter().rev())
+            {
+                debug!("saving({}): {}", expr_id, temporal_ty);
+                // [feature shared_ty] in the infer_type phase, we no longer have to track both shared_ty and ty.
+                let temporal_saved_ty = SavedTy::mk(temporal_ty.clone(), context_ty.clone());
+                derivation.expr.set(*expr_id, temporal_saved_ty);
                 match arg_ty {
-                    either::Left(ident) => {
-                        body_ty = body_ty.deref_ptr(ident).rename(&ident, &reduction.old_id);
+                    either::Left(_) => {
                         let op: Op = reduction.arg.clone().into();
-                        tmp_ty = Tau::mk_iarrow(reduction.old_id, tmp_ty);
-                        app_expr_ty = app_expr_ty.subst(&reduction.old_id, &op);
+                        let (id, t) = match temporal_ty.kind() {
+                            TauKind::IArrow(id, t) => (id, t),
+                            _ => panic!("fatal"),
+                        };
+                        temporal_ty = t.subst(id, &op);
                     }
-                    either::Right(arg_ty) => {
-                        tmp_ty = Ty::mk_arrow(arg_ty.clone(), tmp_ty);
+                    either::Right(_) => {
+                        temporal_ty = match temporal_ty.kind() {
+                            TauKind::Arrow(_, t) => t.clone(),
+                            _ => panic!("fatal"),
+                        }
                     }
                 };
             }
-        }
-        // 3. generate constraint from subtyping t <: arg_ty -> ret_ty, and append them to constraints
-        // constrain by `old <= new_tmpty <= top`
 
-        debug!("inferred type: {}", tmp_ty);
-        debug!("body type: {}", body_ty);
-        debug!("app_expr_type: {}", app_expr_ty);
-
-        let constraint =
-            Atom::mk_implies_opt(tmp_ty.rty_no_exists(), body_ty.rty_no_exists()).unwrap();
-
-        let constraint2 =
-            Atom::mk_implies_opt(context_ty.rty_no_exists(), app_expr_ty.rty_no_exists()).unwrap();
-        debug!("constraint1: {}", constraint);
-        debug!("constraint2: {}", constraint2);
-        let constraint = Atom::mk_conj(constraint, constraint2);
-        append_clauses(clauses, &constraint);
-
-        // 4. for each `level` in reduction.candidate.aux, we add t to Derivation
-        for level in reduction.predicate.aux.level_arg.iter() {
-            derivation.arg.insert(*level, tmp_ty.clone());
-        }
-        for level in reduction.app_expr.aux.level_arg.iter() {
-            derivation.arg.insert(*level, app_expr_ty.clone())
-        }
-
-        debug!(
-            "app_expr({}): {}",
-            reduction.app_expr.aux.id, reduction.app_expr
-        );
-
-        // finally, add types to all the temporal app result
-        let mut temporal_ty = tmp_ty.clone();
-        for ((arg_ty, reduction), expr_id) in arg_tys
-            .iter()
-            .rev()
-            .zip(reduction.args.iter())
-            .zip(expr_ids.iter().rev())
-        {
-            debug!("saving({}): {}", expr_id, temporal_ty);
             // [feature shared_ty] in the infer_type phase, we no longer have to track both shared_ty and ty.
-            let temporal_saved_ty = SavedTy::mk(temporal_ty.clone(), context_ty.clone());
-            derivation.expr.set(*expr_id, temporal_saved_ty);
-            match arg_ty {
-                either::Left(_) => {
-                    let op: Op = reduction.arg.clone().into();
-                    let (id, t) = match temporal_ty.kind() {
-                        TauKind::IArrow(id, t) => (id, t),
-                        _ => panic!("fatal"),
-                    };
-                    temporal_ty = t.subst(id, &op);
-                }
-                either::Right(_) => {
-                    temporal_ty = match temporal_ty.kind() {
-                        TauKind::Arrow(_, t) => t.clone(),
-                        _ => panic!("fatal"),
-                    }
-                }
-            };
+            let app_expr_saved_ty = SavedTy::mk(app_expr_ty.clone(), context_ty.clone());
+            derivation
+                .expr
+                .set(reduction.app_expr.aux.id, app_expr_saved_ty);
+            // the aux.id is saved above, so we don't have to for app_expr
+            debug!("");
         }
-
-        // [feature shared_ty] in the infer_type phase, we no longer have to track both shared_ty and ty.
-        let app_expr_saved_ty = SavedTy::mk(app_expr_ty.clone(), context_ty.clone());
-        derivation
-            .expr
-            .set(reduction.app_expr.aux.id, app_expr_saved_ty);
-        // the aux.id is saved above, so we don't have to for app_expr
-        debug!("");
     }
     fn infer_type(
         &mut self,
