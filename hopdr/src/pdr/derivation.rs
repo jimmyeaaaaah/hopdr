@@ -953,6 +953,27 @@ enum TCFlag {
     Shared(InstantiationConfig),
 }
 
+fn coarse_expr_for_type_sharing(config: &TCConfig, pt: &mut PossibleDerivation<Atom>, expr: &G) {
+    // [feature shared_ty] template type sharing
+    // if there is a shared type registered, coarse pt to obey the type.
+    match (&config.tc_mode, &expr.aux.tys) {
+        (TCFlag::Shared(_), Some(tys)) if tys.len() == 1 => pt.coarse_type(&tys[0]),
+        (TCFlag::Normal, _) | (_, None) => (),
+        (_, _) => unimplemented!(),
+    }
+}
+
+fn save_derivation(pt: &mut PossibleDerivation<Atom>, expr: &G, context_ty: &Ty) {
+    for level in expr.aux.level_arg.iter() {
+        for ct in pt.types.iter_mut() {
+            ct.memorize(*level);
+        }
+    }
+    for ct in pt.types.iter_mut() {
+        ct.set_types(expr, context_ty.clone());
+    }
+}
+
 // tenv+ienv; constraint |- App(arg, ret): t
 /// returns possible types for app_expr under constraint
 fn handle_app(
@@ -1093,21 +1114,10 @@ fn handle_app(
         }
     }
     let mut pt = handle_inner(config, tenv, ienv, all_coefficients, app_expr, cty.clone());
-    // [feature shared_ty] template type sharing
-    // if there is a shared type registered, coarse pt to obey the type.
-    match (&config.tc_mode, &app_expr.aux.tys) {
-        (TCFlag::Shared(_), Some(tys)) if tys.len() == 1 => pt.coarse_type(&tys[0]),
-        (TCFlag::Normal, _) | (_, None) => (),
-        (_, _) => unimplemented!(),
-    }
-    for level in app_expr.aux.level_arg.iter() {
-        for ct in pt.types.iter_mut() {
-            ct.memorize(*level);
-        }
-    }
-    for ct in pt.types.iter_mut() {
-        ct.set_types(app_expr, cty.clone());
-    }
+
+    coarse_expr_for_type_sharing(config, &mut pt, &app_expr);
+    save_derivation(&mut pt, app_expr, &cty);
+
     debug!("handle_app: |- {} : {} ", app_expr, pt);
     pt
 }
@@ -1122,6 +1132,9 @@ fn type_check_inner(
     c: &G,
     context_ty: Ty,
 ) -> PossibleDerivation<Atom> {
+    // the second element of the returned value is whether the expr was app.
+    // since app is delegated to `handle_app`, after go_inner, you don't have to register the result
+    // to the derivation tree again.
     fn go_inner(
         config: &TCConfig,
         tenv: &mut Env,
@@ -1129,13 +1142,16 @@ fn type_check_inner(
         all_coefficients: &mut HashSet<Ident>,
         c: &G,
         context_ty: Ty,
-    ) -> PossibleDerivation<Atom> {
+    ) -> (PossibleDerivation<Atom>, bool) {
         // [pruning]: since we can always derive ψ: ⊥, we do not have to care about this part
         if !config.construct_derivation && context_ty.is_bot() {
             let cd = CandidateDerivation::singleton(context_ty.clone());
-            return PossibleDerivation::singleton(cd);
+            return (PossibleDerivation::singleton(cd), false);
         }
-        match c.kind() {
+        // for App, we delegate the procedure to `handle_app`
+        // and in that procedure, it saves the types
+        let mut already_registered = false;
+        let result_pt = match c.kind() {
             formula::hes::GoalKind::Constr(c) => {
                 let constraint = c.clone().into();
                 let t = Ty::mk_prop_ty(constraint);
@@ -1233,6 +1249,7 @@ fn type_check_inner(
                 pt
             }
             formula::hes::GoalKind::App(_, _) => {
+                already_registered = true;
                 handle_app(config, tenv, ienv, all_coefficients, c, context_ty.clone())
             }
             formula::hes::GoalKind::Abs(_v, _g) => {
@@ -1240,43 +1257,18 @@ fn type_check_inner(
             }
             // op is always handled by App(x, op)
             formula::hes::GoalKind::Op(_) => panic!("fatal error"),
-        }
+        };
+        (result_pt, already_registered)
     }
-    let mut pt = go_inner(config, tenv, ienv, all_coefficients, c, context_ty.clone());
+    let (mut pt, already_registered) =
+        go_inner(config, tenv, ienv, all_coefficients, c, context_ty.clone());
 
-    // [feature shared_ty] template type sharing
-    // if there is a shared type registered, coarse pt to obey the type.
-    match (&config.tc_mode, &c.aux.tys) {
-        (TCFlag::Shared(_), Some(tys)) if tys.len() == 1 => pt.coarse_type(&tys[0]),
-        (TCFlag::Normal, _) | (_, None) => (),
-        (_, _) => unimplemented!(),
+    if !already_registered {
+        coarse_expr_for_type_sharing(config, &mut pt, &c);
+        save_derivation(&mut pt, c, &context_ty);
     }
 
-    // debug
-    match config.tc_mode {
-        TCFlag::Normal => (),
-        TCFlag::Shared(ref d) => {
-            let ts = d.derivation.expr.get(&c.aux.id);
-            debug!(
-                "type_check_go saved({}) count = {}",
-                c.aux.id,
-                ts.iter().len()
-            );
-            for t in ts.iter() {
-                debug!("type_check_go saved({}) |- {}", c.aux.id, t);
-            }
-        }
-    }
-    // debug-to-be-removed
-
-    for ct in pt.types.iter_mut() {
-        debug!("type_check_go({}) |- {} : {}", c.aux.id, c, ct.ty);
-        // memorize the type assignment to each expr
-        for level in c.aux.level_arg.iter() {
-            ct.memorize(*level);
-        }
-        ct.set_types(c, context_ty.clone());
-    }
+    debug!("type_check_go({}) |- {} : {}", c.aux.id, c, pt);
     pt
 }
 
@@ -1545,8 +1537,7 @@ impl Derivation {
     // memorize expr : ty in a derivation
     fn memorize_type_judgement(&mut self, expr: &G, ty: SavedTy) {
         if let Some(t) = self.get_expr_ty(&expr.aux.id).iter().next() {
-            debug!("already registered!: {}: {}", expr, t);
-            return;
+            panic!("already registered!: {}: {}", expr, t);
         }
         debug!("saving type: {}: {}", expr, ty);
         self.expr.set(expr.aux.id, ty);
