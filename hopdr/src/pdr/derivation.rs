@@ -178,6 +178,7 @@ impl Reduction {
 struct TypeMemory {
     level_arg: Stack<usize>,
     id: Ident, // unique id for each sub expression of the formula
+    old_ids: Stack<Ident>,
     tys: Option<Vec<Ty>>,
 }
 impl TypeMemory {
@@ -185,6 +186,7 @@ impl TypeMemory {
         TypeMemory {
             level_arg: Stack::new(),
             id: Ident::fresh(),
+            old_ids: Stack::new(),
             tys: None,
         }
     }
@@ -231,7 +233,9 @@ impl From<Candidate> for G {
 impl TypeMemory {
     fn update_id(&self) -> Self {
         let mut tm = self.clone();
+        let old_id = tm.id;
         tm.id = Ident::fresh();
+        tm.old_ids.push_mut(old_id);
         tm
     }
 }
@@ -529,7 +533,7 @@ impl Context {
                 match derivation.expr.get_opt(id) {
                     Some(tys) => {
                         for ty in tys.iter() {
-                            debug!("{}: {}", pred_name, ty);
+                            debug!("{}({}): {}", pred_name, id, ty);
                             debug!("{:?}", model);
                             let ty = ty.ty.clone();
                             let ty = ty.assign(&model);
@@ -1533,6 +1537,9 @@ impl Derivation {
     fn memorize_type_judgement(&mut self, expr: &G, ty: SavedTy) {
         if let Some(t) = self.get_expr_ty(&expr.aux.id).iter().next() {
             panic!("already registered!: {}: {}", expr, t);
+        }
+        for id in expr.aux.old_ids.iter() {
+            self.expr.set(*id, ty.clone())
         }
         self.expr.set(expr.aux.id, ty);
     }
