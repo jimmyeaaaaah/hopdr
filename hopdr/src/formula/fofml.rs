@@ -293,36 +293,33 @@ impl Negation for Atom {
 impl Subst for Atom {
     type Item = super::Op;
     type Id = Ident;
-    fn subst_hook<F>(&self, x: &Ident, f: &F) -> Self
-    where
-        F: Fn() -> Self::Item,
-    {
+    fn subst(&self, x: &Ident, v: &super::Op) -> Self {
         match self.kind() {
             AtomKind::True => self.clone(),
-            AtomKind::Constraint(c) => Atom::mk_constraint(c.subst_hook(x, f)),
+            AtomKind::Constraint(c) => Atom::mk_constraint(c.subst(x, v)),
             AtomKind::Predicate(p, l) => {
-                let l2: Vec<Op> = l.iter().map(|id| id.subst_hook(x, f)).collect();
+                let l2: Vec<Op> = l.iter().map(|id| id.subst(x, v)).collect();
                 Atom::mk_pred(*p, l2)
             }
             AtomKind::Conj(a1, a2) => {
-                let a1 = a1.subst_hook(x, f);
-                let a2 = a2.subst_hook(x, f);
+                let a1 = a1.subst(x, v);
+                let a2 = a2.subst(x, v);
                 Atom::mk_conj(a1, a2)
             }
             AtomKind::Disj(a1, a2) => {
-                let a1 = a1.subst_hook(x, f);
-                let a2 = a2.subst_hook(x, f);
+                let a1 = a1.subst(x, v);
+                let a2 = a2.subst(x, v);
                 Atom::mk_disj(a1, a2)
             }
             AtomKind::Not(a) => {
-                let a = a.subst_hook(x, f);
+                let a = a.subst(x, v);
                 Atom::mk_not(a)
             }
             AtomKind::Quantifier(q, y, a) => {
                 if x == y {
                     Atom::mk_quantifier(*q, *y, a.clone())
                 } else {
-                    Atom::mk_quantifier(*q, *y, a.subst_hook(x, f))
+                    Atom::mk_quantifier(*q, *y, a.subst(x, v))
                 }
             }
         }

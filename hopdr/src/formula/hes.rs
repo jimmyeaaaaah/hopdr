@@ -381,7 +381,6 @@ impl<C: Rename, T: Clone> Rename for GoalBase<C, T> {
         }
     }
 }
-
 impl<C: Subst<Item = Op, Id = Ident> + Rename + Fv<Id = Ident> + fmt::Display, T: Clone> Subst
     for GoalBase<C, T>
 {
@@ -389,18 +388,11 @@ impl<C: Subst<Item = Op, Id = Ident> + Rename + Fv<Id = Ident> + fmt::Display, T
     type Id = Variable;
     // we assume formula has already been alpha-renamed
     // TODO: where? We will not assume alpha-renamed
-    fn subst_hook<F>(&self, x: &Variable, f: &F) -> Self
-    where
-        F: Fn() -> Self::Item,
-    {
-        fn subst_inner<
-            C: Subst<Item = Op, Id = Ident> + Rename + fmt::Display,
-            T: Clone,
-            F: Fn() -> GoalBase<C, T>,
-        >(
+    fn subst(&self, x: &Variable, v: &GoalBase<C, T>) -> Self {
+        fn subst_inner<C: Subst<Item = Op, Id = Ident> + Rename + fmt::Display, T: Clone>(
             target: &GoalBase<C, T>,
             x: &Variable,
-            f: &F,
+            v: &GoalBase<C, T>,
             fv: &HashSet<Ident>,
         ) -> GoalBase<C, T> {
             // tmp debug
@@ -408,19 +400,19 @@ impl<C: Subst<Item = Op, Id = Ident> + Rename + Fv<Id = Ident> + fmt::Display, T
             match target.kind() {
                 GoalKind::Var(y) => {
                     if x.id == *y {
-                        f()
+                        v.clone()
                     } else {
                         target.clone()
                     }
                 }
                 GoalKind::Constr(c) if x.ty.is_int() => {
                     // when x has type int, v can be reduced to Op
-                    let op = f().into();
+                    let op = v.clone().into();
                     let c = c.subst(&x.id, &op);
                     GoalBase::mk_constr_t(c, target.aux.clone())
                 }
                 GoalKind::Op(o) if x.ty.is_int() => {
-                    let op = f().into();
+                    let op = v.clone().into();
                     debug!("op subst {:?}", o);
                     let o = o.subst(&x.id, &op);
                     debug!("op subst {:?}", o);
@@ -428,18 +420,18 @@ impl<C: Subst<Item = Op, Id = Ident> + Rename + Fv<Id = Ident> + fmt::Display, T
                 }
                 GoalKind::Constr(_) | GoalKind::Op(_) => target.clone(),
                 GoalKind::App(g1, g2) => {
-                    let g1 = subst_inner(g1, x, f, fv);
-                    let g2 = subst_inner(g2, x, f, fv);
+                    let g1 = subst_inner(g1, x, v, fv);
+                    let g2 = subst_inner(g2, x, v, fv);
                     GoalBase::mk_app_t(g1, g2, target.aux.clone())
                 }
                 GoalKind::Conj(g1, g2) => {
-                    let g1 = subst_inner(g1, x, f, fv);
-                    let g2 = subst_inner(g2, x, f, fv);
+                    let g1 = subst_inner(g1, x, v, fv);
+                    let g2 = subst_inner(g2, x, v, fv);
                     GoalBase::mk_conj_t(g1, g2, target.aux.clone())
                 }
                 GoalKind::Disj(g1, g2) => {
-                    let g1 = subst_inner(g1, x, f, fv);
-                    let g2 = subst_inner(g2, x, f, fv);
+                    let g1 = subst_inner(g1, x, v, fv);
+                    let g2 = subst_inner(g2, x, v, fv);
                     GoalBase::mk_disj_t(g1, g2, target.aux.clone())
                 }
                 GoalKind::Abs(y, g) => {
@@ -449,9 +441,9 @@ impl<C: Subst<Item = Op, Id = Ident> + Rename + Fv<Id = Ident> + fmt::Display, T
                         let y2_ident = Ident::fresh();
                         let y2 = Variable::mk(y2_ident, y.ty.clone());
                         let g = g.rename(&y.id, &y2_ident);
-                        GoalBase::mk_abs_t(y2, subst_inner(&g, x, f, fv), target.aux.clone())
+                        GoalBase::mk_abs_t(y2, subst_inner(&g, x, v, fv), target.aux.clone())
                     } else {
-                        GoalBase::mk_abs_t(y.clone(), subst_inner(g, x, f, fv), target.aux.clone())
+                        GoalBase::mk_abs_t(y.clone(), subst_inner(g, x, v, fv), target.aux.clone())
                     }
                 }
                 GoalKind::Univ(y, g) => {
@@ -461,23 +453,23 @@ impl<C: Subst<Item = Op, Id = Ident> + Rename + Fv<Id = Ident> + fmt::Display, T
                         let y2_ident = Ident::fresh();
                         let y2 = Variable::mk(y2_ident, y.ty.clone());
                         let g = g.rename(&y.id, &y2_ident);
-                        GoalBase::mk_univ_t(y2, subst_inner(&g, x, f, fv), target.aux.clone())
+                        GoalBase::mk_univ_t(y2, subst_inner(&g, x, v, fv), target.aux.clone())
                     } else {
-                        GoalBase::mk_univ_t(y.clone(), subst_inner(g, x, f, fv), target.aux.clone())
+                        GoalBase::mk_univ_t(y.clone(), subst_inner(g, x, v, fv), target.aux.clone())
                     }
                 }
             }
         }
-        let fv = f().fv();
+        let fv = v.clone().fv();
         // debug
         crate::title!("fvs:");
         for f in fv.iter() {
             debug!("- {}", f)
         }
         crate::title!("subst");
-        debug!("subst: [{}/{}]", f(), x);
+        debug!("subst: [{}/{}]", v, x);
         debug!("{}", self);
-        let r = subst_inner(self, x, f, &fv);
+        let r = subst_inner(self, x, v, &fv);
         debug!("{}", r);
         debug!("substed");
         r

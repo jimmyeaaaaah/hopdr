@@ -501,15 +501,12 @@ fn test_normalize() {
 impl Subst for Op {
     type Item = Op;
     type Id = Ident;
-    fn subst_hook<F>(&self, id: &Ident, f: &F) -> Op
-    where
-        F: Fn() -> Self::Item,
-    {
+    fn subst(&self, id: &Ident, v: &Op) -> Op {
         match self.kind() {
-            OpExpr::Op(k, x, y) => Op::mk_bin_op(*k, x.subst_hook(id, f), y.subst_hook(id, f)),
+            OpExpr::Op(k, x, y) => Op::mk_bin_op(*k, x.subst(id, v), y.subst(id, v)),
 
-            OpExpr::Var(id2) if id == id2 => Op::mk_ptr(*id, f()),
-            OpExpr::Ptr(x, o) => Op::mk_ptr(*x, o.subst_hook(id, f)),
+            OpExpr::Var(id2) if id == id2 => Op::mk_ptr(*id, v.clone()),
+            OpExpr::Ptr(x, o) => Op::mk_ptr(*x, o.subst(id, v)),
             _ => self.clone(),
         }
     }
@@ -612,7 +609,7 @@ pub trait FirstOrderLogic: Logic {
 }
 
 pub trait Subst: Sized + Clone {
-    type Item: Clone;
+    type Item;
     type Id;
     // impl IntoIterator is better, but rust-analyzer fails
     // issue: - https://github.com/rust-lang/rust-analyzer/issues/10932
@@ -629,13 +626,7 @@ pub trait Subst: Sized + Clone {
         }
         ret
     }
-    fn subst(&self, x: &Self::Id, v: &Self::Item) -> Self {
-        self.subst_hook(x, &|| v.clone())
-    }
-    /// hook every substitution of variables
-    fn subst_hook<F>(&self, x: &Self::Id, f: &F) -> Self
-    where
-        F: Fn() -> Self::Item;
+    fn subst(&self, x: &Self::Id, v: &Self::Item) -> Self;
 }
 
 pub trait Rename: Sized {
@@ -817,25 +808,22 @@ impl Subst for Constraint {
     type Item = Op;
     type Id = Ident;
     // \theta[v/x]
-    fn subst_hook<F>(&self, x: &Ident, f: &F) -> Constraint
-    where
-        F: Fn() -> Self::Item,
-    {
+    fn subst(&self, x: &Ident, v: &Op) -> Constraint {
         use ConstraintExpr::*;
         match self.kind() {
             True | False => self.clone(),
             Pred(k, ops) => {
                 let mut new_ops = Vec::new();
                 for op in ops.iter() {
-                    new_ops.push(op.subst_hook(x, f));
+                    new_ops.push(op.subst(x, v));
                 }
                 Constraint::mk_pred(*k, new_ops)
             }
-            Conj(r, l) => Constraint::mk_conj(r.subst_hook(x, f), l.subst_hook(x, f)),
-            Disj(r, l) => Constraint::mk_disj(r.subst_hook(x, f), l.subst_hook(x, f)),
+            Conj(r, l) => Constraint::mk_conj(r.subst(x, v), l.subst(x, v)),
+            Disj(r, l) => Constraint::mk_disj(r.subst(x, v), l.subst(x, v)),
             // assumption: vars are different each other ?
             Quantifier(q, var, cstr) => {
-                Constraint::mk_quantifier(*q, var.clone(), cstr.subst_hook(x, f))
+                Constraint::mk_quantifier(*q, var.clone(), cstr.subst(x, v))
             }
         }
     }
