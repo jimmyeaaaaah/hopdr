@@ -271,9 +271,6 @@ impl GoalBase<Constraint, TypeMemory> {
         expr.aux = self.aux.update_id();
         expr
     }
-    fn subst_with_new_id(&self, x: &Variable, expr: &Self) -> Self {
-        self.subst_hook(x, &|| expr.update_ids())
-    }
 }
 
 fn generate_reduction_sequence(goal: &G, optimizer: &mut dyn Optimizer) -> (Vec<Reduction>, G) {
@@ -321,9 +318,7 @@ fn generate_reduction_sequence(goal: &G, optimizer: &mut dyn Optimizer) -> (Vec<
                             }
                         }
 
-                        let mut ret = new_g.subst_with_new_id(&new_var, &arg);
-                        // introduce a new fresh variable to identify this expr
-                        ret.aux.id = Ident::fresh();
+                        let ret = new_g.subst(&new_var, &arg).update_ids();
 
                         let reduction_info =
                             ReductionInfo::new(level, arg.clone(), new_var, old_id);
@@ -631,19 +626,19 @@ impl Context {
 
         // we have to track all the temporal ids
         // since there are more than one reductions in Reduction object itself
-        let mut expr_ids = Vec::new();
+        let mut app_exprs = Vec::new();
         let mut p = reduction.app_expr.clone();
         loop {
             match p.kind() {
                 GoalKind::App(g, _) => {
                     debug!("id={}, g={}", g.aux.id, g);
-                    expr_ids.push(g.aux.id);
+                    app_exprs.push(g.clone());
                     p = g.clone();
                 }
                 _ => break,
             }
         }
-        assert_eq!(expr_ids.len(), arg_tys.len());
+        assert_eq!(app_exprs.len(), arg_tys.len());
 
         for ret_ty in ret_tys.iter() {
             let SavedTy {
@@ -756,16 +751,16 @@ impl Context {
 
             // finally, add types to all the temporal app result
             let mut temporal_ty = tmp_ty.clone();
-            for ((arg_ty, reduction), expr_id) in arg_tys
+            for ((arg_ty, reduction), expr) in arg_tys
                 .iter()
                 .rev()
                 .zip(reduction.args.iter())
-                .zip(expr_ids.iter().rev())
+                .zip(app_exprs.iter().rev())
             {
-                debug!("saving({}): {}", expr_id, temporal_ty);
+                debug!("saving({}): {}", expr.aux.id, temporal_ty);
                 // [feature shared_ty] in the infer_type phase, we no longer have to track both shared_ty and ty.
                 let temporal_saved_ty = SavedTy::mk(temporal_ty.clone(), context_ty.clone());
-                derivation.expr.set(*expr_id, temporal_saved_ty);
+                derivation.memorize_type_judgement(expr, temporal_saved_ty);
                 match arg_ty {
                     either::Left(_) => {
                         let op: Op = reduction.arg.clone().into();
@@ -786,9 +781,7 @@ impl Context {
 
             // [feature shared_ty] in the infer_type phase, we no longer have to track both shared_ty and ty.
             let app_expr_saved_ty = SavedTy::mk(app_expr_ty.clone(), context_ty.clone());
-            derivation
-                .expr
-                .set(reduction.app_expr.aux.id, app_expr_saved_ty);
+            derivation.memorize_type_judgement(&reduction.app_expr, app_expr_saved_ty);
             // the aux.id is saved above, so we don't have to for app_expr
             debug!("");
         }
