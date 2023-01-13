@@ -524,6 +524,27 @@ impl Rename for Op {
     }
 }
 
+impl AlphaEquivalence for Op {
+    fn alpha_equiv_map(&self, other: &Self, map: &mut HashMap<Ident, Ident>) -> bool {
+        let left = self.flatten();
+        let right = other.flatten();
+        match (left.kind(), right.kind()) {
+            (OpExpr::Op(o1, x1, y1), OpExpr::Op(o2, x2, y2)) if o1 == o2 => {
+                x1.alpha_equiv_map(x2, map) && y1.alpha_equiv_map(y2, map)
+            }
+            (OpExpr::Var(x1), OpExpr::Var(x2)) => match map.get(x1) {
+                Some(x2_) => x2 == x2_,
+                None => {
+                    map.insert(*x1, *x2);
+                    true
+                }
+            },
+            (OpExpr::Const(c1), OpExpr::Const(c2)) => c1 == c2,
+            (_, _) => false,
+        }
+    }
+}
+
 pub trait Top {
     fn mk_true() -> Self;
     fn is_true(&self) -> bool;
@@ -665,6 +686,13 @@ pub trait Fv {
 
 pub trait DerefPtr {
     fn deref_ptr(&self, id: &Ident) -> Self;
+}
+
+pub trait AlphaEquivalence {
+    fn alpha_equiv_map(&self, other: &Self, map: &mut HashMap<Ident, Ident>) -> bool;
+    fn alpha_equiv(&self, other: &Self) -> bool {
+        self.alpha_equiv_map(other, &mut HashMap::new())
+    }
 }
 
 #[derive(Debug)]
@@ -851,6 +879,69 @@ impl Rename for Constraint {
             Quantifier(_, _, _) => panic!("assumption broken"),
         }
     }
+}
+
+impl AlphaEquivalence for Constraint {
+    fn alpha_equiv_map(&self, other: &Self, map: &mut HashMap<Ident, Ident>) -> bool {
+        match (self.kind(), other.kind()) {
+            (ConstraintExpr::True, ConstraintExpr::True)
+            | (ConstraintExpr::False, ConstraintExpr::False) => true,
+            (ConstraintExpr::Pred(p1, l1), ConstraintExpr::Pred(p2, l2))
+                if p1 == p2 && l1.len() == l2.len() =>
+            {
+                l1.iter()
+                    .zip(l2.iter())
+                    .all(|(x, y)| x.alpha_equiv_map(y, map))
+            }
+            (ConstraintExpr::Conj(x1, y1), ConstraintExpr::Conj(x2, y2))
+            | (ConstraintExpr::Disj(x1, y1), ConstraintExpr::Disj(x2, y2)) => {
+                x1.alpha_equiv_map(x2, map) && y1.alpha_equiv_map(y2, map)
+            }
+            (ConstraintExpr::Quantifier(q1, v1, x1), ConstraintExpr::Quantifier(q2, v2, x2))
+                if q1 == q2 =>
+            {
+                // renaming to avoid shadowing
+                let x = Ident::fresh();
+                let x1 = x1.rename(&v1.id, &x);
+                let x2 = x2.rename(&v2.id, &x);
+                x1.alpha_equiv_map(&x2, map)
+            }
+            (_, _) => false,
+        }
+    }
+}
+
+#[test]
+fn test_alpha_equivalence_for_constraint() {
+    fn gen() -> Constraint {
+        let x = Ident::fresh();
+        let y = Ident::fresh();
+        Constraint::mk_exists_int(
+            y,
+            Constraint::mk_conj(
+                Constraint::mk_eq(Op::mk_var(x), Op::mk_var(y)),
+                Constraint::mk_eq(Op::mk_var(x), Op::mk_add(Op::mk_var(y), Op::mk_const(1))),
+            ),
+        )
+    }
+    fn gen2() -> Constraint {
+        let x = Ident::fresh();
+        let y = Ident::fresh();
+        let z = Ident::fresh();
+        Constraint::mk_exists_int(
+            y,
+            Constraint::mk_conj(
+                Constraint::mk_eq(Op::mk_var(x), Op::mk_var(y)),
+                Constraint::mk_eq(Op::mk_var(x), Op::mk_add(Op::mk_var(z), Op::mk_const(1))),
+            ),
+        )
+    }
+
+    let c1 = gen();
+    let c2 = gen();
+    let c3 = gen2();
+    assert!(c1.alpha_equiv(&c2));
+    assert!(!c1.alpha_equiv(&c3));
 }
 
 pub trait Negation {
