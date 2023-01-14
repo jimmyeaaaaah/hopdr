@@ -12,7 +12,7 @@ use crate::formula::{
 use lexpr;
 use lexpr::Value;
 
-fn encode_ident(x: &Ident) -> String {
+pub fn encode_ident(x: &Ident) -> String {
     format!("x{}", x)
 }
 
@@ -286,7 +286,7 @@ pub fn default_solver() -> Box<dyn SMTSolver> {
     smt_solver(SMTSolverType::Z3)
 }
 
-fn z3_solver(smt_string: String) -> String {
+pub fn z3_solver(smt_string: String) -> String {
     let f = save_smt2(smt_string);
     let args = vec![f.path().to_str().unwrap()];
     // debug

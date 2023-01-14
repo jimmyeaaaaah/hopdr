@@ -3,6 +3,7 @@ use std::{collections::HashSet, fmt};
 pub mod chc;
 pub mod disj;
 pub mod interpolation;
+pub mod qe;
 pub mod sat;
 pub mod smt;
 mod util;
