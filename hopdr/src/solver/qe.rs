@@ -22,7 +22,9 @@ pub fn qe_solver(ty: SMTSolverType) -> QESolver {
     }
 }
 
-fn parse_op(v: &Value) -> Op {}
+fn parse_op(v: &Value) -> Op {
+    unimplemented!()
+}
 
 #[test]
 fn test_parse_op() {
@@ -37,7 +39,7 @@ fn parse_constraint(v: &Value) -> Constraint {
 #[test]
 fn test_parse_constraint() {
     let s = "(= x_x1 0)";
-    let x = lexpr::from_str(s)?;
+    let x = lexpr::from_str(s).unwrap();
     let c = parse_constraint(&x);
     let x = Ident::fresh();
     let c2 = Constraint::mk_eq(Op::mk_var(x), Op::mk_const(0));

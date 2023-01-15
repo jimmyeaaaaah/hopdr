@@ -371,9 +371,8 @@ impl<A> From<CHC<A, pcsp::Atom>> for CHC<A, Constraint> {
 impl<C: TConstraint> CHCBody<Atom, C> {
     fn collect_predicates(&self, predicates: &mut HashMap<Ident, usize>) {
         for a in self.predicates.iter() {
-            match predicates.insert(a.predicate, a.args.len()) {
-                Some(n) => debug_assert!(n == a.args.len()),
-                None => (),
+            if let Some(n) = predicates.insert(a.predicate, a.args.len()) {
+                debug_assert!(n == a.args.len())
             }
         }
     }
@@ -382,10 +381,11 @@ impl<C: TConstraint> CHC<Atom, C> {
     pub fn collect_predicates(&self, predicates: &mut HashMap<Ident, usize>) {
         match &self.head {
             CHCHead::Constraint(_) => (),
-            CHCHead::Predicate(a) => match predicates.insert(a.predicate, a.args.len()) {
-                Some(n) => debug_assert!(n == a.args.len()),
-                None => (),
-            },
+            CHCHead::Predicate(a) => {
+                if let Some(n) = predicates.insert(a.predicate, a.args.len()) {
+                    debug_assert!(n == a.args.len())
+                }
+            }
         }
         self.body.collect_predicates(predicates);
     }
@@ -398,7 +398,7 @@ impl Atom {
         let v: Vec<_> =
             m.0.iter()
                 .zip(self.args.iter())
-                .map(|(x, y)| (x.clone(), y.clone()))
+                .map(|(x, y)| (*x, y.clone()))
                 .collect();
         m.1.subst_multi(&v)
     }
@@ -550,9 +550,15 @@ impl fmt::Display for Model {
                 }
                 write!(f, "{}", arg)?;
             }
-            write!(f, ") => {}\n", assign)?;
+            writeln!(f, ") => {assign}")?;
         }
         Ok(())
+    }
+}
+
+impl Default for Model {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

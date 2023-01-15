@@ -174,8 +174,8 @@ pub fn farkas_transform(c: &Constraint) -> Constraint {
 
             result_constraint
         })
-        .reduce(|x, y| Constraint::mk_conj(x, y))
-        .unwrap_or(Constraint::mk_true());
+        .reduce(Constraint::mk_conj)
+        .unwrap_or_else(Constraint::mk_true);
     debug!("farkas result {result_constraint}");
     result_constraint
 }
