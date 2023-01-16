@@ -16,7 +16,7 @@ use crate::parse::ExprKind;
 use crate::util::global_counter;
 pub use crate::util::P;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PredKind {
     Eq,
     Neq,
@@ -55,7 +55,7 @@ impl PredKind {
         }
     }
 }
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum OpKind {
     Add,
     Sub,
@@ -181,6 +181,12 @@ pub struct IntegerEnvironment {
     imap: Stack<Ident>,
 }
 
+impl Default for IntegerEnvironment {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl IntegerEnvironment {
     pub fn new() -> IntegerEnvironment {
         IntegerEnvironment { imap: Stack::new() }
@@ -197,7 +203,7 @@ impl IntegerEnvironment {
         // assumes alpha-renamed
         self.imap.iter().copied().collect()
     }
-    pub fn add(mut self, v: Ident) -> IntegerEnvironment {
+    pub fn push(mut self, v: Ident) -> IntegerEnvironment {
         self.imap.push_mut(v);
         self
     }
@@ -213,10 +219,7 @@ impl Op {
     }
 
     pub fn check_const(&self, c: i64) -> bool {
-        match self.kind() {
-            OpExpr::Const(c2) if c == *c2 => true,
-            _ => false,
-        }
+        matches!(self.kind(), OpExpr::Const(c2) if c == *c2)
     }
 
     pub fn mk_add(x: Op, y: Op) -> Op {
@@ -360,9 +363,9 @@ impl Op {
     /// expands the given op (e.g. (4 + 1) * ((2 - 3) + 2) -> (4 + 1) * (2 - 3) + (4 + 1) * 2 -> ((4 + 1) * 2 -  (4 + 1) * 3 + (4 + 1) * 2)
     pub fn expand_expr(&self) -> Op {
         let v = self.expand_expr_to_vec();
-        assert!(v.len() > 0);
+        assert!(!v.is_empty());
         let mut o = v[0].clone();
-        for o2 in v[1..].into_iter() {
+        for o2 in v[1..].iter() {
             o = Op::mk_add(o, o2.clone())
         }
         o
@@ -407,9 +410,9 @@ impl Op {
         let additions = self.expand_expr_to_vec();
         let constant_index = variables.len();
         for addition in additions {
-            let (coef, v) = parse_mult(&addition, &m).expect(&format!(
-                "there is non-linear exprresion, which is note supported: {addition}"
-            ));
+            let (coef, v) = parse_mult(&addition, &m).unwrap_or_else(|| {
+                panic!("there is non-linear exprresion, which is note supported: {addition}")
+            });
             let id = v.map_or(constant_index, |v| *m.get(&v).unwrap());
             result_vec[id] = Op::mk_add(result_vec[id].clone(), coef);
         }
@@ -557,9 +560,9 @@ pub trait Bot {
 
 pub trait Logic: Top + Bot + Clone {
     fn mk_conj(x: Self, y: Self) -> Self;
-    fn is_conj<'a>(&'a self) -> Option<(&'a Self, &'a Self)>;
+    fn is_conj(&self) -> Option<(&Self, &Self)>;
     fn mk_disj(x: Self, y: Self) -> Self;
-    fn is_disj<'a>(&'a self) -> Option<(&'a Self, &'a Self)>;
+    fn is_disj(&self) -> Option<(&Self, &Self)>;
 
     fn to_cnf(&self) -> Vec<Self> {
         fn cross_or<C: Clone + Logic>(v1: &[C], v2: &[C]) -> Vec<C> {
@@ -571,20 +574,17 @@ pub trait Logic: Top + Bot + Clone {
             }
             v
         }
-        match self.is_conj() {
-            Some((x, y)) => {
-                let mut v1 = x.to_cnf();
-                let mut v2 = y.to_cnf();
-                v1.append(&mut v2);
-                return v1;
-            }
-            None => (),
-        }
+        if let Some((x, y)) = self.is_conj() {
+            let mut v1 = x.to_cnf();
+            let mut v2 = y.to_cnf();
+            v1.append(&mut v2);
+            return v1;
+        };
         match self.is_disj() {
             Some((x, y)) => {
                 let v1 = x.to_cnf();
                 let v2 = y.to_cnf();
-                return cross_or(&v1, &v2);
+                cross_or(&v1, &v2)
             }
             None => vec![self.clone()],
         }
@@ -599,20 +599,17 @@ pub trait Logic: Top + Bot + Clone {
             }
             v
         }
-        match self.is_disj() {
-            Some((x, y)) => {
-                let mut v1 = x.to_dnf();
-                let mut v2 = y.to_dnf();
-                v1.append(&mut v2);
-                return v1;
-            }
-            None => (),
+        if let Some((x, y)) = self.is_disj() {
+            let mut v1 = x.to_dnf();
+            let mut v2 = y.to_dnf();
+            v1.append(&mut v2);
+            return v1;
         }
         match self.is_conj() {
             Some((x, y)) => {
                 let v1 = x.to_dnf();
                 let v2 = y.to_dnf();
-                return cross_and(&v1, &v2);
+                cross_and(&v1, &v2)
             }
             None => vec![self.clone()],
         }
@@ -636,14 +633,14 @@ pub trait Subst: Sized + Clone {
     // issue: - https://github.com/rust-lang/rust-analyzer/issues/10932
     //        - https://github.com/rust-lang/rust-analyzer/issues/12484
     fn subst_multi(&self, substs: &[(Self::Id, Self::Item)]) -> Self {
-        let mut itr = substs.into_iter();
+        let mut itr = substs.iter();
         let (id, item) = match itr.next() {
             Some((id, item)) => (id, item),
             None => return self.clone(),
         };
-        let mut ret = self.subst(&id, &item);
+        let mut ret = self.subst(id, item);
         for (ident, val) in itr {
-            ret = ret.subst(&ident, &val);
+            ret = ret.subst(ident, val);
         }
         ret
     }
@@ -798,7 +795,7 @@ impl Logic for Constraint {
             Constraint::new(ConstraintExpr::Conj(x, y))
         }
     }
-    fn is_conj<'a>(&'a self) -> Option<(&'a Constraint, &'a Constraint)> {
+    fn is_conj(&self) -> Option<(&Constraint, &Constraint)> {
         match self.kind() {
             ConstraintExpr::Conj(x, y) => Some((x, y)),
             _ => None,
@@ -815,7 +812,7 @@ impl Logic for Constraint {
             Constraint::new(ConstraintExpr::Disj(x, y))
         }
     }
-    fn is_disj<'a>(&'a self) -> Option<(&'a Constraint, &'a Constraint)> {
+    fn is_disj(&self) -> Option<(&Constraint, &Constraint)> {
         match self.kind() {
             ConstraintExpr::Disj(x, y) => Some((x, y)),
             _ => None,
@@ -1068,8 +1065,8 @@ impl Constraint {
                 };
                 env.insert(x.id);
                 let (mut v, c) = c.prenex_normal_form_raw(env);
-                debug_assert!(v.iter().find(|(_, y)| { x.id == y.id }).is_none());
-                v.push((*q, x.clone()));
+                debug_assert!(v.iter().any(|(_, y)| { x.id == y.id }));
+                v.push((*q, x));
                 (v, c)
             }
         }
