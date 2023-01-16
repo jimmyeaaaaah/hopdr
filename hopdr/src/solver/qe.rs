@@ -7,11 +7,11 @@ use super::smt::{constraint_to_smt2_inner, encode_ident, z3_solver};
 use super::util;
 use super::{Model, SMTSolverType, SolverResult};
 use crate::formula::{
-    AlphaEquivalence, Constraint, ConstraintExpr, FirstOrderLogic, Fv, Ident, Logic, Op, OpExpr,
-    OpKind, PredKind, QuantifierKind, Subst, Top,
+    AlphaEquivalence, Bot, Constraint, ConstraintExpr, FirstOrderLogic, Fv, Ident, Logic, Op,
+    OpExpr, OpKind, PredKind, QuantifierKind, Subst, Top,
 };
-use lexpr;
 use lexpr::Value;
+use lexpr::{self, Cons};
 
 pub struct QESolver {}
 
@@ -85,9 +85,76 @@ fn test_parse_op() {
     assert!(o1.alpha_equiv(&o2));
 }
 
+fn parse_predicate(expr: &Value) -> PredKind {
+    let kind_str = expr
+        .as_symbol()
+        .unwrap_or_else(|| panic!("parse error: {:?}", expr));
+    match kind_str {
+        "=" => PredKind::Eq,
+        "<" => PredKind::Lt,
+        "<=" => PredKind::Leq,
+        ">" => PredKind::Gt,
+        ">=" => PredKind::Geq,
+        _ => panic!("unknown operator: {}", kind_str),
+    }
+}
+fn parse_constraint_cons(cons: &Cons) -> Constraint {
+    let cons_str = cons
+        .car()
+        .as_symbol()
+        .unwrap_or_else(|| panic!("parse error: {:?}", cons));
+
+    match cons_str {
+        "and" | "or" => {
+            let args: Vec<_> = cons
+                .cdr()
+                .as_cons()
+                .unwrap_or_else(|| panic!("parse error: {:?}", cons_str))
+                .iter()
+                .map(|v| parse_constraint(v.car()))
+                .collect();
+            // TODO: implement cases where there are more than two arguments
+            assert_eq!(args.len(), 2);
+            let x = args[0].clone();
+            let y = args[1].clone();
+            if cons_str == "and" {
+                Constraint::mk_conj(x, y)
+            } else {
+                Constraint::mk_disj(x, y)
+            }
+        }
+        _ => {
+            let pred = parse_predicate(cons.car());
+            let args: Vec<_> = cons
+                .cdr()
+                .as_cons()
+                .unwrap_or_else(|| panic!("parse error: {:?}", cons_str))
+                .iter()
+                .map(|v| parse_op(v.car()))
+                .collect();
+            // currently, we don't care about the predicates that take more than
+            // two arguments; so if there is, then it must can cause some bugs.
+            assert_eq!(args.len(), 2);
+            Constraint::mk_pred(pred, args)
+        }
+    }
+}
+
 fn parse_constraint(v: &Value) -> Constraint {
-    println!("parse_constraint: {v:?}");
-    unimplemented!()
+    match v {
+        Value::Bool(t) if *t => Constraint::mk_true(),
+        Value::Bool(_) => Constraint::mk_false(),
+        Value::Cons(cons) => parse_constraint_cons(cons),
+        Value::Nil
+        | Value::Null
+        | Value::Number(_)
+        | Value::Char(_)
+        | Value::String(_)
+        | Value::Symbol(_)
+        | Value::Keyword(_)
+        | Value::Bytes(_)
+        | Value::Vector(_) => panic!("parse error"),
+    }
 }
 
 #[test]
@@ -97,6 +164,15 @@ fn test_parse_constraint() {
     let c = parse_constraint(&x);
     let x = Ident::fresh();
     let c2 = Constraint::mk_eq(Op::mk_var(x), Op::mk_const(0));
+    assert!(c.alpha_equiv(&c2));
+
+    let x = lexpr::from_str("#t").unwrap();
+    let c = parse_constraint(&x);
+    assert!(c.alpha_equiv(&Constraint::mk_true()));
+
+    let x = lexpr::from_str("#f").unwrap();
+    let c = parse_constraint(&x);
+    assert!(c.alpha_equiv(&Constraint::mk_false()));
 }
 
 impl QESolver {
