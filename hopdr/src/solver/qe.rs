@@ -22,13 +22,67 @@ pub fn qe_solver(ty: SMTSolverType) -> QESolver {
     }
 }
 
+fn parse_variable(v: &str) -> Ident {
+    assert!(v.starts_with('x'));
+    Ident::from_str(&v[1..]).unwrap_or_else(|| panic!("parse fail"))
+}
+
+fn parse_opkind(v: &Value) -> OpKind {
+    let x = v
+        .as_symbol()
+        .unwrap_or_else(|| panic!("parse error: {:?}", v));
+    match x {
+        "+" => OpKind::Add,
+        "-" => OpKind::Sub,
+        "*" => OpKind::Mul,
+        _ => panic!("failed to handle operator: {}", x),
+    }
+}
+
 fn parse_op(v: &Value) -> Op {
-    unimplemented!()
+    match v {
+        Value::Number(n) => Op::mk_const(n.as_i64().unwrap()),
+        Value::Symbol(x) => Op::mk_var(parse_variable(x)),
+        Value::Cons(cons) => {
+            let car = cons.car();
+            let opkind = parse_opkind(car);
+            let args: Vec<_> = cons
+                .cdr()
+                .as_cons()
+                .unwrap_or_else(|| panic!("parse error: {:?}", v))
+                .iter()
+                .map(|v| parse_op(v.car()))
+                .collect();
+            // TODO: args.len() > 3
+            assert_eq!(args.len(), 2);
+            Op::mk_bin_op(opkind, args[0].clone(), args[1].clone())
+        }
+        Value::Nil
+        | Value::Null
+        | Value::Bool(_)
+        | Value::Char(_)
+        | Value::String(_)
+        | Value::Keyword(_)
+        | Value::Bytes(_)
+        | Value::Vector(_) => panic!("parse error"),
+    }
 }
 
 #[test]
 fn test_parse_op() {
     let s = "(+ x_x1 1)";
+    let x = Ident::fresh();
+    let o1 = Op::mk_add(Op::mk_var(x), Op::mk_const(1));
+    let o2 = parse_op(&lexpr::from_str(s).unwrap());
+    assert!(o1.alpha_equiv(&o2));
+
+    let s = "(- x_x2 (+ x_x1 1))";
+    let x1 = Ident::fresh();
+    let x2 = Ident::fresh();
+    let o1 = Op::mk_add(Op::mk_var(x1), Op::mk_const(1));
+    let o1 = Op::mk_sub(Op::mk_var(x2), o1);
+    let o2 = parse_op(&lexpr::from_str(s).unwrap());
+    assert!(o1.alpha_equiv(&o2));
 }
 
 fn parse_constraint(v: &Value) -> Constraint {
