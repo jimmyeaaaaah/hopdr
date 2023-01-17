@@ -736,7 +736,11 @@ pub fn solve(chc: &Vec<CHC>, config: &InterpolationConfig) -> Model {
             debug!("using chc solver since the constraints contain a loop");
             let mut solver = solver::chc::interpolating_solver();
             match solver.solve(chc) {
-                solver::chc::CHCResult::Sat(m) => m,
+                solver::chc::CHCResult::Sat(mut m) => {
+                    let qe_solver = solver::qe::QESolver::default_solver();
+                    qe_solver.model_quantifer_elimination(&mut m);
+                    m
+                }
                 solver::chc::CHCResult::Unsat
                 | solver::chc::CHCResult::Unknown
                 | solver::chc::CHCResult::Timeout => panic!("program error"),

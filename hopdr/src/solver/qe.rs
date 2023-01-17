@@ -1,5 +1,6 @@
 use super::smt::{constraint_to_smt2_inner, encode_ident, z3_solver};
 use super::SMTSolverType;
+use crate::formula::chc::Model;
 use crate::formula::{Bot, Constraint, Fv, Ident, Logic, Op, OpKind, PredKind, Top};
 use lexpr::Value;
 use lexpr::{self, Cons};
@@ -215,10 +216,22 @@ impl QESolver {
         qe_solver(SMTSolverType::Z3)
     }
     pub fn solve(&self, formula: &Constraint) -> Constraint {
+        debug!("trying quantifier elimination: {formula}");
         let smt_string = self.to_smt(formula);
         let result = z3_solver(smt_string);
-        self.parse(&result)
-            .expect(&format!("qe result parse failed: {result}"))
+        let r = self
+            .parse(&result)
+            .expect(&format!("qe result parse failed: {result}"));
+        debug!("result: {r}");
+        r
+    }
+    pub fn model_quantifer_elimination(&self, model: &mut Model) {
+        for (_, (_, c)) in model.model.iter_mut() {
+            let (qs, _) = c.to_pnf_raw();
+            if qs.iter().any(|(q, _)| q.is_existential()) {
+                *c = self.solve(c);
+            }
+        }
     }
 }
 
