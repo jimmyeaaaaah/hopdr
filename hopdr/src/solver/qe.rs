@@ -38,14 +38,22 @@ fn parse_op(v: &Value) -> Op {
         Value::Cons(cons) => {
             let car = cons.car();
             let opkind = parse_opkind(car);
-            let args: Vec<_> = cons
+            let mut args: Vec<_> = cons
                 .cdr()
                 .as_cons()
                 .unwrap_or_else(|| panic!("parse error: {:?}", v))
                 .iter()
                 .map(|v| parse_op(v.car()))
                 .collect();
-            // TODO: args.len() > 3
+
+            // handle case (- 1)
+            if args.len() == 1 && opkind == OpKind::Sub {
+                args = vec![Op::zero(), args[0].clone()];
+            }
+            // TODO: args.len() > 2
+            if args.len() > 2 {
+                panic!("failed to parse: {}", v)
+            }
             assert_eq!(args.len(), 2);
             Op::mk_bin_op(opkind, args[0].clone(), args[1].clone())
         }
@@ -74,6 +82,11 @@ fn test_parse_op() {
     let x2 = Ident::fresh();
     let o1 = Op::mk_add(Op::mk_var(x1), Op::mk_const(1));
     let o1 = Op::mk_sub(Op::mk_var(x2), o1);
+    let o2 = parse_op(&lexpr::from_str(s).unwrap());
+    assert!(o1.alpha_equiv(&o2));
+
+    let s = "(* (- 1) xx_2978)";
+    let o1 = Op::mk_mul(Op::mk_sub(Op::mk_const(0), Op::mk_const(1)), Op::mk_var(x1));
     let o2 = parse_op(&lexpr::from_str(s).unwrap());
     assert!(o1.alpha_equiv(&o2));
 }
@@ -219,6 +232,7 @@ impl QESolver {
         debug!("trying quantifier elimination: {formula}");
         let smt_string = self.to_smt(formula);
         let result = z3_solver(smt_string);
+        debug!("result string: {result}");
         let r = self
             .parse(&result)
             .expect(&format!("qe result parse failed: {result}"));
@@ -262,7 +276,19 @@ fn test_z3_qe_result() {
 )";
     let c = z3_solver.parse(s).unwrap();
     let c4 = Constraint::mk_conj(Constraint::mk_true(), c2);
-    assert!(c.alpha_equiv(&c4))
+    assert!(c.alpha_equiv(&c4));
+
+    let s = "(goals
+    (goal
+      (>= (+ xx_2980 (* (- 1) xx_2978)) 0)
+      :precision precise :depth 1)
+    )";
+    let o = Op::mk_mul(Op::mk_sub(Op::mk_const(0), Op::mk_const(1)), Op::mk_var(x1));
+    let o = Op::mk_add(Op::mk_var(x2), o);
+    let c2 = Constraint::mk_geq(o, Op::mk_const(0));
+
+    let c = z3_solver.parse(s).unwrap();
+    assert!(c.alpha_equiv(&c2))
 }
 
 #[test]
