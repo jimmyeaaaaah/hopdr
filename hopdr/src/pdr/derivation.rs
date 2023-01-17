@@ -640,7 +640,8 @@ impl Context {
         }
         assert_eq!(app_exprs.len(), arg_tys.len());
 
-        for ret_ty in ret_tys.iter() {
+        for (ret_ty_idx, ret_ty) in ret_tys.iter().enumerate() {
+            // if ret_ty_idx > 0, then we push calculated types to derivation without "already exists" check
             let SavedTy {
                 ty: ret_ty,
                 context_ty,
@@ -760,7 +761,7 @@ impl Context {
                 debug!("saving({}): {}", expr.aux.id, temporal_ty);
                 // [feature shared_ty] in the infer_type phase, we no longer have to track both shared_ty and ty.
                 let temporal_saved_ty = SavedTy::mk(temporal_ty.clone(), context_ty.clone());
-                derivation.memorize_type_judgement(expr, temporal_saved_ty);
+                derivation.memorize_type_judgement(expr, temporal_saved_ty, ret_ty_idx > 0);
                 match arg_ty {
                     either::Left(_) => {
                         let op: Op = reduction.arg.clone().into();
@@ -781,7 +782,11 @@ impl Context {
 
             // [feature shared_ty] in the infer_type phase, we no longer have to track both shared_ty and ty.
             let app_expr_saved_ty = SavedTy::mk(app_expr_ty.clone(), context_ty.clone());
-            derivation.memorize_type_judgement(&reduction.app_expr, app_expr_saved_ty);
+            derivation.memorize_type_judgement(
+                &reduction.app_expr,
+                app_expr_saved_ty,
+                ret_ty_idx > 0,
+            );
             // the aux.id is saved above, so we don't have to for app_expr
             debug!("");
         }
@@ -1478,13 +1483,12 @@ impl<ID: Eq + std::hash::Hash + Copy, T: Clone + Subst<Item = Op, Id = Ident>>
         };
         self.0 = self.0.insert(level, st.push(ty.clone()))
     }
-    fn set(&mut self, ident: ID, ty: T) {
-        // overwrite the current assignment
-        // the expr with `level` id can be copied.
-        // however, for the purpose of tracking the type of the result expr
-        // of beta-reduction, what we want to know is the latest type assignment.
-        // By going back along with the reduction sequence, this can be achieved.
-        self.0 = self.0.insert(ident, Stack::new().push(ty))
+    fn push(&mut self, ident: ID, ty: T) {
+        let tys = match self.0.get(&ident) {
+            Some(tys) => tys.push(ty),
+            None => Stack::new().push(ty),
+        };
+        self.0 = self.0.insert(ident, tys);
     }
     fn get(&self, level: &ID) -> Stack<T> {
         self.0.get(level).cloned().unwrap_or(Stack::new())
@@ -1524,14 +1528,17 @@ impl Derivation {
         self.arg.insert(level, ty);
     }
     // memorize expr : ty in a derivation
-    fn memorize_type_judgement(&mut self, expr: &G, ty: SavedTy) {
+    fn memorize_type_judgement(&mut self, expr: &G, ty: SavedTy, allow_duplicate: bool) {
         if let Some(t) = self.get_expr_ty(&expr.aux.id).iter().next() {
-            panic!("already registered!: {}: {}", expr, t);
+            if !allow_duplicate {
+                panic!("already registered!: {}: {}", expr, t);
+            } else {
+            }
         }
         for id in expr.aux.old_ids.iter() {
-            self.expr.set(*id, ty.clone())
+            self.expr.push(*id, ty.clone())
         }
-        self.expr.set(expr.aux.id, ty);
+        self.expr.push(expr.aux.id, ty);
     }
     fn get_arg(&self, level: &usize) -> Stack<Ty> {
         self.arg.get(level)
@@ -1586,7 +1593,8 @@ impl<C: Refinement> CandidateDerivation<C> {
     fn set_types(&mut self, expr: &G, context_ty: Ty) {
         let ty = self.ty.clone();
         let saved_ty = SavedTy::mk(ty, context_ty);
-        self.derivation.memorize_type_judgement(expr, saved_ty);
+        self.derivation
+            .memorize_type_judgement(expr, saved_ty, false);
     }
     fn merge_derivation(&mut self, derivation: &Derivation) {
         self.derivation.merge(derivation);
