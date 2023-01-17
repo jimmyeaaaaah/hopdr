@@ -1,15 +1,6 @@
-use tempfile::NamedTempFile;
-
-use std::collections::{HashMap, HashSet};
-use std::time::Duration;
-
 use super::smt::{constraint_to_smt2_inner, encode_ident, z3_solver};
-use super::util;
-use super::{Model, SMTSolverType, SolverResult};
-use crate::formula::{
-    AlphaEquivalence, Bot, Constraint, ConstraintExpr, FirstOrderLogic, Fv, Ident, Logic, Op,
-    OpExpr, OpKind, PredKind, QuantifierKind, Subst, Top,
-};
+use super::SMTSolverType;
+use crate::formula::{Bot, Constraint, Fv, Ident, Logic, Op, OpKind, PredKind, Top};
 use lexpr::Value;
 use lexpr::{self, Cons};
 
@@ -70,6 +61,7 @@ fn parse_op(v: &Value) -> Op {
 
 #[test]
 fn test_parse_op() {
+    use crate::formula::AlphaEquivalence;
     let s = "(+ x_x1 1)";
     let x = Ident::fresh();
     let o1 = Op::mk_add(Op::mk_var(x), Op::mk_const(1));
@@ -153,12 +145,13 @@ fn parse_constraint(v: &Value) -> Constraint {
         | Value::Symbol(_)
         | Value::Keyword(_)
         | Value::Bytes(_)
-        | Value::Vector(_) => panic!("parse error"),
+        | Value::Vector(_) => panic!("parse error: {:?}", v),
     }
 }
 
 #[test]
 fn test_parse_constraint() {
+    use crate::formula::AlphaEquivalence;
     let s = "(= x_x1 0)";
     let x = lexpr::from_str(s).unwrap();
     let c = parse_constraint(&x);
@@ -191,22 +184,32 @@ impl QESolver {
         )
     }
     fn parse(&self, s: &str) -> Result<Constraint, lexpr::parse::Error> {
+        fn filter_value(v: &&Value) -> bool {
+            let symbols = [":precision", "goal", "precise", ":depth"];
+            match v {
+                Value::Bool(_) | Value::Nil | Value::Cons(_) => true,
+                Value::Symbol(x) => !symbols.contains(&x.as_ref()),
+                Value::Null
+                | Value::Number(_)
+                | Value::Char(_)
+                | Value::String(_)
+                | Value::Keyword(_)
+                | Value::Bytes(_)
+                | Value::Vector(_) => false,
+            }
+        }
         let x = lexpr::from_str(s)?;
         let data = x.as_cons().unwrap().cdr().as_cons().unwrap().car();
-        let cs: Vec<_> = match data {
-            Value::Cons(x) => x
-                .clone()
-                .iter()
+        let c = if let Value::Cons(x) = data {
+            x.iter()
                 .map(|x| x.car())
-                .filter(|x| !x.is_symbol())
+                .filter(filter_value)
                 .map(|v| parse_constraint(&v))
-                .collect(),
-            _ => panic!("parse error: qe smt2 formula {} ({:?})", s, x),
+                .fold(Constraint::mk_true(), |x, y| Constraint::mk_conj(x, y))
+        } else {
+            panic!("parse error: qe smt2 formula {} ({:?})", s, x)
         };
-        for c in cs {
-            println!("{c:?}");
-        }
-        unimplemented!()
+        Ok(c)
     }
     pub fn default_solver() -> QESolver {
         qe_solver(SMTSolverType::Z3)
@@ -221,6 +224,7 @@ impl QESolver {
 
 #[test]
 fn test_z3_qe_result() {
+    use crate::formula::AlphaEquivalence;
     let s = "(goals
 (goal
   (= x_x1 0)
@@ -234,6 +238,34 @@ fn test_z3_qe_result() {
     let x2 = Ident::fresh();
     let c1 = Constraint::mk_eq(Op::mk_var(x1), Op::mk_const(0));
     let c2 = Constraint::mk_geq(Op::mk_var(x2), Op::mk_const(1));
-    let c3 = Constraint::mk_conj(c1, c2);
+    let c3 = Constraint::mk_conj(c1, c2.clone());
     assert!(c.alpha_equiv(&c3));
+
+    let s = "(goals
+(goal
+  #t 
+  (>= x_x2 1)
+  :precision precise :depth 1)
+)";
+    let c = z3_solver.parse(s).unwrap();
+    let c4 = Constraint::mk_conj(Constraint::mk_true(), c2);
+    assert!(c.alpha_equiv(&c4))
+}
+
+#[test]
+fn test_quantifier_elimination() {
+    use crate::formula::{FirstOrderLogic, QuantifierKind};
+    // formula: ∃z. (z ≥ 1 ∧ x = 0) ∧ y − z ≥ 0
+    let x = Ident::fresh();
+    let y = Ident::fresh();
+    let z = Ident::fresh();
+    let c1 = Constraint::mk_geq(Op::mk_var(z), Op::mk_const(1));
+    let c2 = Constraint::mk_eq(Op::mk_var(x), Op::mk_const(0));
+    let c3 = Constraint::mk_geq(Op::mk_sub(Op::mk_var(y), Op::mk_var(z)), Op::mk_const(0));
+    let c = Constraint::mk_conj(Constraint::mk_conj(c1, c2), c3);
+    let c = Constraint::mk_quantifier_int(QuantifierKind::Existential, z, c);
+    let z3_solver = qe_solver(SMTSolverType::Z3);
+    let result = z3_solver.solve(&c);
+    let (v, _) = result.to_pnf_raw();
+    assert_eq!(v.len(), 0);
 }

@@ -411,7 +411,10 @@ impl Op {
         let constant_index = variables.len();
         for addition in additions {
             let (coef, v) = parse_mult(&addition, &m).unwrap_or_else(|| {
-                panic!("there is non-linear exprresion, which is note supported: {addition}")
+                panic!(
+                    "there is non-linear exprresion, which is note supported: {}",
+                    addition
+                )
             });
             let id = v.map_or(constant_index, |v| *m.get(&v).unwrap());
             result_vec[id] = Op::mk_add(result_vec[id].clone(), coef);
