@@ -1068,7 +1068,7 @@ impl Constraint {
                 };
                 env.insert(x.id);
                 let (mut v, c) = c.prenex_normal_form_raw(env);
-                debug_assert!(v.iter().any(|(_, y)| { x.id == y.id }));
+                debug_assert!(!v.iter().any(|(_, y)| { x.id == y.id }));
                 v.push((*q, x));
                 (v, c)
             }

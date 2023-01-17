@@ -577,7 +577,7 @@ impl Atom {
                 };
                 env.insert(x);
                 let (mut v, a) = a.prenex_normal_form_raw(env);
-                debug_assert!(v.iter().any(|(_, y)| { x == *y }));
+                debug_assert!(!v.iter().any(|(_, y)| { x == *y }));
                 v.push((*q, x));
                 env.remove(&x);
                 (v, a)
