@@ -5,6 +5,10 @@ use std::thread;
 use std::time;
 use std::{fmt, rc::Rc};
 
+pub mod printer;
+
+pub use printer::Pretty;
+
 //pub trait Kind {
 //    type Ty;
 //    fn kind<'a>(&'a self) -> &'a Self::Ty;
@@ -189,7 +193,7 @@ pub fn global_counter() -> u64 {
 macro_rules! title {
     ($arg:tt) => {{
         use colored::Colorize;
-        debug!("{}{}{}", "[".bold(), $arg.bold(), "]".bold());
+        log::debug!("{}{}{}", "[".bold(), $arg.bold(), "]".bold());
     }};
 }
 

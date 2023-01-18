@@ -14,6 +14,7 @@ use rpds::Stack;
 pub use crate::formula::ty::*;
 use crate::parse::ExprKind;
 use crate::util::global_counter;
+use crate::util::Pretty;
 pub use crate::util::P;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -28,18 +29,7 @@ pub enum PredKind {
 
 impl fmt::Display for PredKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                PredKind::Eq => "=",
-                PredKind::Neq => "!=",
-                PredKind::Lt => "<",
-                PredKind::Leq => "<=",
-                PredKind::Gt => ">",
-                PredKind::Geq => ">=",
-            }
-        )
+        write!(f, "{}", self.pretty_display())
     }
 }
 
@@ -66,17 +56,7 @@ pub enum OpKind {
 
 impl fmt::Display for OpKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                OpKind::Add => "+",
-                OpKind::Sub => "-",
-                OpKind::Mul => "*",
-                OpKind::Div => "/",
-                OpKind::Mod => "%",
-            }
-        )
+        write!(f, "{}", self.pretty_display())
     }
 }
 
@@ -88,14 +68,7 @@ pub enum QuantifierKind {
 
 impl fmt::Display for QuantifierKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                QuantifierKind::Universal => "∀",
-                QuantifierKind::Existential => "∃",
-            }
-        )
+        write!(f, "{}", self.pretty_display())
     }
 }
 
@@ -2232,7 +2205,7 @@ pub enum Associativity {
 }
 
 impl OpKind {
-    fn precedence(&self) -> Precedence {
+    pub fn precedence(&self) -> Precedence {
         match self {
             OpKind::Add => Precedence::Add,
             OpKind::Sub => Precedence::Add,
