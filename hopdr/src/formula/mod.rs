@@ -1185,6 +1185,9 @@ impl Ident {
             Err(_) => None,
         }
     }
+    pub fn get_id(&self) -> u64 {
+        self.id
+    }
 }
 
 impl From<u64> for Ident {
@@ -2186,7 +2189,7 @@ impl TeXFormat for Constraint {
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
-pub enum Precedence {
+pub enum PrecedenceKind {
     Disj,
     Conj,
     Not,
@@ -2198,42 +2201,40 @@ pub enum Precedence {
     Atom,
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
-pub enum Associativity {
-    Left,
-    Right,
+pub trait Precedence {
+    fn precedence(&self) -> PrecedenceKind;
 }
 
-impl OpKind {
-    pub fn precedence(&self) -> Precedence {
+impl Precedence for OpKind {
+    fn precedence(&self) -> PrecedenceKind {
         match self {
-            OpKind::Add => Precedence::Add,
-            OpKind::Sub => Precedence::Add,
-            OpKind::Mul => Precedence::Mul,
-            OpKind::Div => Precedence::Mul,
-            OpKind::Mod => Precedence::Mul,
+            OpKind::Add => PrecedenceKind::Add,
+            OpKind::Sub => PrecedenceKind::Add,
+            OpKind::Mul => PrecedenceKind::Mul,
+            OpKind::Div => PrecedenceKind::Mul,
+            OpKind::Mod => PrecedenceKind::Mul,
         }
     }
 }
 
-impl Op {
-    pub fn precedence(&self) -> Precedence {
+impl Precedence for Op {
+    fn precedence(&self) -> PrecedenceKind {
         match self.kind() {
             OpExpr::Op(opkind, _, _) => opkind.precedence(),
-            OpExpr::Var(_) | OpExpr::Const(_) => Precedence::Atom,
+            OpExpr::Var(_) | OpExpr::Const(_) => PrecedenceKind::Atom,
             OpExpr::Ptr(_, o) => o.precedence(),
         }
     }
 }
 
-impl Constraint {
-    pub fn precedence(&self) -> Precedence {
+impl Precedence for Constraint {
+    fn precedence(&self) -> PrecedenceKind {
         match self.kind() {
-            ConstraintExpr::True | ConstraintExpr::False => Precedence::Atom,
-            ConstraintExpr::Pred(_, _) => Precedence::Pred,
-            ConstraintExpr::Conj(_, _) => Precedence::Conj,
-            ConstraintExpr::Disj(_, _) => Precedence::Disj,
-            ConstraintExpr::Quantifier(_, _, _) => Precedence::Abs,
+            ConstraintExpr::True | ConstraintExpr::False => PrecedenceKind::Atom,
+            ConstraintExpr::Pred(_, _) => PrecedenceKind::Pred,
+            ConstraintExpr::Conj(_, _) => PrecedenceKind::Conj,
+            ConstraintExpr::Disj(_, _) => PrecedenceKind::Disj,
+            ConstraintExpr::Quantifier(_, _, _) => PrecedenceKind::Abs,
         }
     }
 }
