@@ -8,7 +8,6 @@ pub mod ty;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
-use colored::Colorize;
 use rpds::Stack;
 
 pub use crate::formula::ty::*;
@@ -99,19 +98,7 @@ pub enum OpExpr {
 pub type Op = P<OpExpr>;
 impl fmt::Display for Op {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use OpExpr::*;
-        match self.kind() {
-            Op(k, o1, o2) => {
-                // handle (0 - x)
-                match (*k, o1.kind()) {
-                    (OpKind::Sub, OpExpr::Const(0)) => write!(f, "(-{})", o2),
-                    _ => write!(f, "({} {} {})", o1, k, o2),
-                }
-            }
-            Var(i) => write!(f, "{}", i),
-            Const(c) => write!(f, "{}", c),
-            Ptr(_, o) => write!(f, "{}", o),
-        }
+        write!(f, "{}", self.pretty_display())
     }
 }
 impl PartialEq for Op {
@@ -682,27 +669,7 @@ pub type Constraint = P<ConstraintExpr>;
 
 impl fmt::Display for Constraint {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use ConstraintExpr::*;
-        match self.kind() {
-            True => write!(f, "true"),
-            False => write!(f, "false"),
-            Pred(p, ops) => {
-                if ops.len() == 2 {
-                    return write!(f, "{} {} {}", ops[0], p, ops[1]);
-                }
-                write!(f, "{}(", p)?;
-                if !ops.is_empty() {
-                    write!(f, "{}", ops[0])?;
-                    for op in &ops[1..] {
-                        write!(f, ", {}", op)?;
-                    }
-                }
-                write!(f, ")")
-            }
-            Conj(c1, c2) => write!(f, "({}) ∧ ({})", c1, c2),
-            Disj(c1, c2) => write!(f, "({}) ∨ ({})", c1, c2),
-            Quantifier(q, x, c) => write!(f, "{}{}.{}", q, x, c),
-        }
+        write!(f, "{}", self.pretty_display())
     }
 }
 
@@ -1163,7 +1130,7 @@ pub struct Ident {
 
 impl fmt::Display for Ident {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "x_{}", self.id)
+        write!(f, "{}", self.pretty_display())
     }
 }
 
@@ -1205,12 +1172,7 @@ pub type Variable = P<VariableS>;
 
 impl fmt::Display for Variable {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}: {}",
-            format!("{}", self.id).purple(),
-            format!("{}", self.ty).cyan()
-        )
+        write!(f, "{}", self.pretty_display())
     }
 }
 
