@@ -2211,3 +2211,56 @@ impl TeXFormat for Constraint {
         }
     }
 }
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+pub enum Precedence {
+    Disj,
+    Conj,
+    Not,
+    Pred, // PredKind operators
+    Add,  // +, -
+    Mul,  // *, /, %
+    App,
+    Abs,
+    Atom,
+}
+
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub enum Associativity {
+    Left,
+    Right,
+}
+
+impl OpKind {
+    fn precedence(&self) -> Precedence {
+        match self {
+            OpKind::Add => Precedence::Add,
+            OpKind::Sub => Precedence::Add,
+            OpKind::Mul => Precedence::Mul,
+            OpKind::Div => Precedence::Mul,
+            OpKind::Mod => Precedence::Mul,
+        }
+    }
+}
+
+impl Op {
+    pub fn precedence(&self) -> Precedence {
+        match self.kind() {
+            OpExpr::Op(opkind, _, _) => opkind.precedence(),
+            OpExpr::Var(_) | OpExpr::Const(_) => Precedence::Atom,
+            OpExpr::Ptr(_, o) => o.precedence(),
+        }
+    }
+}
+
+impl Constraint {
+    pub fn precedence(&self) -> Precedence {
+        match self.kind() {
+            ConstraintExpr::True | ConstraintExpr::False => Precedence::Atom,
+            ConstraintExpr::Pred(_, _) => Precedence::Pred,
+            ConstraintExpr::Conj(_, _) => Precedence::Conj,
+            ConstraintExpr::Disj(_, _) => Precedence::Disj,
+            ConstraintExpr::Quantifier(_, _, _) => Precedence::Abs,
+        }
+    }
+}
