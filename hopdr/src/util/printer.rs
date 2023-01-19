@@ -1,5 +1,7 @@
 use std::fmt::Display;
 
+use crate::formula::fofml;
+use crate::formula::hes;
 use crate::formula::*;
 use pretty::{BoxAllocator, DocAllocator, DocBuilder};
 
@@ -50,6 +52,17 @@ pub trait Pretty {
     }
 }
 
+impl Pretty for str {
+    fn pretty<'b, D, A>(&'b self, allocator: &'b D, _config: &mut Config) -> DocBuilder<'b, D, A>
+    where
+        D: DocAllocator<'b, A>,
+        D::Doc: Clone,
+        A: Clone,
+    {
+        allocator.text(self)
+    }
+}
+
 impl Pretty for Ident {
     fn pretty<'b, D, A>(&'b self, allocator: &'b D, config: &mut Config) -> DocBuilder<'b, D, A>
     where
@@ -69,14 +82,7 @@ impl Pretty for PredKind {
         D::Doc: Clone,
         A: Clone,
     {
-        allocator.text(match self {
-            PredKind::Eq => "=",
-            PredKind::Neq => "!=",
-            PredKind::Lt => "<",
-            PredKind::Leq => "<=",
-            PredKind::Gt => ">",
-            PredKind::Geq => ">=",
-        })
+        allocator.text(self.to_str())
     }
 }
 
@@ -87,13 +93,7 @@ impl Pretty for OpKind {
         D::Doc: Clone,
         A: Clone,
     {
-        allocator.text(match self {
-            OpKind::Add => "+",
-            OpKind::Sub => "-",
-            OpKind::Mul => "*",
-            OpKind::Div => "/",
-            OpKind::Mod => "%",
-        })
+        allocator.text(self.to_str())
     }
 }
 
@@ -104,10 +104,7 @@ impl Pretty for QuantifierKind {
         D::Doc: Clone,
         A: Clone,
     {
-        allocator.text(match self {
-            QuantifierKind::Universal => "∀",
-            QuantifierKind::Existential => "∃",
-        })
+        allocator.text(self.to_str())
     }
 }
 
@@ -133,6 +130,51 @@ where
     }
 }
 
+fn pretty_bin_op<'b, D, A, T>(
+    allocator: &'b D,
+    config: &mut Config,
+    prec: PrecedenceKind,
+    op_str: &'b str,
+    left: &'b T,
+    right: &'b T,
+) -> DocBuilder<'b, D, A>
+where
+    D: DocAllocator<'b, A>,
+    D::Doc: Clone,
+    A: Clone,
+    T: Precedence + Pretty,
+{
+    let left = paren(allocator, config, prec, left);
+    let right = paren(allocator, config, prec, right);
+    left.append(allocator.space())
+        .append(allocator.text(op_str))
+        .append(allocator.space())
+        .append(right)
+}
+
+fn pretty_abs<'b, D, A, T, V>(
+    allocator: &'b D,
+    config: &mut Config,
+    abs_str: &'b str,
+    variable: &'b V,
+    content: &'b T,
+) -> DocBuilder<'b, D, A>
+where
+    D: DocAllocator<'b, A>,
+    D::Doc: Clone,
+    A: Clone,
+    T: Pretty,
+    V: Pretty,
+{
+    let q = allocator.text(abs_str);
+    let x = variable.pretty(allocator, config);
+    let y = content.pretty(allocator, config);
+    q.append(x)
+        .append(allocator.text("."))
+        .append(allocator.space())
+        .append(y)
+}
+
 impl Pretty for Op {
     fn pretty<'b, D, A>(&'b self, allocator: &'b D, config: &mut Config) -> DocBuilder<'b, D, A>
     where
@@ -152,14 +194,7 @@ impl Pretty for Op {
                         PrecedenceKind::Atom,
                         o2,
                     )),
-                    _ => {
-                        let o1 = paren(allocator, config, k.precedence(), o1);
-                        let o2 = paren(allocator, config, k.precedence(), o2);
-                        o1.append(allocator.space())
-                            .append(k.pretty(allocator, config))
-                            .append(allocator.space())
-                            .append(o2)
-                    }
+                    _ => pretty_bin_op(allocator, config, k.precedence(), &k.to_str(), o1, o2),
                 }
             }
             Var(i) => allocator.text(format!("{}", i)),
@@ -229,14 +264,14 @@ impl Pretty for Constraint {
             False => allocator.text("false"),
             Pred(p, ops) => {
                 if ops.len() == 2 {
-                    let o1 = ops[0].pretty(allocator, config);
-                    let p = p.pretty(allocator, config);
-                    let o2 = ops[1].pretty(allocator, config);
-                    return o1
-                        .append(allocator.space())
-                        .append(p)
-                        .append(allocator.space())
-                        .append(o2);
+                    return pretty_bin_op(
+                        allocator,
+                        config,
+                        self.precedence(),
+                        &p.to_str(),
+                        &ops[0],
+                        &ops[1],
+                    );
                 }
                 p.pretty(allocator, config).parens().append(
                     allocator
@@ -244,22 +279,8 @@ impl Pretty for Constraint {
                         .parens(),
                 )
             }
-            Conj(c1, c2) => {
-                let c1 = paren(allocator, config, PrecedenceKind::Conj, c1);
-                let c2 = paren(allocator, config, PrecedenceKind::Conj, c2);
-                c1.append(allocator.space())
-                    .append(allocator.text("∧"))
-                    .append(allocator.space())
-                    .append(c2)
-            }
-            Disj(c1, c2) => {
-                let c1 = paren(allocator, config, PrecedenceKind::Disj, c1);
-                let c2 = paren(allocator, config, PrecedenceKind::Disj, c2);
-                c1.append(allocator.space())
-                    .append(allocator.text("∨"))
-                    .append(allocator.space())
-                    .append(c2)
-            }
+            Conj(c1, c2) => pretty_bin_op(allocator, config, self.precedence(), "∧", c1, c2),
+            Disj(c1, c2) => pretty_bin_op(allocator, config, self.precedence(), "∨", c1, c2),
             Quantifier(q, x, c) => {
                 let q = q.pretty(allocator, config);
                 let x = x.pretty(allocator, config);
@@ -288,4 +309,56 @@ fn test_constraint_printer() {
     let s1 = c6.pretty_display().to_string();
     let s2 = format!("∀{x}: i. {x} >= 0 ∧ ({x} = 0 ∨ ∀{z}: i. {z} = 0)");
     assert_eq!(s1, s2);
+}
+
+impl<C: Pretty + Precedence, T> Pretty for hes::GoalBase<C, T> {
+    fn pretty<'b, D, A>(&'b self, allocator: &'b D, config: &mut Config) -> DocBuilder<'b, D, A>
+    where
+        D: DocAllocator<'b, A>,
+        D::Doc: Clone,
+        A: Clone,
+    {
+        use hes::GoalKind::*;
+        match self.kind() {
+            Constr(c) => c.pretty(allocator, config),
+            Op(o) => o.pretty(allocator, config),
+            Var(x) => x.pretty(allocator, config),
+            App(x, y) => {
+                let x = paren(allocator, config, self.precedence(), x);
+                let y = paren(allocator, config, self.precedence(), y);
+                x.append(allocator.space()).append(y)
+            }
+            Conj(x, y) => pretty_bin_op(allocator, config, self.precedence(), "∧", x, y),
+            Disj(x, y) => pretty_bin_op(allocator, config, self.precedence(), "∨", x, y),
+            Univ(x, y) => pretty_abs(allocator, config, "∀", x, y),
+            Abs(x, y) => pretty_abs(allocator, config, "λ", x, y),
+        }
+    }
+}
+
+impl Pretty for fofml::Atom {
+    fn pretty<'b, D, A>(&'b self, allocator: &'b D, config: &mut Config) -> DocBuilder<'b, D, A>
+    where
+        D: DocAllocator<'b, A>,
+        D::Doc: Clone,
+        A: Clone,
+    {
+        use fofml::AtomKind::*;
+        match self.kind() {
+            True => allocator.text("true"),
+            Constraint(c) => c.pretty(allocator, config),
+            Predicate(p, ops) => allocator.text(format!("P{}", p.get_id())).append(
+                allocator
+                    .intersperse(ops.iter().map(|o| o.pretty(allocator, config)), ",")
+                    .parens(),
+            ),
+            Conj(x, y) => pretty_bin_op(allocator, config, self.precedence(), "∧", x, y),
+            Disj(x, y) => pretty_bin_op(allocator, config, self.precedence(), "∨", x, y),
+            Quantifier(q, x, c) => pretty_abs(allocator, config, q.to_str(), x, c),
+            Not(c) => {
+                let c = paren(allocator, config, self.precedence(), c);
+                allocator.text("¬").append(allocator.space()).append(c)
+            }
+        }
+    }
 }

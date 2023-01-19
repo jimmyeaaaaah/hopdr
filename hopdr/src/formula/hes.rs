@@ -1,6 +1,7 @@
 use crate::formula::ty::Type;
 use crate::formula::{
-    Bot, Constraint, FirstOrderLogic, Fv, Ident, Logic, Op, Rename, TeXPrinter, Top, Variable,
+    Bot, Constraint, FirstOrderLogic, Fv, Ident, Logic, Op, Precedence, PrecedenceKind, Rename,
+    TeXPrinter, Top, Variable,
 };
 use crate::pdr::rtype::Refinement;
 use crate::util::P;
@@ -549,6 +550,20 @@ impl<C: Refinement> PartialEq for GoalKind<C, ()> {
 impl<C: Refinement> PartialEq for Goal<C> {
     fn eq(&self, other: &Self) -> bool {
         self.ptr == other.ptr
+    }
+}
+
+impl<T, C: Precedence> Precedence for GoalBase<C, T> {
+    fn precedence(&self) -> PrecedenceKind {
+        match self.kind() {
+            GoalKind::Constr(c) => c.precedence(),
+            GoalKind::Op(o) => o.precedence(),
+            GoalKind::Var(_) => PrecedenceKind::Atom,
+            GoalKind::Univ(_, _) | GoalKind::Abs(_, _) => PrecedenceKind::Abs,
+            GoalKind::App(_, _) => PrecedenceKind::App,
+            GoalKind::Conj(_, _) => PrecedenceKind::Conj,
+            GoalKind::Disj(_, _) => PrecedenceKind::Disj,
+        }
     }
 }
 

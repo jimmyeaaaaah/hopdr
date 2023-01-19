@@ -84,6 +84,12 @@ impl QuantifierKind {
     pub fn is_universal(&self) -> bool {
         matches!(self, Self::Universal)
     }
+    pub fn to_str(&self) -> &'static str {
+        match self {
+            QuantifierKind::Universal => "∀",
+            QuantifierKind::Existential => "∃",
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -1251,6 +1257,15 @@ impl OpKind {
             OpKind::Mod => x % y,
         }
     }
+    pub fn to_str(&self) -> &'static str {
+        match self {
+            OpKind::Add => "+",
+            OpKind::Sub => "-",
+            OpKind::Mul => "*",
+            OpKind::Div => "/",
+            OpKind::Mod => "%",
+        }
+    }
 }
 
 impl Op {
@@ -1328,6 +1343,16 @@ impl PredKind {
             PredKind::Geq => x >= y,
         }
         .into()
+    }
+    pub fn to_str(&self) -> &'static str {
+        match self {
+            PredKind::Eq => "=",
+            PredKind::Neq => "!=",
+            PredKind::Lt => "<",
+            PredKind::Leq => "<=",
+            PredKind::Gt => ">",
+            PredKind::Geq => ">=",
+        }
     }
 }
 

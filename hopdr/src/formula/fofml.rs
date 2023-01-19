@@ -3,10 +3,7 @@ use std::fmt;
 
 use super::chc;
 use super::pcsp;
-use super::{
-    hes, Bot, Constraint, DerefPtr, FirstOrderLogic, Fv, Ident, Logic, Negation, Op, OpKind,
-    PredKind, QuantifierKind, Rename, Subst, Top, Type, Variable,
-};
+use super::*;
 use crate::solver;
 use crate::solver::smt;
 use crate::util::P;
@@ -333,6 +330,19 @@ impl From<Constraint> for hes::Goal<Atom> {
     fn from(c: Constraint) -> Self {
         let a: Atom = c.into();
         a.into()
+    }
+}
+
+impl Precedence for Atom {
+    fn precedence(&self) -> PrecedenceKind {
+        match self.kind() {
+            AtomKind::True | AtomKind::Predicate(_, _) => PrecedenceKind::Atom,
+            AtomKind::Constraint(c) => c.precedence(),
+            AtomKind::Conj(_, _) => PrecedenceKind::Conj,
+            AtomKind::Disj(_, _) => PrecedenceKind::Disj,
+            AtomKind::Not(_) => PrecedenceKind::Not,
+            AtomKind::Quantifier(_, _, _) => PrecedenceKind::Abs,
+        }
     }
 }
 
