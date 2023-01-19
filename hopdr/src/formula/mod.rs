@@ -92,7 +92,7 @@ impl QuantifierKind {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum OpExpr {
     Op(OpKind, Op, Op),
     Var(Ident),
@@ -209,6 +209,7 @@ impl Op {
     }
 
     pub fn mk_mul(x: Op, y: Op) -> Op {
+        use OpKind::*;
         if x.check_const(1) {
             y
         } else if y.check_const(1) {
@@ -218,6 +219,16 @@ impl Op {
         } else {
             match (x.kind(), y.kind()) {
                 (OpExpr::Const(x), OpExpr::Const(y)) => Op::mk_const(x * y),
+                (OpExpr::Const(c), OpExpr::Op(Mul, a, b))
+                | (OpExpr::Op(Mul, a, b), OpExpr::Const(c)) => {
+                    // place const in the left-hand side of OpExpr::Op
+                    match (a.kind(), b.kind()) {
+                        (OpExpr::Const(y), z) | (z, OpExpr::Const(y)) => {
+                            Op::mk_mul(Op::mk_const(c * y), Op::new(z.clone()))
+                        }
+                        (_, _) => Op::new(OpExpr::Op(OpKind::Mul, x, y)),
+                    }
+                }
                 _ => Op::new(OpExpr::Op(OpKind::Mul, x, y)),
             }
         }
