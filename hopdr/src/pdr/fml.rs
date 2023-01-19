@@ -4,10 +4,13 @@ use std::fmt::Display;
 use crate::formula::fofml;
 use crate::formula::hes::Problem;
 use crate::formula::hes::{Goal, GoalKind};
-use crate::formula::{Constraint, Fv, Ident, Logic, Op, Subst, Type as SType, Variable};
+use crate::formula::{
+    Constraint, Fv, Ident, Logic, Op, Precedence, Subst, Type as SType, Variable,
+};
 use crate::pdr::rtype::{least_fml, types_check, Refinement, Tau, TypeEnvironment};
 use crate::solver;
 use crate::solver::smt;
+use crate::util::Pretty;
 
 impl From<Goal<Constraint>> for Goal<fofml::Atom> {
     fn from(g: Goal<Constraint>) -> Self {
@@ -72,7 +75,7 @@ pub struct Env<C> {
     tmap: HashMap<Ident, SType>,
 }
 
-impl<C: Display> Display for Env<C> {
+impl<C: Pretty + Precedence> Display for Env<C> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for (k, fml) in self.map.iter() {
             writeln!(f, "{}: {}\n", k, fml)?;

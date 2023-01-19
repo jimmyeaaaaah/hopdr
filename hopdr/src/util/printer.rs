@@ -143,7 +143,7 @@ where
     A: Clone,
     T: Precedence + Pretty,
 {
-    paren(al, config, prec, left) + " " + op_str + " " + al.space() + paren(al, config, prec, right)
+    paren(al, config, prec, left) + " " + op_str + " " + paren(al, config, prec, right)
 }
 
 fn pretty_abs<'b, D, A, T, V>(

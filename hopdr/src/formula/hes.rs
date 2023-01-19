@@ -4,7 +4,7 @@ use crate::formula::{
     TeXPrinter, Top, Variable,
 };
 use crate::pdr::rtype::Refinement;
-use crate::util::P;
+use crate::util::{Pretty, P};
 use std::collections::HashSet;
 
 use std::fmt;
@@ -95,19 +95,9 @@ impl<C, T: Clone> Clone for GoalBase<C, T> {
 
 pub type Goal<C> = GoalBase<C, ()>;
 
-impl<C: fmt::Display, T> fmt::Display for GoalBase<C, T> {
+impl<C: Pretty + Precedence, T> fmt::Display for GoalBase<C, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use GoalKind::*;
-        match self.kind() {
-            Constr(c) => write!(f, "({})", c),
-            Op(o) => write!(f, "({})", o),
-            Var(x) => write!(f, "{}", x),
-            App(x, y) => write!(f, "[{} {}]", x, y),
-            Conj(x, y) => write!(f, "({} ∧ {})", x, y),
-            Disj(x, y) => write!(f, "({} ∨ {})", x, y),
-            Univ(x, y) => write!(f, "(∀{}.{})", x, y),
-            Abs(x, y) => write!(f, "(\\{}.{})", x, y),
-        }
+        write!(f, "{}", self.pretty_display())
     }
 }
 
@@ -382,15 +372,15 @@ impl<C: Rename, T: Clone> Rename for GoalBase<C, T> {
         }
     }
 }
-impl<C: Subst<Item = Op, Id = Ident> + Rename + Fv<Id = Ident> + fmt::Display, T: Clone> Subst
-    for GoalBase<C, T>
+impl<C: Subst<Item = Op, Id = Ident> + Rename + Fv<Id = Ident> + Precedence + Pretty, T: Clone>
+    Subst for GoalBase<C, T>
 {
     type Item = GoalBase<C, T>;
     type Id = Variable;
     // we assume formula has already been alpha-renamed
     // TODO: where? We will not assume alpha-renamed
     fn subst(&self, x: &Variable, v: &GoalBase<C, T>) -> Self {
-        fn subst_inner<C: Subst<Item = Op, Id = Ident> + Rename + fmt::Display, T: Clone>(
+        fn subst_inner<C: Subst<Item = Op, Id = Ident> + Rename + Pretty + Precedence, T: Clone>(
             target: &GoalBase<C, T>,
             x: &Variable,
             v: &GoalBase<C, T>,
@@ -801,10 +791,9 @@ impl<C: Fv<Id = Ident>> Fv for Clause<C> {
     }
 }
 
-impl<C: fmt::Display> fmt::Display for Clause<C> {
+impl<C: Pretty + Precedence> fmt::Display for Clause<C> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} ", self.head)?;
-        write!(f, "= {}", self.body)
+        write!(f, "{}", self.pretty_display())
     }
 }
 
@@ -842,13 +831,9 @@ impl From<Problem<Constraint>> for Problem<fofml::Atom> {
     }
 }
 
-impl<C: fmt::Display> fmt::Display for Problem<C> {
+impl<C: Pretty + Precedence> fmt::Display for Problem<C> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(f, "toplevel: {}", &self.top)?;
-        for c in self.clauses.iter() {
-            writeln!(f, "- {}", c)?;
-        }
-        fmt::Result::Ok(())
+        write!(f, "{}", self.pretty_display())
     }
 }
 
