@@ -179,11 +179,12 @@ where
     T: Pretty,
     V: Pretty,
 {
-    al.text(abs_str)
+    (al.text(abs_str)
         + variable.pretty(al, config)
-        + "."
+        + al.text(".")
         + al.line()
-        + content.pretty(al, config).hang(2)
+        + content.pretty(al, config))
+    .hang(2)
 }
 
 impl Pretty for Op {
@@ -321,7 +322,7 @@ impl<C: Pretty + Precedence, T> Pretty for hes::GoalBase<C, T> {
             App(x, y) => {
                 let x = paren(al, config, self.precedence(), x);
                 let y = paren(al, config, PrecedenceKind::Atom, y);
-                x + al.line() + y.hang(2)
+                (x + al.line() + y.hang(2)).group()
             }
             Conj(x, y) => pretty_bin_op_soft(al, config, self.precedence(), "∧", x, y),
             Disj(x, y) => pretty_bin_op_soft(al, config, self.precedence(), "∨", x, y),
@@ -339,11 +340,12 @@ impl<C: Pretty + Precedence> Pretty for hes::Clause<C> {
         D::Doc: Clone,
         A: Clone,
     {
-        self.head.pretty(al, config)
-            + al.line()
+        (self.head.pretty(al, config)
+            + al.space()
             + "="
             + al.line()
-            + self.body.pretty(al, config).nest(4).group()
+            + self.body.pretty(al, config).nest(4))
+        .group()
     }
 }
 
@@ -469,11 +471,12 @@ impl Pretty for chc::Model {
         A: Clone,
     {
         let docs = self.model.iter().map(|(key, (args, assign))| {
-            pretty_predicate(al, config, key, args)
+            (pretty_predicate(al, config, key, args)
                 + al.line()
                 + "=>"
                 + al.line()
-                + assign.pretty(al, config)
+                + assign.pretty(al, config))
+            .group()
         });
         al.intersperse(docs, al.hardline())
     }
@@ -518,13 +521,9 @@ impl<C: Pretty> Pretty for rtype::Tau<C> {
     {
         match self.kind() {
             rtype::TauKind::Proposition(c) => al.text("bool[") + c.pretty(al, config) + "]",
-            rtype::TauKind::IArrow(i, t) => {
-                i.pretty(al, config)
-                    + ":int"
-                    + al.line()
-                    + "-> "
-                    + t.pretty(al, config).hang(2).group()
-            }
+            rtype::TauKind::IArrow(i, t) => (i.pretty(al, config)
+                + (al.text(":int") + al.line() + al.text("-> ") + t.pretty(al, config)).hang(2))
+            .group(),
             rtype::TauKind::Arrow(ts, t) => {
                 let docs = ts.iter().map(|t| {
                     let tdoc = t.pretty(al, config);
@@ -535,9 +534,8 @@ impl<C: Pretty> Pretty for rtype::Tau<C> {
                     }
                 });
                 al.intersperse(docs, "/\\")
-                    + al.line()
-                    + "-> "
-                    + t.pretty(al, config).hang(2).group()
+                    + (al.nil() + al.line() + (al.text("-> ") + t.pretty(al, config)).hang(2))
+                        .group()
             }
         }
     }

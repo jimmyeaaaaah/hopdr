@@ -75,12 +75,12 @@ fn main() {
         .format_timestamp(None)
         .format_module_path(false)
         .format_level(false)
+        .format_indent(None)
         .init();
     // when the output is redirected to somewhere not a terminal, turn off `colored'
     if !atty::is(atty::Stream::Stdout) || !atty::is(atty::Stream::Stderr) {
         colored::control::set_override(false);
     }
-
 
     // parsing command line args
     let args = Args::parse();
