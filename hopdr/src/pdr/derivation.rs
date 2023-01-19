@@ -529,7 +529,6 @@ impl Context {
                     Some(tys) => {
                         for ty in tys.iter() {
                             debug!("{}({}): {}", pred_name, id, ty);
-                            debug!("{:?}", model);
                             let ty = ty.ty.clone();
                             let ty = ty.assign(&model);
                             let pty = PolymorphicType::poly(ty);

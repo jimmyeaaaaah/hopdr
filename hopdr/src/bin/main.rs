@@ -81,6 +81,7 @@ fn main() {
         colored::control::set_override(false);
     }
 
+
     // parsing command line args
     let args = Args::parse();
 

@@ -40,7 +40,7 @@ pub trait Pretty {
     where
         Self: Sized,
     {
-        self.pretty_display_with_width(120)
+        self.pretty_display_with_width(80)
     }
 
     fn pretty_display_with_width<'a>(&'a self, width: usize) -> PrettyDisplay<'a, Self>
@@ -146,6 +146,25 @@ where
     paren(al, config, prec, left) + " " + op_str + " " + paren(al, config, prec, right)
 }
 
+fn pretty_bin_op_soft<'b, D, A, T>(
+    al: &'b D,
+    config: &mut Config,
+    prec: PrecedenceKind,
+    op_str: &'b str,
+    left: &'b T,
+    right: &'b T,
+) -> DocBuilder<'b, D, A>
+where
+    D: DocAllocator<'b, A>,
+    D::Doc: Clone,
+    A: Clone,
+    T: Precedence + Pretty,
+{
+    paren(al, config, prec, left)
+        + al.line()
+        + (al.text(op_str) + al.space() + paren(al, config, prec, right)).hang(2)
+}
+
 fn pretty_abs<'b, D, A, T, V>(
     al: &'b D,
     config: &mut Config,
@@ -163,8 +182,8 @@ where
     al.text(abs_str)
         + variable.pretty(al, config)
         + "."
-        + al.softline()
-        + content.pretty(al, config)
+        + al.line()
+        + content.pretty(al, config).hang(2)
 }
 
 impl Pretty for Op {
@@ -219,7 +238,7 @@ impl Pretty for Type {
                 let xs = x.pretty(al, config);
                 let ys = y.pretty(al, config);
                 let xs = if x.order() != 0 { xs.parens() } else { xs };
-                xs + al.softline() + "→ " + ys
+                xs + " → " + ys
             }
         }
     }
@@ -301,14 +320,15 @@ impl<C: Pretty + Precedence, T> Pretty for hes::GoalBase<C, T> {
             Var(x) => x.pretty(al, config),
             App(x, y) => {
                 let x = paren(al, config, self.precedence(), x);
-                let y = paren(al, config, self.precedence(), y);
-                x + al.softline() + y
+                let y = paren(al, config, PrecedenceKind::Atom, y);
+                x + al.line() + y.hang(2)
             }
-            Conj(x, y) => pretty_bin_op(al, config, self.precedence(), "∧", x, y),
-            Disj(x, y) => pretty_bin_op(al, config, self.precedence(), "∨", x, y),
+            Conj(x, y) => pretty_bin_op_soft(al, config, self.precedence(), "∧", x, y),
+            Disj(x, y) => pretty_bin_op_soft(al, config, self.precedence(), "∨", x, y),
             Univ(x, y) => pretty_abs(al, config, "∀", x, y),
             Abs(x, y) => pretty_abs(al, config, "λ", x, y),
         }
+        .group()
     }
 }
 
@@ -319,11 +339,11 @@ impl<C: Pretty + Precedence> Pretty for hes::Clause<C> {
         D::Doc: Clone,
         A: Clone,
     {
-        self.body.pretty(al, config)
-            + al.softline()
+        self.head.pretty(al, config)
+            + al.line()
             + "="
-            + al.softline()
-            + self.head.pretty(al, config)
+            + al.line()
+            + self.body.pretty(al, config).nest(4).group()
     }
 }
 
@@ -334,7 +354,7 @@ impl<C: Pretty + Precedence> Pretty for hes::Problem<C> {
         D::Doc: Clone,
         A: Clone,
     {
-        let toplevel = al.text("toplevel:") + al.softline() + self.top.pretty(al, config);
+        let toplevel = al.text("toplevel:") + al.line() + self.top.pretty(al, config);
 
         let docs = self
             .clauses
@@ -381,7 +401,7 @@ impl Pretty for fofml::Atom {
             Quantifier(q, x, c) => pretty_abs(al, config, q.to_str(), x, c),
             Not(c) => {
                 let c = paren(al, config, self.precedence(), c);
-                al.text("¬").append(al.softline()).append(c)
+                al.text("¬").append(al.line()).append(c)
             }
         }
     }
@@ -437,11 +457,7 @@ impl<Atom: Pretty, C: Pretty + Top> Pretty for chc::CHC<Atom, C> {
         D::Doc: Clone,
         A: Clone,
     {
-        self.body.pretty(al, config)
-            + al.softline()
-            + "->"
-            + al.softline()
-            + self.head.pretty(al, config)
+        self.body.pretty(al, config) + al.line() + "->" + al.line() + self.head.pretty(al, config)
     }
 }
 
@@ -454,9 +470,9 @@ impl Pretty for chc::Model {
     {
         let docs = self.model.iter().map(|(key, (args, assign))| {
             pretty_predicate(al, config, key, args)
-                + al.softline()
+                + al.line()
                 + "=>"
-                + al.softline()
+                + al.line()
                 + assign.pretty(al, config)
         });
         al.intersperse(docs, al.hardline())
@@ -489,11 +505,7 @@ impl<Atom: Pretty> Pretty for pcsp::PCSP<Atom> {
         D::Doc: Clone,
         A: Clone,
     {
-        self.body.pretty(al, config)
-            + al.softline()
-            + "->"
-            + al.softline()
-            + self.head.pretty(al, config)
+        self.body.pretty(al, config) + al.line() + "->" + al.line() + self.head.pretty(al, config)
     }
 }
 
@@ -507,7 +519,11 @@ impl<C: Pretty> Pretty for rtype::Tau<C> {
         match self.kind() {
             rtype::TauKind::Proposition(c) => al.text("bool[") + c.pretty(al, config) + "]",
             rtype::TauKind::IArrow(i, t) => {
-                i.pretty(al, config) + ":int" + al.softline() + "-> " + t.pretty(al, config).nest(2)
+                i.pretty(al, config)
+                    + ":int"
+                    + al.line()
+                    + "-> "
+                    + t.pretty(al, config).hang(2).group()
             }
             rtype::TauKind::Arrow(ts, t) => {
                 let docs = ts.iter().map(|t| {
@@ -518,7 +534,10 @@ impl<C: Pretty> Pretty for rtype::Tau<C> {
                         tdoc.parens()
                     }
                 });
-                al.intersperse(docs, "/\\") + al.softline() + "-> " + t.pretty(al, config).nest(2)
+                al.intersperse(docs, "/\\")
+                    + al.line()
+                    + "-> "
+                    + t.pretty(al, config).hang(2).group()
             }
         }
     }
@@ -533,7 +552,7 @@ impl<T: Pretty> Pretty for rtype::PolymorphicType<T> {
         self.vars
             .iter()
             .fold(al.nil(), |cur, var| {
-                cur + "∀" + var.pretty(al, config) + "." + al.softline()
+                cur + "∀" + var.pretty(al, config) + "." + al.line()
             })
             .append(self.ty.pretty(al, config))
     }

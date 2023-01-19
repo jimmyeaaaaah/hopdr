@@ -2224,8 +2224,8 @@ pub enum PrecedenceKind {
     Pred, // PredKind operators
     Add,  // +, -
     Mul,  // *, /, %
-    App,
     Abs,
+    App,
     Atom,
 }
 
