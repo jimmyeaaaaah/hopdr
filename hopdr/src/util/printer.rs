@@ -1,8 +1,7 @@
 use std::fmt::Display;
 
-use crate::formula::fofml;
-use crate::formula::hes;
 use crate::formula::*;
+use crate::pdr::rtype;
 use pretty::{BoxAllocator, DocAllocator, DocBuilder};
 
 #[derive(Default)]
@@ -171,7 +170,7 @@ where
     let y = content.pretty(allocator, config);
     q.append(x)
         .append(allocator.text("."))
-        .append(allocator.space())
+        .append(allocator.softline())
         .append(y)
 }
 
@@ -229,9 +228,9 @@ impl Pretty for Type {
                 let xs = x.pretty(allocator, config);
                 let ys = y.pretty(allocator, config);
                 let xs = if x.order() != 0 { xs.parens() } else { xs };
-                xs.append(allocator.space())
+                xs.append(allocator.softline())
                     .append(allocator.text("→"))
-                    .append(allocator.space())
+                    .append(allocator.softline())
                     .append(ys)
             }
         }
@@ -318,13 +317,52 @@ impl<C: Pretty + Precedence, T> Pretty for hes::GoalBase<C, T> {
             App(x, y) => {
                 let x = paren(allocator, config, self.precedence(), x);
                 let y = paren(allocator, config, self.precedence(), y);
-                x.append(allocator.space()).append(y)
+                x.append(allocator.softline()).append(y)
             }
             Conj(x, y) => pretty_bin_op(allocator, config, self.precedence(), "∧", x, y),
             Disj(x, y) => pretty_bin_op(allocator, config, self.precedence(), "∨", x, y),
             Univ(x, y) => pretty_abs(allocator, config, "∀", x, y),
             Abs(x, y) => pretty_abs(allocator, config, "λ", x, y),
         }
+    }
+}
+
+impl<C: Pretty + Precedence> Pretty for hes::Clause<C> {
+    fn pretty<'b, D, A>(&'b self, allocator: &'b D, config: &mut Config) -> DocBuilder<'b, D, A>
+    where
+        D: DocAllocator<'b, A>,
+        D::Doc: Clone,
+        A: Clone,
+    {
+        self.body
+            .pretty(allocator, config)
+            .append(allocator.softline())
+            .append(allocator.text("="))
+            .append(allocator.softline())
+            .append(self.head.pretty(allocator, config))
+    }
+}
+
+impl<C: Pretty + Precedence> Pretty for hes::Problem<C> {
+    fn pretty<'b, D, A>(&'b self, allocator: &'b D, config: &mut Config) -> DocBuilder<'b, D, A>
+    where
+        D: DocAllocator<'b, A>,
+        D::Doc: Clone,
+        A: Clone,
+    {
+        let toplevel = allocator
+            .text("toplevel:")
+            .append(allocator.softline())
+            .append(self.top.pretty(allocator, config));
+
+        let docs = self.clauses.iter().map(|c| {
+            allocator
+                .text("-")
+                .append(allocator.softline())
+                .append(c.pretty(allocator, config))
+        });
+        let body = allocator.intersperse(docs, allocator.hardline());
+        toplevel.append(allocator.hardline()).append(body)
     }
 }
 
@@ -365,7 +403,7 @@ impl Pretty for fofml::Atom {
             Quantifier(q, x, c) => pretty_abs(allocator, config, q.to_str(), x, c),
             Not(c) => {
                 let c = paren(allocator, config, self.precedence(), c);
-                allocator.text("¬").append(allocator.space()).append(c)
+                allocator.text("¬").append(allocator.softline()).append(c)
             }
         }
     }
@@ -423,9 +461,9 @@ impl<Atom: Pretty, C: Pretty + Top> Pretty for chc::CHC<Atom, C> {
     {
         self.body
             .pretty(allocator, config)
-            .append(allocator.space())
+            .append(allocator.softline())
             .append(allocator.text("->"))
-            .append(allocator.space())
+            .append(allocator.softline())
             .append(self.head.pretty(allocator, config))
     }
 }
@@ -439,10 +477,118 @@ impl Pretty for chc::Model {
     {
         let docs = self.model.iter().map(|(key, (args, assign))| {
             pretty_predicate(allocator, config, key, args)
-                .append(allocator.space())
+                .append(allocator.softline())
                 .append(allocator.text("=>"))
-                .append(allocator.space())
+                .append(allocator.softline())
                 .append(assign.pretty(allocator, config))
+        });
+        allocator.intersperse(docs, allocator.hardline())
+    }
+}
+
+impl Pretty for pcsp::Atom {
+    fn pretty<'b, D, A>(&'b self, allocator: &'b D, config: &mut Config) -> DocBuilder<'b, D, A>
+    where
+        D: DocAllocator<'b, A>,
+        D::Doc: Clone,
+        A: Clone,
+    {
+        use pcsp::AtomKind::*;
+        match self.kind() {
+            True => allocator.text("true"),
+            Constraint(c) => c.pretty(allocator, config),
+            Predicate(p, ops) => pretty_predicate(allocator, config, p, ops),
+            Conj(x, y) => pretty_bin_op(allocator, config, self.precedence(), "∧", x, y),
+            Disj(x, y) => pretty_bin_op(allocator, config, self.precedence(), "∨", x, y),
+            Quantifier(q, x, c) => pretty_abs(allocator, config, q.to_str(), x, c),
+        }
+    }
+}
+
+impl<Atom: Pretty> Pretty for pcsp::PCSP<Atom> {
+    fn pretty<'b, D, A>(&'b self, allocator: &'b D, config: &mut Config) -> DocBuilder<'b, D, A>
+    where
+        D: DocAllocator<'b, A>,
+        D::Doc: Clone,
+        A: Clone,
+    {
+        self.body
+            .pretty(allocator, config)
+            .append(allocator.softline())
+            .append(allocator.text("->"))
+            .append(allocator.softline())
+            .append(self.head.pretty(allocator, config))
+    }
+}
+
+impl<C: Pretty> Pretty for rtype::Tau<C> {
+    fn pretty<'b, D, A>(&'b self, allocator: &'b D, config: &mut Config) -> DocBuilder<'b, D, A>
+    where
+        D: DocAllocator<'b, A>,
+        D::Doc: Clone,
+        A: Clone,
+    {
+        match self.kind() {
+            rtype::TauKind::Proposition(c) => allocator
+                .text("bool[")
+                .append(c.pretty(allocator, config))
+                .append(allocator.text("]")),
+            rtype::TauKind::IArrow(i, t) => i
+                .pretty(allocator, config)
+                .append(allocator.text(":int"))
+                .append(allocator.softline())
+                .append(allocator.text("->"))
+                .append(allocator.softline())
+                .append(t.pretty(allocator, config).nest(2)),
+            rtype::TauKind::Arrow(ts, t) => {
+                let docs = ts.iter().map(|t| {
+                    let tdoc = t.pretty(allocator, config);
+                    if t.order() == 0 {
+                        tdoc
+                    } else {
+                        tdoc.parens()
+                    }
+                });
+                let arg = allocator.intersperse(docs, "/\\");
+                arg.append(allocator.softline())
+                    .append(allocator.text("->"))
+                    .append(allocator.softline())
+                    .append(t.pretty(allocator, config).nest(2))
+            }
+        }
+    }
+}
+impl<T: Pretty> Pretty for rtype::PolymorphicType<T> {
+    fn pretty<'b, D, A>(&'b self, allocator: &'b D, config: &mut Config) -> DocBuilder<'b, D, A>
+    where
+        D: DocAllocator<'b, A>,
+        D::Doc: Clone,
+        A: Clone,
+    {
+        self.vars
+            .iter()
+            .fold(allocator.nil(), |cur, var| {
+                cur.append(allocator.text("∀"))
+                    .append(var.pretty(allocator, config))
+                    .append(allocator.text("."))
+                    .append(allocator.softline())
+            })
+            .append(self.ty.pretty(allocator, config))
+    }
+}
+
+impl<T: Pretty> Pretty for rtype::TypeEnvironment<T> {
+    fn pretty<'b, D, A>(&'b self, allocator: &'b D, config: &mut Config) -> DocBuilder<'b, D, A>
+    where
+        D: DocAllocator<'b, A>,
+        D::Doc: Clone,
+        A: Clone,
+    {
+        let docs = self.map.iter().map(|(id, ts)| {
+            let var = id.pretty(allocator, config);
+            let docs = ts.iter().map(|t| t.pretty(allocator, config));
+            let t = allocator.intersperse(docs, allocator.hardline().append("/\\ "));
+            var.append(allocator.text(" : ")).append(t.nest(4))
         });
         allocator.intersperse(docs, allocator.hardline())
     }

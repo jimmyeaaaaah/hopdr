@@ -1,10 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
-use super::{
-    Bot, Constraint, FirstOrderLogic, Fv, Ident, Logic, Negation, Op, QuantifierKind, Rename,
-    Subst, Top, Type, Variable,
-};
+use super::*;
 use crate::util::P;
 
 #[derive(Debug)]
@@ -81,11 +78,25 @@ impl Negation for Atom {
         }
     }
 }
+
 impl FirstOrderLogic for Atom {
     fn mk_quantifier_int(q: QuantifierKind, v: Ident, c: Self) -> Self {
         Atom::mk_quantifier(q, v, c)
     }
 }
+
+impl Precedence for Atom {
+    fn precedence(&self) -> PrecedenceKind {
+        match self.kind() {
+            AtomKind::True | AtomKind::Predicate(_, _) => PrecedenceKind::Atom,
+            AtomKind::Constraint(c) => c.precedence(),
+            AtomKind::Conj(_, _) => PrecedenceKind::Conj,
+            AtomKind::Disj(_, _) => PrecedenceKind::Disj,
+            AtomKind::Quantifier(_, _, _) => PrecedenceKind::Abs,
+        }
+    }
+}
+
 impl Atom {
     pub fn mk_pred(ident: Ident, args: Vec<Op>) -> Atom {
         Atom::new(AtomKind::Predicate(ident, args))

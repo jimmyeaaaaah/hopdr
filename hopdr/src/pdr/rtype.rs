@@ -3,15 +3,18 @@ use std::{
     fmt::{self, Display},
 };
 
-use crate::formula::{
-    Bot, Constraint, ConstraintExpr, DerefPtr, FirstOrderLogic, Fv, Ident, Logic, Negation, Op,
-    OpExpr, OpKind, Polarity, Rename, Subst, Top, Type as SType, TypeKind as STypeKind,
-};
-use crate::util::P;
 use crate::{formula, formula::hes::Goal, solver, solver::smt};
+use crate::{formula::Precedence, util::P};
 use crate::{
     formula::{fofml, PredKind, TeXFormat, TeXPrinter, Variable},
     title,
+};
+use crate::{
+    formula::{
+        Bot, Constraint, ConstraintExpr, DerefPtr, FirstOrderLogic, Fv, Ident, Logic, Negation, Op,
+        OpExpr, OpKind, Polarity, Rename, Subst, Top, Type as SType, TypeKind as STypeKind,
+    },
+    util::Pretty,
 };
 
 use rpds::Stack;
@@ -39,6 +42,8 @@ pub trait Refinement:
     + From<Goal<Self>>
     + DerefPtr
     + fmt::Display
+    + Pretty
+    + Precedence
 {
     fn mk_implies_opt(x: Self, y: Self) -> Option<Self> {
         x.negate().map(|x| Self::mk_disj(x, y))
@@ -55,6 +60,8 @@ impl<T> Refinement for T where
         + From<Goal<Self>>
         + DerefPtr
         + fmt::Display
+        + Pretty
+        + Precedence
 {
 }
 
@@ -67,40 +74,25 @@ pub enum Error {
     SMTUnknown,
 }
 
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let s = match self {
+impl Error {
+    fn to_str(&self) -> &'static str {
+        match self {
             Error::TypeError => "type error",
             Error::SMTTimeout => "SMT Timeout",
             Error::SMTUnknown => "SMT Unknown",
-        };
-        write!(f, "{}", s)
+        }
     }
 }
-impl<C: fmt::Display> fmt::Display for Tau<C> {
+
+impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.kind() {
-            TauKind::Proposition(c) => write!(f, "bool[{}]", c),
-            TauKind::IArrow(i, t) => write!(f, "({}: int -> {})", i, t),
-            TauKind::Arrow(t1, t2) => {
-                write!(f, "(")?;
-                if t1.len() == 0 {
-                    write!(f, "T")?;
-                } else {
-                    if t1.len() > 1 {
-                        write!(f, "(")?;
-                    }
-                    write!(f, "{}", &t1[0])?;
-                    for t in t1[1..].iter() {
-                        write!(f, " /\\ {}", t)?;
-                    }
-                    if t1.len() > 1 {
-                        write!(f, ")")?;
-                    }
-                }
-                write!(f, "-> {})", t2)
-            }
-        }
+        write!(f, "{}", self.to_str())
+    }
+}
+
+impl<C: Pretty> fmt::Display for Tau<C> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.pretty_display())
     }
 }
 
@@ -631,6 +623,18 @@ impl<C> Tau<C> {
         match self.kind() {
             TauKind::Proposition(_) => true,
             _ => false,
+        }
+    }
+    pub fn order(&self) -> usize {
+        match self.kind() {
+            TauKind::Proposition(_) => 0,
+            TauKind::IArrow(_, t) => t.order(),
+            TauKind::Arrow(ts, y) => {
+                debug_assert!(ts.len() != 0);
+                let o1 = ts[0].order();
+                let o2 = y.order();
+                std::cmp::max(o1 + 1, o2)
+            }
         }
     }
 }
@@ -1722,22 +1726,9 @@ pub struct TypeEnvironment<Type> {
 }
 pub type TyEnv = TypeEnvironment<PolymorphicType<Ty>>;
 
-impl<T: Display> Display for TypeEnvironment<T> {
+impl<T: Pretty> Display for TypeEnvironment<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for (idx, ts) in self.map.iter() {
-            write!(f, "{} : ", idx)?;
-            let mut fst = true;
-            for t in ts {
-                if fst {
-                    fst = false;
-                } else {
-                    write!(f, ", ")?;
-                }
-                write!(f, "{}", t)?;
-            }
-            writeln!(f)?;
-        }
-        writeln!(f)
+        write!(f, "{}", self.pretty_display())
     }
 }
 
