@@ -538,7 +538,7 @@ impl<C: Pretty> Pretty for rtype::Tau<C> {
                 .append(allocator.text(":int"))
                 .append(allocator.softline())
                 .append(allocator.text("->"))
-                .append(allocator.softline())
+                .append(allocator.space())
                 .append(t.pretty(allocator, config).nest(2)),
             rtype::TauKind::Arrow(ts, t) => {
                 let docs = ts.iter().map(|t| {
@@ -552,7 +552,7 @@ impl<C: Pretty> Pretty for rtype::Tau<C> {
                 let arg = allocator.intersperse(docs, "/\\");
                 arg.append(allocator.softline())
                     .append(allocator.text("->"))
-                    .append(allocator.softline())
+                    .append(allocator.space())
                     .append(t.pretty(allocator, config).nest(2))
             }
         }
