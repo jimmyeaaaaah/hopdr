@@ -98,6 +98,8 @@ pub enum OpExpr {
     Var(Ident),
     Const(i64),
     // for tracking substitution, we memorize the old ident and replaced op
+    // also this is a guard for optimization. you don't have to deref ptr to implement
+    // optimization (otherwise, derivation procedure will break)
     Ptr(Ident, Op),
 }
 
@@ -180,8 +182,16 @@ impl IntegerEnvironment {
 }
 
 impl Op {
-    pub fn mk_bin_op(op: OpKind, x: Op, y: Op) -> Op {
+    fn mk_bin_op_raw(op: OpKind, x: Op, y: Op) -> Op {
         Op::new(OpExpr::Op(op, x, y))
+    }
+    pub fn mk_bin_op(op: OpKind, x: Op, y: Op) -> Op {
+        match op {
+            OpKind::Add => Op::mk_add(x, y),
+            OpKind::Sub => Op::mk_sub(x, y),
+            OpKind::Mul => Op::mk_mul(x, y),
+            OpKind::Div | OpKind::Mod => Op::mk_bin_op_raw(op, x, y),
+        }
     }
 
     pub fn check_const(&self, c: i64) -> bool {
@@ -194,7 +204,17 @@ impl Op {
         } else if y.check_const(0) {
             x
         } else {
-            Op::new(OpExpr::Op(OpKind::Add, x, y))
+            match y.kind() {
+                // assumes constant appears in the left-hand side of mul
+                // this is true if you construct muls with mk_mul
+                OpExpr::Op(OpKind::Mul, y, z) if y.check_const(-1) => {
+                    Op::mk_sub(x.clone(), z.clone())
+                }
+                OpExpr::Const(c) if *c < 0 => Op::mk_sub(x, Op::mk_const(-c)),
+                OpExpr::Op(_, _, _) | OpExpr::Const(_) | OpExpr::Var(_) | OpExpr::Ptr(_, _) => {
+                    Op::mk_bin_op_raw(OpKind::Add, x, y)
+                }
+            }
         }
     }
 
@@ -204,7 +224,17 @@ impl Op {
         } else if y.check_const(0) {
             x
         } else {
-            Op::new(OpExpr::Op(OpKind::Sub, x, y))
+            match y.kind() {
+                // assumes constant appears in the left-hand side of mul
+                // this is true if you construct muls with mk_mul
+                OpExpr::Op(OpKind::Mul, y, z) if y.check_const(-1) => {
+                    Op::mk_add(x.clone(), z.clone())
+                }
+                OpExpr::Const(c) if *c < 0 => Op::mk_add(x, Op::mk_const(-c)),
+                OpExpr::Op(_, _, _) | OpExpr::Const(_) | OpExpr::Var(_) | OpExpr::Ptr(_, _) => {
+                    Op::mk_bin_op_raw(OpKind::Sub, x, y)
+                }
+            }
         }
     }
 
@@ -226,16 +256,16 @@ impl Op {
                         (OpExpr::Const(y), z) | (z, OpExpr::Const(y)) => {
                             Op::mk_mul(Op::mk_const(c * y), Op::new(z.clone()))
                         }
-                        (_, _) => Op::new(OpExpr::Op(OpKind::Mul, x, y)),
+                        (_, _) => Op::mk_bin_op_raw(OpKind::Mul, x, y),
                     }
                 }
-                _ => Op::new(OpExpr::Op(OpKind::Mul, x, y)),
+                _ => Op::mk_bin_op_raw(OpKind::Mul, x, y),
             }
         }
     }
 
     pub fn mk_minus(x: Op) -> Op {
-        Op::new(OpExpr::Op(OpKind::Sub, Op::mk_const(0), x))
+        Op::mk_bin_op_raw(OpKind::Sub, Op::mk_const(0), x)
     }
 
     pub fn mk_inc(x: Op) -> Op {
