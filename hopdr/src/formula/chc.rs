@@ -5,6 +5,7 @@ use std::fmt;
 use std::vec;
 
 use crate::pdr::rtype::Refinement;
+use crate::util::Pretty;
 
 use super::pcsp;
 use super::Bot;
@@ -59,16 +60,7 @@ pub struct CHCBody<A, C> {
 
 impl fmt::Display for Atom {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}(", self.predicate)?;
-        if !self.args.is_empty() {
-            write!(f, "{}", self.args[0])?;
-            if !self.args.len() > 1 {
-                for arg in self.args[1..].iter() {
-                    write!(f, ",{}", arg)?;
-                }
-            }
-        }
-        write!(f, ")")
+        write!(f, "{}", self.pretty_display())
     }
 }
 
@@ -539,20 +531,7 @@ pub struct Model {
 
 impl fmt::Display for Model {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for (key, (args, assign)) in self.model.iter() {
-            write!(f, "{}(", key)?;
-            let mut first = true;
-            for arg in args.iter() {
-                if first {
-                    first = false
-                } else {
-                    write!(f, ", ")?;
-                }
-                write!(f, "{}", arg)?;
-            }
-            writeln!(f, ") => {assign}")?;
-        }
-        Ok(())
+        write!(f, "{}", self.pretty_display())
     }
 }
 

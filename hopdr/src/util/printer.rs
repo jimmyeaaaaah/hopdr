@@ -281,15 +281,7 @@ impl Pretty for Constraint {
             }
             Conj(c1, c2) => pretty_bin_op(allocator, config, self.precedence(), "∧", c1, c2),
             Disj(c1, c2) => pretty_bin_op(allocator, config, self.precedence(), "∨", c1, c2),
-            Quantifier(q, x, c) => {
-                let q = q.pretty(allocator, config);
-                let x = x.pretty(allocator, config);
-                let c = c.pretty(allocator, config);
-                q.append(x)
-                    .append(allocator.text("."))
-                    .append(allocator.space())
-                    .append(c)
-            }
+            Quantifier(q, x, c) => pretty_abs(allocator, config, q.to_str(), x, c),
         }
     }
 }
@@ -336,6 +328,26 @@ impl<C: Pretty + Precedence, T> Pretty for hes::GoalBase<C, T> {
     }
 }
 
+fn pretty_predicate<'b, D, A, I, T>(
+    allocator: &'b D,
+    config: &mut Config,
+    ident: &Ident,
+    args: I,
+) -> DocBuilder<'b, D, A>
+where
+    D: DocAllocator<'b, A>,
+    D::Doc: Clone,
+    A: Clone,
+    I: IntoIterator<Item = &'b T>,
+    T: Pretty + 'b,
+{
+    allocator.text(format!("P{}", ident.get_id())).append(
+        allocator
+            .intersperse(args.into_iter().map(|o| o.pretty(allocator, config)), ",")
+            .parens(),
+    )
+}
+
 impl Pretty for fofml::Atom {
     fn pretty<'b, D, A>(&'b self, allocator: &'b D, config: &mut Config) -> DocBuilder<'b, D, A>
     where
@@ -347,11 +359,7 @@ impl Pretty for fofml::Atom {
         match self.kind() {
             True => allocator.text("true"),
             Constraint(c) => c.pretty(allocator, config),
-            Predicate(p, ops) => allocator.text(format!("P{}", p.get_id())).append(
-                allocator
-                    .intersperse(ops.iter().map(|o| o.pretty(allocator, config)), ",")
-                    .parens(),
-            ),
+            Predicate(p, ops) => pretty_predicate(allocator, config, p, ops),
             Conj(x, y) => pretty_bin_op(allocator, config, self.precedence(), "∧", x, y),
             Disj(x, y) => pretty_bin_op(allocator, config, self.precedence(), "∨", x, y),
             Quantifier(q, x, c) => pretty_abs(allocator, config, q.to_str(), x, c),
@@ -360,5 +368,82 @@ impl Pretty for fofml::Atom {
                 allocator.text("¬").append(allocator.space()).append(c)
             }
         }
+    }
+}
+
+impl Pretty for chc::Atom {
+    fn pretty<'b, D, A>(&'b self, allocator: &'b D, config: &mut Config) -> DocBuilder<'b, D, A>
+    where
+        D: DocAllocator<'b, A>,
+        D::Doc: Clone,
+        A: Clone,
+    {
+        pretty_predicate(allocator, config, &self.predicate, &self.args)
+    }
+}
+
+impl<Atom: Pretty, C: Pretty> Pretty for chc::CHCHead<Atom, C> {
+    fn pretty<'b, D, A>(&'b self, allocator: &'b D, config: &mut Config) -> DocBuilder<'b, D, A>
+    where
+        D: DocAllocator<'b, A>,
+        D::Doc: Clone,
+        A: Clone,
+    {
+        match self {
+            chc::CHCHead::Constraint(c) => c.pretty(allocator, config),
+            chc::CHCHead::Predicate(a) => a.pretty(allocator, config),
+        }
+    }
+}
+
+impl<Atom: Pretty, C: Pretty + Top> Pretty for chc::CHCBody<Atom, C> {
+    fn pretty<'b, D, A>(&'b self, allocator: &'b D, config: &mut Config) -> DocBuilder<'b, D, A>
+    where
+        D: DocAllocator<'b, A>,
+        D::Doc: Clone,
+        A: Clone,
+    {
+        let docs = if !self.constraint.is_true() {
+            Some(self.constraint.pretty(allocator, config))
+        } else {
+            None
+        }
+        .into_iter()
+        .chain(self.predicates.iter().map(|p| p.pretty(allocator, config)));
+        allocator.intersperse(docs, "∧")
+    }
+}
+
+impl<Atom: Pretty, C: Pretty + Top> Pretty for chc::CHC<Atom, C> {
+    fn pretty<'b, D, A>(&'b self, allocator: &'b D, config: &mut Config) -> DocBuilder<'b, D, A>
+    where
+        D: DocAllocator<'b, A>,
+        D::Doc: Clone,
+        A: Clone,
+    {
+        self.body
+            .pretty(allocator, config)
+            .append(allocator.space())
+            .append(allocator.text("->"))
+            .append(allocator.space())
+            .append(self.head.pretty(allocator, config))
+    }
+}
+
+impl Pretty for chc::Model {
+    fn pretty<'b, D, A>(&'b self, allocator: &'b D, config: &mut Config) -> DocBuilder<'b, D, A>
+    where
+        D: DocAllocator<'b, A>,
+        D::Doc: Clone,
+        A: Clone,
+    {
+        let docs = self.model.iter().map(|(key, (args, assign))| {
+            pretty_predicate(allocator, config, key, args)
+                .append(allocator.space())
+                .append(allocator.text("=>"))
+                .append(allocator.space())
+                .append(assign.pretty(allocator, config))
+        });
+        allocator.intersperse(docs, allocator.hardline())
     }
 }

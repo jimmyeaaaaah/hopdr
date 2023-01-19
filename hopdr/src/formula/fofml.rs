@@ -22,21 +22,7 @@ pub type Atom = P<AtomKind>;
 
 impl fmt::Display for Atom {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.kind() {
-            AtomKind::True => write!(f, "true"),
-            AtomKind::Constraint(c) => write!(f, "({})", c),
-            AtomKind::Predicate(id, ops) => {
-                write!(f, "{}(", id)?;
-                for op in ops.iter() {
-                    write!(f, "{},", op)?;
-                }
-                write!(f, ")")
-            }
-            AtomKind::Conj(x, y) => write!(f, "({} ∧ {})", x, y),
-            AtomKind::Disj(x, y) => write!(f, "({} ∨ {})", x, y),
-            AtomKind::Not(x) => write!(f, "not({})", x),
-            AtomKind::Quantifier(q, x, c) => write!(f, "{} {}. {}", q, x, c),
-        }
+        write!(f, "{}", self.pretty_display())
     }
 }
 impl PartialEq for Atom {
