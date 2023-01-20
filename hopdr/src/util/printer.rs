@@ -106,18 +106,6 @@ macro_rules! _pdebug {
         }
     };
 
-    // ($al:ident, $config:ident, $e:expr ; $deco:ident) => {
-    //     {
-    //         $e.pretty(&$al, &mut $config).annotate($deco())
-    //     }
-    // };
-
-    // ($al:ident, $config:ident, $e:expr $(, $es:expr $(; $deco2:ident)*)+) => {{
-    //     $e.pretty(&$al, &mut $config)
-    //     +
-    //     _pdebug! ($al, $config $(, $es $(; $deco2)* )+ )
-    // }};
-
     ($al:ident, $config:ident, $e:expr  $(; $deco:ident)* $(,$es:expr $(; $deco2:ident)*)+) => {{
         $e.pretty(&$al, &mut $config)
         $(
@@ -145,10 +133,12 @@ macro_rules! pdebug {
 
 #[test]
 fn test_pdebug() {
-    pdebug!(1, 2 ; red ; bold, 3);
+    pdebug!(1, 2 ; red, 3);
     pdebug!(1, 2 ; red);
     pdebug!(2 ; red );
     pdebug!(1);
+
+    pdebug!(1, 2 ; red ; bold, 3);
 }
 
 impl Pretty for Ident {
@@ -374,7 +364,7 @@ impl Pretty for Constraint {
             }
             Conj(c1, c2) => pretty_bin_op(al, config, self.precedence(), "∧", c1, c2),
             Disj(c1, c2) => pretty_bin_op(al, config, self.precedence(), "∨", c1, c2),
-            Quantifier(q, x, c) => pretty_abs(al, config, q.to_str(), x, c),
+            Quantifier(q, x, c) => pretty_abs(al, config, q.to_str(), x, c).group(),
         }
     }
 }
@@ -391,7 +381,7 @@ fn test_constraint_printer() {
     let c5 = Constraint::mk_conj(c1, Constraint::mk_disj(c2, c4));
     let c6 = Constraint::mk_quantifier_int(QuantifierKind::Universal, x, c5);
 
-    let s1 = c6.pretty_display().to_string();
+    let s1 = c6.pretty_display_with_width(200).to_string();
     let s2 = format!("∀{x}: i. {x} >= 0 ∧ ({x} = 0 ∨ ∀{z}: i. {z} = 0)");
     assert_eq!(s1, s2);
 }
