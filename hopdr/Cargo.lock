@@ -337,6 +337,7 @@ checksum = "83f3aa1e3ca87d3b124db7461265ac176b40c277f37e503eaa29c9c75c037846"
 dependencies = [
  "arrayvec",
  "log",
+ "termcolor",
  "typed-arena",
  "unicode-segmentation",
 ]

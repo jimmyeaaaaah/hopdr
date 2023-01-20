@@ -2,7 +2,10 @@ use std::fmt::Display;
 
 use crate::formula::*;
 use crate::pdr::rtype;
+use pretty::termcolor::{Color, ColorSpec};
 use pretty::{BoxAllocator, DocAllocator, DocBuilder};
+
+const DEFAULT_WIDTH: usize = 120;
 
 #[derive(Default)]
 pub struct Config {}
@@ -40,7 +43,7 @@ pub trait Pretty {
     where
         Self: Sized,
     {
-        self.pretty_display_with_width(80)
+        self.pretty_display_with_width(DEFAULT_WIDTH)
     }
 
     fn pretty_display_with_width<'a>(&'a self, width: usize) -> PrettyDisplay<'a, Self>
@@ -60,6 +63,104 @@ impl Pretty for str {
     {
         al.text(self)
     }
+}
+
+macro_rules! pretty_to_string {
+    ($ty:ident) => {
+        impl Pretty for $ty {
+            fn pretty<'b, D, A>(&'b self, al: &'b D, _config: &mut Config) -> DocBuilder<'b, D, A>
+            where
+                D: DocAllocator<'b, A>,
+                D::Doc: Clone,
+                A: Clone,
+            {
+                al.text(self.to_string())
+            }
+        }
+    };
+}
+
+// impls for constants
+pretty_to_string! {u64}
+pretty_to_string! {usize}
+pretty_to_string! {i64}
+pretty_to_string! {i32}
+
+macro_rules! decorator {
+    ($name:ident, $doc:ident, $content:expr) => {
+        fn $name<'b, D, A>() -> ColorSpec {
+        where
+            ColorSpec::new().set_fg(Some(Color::Red)).clone()
+        }
+
+       };
+}
+
+fn uo<'b, D, A>(doc: DocBuilder<'b, D, A>) -> DocBuilder<'b, D, A>
+where
+    D: DocAllocator<'b, A>,
+    D::Doc: Clone,
+    A: Clone,
+{
+    let arena = pretty::Arena::new();
+    let t = arena.text("uo");
+    t.annotate(ColorSpec::new().set_fg(Some(Color::Red)).clone())
+}
+
+decorator! {red, doc, doc.annotate(ColorSpec::new().set_fg(Some(Color::Red)).clone())}
+decorator! {blue, doc, doc.annotate(ColorSpec::new().set_fg(Some(Color::Blue)).clone())}
+decorator! {bold, doc, doc.annotate(ColorSpec::new().set_bold(true).clone())}
+
+macro_rules! _pdebug {
+    ($al:ident, $config:ident, $e:expr) => {
+        {
+            $e.pretty::<_, ()>(&$al, &mut $config)
+        }
+    };
+
+    ($al:ident, $config:ident, $e:expr ; $deco:ident) => {
+        {
+            $deco($e.pretty::<_, ()>(&$al, &mut $config))
+        }
+    };
+
+    ($al:ident, $config:ident, $e:expr $(, $es:expr ; $($deco2:ident)?)+) => {{
+        $e.pretty::<_, ()>(&$al, &mut $config)
+        +
+        _pdebug! ($al, $config $(, $es ; $($deco2)? )+ )
+    }};
+
+    ($al:ident, $config:ident, $e:expr ; $deco:ident $(,$es:expr ; $($deco2:ident)?)+) => {{
+        $e.pretty::<_, ()>(&$al, &mut $config).$deco()
+        +
+        _pdebug! ($al, $config $(, $es ; $($deco2)?)+ )
+    }};
+}
+
+#[test]
+fn test_pdebug() {
+    use pretty::BoxAllocator;
+    use std::str;
+    let al = BoxAllocator;
+    let mut config = Config::default();
+    let mut mem = Vec::new();
+    _pdebug!(al, config, 1, 2 ; red )
+        .1
+        .render(120, &mut mem)
+        .unwrap();
+    let res = str::from_utf8(&mem).unwrap();
+    println!("{}", res);
+}
+
+#[macro_export]
+macro_rules! pdebug {
+    ($($($deco2:ident)? $es:expr),+) => {{
+        use crate::util::Config;
+        use pretty::BoxAllocator;
+        let al = BoxAllocator;
+        let mut config = Config::default();
+        log::debug!("{}", f, _pdebug($($($deco2:ident)? $es:expr),+).pretty_display_with_width(DEFAULT_WIDTH))
+    }};
 }
 
 impl Pretty for Ident {
