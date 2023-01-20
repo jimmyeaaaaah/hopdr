@@ -97,50 +97,45 @@ fn bold() -> ColorSpec {
 }
 
 macro_rules! _pdebug {
-    ($al:ident, $config:ident, $e:expr) => {
+    ($al:ident, $config:ident, $e:expr $(; $deco:ident)*) => {
         {
             $e.pretty(&$al, &mut $config)
+            $(
+                .annotate($deco())
+            )*
         }
     };
 
-    ($al:ident, $config:ident, $e:expr ; $deco:ident) => {
-        {
-            $e.pretty(&$al, &mut $config).annotate($deco())
-        }
-    };
+    // ($al:ident, $config:ident, $e:expr ; $deco:ident) => {
+    //     {
+    //         $e.pretty(&$al, &mut $config).annotate($deco())
+    //     }
+    // };
 
-    ($al:ident, $config:ident, $e:expr $(, $es:expr $(; $deco2:ident)?)+) => {{
+    // ($al:ident, $config:ident, $e:expr $(, $es:expr $(; $deco2:ident)*)+) => {{
+    //     $e.pretty(&$al, &mut $config)
+    //     +
+    //     _pdebug! ($al, $config $(, $es $(; $deco2)* )+ )
+    // }};
+
+    ($al:ident, $config:ident, $e:expr  $(; $deco:ident)* $(,$es:expr $(; $deco2:ident)*)+) => {{
         $e.pretty(&$al, &mut $config)
+        $(
+            .annotate($deco())
+        )*
         +
-        _pdebug! ($al, $config $(, $es $(; $deco2)? )+ )
+        _pdebug! ($al, $config $(, $es $(; $deco2)*)+ )
     }};
-
-    ($al:ident, $config:ident, $e:expr ; $deco:ident $(,$es:expr $(; $deco2:ident)?)+) => {{
-        $e.pretty(&$al, &mut $config).annotate($deco())
-        +
-        _pdebug! ($al, $config $(, $es $(; $deco2)?)+ )
-    }};
-}
-
-#[test]
-fn test_pdebug() {
-    use pretty::BoxAllocator;
-    let al = BoxAllocator;
-    let mut config = Config::default();
-    _pdebug!(al, config, 1, 2 ; red )
-        .1
-        .render_colored(120, StandardStream::stdout(ColorChoice::Auto))
-        .unwrap();
 }
 
 #[macro_export]
 macro_rules! pdebug {
-    ($($es:expr $(; $deco:ident)? $(,)?)+) => {{
+    ($($es:expr $(; $deco:ident)* $(,)?)+) => {{
         use $crate::util::printer::Config;
         use pretty::BoxAllocator;
         let al = BoxAllocator;
         let mut config = Config::default();
-        _pdebug!(al, config $(, $es $(; $deco)?)+, "\n" )
+        _pdebug!(al, config $(, $es $(; $deco)*)+, "\n" )
             .1
             .render_colored(120, StandardStream::stdout(ColorChoice::Auto))
             .unwrap();
@@ -149,11 +144,11 @@ macro_rules! pdebug {
 }
 
 #[test]
-fn testpdebug() {
-    pdebug!(1, 2 ; red, 3);
+fn test_pdebug() {
+    pdebug!(1, 2 ; red ; bold, 3);
     pdebug!(1, 2 ; red);
-    //pdebug!(2 ; red );
-    //pdebug!(1);
+    pdebug!(2 ; red );
+    pdebug!(1);
 }
 
 impl Pretty for Ident {
