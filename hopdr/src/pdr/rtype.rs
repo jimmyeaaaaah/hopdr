@@ -628,7 +628,7 @@ impl<C> Tau<C> {
     pub fn order(&self) -> usize {
         match self.kind() {
             TauKind::Proposition(_) => 0,
-            TauKind::IArrow(_, t) => t.order(),
+            TauKind::IArrow(_, t) => std::cmp::max(1, t.order()),
             TauKind::Arrow(ts, y) => {
                 debug_assert!(ts.len() != 0);
                 let o1 = ts[0].order();
