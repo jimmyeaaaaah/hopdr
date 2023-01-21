@@ -7,7 +7,7 @@ use std::{fmt, rc::Rc};
 
 pub mod printer;
 
-pub use printer::{set_colored, Pretty};
+pub use printer::{set_colored, set_default_width, Pretty};
 
 //pub trait Kind {
 //    type Ty;

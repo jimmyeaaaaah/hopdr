@@ -81,6 +81,11 @@ fn main() {
     if !atty::is(atty::Stream::Stdout) || !atty::is(atty::Stream::Stderr) {
         colored::control::set_override(false);
         hopdr::util::set_colored(false);
+    } else {
+        match terminal_size::terminal_size() {
+            Some((width, _)) => hopdr::util::set_default_width(width.0 as usize),
+            None => (),
+        }
     }
 
     // parsing command line args

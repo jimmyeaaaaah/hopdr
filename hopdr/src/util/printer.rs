@@ -5,8 +5,17 @@ use crate::pdr::rtype;
 use pretty::termcolor::{Color, ColorSpec};
 use pretty::{BoxAllocator, DocAllocator, DocBuilder};
 
-const DEFAULT_WIDTH: usize = 120;
+static mut DEFAULT_WIDTH: usize = 120;
 static mut COLORED: bool = true;
+
+pub fn set_default_width(width: usize) {
+    println!("setting width: {width}");
+    unsafe { DEFAULT_WIDTH = width - 5 }
+}
+
+pub fn get_default_width() -> usize {
+    unsafe { DEFAULT_WIDTH }
+}
 
 pub fn set_colored(colored: bool) {
     unsafe { COLORED = colored }
@@ -52,7 +61,7 @@ pub trait Pretty {
     where
         Self: Sized,
     {
-        self.pretty_display_with_width(DEFAULT_WIDTH)
+        self.pretty_display_with_width(get_default_width())
     }
 
     fn pretty_display_with_width<'a>(&'a self, width: usize) -> PrettyDisplay<'a, Self>
@@ -103,6 +112,14 @@ pub fn blue(c: &mut ColorSpec) -> &mut ColorSpec {
     c.set_fg(Some(Color::Blue))
 }
 
+pub fn white(c: &mut ColorSpec) -> &mut ColorSpec {
+    c.set_fg(Some(Color::White))
+}
+
+pub fn title(c: &mut ColorSpec) -> &mut ColorSpec {
+    c.set_fg(Some(Color::White)).set_bold(true)
+}
+
 pub fn bold(c: &mut ColorSpec) -> &mut ColorSpec {
     c.set_bold(true)
 }
@@ -149,9 +166,9 @@ macro_rules! plog {
         if lvl <= log::STATIC_MAX_LEVEL && lvl <= log::max_level() {
             let choice = if $crate::util::printer::colored() { ColorChoice::Auto } else { ColorChoice::Never };
 
-            $crate::_pdebug!(al, config $(, $es $(; $deco)*)+, "\n" )
+            $crate::_pdebug!(al, config $(, $es $(; $deco)*)+, "\n" ).group()
                 .1
-                .render_colored(120, StandardStream::stdout(choice))
+                .render_colored($crate::util::printer::get_default_width(), StandardStream::stdout(choice))
                 .unwrap()
         }
     }};
@@ -294,6 +311,7 @@ where
         + al.space()
         + paren(al, config, prec, right))
     .hang(2)
+    .group()
 }
 
 fn pretty_abs<'b, D, A, T, V>(
@@ -453,7 +471,7 @@ impl<C: Pretty + Precedence, T> Pretty for hes::GoalBase<C, T> {
             App(x, y) => {
                 let x = paren(al, config, self.precedence(), x);
                 let y = paren(al, config, PrecedenceKind::Atom, y);
-                (x + al.line() + y.hang(2)).group()
+                (x + al.line() + y).hang(2).group()
             }
             Conj(x, y) => pretty_bin_op_soft(al, config, self.precedence(), "∧", x, y),
             Disj(x, y) => pretty_bin_op_soft(al, config, self.precedence(), "∨", x, y),

@@ -8,8 +8,8 @@ use crate::formula::{
     chc, fofml, Constraint, Fv, Ident, Logic, Negation, Op, Rename, Subst, Top, Variable,
 };
 use crate::solver;
-use crate::title;
 use crate::util::Pretty;
+use crate::{pdebug, title};
 
 use rpds::{HashTrieMap, Stack};
 
@@ -139,6 +139,39 @@ impl fmt::Display for Reduction {
             writeln!(f, "- {} ", arg.arg)?;
         }
         write!(f, "\n ==> {}", self.result)
+    }
+}
+
+impl Pretty for Reduction {
+    fn pretty<'b, D, A>(
+        &'b self,
+        al: &'b D,
+        config: &mut crate::util::printer::Config,
+    ) -> pretty::DocBuilder<'b, D, A>
+    where
+        D: pretty::DocAllocator<'b, A>,
+        D::Doc: Clone,
+        A: Clone,
+    {
+        al.text("[Reduction ")
+            .append(al.intersperse(self.args.iter().map(|x| x.level.to_string()), ", "))
+            .append(al.text(format!(
+                "] fvints: {:?} constraint: {}",
+                self.fvints, self.constraint
+            )))
+            .append(al.hardline())
+            .append(self.predicate.pretty(al, config))
+            .append(
+                self.args
+                    .iter()
+                    .fold(al.nil(), |cur, arg| {
+                        cur.append("- ")
+                            .append(arg.arg.pretty(al, config).append(al.hardline()))
+                    })
+                    .nest(4),
+            )
+            .append("==> ")
+            .append(self.result.pretty(al, config))
     }
 }
 
@@ -491,7 +524,7 @@ fn generate_reduction_sequence(goal: &G, optimizer: &mut dyn Optimizer) -> (Vec<
         reduced = g.clone();
         //debug!("-> {}", reduced);
         //debug!("-> {}", r);
-        debug!("->  {}", reduced);
+        pdebug!("->  ", reduced);
 
         seq.push(r);
     }
@@ -552,17 +585,17 @@ impl Context {
         fn append_clauses(clauses: &mut Vec<chc::CHC<chc::Atom, Constraint>>, constraint: &Atom) {
             match constraint.to_chcs_or_pcsps() {
                 either::Left(chcs) => {
-                    debug!("constraints");
+                    pdebug!("constraints" ; title);
                     for c in chcs {
-                        debug!("  - {}", c);
+                        pdebug!("  - {}", c);
                         clauses.push(c);
                     }
                 }
                 either::Right(pcsps) => {
-                    debug!("constriant: {}", constraint);
-                    debug!("failed to translate the constraint to chcs");
+                    pdebug!("constriant: ", constraint);
+                    pdebug!("failed to translate the constraint to chcs");
                     for c in pcsps {
-                        debug!("{}", c)
+                        pdebug!(c)
                     }
                     panic!("fatal")
                 }
@@ -590,12 +623,15 @@ impl Context {
         ///// aux functions end
 
         title!("Reduction");
-        debug!("{}", reduction);
+        pdebug!(reduction);
         let ret_tys = derivation.get_expr_ty(&reduction.result.aux.id);
         if ret_tys.iter().len() == 0 {
-            debug!(
-                "search for id={},expr={} ",
-                reduction.result.aux.id, reduction.result
+            pdebug!(
+                "search for id=",
+                reduction.result.aux.id,
+                ",expr=",
+                reduction.result,
+                " ",
             );
             title!("no ret_tys");
             panic!("fatal");
@@ -646,8 +682,8 @@ impl Context {
                 ty: ret_ty,
                 context_ty,
             } = ret_ty.clone();
-            debug!("ret_ty: {}", ret_ty);
-            debug!("context_ty: {}", context_ty);
+            pdebug!("ret_ty: ", ret_ty);
+            pdebug!("context_ty: ", context_ty);
 
             // if there is a shared_ty, we have to use it
             let (tmp_ret_ty, is_shared_ty) = match &reduction.predicate.aux.tys {
@@ -722,9 +758,9 @@ impl Context {
             // 3. generate constraint from subtyping t <: arg_ty -> ret_ty, and append them to constraints
             // constrain by `old <= new_tmpty <= top`
 
-            debug!("inferred type: {}", tmp_ty);
-            debug!("body type: {}", body_ty);
-            debug!("app_expr_type: {}", app_expr_ty);
+            pdebug!("inferred type: ", tmp_ty);
+            pdebug!("body type: ", body_ty);
+            pdebug!("app_expr_type: ", app_expr_ty);
 
             let constraint =
                 Atom::mk_implies_opt(tmp_ty.rty_no_exists(), body_ty.rty_no_exists()).unwrap();
@@ -732,8 +768,8 @@ impl Context {
             let constraint2 =
                 Atom::mk_implies_opt(context_ty.rty_no_exists(), app_expr_ty.rty_no_exists())
                     .unwrap();
-            debug!("constraint1: {}", constraint);
-            debug!("constraint2: {}", constraint2);
+            pdebug!("constraint1: ", constraint);
+            pdebug!("constraint2: ", constraint2);
             let constraint = Atom::mk_conj(constraint, constraint2);
             append_clauses(clauses, &constraint);
 
@@ -745,9 +781,11 @@ impl Context {
                 derivation.arg.insert(*level, app_expr_ty.clone())
             }
 
-            debug!(
-                "app_expr({}): {}",
-                reduction.app_expr.aux.id, reduction.app_expr
+            pdebug!(
+                "app_expr(",
+                reduction.app_expr.aux.id,
+                "): ",
+                reduction.app_expr
             );
 
             // finally, add types to all the temporal app result
@@ -915,7 +953,7 @@ fn handle_abs(
             }
         };
         save_derivation(&mut pt, arg_expr, &t);
-        debug!("handle_abs: |- {} : {} ", arg_expr, pt);
+        pdebug!("handle_abs: |- ", arg_expr, " : ", pt ; bold ; white, " ",);
         pt
     }
     // [feature shared_ty]
@@ -1115,7 +1153,7 @@ fn handle_app(
     coarse_expr_for_type_sharing(config, &mut pt, &app_expr);
     save_derivation(&mut pt, app_expr, &cty);
 
-    debug!("handle_app: |- {} : {} ", app_expr, pt);
+    pdebug!("handle_abs: |- ", app_expr, " : ", pt ; bold ; white, " ",);
     pt
 }
 
@@ -1265,7 +1303,7 @@ fn type_check_inner(
         save_derivation(&mut pt, c, &context_ty);
     }
 
-    crate::pdebug!("type_check_go(", c.aux.id, ") |- ", c, " : ", pt ; bold);
+    pdebug!("type_check_go(", c.aux.id, ") |- ", c, " : ", pt ; bold);
     pt
 }
 
