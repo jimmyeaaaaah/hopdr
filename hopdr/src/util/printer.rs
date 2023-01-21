@@ -141,15 +141,16 @@ macro_rules! _pdebug {
     ($al:ident, $config:ident, $e:expr  $(; $deco:ident)* $(,$es:expr $(; $deco2:ident)*)+) => {{
         ({
             use $crate::util::Pretty;
+            use pretty::DocAllocator;
             #[allow(unused_mut)]
             let mut cs = pretty::termcolor::ColorSpec::new();
             $(
                 $crate::util::printer::$deco(&mut cs);
             )*
-            $e.pretty(&$al, &mut $config).annotate(cs)
+            $e.pretty(&$al, &mut $config).annotate(cs) + $al.softline()
         })
         +
-        $crate::_pdebug! ($al, $config $(, $es $(; $deco2)*)+ )
+        $crate::_pdebug! ($al, $config $(, $es $(; $deco2)*)+ ).nest(2)
     }};
 }
 
@@ -205,6 +206,8 @@ fn test_pdebug() {
     pdebug!(1, 2 ; red ; bold, 3);
     pwarn!(2 ; red );
     pinfo!(2 ; red );
+
+    pinfo!(2 ; red, "\n" );
 }
 
 impl Pretty for Ident {
@@ -545,7 +548,7 @@ impl Pretty for fofml::Atom {
             Predicate(p, ops) => pretty_predicate(al, config, p, ops),
             Conj(x, y) => pretty_bin_op(al, config, self.precedence(), "∧", x, y),
             Disj(x, y) => pretty_bin_op(al, config, self.precedence(), "∨", x, y),
-            Quantifier(q, x, c) => pretty_abs(al, config, q.to_str(), x, c),
+            Quantifier(q, x, c) => pretty_abs(al, config, q.to_str(), x, c).group(),
             Not(child) => {
                 let c = paren(al, config, self.precedence(), child);
 
@@ -651,7 +654,7 @@ impl Pretty for pcsp::Atom {
             Predicate(p, ops) => pretty_predicate(al, config, p, ops),
             Conj(x, y) => pretty_bin_op(al, config, self.precedence(), "∧", x, y),
             Disj(x, y) => pretty_bin_op(al, config, self.precedence(), "∨", x, y),
-            Quantifier(q, x, c) => pretty_abs(al, config, q.to_str(), x, c),
+            Quantifier(q, x, c) => pretty_abs(al, config, q.to_str(), x, c).group(),
         }
     }
 }

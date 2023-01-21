@@ -953,7 +953,7 @@ fn handle_abs(
             }
         };
         save_derivation(&mut pt, arg_expr, &t);
-        pdebug!("handle_abs: |- ", arg_expr, " : ", pt ; bold ; white, " ",);
+        pdebug!("handle_abs: |- ", arg_expr, " :",  pt ; bold ; white, " ",);
         pt
     }
     // [feature shared_ty]
