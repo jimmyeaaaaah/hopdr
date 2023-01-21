@@ -9,6 +9,7 @@ use crate::formula::{
 };
 use crate::solver;
 use crate::title;
+use crate::util::Pretty;
 
 use rpds::{HashTrieMap, Stack};
 
@@ -1264,7 +1265,7 @@ fn type_check_inner(
         save_derivation(&mut pt, c, &context_ty);
     }
 
-    debug!("type_check_go({}) |- {} : {}", c.aux.id, c, pt);
+    crate::pdebug!("type_check_go(", c.aux.id, ") |- ", c, " : ", pt);
     pt
 }
 
@@ -1680,6 +1681,21 @@ impl<C: Refinement> fmt::Display for CandidateDerivation<C> {
     }
 }
 
+impl<C: Refinement> Pretty for CandidateDerivation<C> {
+    fn pretty<'b, D, A>(
+        &'b self,
+        al: &'b D,
+        config: &mut crate::util::printer::Config,
+    ) -> pretty::DocBuilder<'b, D, A>
+    where
+        D: pretty::DocAllocator<'b, A>,
+        D::Doc: Clone,
+        A: Clone,
+    {
+        self.ty.pretty(al, config)
+    }
+}
+
 /// Since type environment can contain multiple candidate types,
 /// we make sure that which one is suitable by considering them parallely.
 #[derive(Debug)]
@@ -1695,6 +1711,23 @@ impl<C: Refinement> fmt::Display for PossibleDerivation<C> {
             }
         }
         Ok(())
+    }
+}
+
+impl<C: Refinement> Pretty for PossibleDerivation<C> {
+    fn pretty<'b, D, A>(
+        &'b self,
+        al: &'b D,
+        config: &mut crate::util::printer::Config,
+    ) -> pretty::DocBuilder<'b, D, A>
+    where
+        D: pretty::DocAllocator<'b, A>,
+        D::Doc: Clone,
+        A: Clone,
+    {
+        let docs = self.types.iter().map(|t| t.pretty(al, config));
+        al.intersperse(docs, al.text("/\\").append(al.line()))
+            .group()
     }
 }
 
