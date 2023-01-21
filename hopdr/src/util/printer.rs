@@ -6,6 +6,15 @@ use pretty::termcolor::{Color, ColorSpec};
 use pretty::{BoxAllocator, DocAllocator, DocBuilder};
 
 const DEFAULT_WIDTH: usize = 120;
+static mut COLORED: bool = true;
+
+pub fn set_colored(colored: bool) {
+    unsafe { COLORED = colored }
+}
+
+pub fn colored() -> bool {
+    unsafe { COLORED }
+}
 
 #[derive(Default)]
 pub struct Config {}
@@ -106,7 +115,7 @@ macro_rules! _pdebug {
             #[allow(unused_mut)]
             let mut cs = pretty::termcolor::ColorSpec::new();
             $(
-                $deco(&mut cs);
+                $crate::util::printer::$deco(&mut cs);
             )*
             $e.pretty(&$al, &mut $config).annotate(cs)
         }
@@ -118,7 +127,7 @@ macro_rules! _pdebug {
             #[allow(unused_mut)]
             let mut cs = pretty::termcolor::ColorSpec::new();
             $(
-                $deco(&mut cs);
+                $crate::util::printer::$deco(&mut cs);
             )*
             $e.pretty(&$al, &mut $config).annotate(cs)
         })
@@ -138,9 +147,11 @@ macro_rules! plog {
         let mut config = Config::default();
 
         if lvl <= log::STATIC_MAX_LEVEL && lvl <= log::max_level() {
+            let choice = if $crate::util::printer::colored() { ColorChoice::Auto } else { ColorChoice::Never };
+
             $crate::_pdebug!(al, config $(, $es $(; $deco)*)+, "\n" )
                 .1
-                .render_colored(120, StandardStream::stdout(ColorChoice::Auto))
+                .render_colored(120, StandardStream::stdout(choice))
                 .unwrap()
         }
     }};
@@ -277,9 +288,12 @@ where
     A: Clone,
     T: Precedence + Pretty,
 {
-    paren(al, config, prec, left)
+    (paren(al, config, prec, left)
         + al.line()
-        + (al.text(op_str) + al.space() + paren(al, config, prec, right)).hang(2)
+        + al.text(op_str)
+        + al.space()
+        + paren(al, config, prec, right))
+    .hang(2)
 }
 
 fn pretty_abs<'b, D, A, T, V>(

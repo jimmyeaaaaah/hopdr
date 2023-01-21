@@ -1265,7 +1265,7 @@ fn type_check_inner(
         save_derivation(&mut pt, c, &context_ty);
     }
 
-    crate::pdebug!("type_check_go(", c.aux.id, ") |- ", c, " : ", pt);
+    crate::pdebug!("type_check_go(", c.aux.id, ") |- ", c, " : ", pt ; bold);
     pt
 }
 
@@ -1726,7 +1726,8 @@ impl<C: Refinement> Pretty for PossibleDerivation<C> {
         A: Clone,
     {
         let docs = self.types.iter().map(|t| t.pretty(al, config));
-        al.intersperse(docs, al.text("/\\").append(al.line()))
+        al.intersperse(docs, al.line().append(al.text("/\\ ")))
+            .hang(2)
             .group()
     }
 }

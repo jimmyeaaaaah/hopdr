@@ -80,6 +80,7 @@ fn main() {
     // when the output is redirected to somewhere not a terminal, turn off `colored'
     if !atty::is(atty::Stream::Stdout) || !atty::is(atty::Stream::Stderr) {
         colored::control::set_override(false);
+        hopdr::util::set_colored(false);
     }
 
     // parsing command line args
