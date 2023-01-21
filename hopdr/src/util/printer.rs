@@ -305,13 +305,9 @@ where
     A: Clone,
     T: Precedence + Pretty,
 {
-    (paren(al, config, prec, left)
+    paren(al, config, prec, left)
         + al.line()
-        + al.text(op_str)
-        + al.space()
-        + paren(al, config, prec, right))
-    .hang(2)
-    .group()
+        + (al.text(op_str) + al.line() + paren(al, config, prec, right)).hang(2)
 }
 
 fn pretty_abs<'b, D, A, T, V>(
@@ -550,9 +546,16 @@ impl Pretty for fofml::Atom {
             Conj(x, y) => pretty_bin_op(al, config, self.precedence(), "∧", x, y),
             Disj(x, y) => pretty_bin_op(al, config, self.precedence(), "∨", x, y),
             Quantifier(q, x, c) => pretty_abs(al, config, q.to_str(), x, c),
-            Not(c) => {
-                let c = paren(al, config, self.precedence(), c);
-                al.text("¬").append(al.line()).append(c)
+            Not(child) => {
+                let c = paren(al, config, self.precedence(), child);
+
+                al.text("¬")
+                    .append(if child.precedence() == PrecedenceKind::Atom {
+                        al.nil()
+                    } else {
+                        al.space()
+                    })
+                    .append(c)
             }
         }
     }
@@ -608,7 +611,9 @@ impl<Atom: Pretty, C: Pretty + Top> Pretty for chc::CHC<Atom, C> {
         D::Doc: Clone,
         A: Clone,
     {
-        self.body.pretty(al, config) + al.line() + "->" + al.line() + self.head.pretty(al, config)
+        (self.body.pretty(al, config) + al.line() + "->" + al.line() + self.head.pretty(al, config))
+            .hang(2)
+            .group()
     }
 }
 
@@ -625,6 +630,7 @@ impl Pretty for chc::Model {
                 + "=>"
                 + al.line()
                 + assign.pretty(al, config))
+            .hang(2)
             .group()
         });
         al.intersperse(docs, al.hardline())
@@ -657,7 +663,9 @@ impl<Atom: Pretty> Pretty for pcsp::PCSP<Atom> {
         D::Doc: Clone,
         A: Clone,
     {
-        self.body.pretty(al, config) + al.line() + "->" + al.line() + self.head.pretty(al, config)
+        (self.body.pretty(al, config) + al.line() + "->" + al.line() + self.head.pretty(al, config))
+            .hang(2)
+            .group()
     }
 }
 
@@ -682,9 +690,11 @@ impl<C: Pretty> Pretty for rtype::Tau<C> {
                         tdoc.parens()
                     }
                 });
-                al.intersperse(docs, "/\\")
-                    + (al.nil() + al.line() + (al.text("-> ") + t.pretty(al, config)).hang(2))
-                        .group()
+                (al.intersperse(docs, "/\\")
+                    + al.nil()
+                    + al.line()
+                    + (al.text("-> ") + t.pretty(al, config)).hang(2))
+                .group()
             }
         }
     }
@@ -702,6 +712,7 @@ impl<T: Pretty> Pretty for rtype::PolymorphicType<T> {
                 cur + "∀" + var.pretty(al, config) + "." + al.line()
             })
             .append(self.ty.pretty(al, config))
+            .group()
     }
 }
 
