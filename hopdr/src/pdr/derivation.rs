@@ -587,7 +587,7 @@ impl Context {
                 either::Left(chcs) => {
                     pdebug!("constraints" ; title);
                     for c in chcs {
-                        pdebug!("  - {}", c);
+                        pdebug!("  -", c);
                         clauses.push(c);
                     }
                 }

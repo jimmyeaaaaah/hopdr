@@ -603,7 +603,7 @@ impl<Atom: Pretty, C: Pretty + Top> Pretty for chc::CHCBody<Atom, C> {
         }
         .into_iter()
         .chain(self.predicates.iter().map(|p| p.pretty(al, config)));
-        al.intersperse(docs, "∧")
+        al.intersperse(docs, al.line() + "∧" + al.line())
     }
 }
 
