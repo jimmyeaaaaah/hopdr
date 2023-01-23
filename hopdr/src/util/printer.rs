@@ -57,14 +57,14 @@ pub trait Pretty {
         D::Doc: Clone,
         A: Clone;
 
-    fn pretty_display<'a>(&'a self) -> PrettyDisplay<'a, Self>
+    fn pretty_display(&self) -> PrettyDisplay<Self>
     where
         Self: Sized,
     {
         self.pretty_display_with_width(get_default_width())
     }
 
-    fn pretty_display_with_width<'a>(&'a self, width: usize) -> PrettyDisplay<'a, Self>
+    fn pretty_display_with_width(&self, width: usize) -> PrettyDisplay<Self>
     where
         Self: Sized,
     {
@@ -352,7 +352,7 @@ impl Pretty for Op {
                         al.text("-")
                             .append(paren(al, config, PrecedenceKind::Atom, o2))
                     }
-                    _ => pretty_bin_op(al, config, k.precedence(), &k.to_str(), o1, o2),
+                    _ => pretty_bin_op(al, config, k.precedence(), k.to_str(), o1, o2),
                 }
             }
             Var(i) => al.text(format!("{}", i)),
@@ -421,7 +421,7 @@ impl Pretty for Constraint {
                         al,
                         config,
                         self.precedence(),
-                        &p.to_str(),
+                        p.to_str(),
                         &ops[0],
                         &ops[1],
                     );
@@ -470,7 +470,7 @@ impl<C: Pretty + Precedence, T> Pretty for hes::GoalBase<C, T> {
             App(x, y) => {
                 let x = paren(al, config, self.precedence(), x);
                 let y = paren(al, config, PrecedenceKind::Atom, y);
-                (x + al.line() + y).hang(2).group()
+                (x + al.line() + y).hang(0).group()
             }
             Conj(x, y) => pretty_bin_op_soft(al, config, self.precedence(), "∧", x, y),
             Disj(x, y) => pretty_bin_op_soft(al, config, self.precedence(), "∨", x, y),

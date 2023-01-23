@@ -160,18 +160,18 @@ impl Pretty for Reduction {
                 self.fvints, self.constraint
             )))
             .append(al.hardline())
-            .append(self.predicate.pretty(al, config))
             .append(
-                self.args
-                    .iter()
-                    .fold(al.nil(), |cur, arg| {
+                self.predicate
+                    .pretty(al, config)
+                    .append(al.hardline())
+                    .append(self.args.iter().fold(al.nil(), |cur, arg| {
                         cur.append("- ")
                             .append(arg.arg.pretty(al, config).append(al.hardline()))
-                    })
-                    .nest(4),
+                    }))
+                    .append("==> ")
+                    .append(self.result.pretty(al, config))
+                    .hang(2),
             )
-            .append("==> ")
-            .append(self.result.pretty(al, config))
     }
 }
 
@@ -1473,26 +1473,33 @@ impl Rename for SavedTy {
 #[derive(Clone, Debug)]
 struct DerivationMap<ID: Eq + std::hash::Hash + Copy, T>(HashTrieMap<ID, Stack<T>>);
 
-impl<ID: Eq + std::hash::Hash + Copy + fmt::Display, T: Clone + fmt::Display> fmt::Display
+impl<ID: Eq + std::hash::Hash + Copy + Pretty, T: Clone + Pretty> Pretty for DerivationMap<ID, T> {
+    fn pretty<'b, D, A>(
+        &'b self,
+        al: &'b D,
+        config: &mut crate::util::printer::Config,
+    ) -> pretty::DocBuilder<'b, D, A>
+    where
+        D: pretty::DocAllocator<'b, A>,
+        D::Doc: Clone,
+        A: Clone,
+    {
+        self.0.iter().fold(al.nil(), |cur, (k, stack)| {
+            let k = cur.append(k.pretty(al, config)).append(": ");
+            let docs = stack.iter().map(|t| t.pretty(al, config));
+            k + al.intersperse(docs, ", ") + al.hardline()
+        })
+    }
+}
+
+impl<ID: Eq + std::hash::Hash + Copy + Pretty, T: Clone + Pretty> fmt::Display
     for DerivationMap<ID, T>
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        for (k, stack) in self.0.iter() {
-            write!(f, "{}: ", k)?;
-            let mut first = true;
-            for t in stack.iter() {
-                if first {
-                    first = false;
-                    write!(f, "{}", t)?;
-                } else {
-                    write!(f, ", {}", t)?;
-                }
-            }
-            writeln!(f, "")?;
-        }
-        Ok(())
+        write!(f, "{}", self.pretty_display())
     }
 }
+
 impl<ID: Eq + std::hash::Hash + Copy, T: Clone + Subst<Item = Op, Id = Ident>>
     DerivationMap<ID, T>
 {

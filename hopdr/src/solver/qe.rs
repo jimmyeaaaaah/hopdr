@@ -218,8 +218,8 @@ impl QESolver {
             x.iter()
                 .map(|x| x.car())
                 .filter(filter_value)
-                .map(|v| parse_constraint(&v))
-                .fold(Constraint::mk_true(), |x, y| Constraint::mk_conj(x, y))
+                .map(|v| parse_constraint(v))
+                .fold(Constraint::mk_true(), Constraint::mk_conj)
         } else {
             panic!("parse error: qe smt2 formula {} ({:?})", s, x)
         };
@@ -235,7 +235,7 @@ impl QESolver {
         debug!("result string: {result}");
         let r = self
             .parse(&result)
-            .expect(&format!("qe result parse failed: {result}"));
+            .unwrap_or_else(|_| panic!("qe result parse failed: {}", result));
         debug!("result: {r}");
         r
     }

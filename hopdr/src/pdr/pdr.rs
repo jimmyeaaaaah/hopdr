@@ -160,7 +160,7 @@ impl HoPDR {
     }
 
     fn get_current_cex_level(&self) -> usize {
-        assert!(self.envs.len() >= self.models.len() + 1);
+        assert!(self.envs.len() > self.models.len());
         self.envs.len() - self.models.len() - 1
     }
 

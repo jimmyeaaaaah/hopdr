@@ -208,7 +208,7 @@ fn test_topological_sort() {
     for o in order.iter() {
         print!("{} ", o);
     }
-    println!("");
+    println!();
     assert!(order.len() == 3);
     // R and P must appear before Q appears
     assert_eq!(order[2], qi);

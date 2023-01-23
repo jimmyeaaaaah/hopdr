@@ -41,8 +41,8 @@ impl CHCResult {
 
 type CHC = chc::CHC<chc::Atom, Constraint>;
 
-const PROLOGUE: &'static str = "(set-logic HORN)\n";
-const PROLOGUE_FOR_NO_SIMPLIFY: &'static str = "(set-option :no-inlining true)\n";
+const PROLOGUE: &str = "(set-logic HORN)\n";
+const PROLOGUE_FOR_NO_SIMPLIFY: &str = "(set-option :no-inlining true)\n";
 
 fn get_prologue(style: CHCStyle) -> String {
     match style {
