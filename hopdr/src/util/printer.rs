@@ -9,7 +9,6 @@ static mut DEFAULT_WIDTH: usize = 120;
 static mut COLORED: bool = true;
 
 pub fn set_default_width(width: usize) {
-    println!("setting width: {width}");
     unsafe { DEFAULT_WIDTH = width - 5 }
 }
 
