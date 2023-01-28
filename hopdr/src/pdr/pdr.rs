@@ -249,11 +249,11 @@ impl HoPDR {
         let cnf = cex_next.to_cnf();
         debug!("{}", gamma_i);
 
-        let mut env = gamma_i.clone();
+        let env = gamma_i.clone();
         debug!("check: {}", derivation::type_check_top(&cex_next, &env));
 
         for x in cnf {
-            let mut env = gamma_i.clone();
+            let env = gamma_i.clone();
             if !derivation::type_check_top(&x, &env) {
                 debug!("candidate: {}", x);
 
