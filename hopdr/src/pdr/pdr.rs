@@ -164,7 +164,7 @@ impl HoPDR {
         self.envs.len() - self.models.len() - 1
     }
 
-    fn get_current_target_approx<'a>(&'a self) -> &'a TyEnv {
+    fn get_current_target_approx(&self) -> &TyEnv {
         let level = self.get_current_cex_level();
         &self.envs[level]
     }
@@ -250,11 +250,11 @@ impl HoPDR {
         debug!("{}", gamma_i);
 
         let mut env = gamma_i.clone();
-        debug!("check: {}", derivation::type_check_top(&cex_next, &mut env));
+        debug!("check: {}", derivation::type_check_top(&cex_next, &env));
 
         for x in cnf {
             let mut env = gamma_i.clone();
-            if !derivation::type_check_top(&x, &mut env) {
+            if !derivation::type_check_top(&x, &env) {
                 debug!("candidate: {}", x);
 
                 if self.config.dump_tex_progress {

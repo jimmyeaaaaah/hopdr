@@ -142,7 +142,7 @@ impl<C: Refinement> Env<C> {
                         }
                         gs = new_gs;
                     }
-                    assert!(gs.len() > 0);
+                    assert!(!gs.is_empty());
                     Goal::mk_ho_disj(&gs, self.tmap.get(x).unwrap().clone())
                 }
                 None => Goal::mk_var(*x),
@@ -233,7 +233,7 @@ pub fn env_types<C: Refinement>(env: &Env<C>, tenv: &TypeEnvironment<Tau<C>>) ->
     crate::title!("env_types");
     for (x, g) in env.map.iter() {
         let ts = tenv.get(x).unwrap();
-        let c = types_check(g, ts.iter().map(|x| x.clone()));
+        let c = types_check(g, ts.iter().cloned());
         debug!("pred name: {}", x);
         debug!("{}", g);
         debug!("generates");

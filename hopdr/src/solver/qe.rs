@@ -218,7 +218,7 @@ impl QESolver {
             x.iter()
                 .map(|x| x.car())
                 .filter(filter_value)
-                .map(|v| parse_constraint(v))
+                .map(parse_constraint)
                 .fold(Constraint::mk_true(), Constraint::mk_conj)
         } else {
             panic!("parse error: qe smt2 formula {} ({:?})", s, x)

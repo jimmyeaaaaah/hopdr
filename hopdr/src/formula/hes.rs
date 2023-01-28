@@ -64,7 +64,7 @@ pub struct GoalBase<C, T> {
 }
 
 impl<C, T> GoalBase<C, T> {
-    pub fn kind<'a>(&'a self) -> &'a GoalKind<C, T> {
+    pub fn kind(&self) -> &GoalKind<C, T> {
         &*self.ptr
     }
 }
@@ -131,10 +131,7 @@ impl<C: Top, T: Default> Top for GoalBase<C, T> {
     }
 
     fn is_true(&self) -> bool {
-        match self.kind() {
-            GoalKind::Constr(c) if c.is_true() => true,
-            _ => false,
-        }
+        matches!(self.kind(), GoalKind::Constr(c) if c.is_true())
     }
 }
 impl<C: Bot, T: Default> Bot for GoalBase<C, T> {
@@ -143,10 +140,7 @@ impl<C: Bot, T: Default> Bot for GoalBase<C, T> {
     }
 
     fn is_false(&self) -> bool {
-        match self.kind() {
-            GoalKind::Constr(c) if c.is_false() => true,
-            _ => false,
-        }
+        matches!(self.kind(), GoalKind::Constr(c) if c.is_false())
     }
 }
 impl<C> From<C> for GoalBase<C, ()> {
@@ -275,16 +269,10 @@ impl<C, T> GoalBase<C, T> {
 }
 impl<C, T> GoalBase<C, T> {
     pub fn is_conj(&self) -> bool {
-        match self.kind() {
-            GoalKind::Conj(_, _) => true,
-            _ => false,
-        }
+        matches!(self.kind(), GoalKind::Conj(_, _))
     }
     pub fn is_disj(&self) -> bool {
-        match self.kind() {
-            GoalKind::Disj(_, _) => true,
-            _ => false,
-        }
+        matches!(self.kind(), GoalKind::Disj(_, _))
     }
 }
 impl<C: Bot + Top> Goal<C> {
@@ -566,12 +554,7 @@ impl<C: Refinement> Goal<C> {
                 let g = g.reduce_inner();
                 let arg = arg.reduce_inner();
                 match g.kind() {
-                    GoalKind::Abs(x, g) => {
-                        let g2 = g.subst(x, &arg);
-                        // debug
-                        // println!("app: [{}/{}]{} ---> {}", arg, x.id, g, g2);
-                        g2
-                    }
+                    GoalKind::Abs(x, g) => g.subst(x, &arg),
                     _ => GoalBase::mk_app(g, arg),
                 }
             }
@@ -673,7 +656,7 @@ impl<C: Refinement, T: Clone + Default> GoalBase<C, T> {
                 };
                 env.insert(x.id);
                 let (mut v, a) = a.prenex_normal_form_raw(env);
-                debug_assert!(v.iter().find(|y| { x.id == y.id }).is_none());
+                debug_assert!(!v.iter().any(|y| { x.id == y.id }));
                 env.remove(&x.id);
                 v.push(x);
                 (v, a)
@@ -730,7 +713,7 @@ impl<C, T> GoalBase<C, T> {
         }
     }
     // returns ident of Abs(ident, x). If self is not Abs(_), abs_var panics.
-    pub fn abs_var<'a>(&'a self) -> &'a Variable {
+    pub fn abs_var(&self) -> &Variable {
         match self.kind() {
             GoalKind::Abs(x, _) => x,
             _ => panic!("abs_var assumes that self.kind() is Abs(_, _)."),
@@ -905,11 +888,6 @@ impl<C> Problem<C> {
     }
 
     pub fn get_clause<'a>(&'a self, id: &Ident) -> Option<&'a Clause<C>> {
-        for c in self.clauses.iter() {
-            if c.head.id == *id {
-                return Some(c);
-            }
-        }
-        None
+        self.clauses.iter().find(|&c| c.head.id == *id)
     }
 }

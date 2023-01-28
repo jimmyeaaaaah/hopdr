@@ -86,7 +86,7 @@ impl fmt::Display for TyEnv {
     }
 }
 
-impl<'a> Default for TyEnv {
+impl Default for TyEnv {
     fn default() -> Self {
         Self::new()
     }

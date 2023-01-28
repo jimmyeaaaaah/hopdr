@@ -316,7 +316,7 @@ impl<'a> Environment<'a> {
     }
 }
 
-fn generate_global_environment(formulas: &Vec<Clause<TmpType>>) -> Environment {
+fn generate_global_environment(formulas: &[Clause<TmpType>]) -> Environment {
     let mut env = Environment::new();
     for formula in formulas.iter() {
         env.add(&formula.id.id, formula.id.ty.clone());
@@ -475,7 +475,10 @@ pub fn typing(
         fixpoint: parse::Fixpoint::Greatest,
     });
 
-    let formulas = formulas.into_iter().map(Clause::<TmpType>::from).collect();
+    let formulas = formulas
+        .into_iter()
+        .map(Clause::<TmpType>::from)
+        .collect::<Vec<_>>();
     let ty_subst = {
         let env = generate_global_environment(&formulas);
         let mut constraints = Constraints::new();

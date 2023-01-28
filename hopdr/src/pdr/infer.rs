@@ -34,7 +34,7 @@ impl fmt::Display for Type {
             TypeKind::IArrow(t) => write!(f, "integer -> {}", t),
             TypeKind::Arrow(v, y) => {
                 write!(f, "(")?;
-                if v.len() == 0 {
+                if v.is_empty() {
                     write!(f, "T")?;
                 } else {
                     write!(f, "{}", v[0])?;
@@ -61,7 +61,7 @@ impl Type {
     fn generate_template(&self, env: &mut HashSet<Ident>) -> TemplateType {
         match self.kind() {
             TypeKind::Proposition => {
-                let args: Vec<Op> = env.iter().map(|x| x.clone().into()).collect();
+                let args: Vec<Op> = env.iter().map(|x| (*x).into()).collect();
                 let p = fofml::Atom::mk_fresh_pred(args);
                 TemplateType::mk_prop_ty(p)
             }
@@ -137,7 +137,7 @@ fn infer_intersection(problem: &Problem, _cex: &Candidate) -> ITEnv {
         let t = c.head.ty.clone().into();
         env.add(c.head.id, t);
     }
-    return env;
+    env
 }
 
 // Type inference in `Conflict`

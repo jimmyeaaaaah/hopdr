@@ -115,13 +115,12 @@ impl Atom {
         match self.kind() {
             AtomKind::True | AtomKind::Constraint(_) => None,
             AtomKind::Predicate(i, _) => Some((Atom::mk_false(), *i)),
-            AtomKind::Conj(x, y) | AtomKind::Conj(y, x) if x.contains_predicate() => y
-                .negate()
-                .map(|c2| {
+            AtomKind::Conj(x, y) | AtomKind::Conj(y, x) if x.contains_predicate() => {
+                y.negate().and_then(|c2| {
                     x.extract_pred_and_constr()
                         .map(|(c, i)| (Atom::mk_disj(c, c2), i))
                 })
-                .flatten(),
+            }
             _ => None,
         }
     }
@@ -137,12 +136,10 @@ impl Atom {
             AtomKind::Predicate(_, _) => None,
             AtomKind::Conj(x, y) => x
                 .to_constraint()
-                .map(|x| y.to_constraint().map(|y| Constraint::mk_conj(x, y)))
-                .flatten(),
+                .and_then(|x| y.to_constraint().map(|y| Constraint::mk_conj(x, y))),
             AtomKind::Disj(x, y) => x
                 .to_constraint()
-                .map(|x| y.to_constraint().map(|y| Constraint::mk_disj(x, y)))
-                .flatten(),
+                .and_then(|x| y.to_constraint().map(|y| Constraint::mk_disj(x, y))),
             AtomKind::Quantifier(q, x, c) => c
                 .to_constraint()
                 .map(|c| Constraint::mk_quantifier(*q, Variable::mk(*x, Type::mk_type_int()), c)),
@@ -202,10 +199,11 @@ impl Atom {
     pub fn collect_predicates(&self, predicates: &mut HashMap<Ident, usize>) {
         match self.kind() {
             AtomKind::True | AtomKind::Constraint(_) => (),
-            AtomKind::Predicate(p, l) => match predicates.insert(*p, l.len()) {
-                Some(n) => debug_assert!(n == l.len()),
-                None => (),
-            },
+            AtomKind::Predicate(p, l) => {
+                if let Some(n) = predicates.insert(*p, l.len()) {
+                    debug_assert!(n == l.len())
+                }
+            }
             AtomKind::Conj(a1, a2) | AtomKind::Disj(a1, a2) => {
                 a1.collect_predicates(predicates);
                 a2.collect_predicates(predicates);
@@ -249,7 +247,7 @@ impl Bot for Atom {
 }
 
 impl Logic for Atom {
-    fn is_conj<'a>(&'a self) -> Option<(&'a Atom, &'a Atom)> {
+    fn is_conj(&self) -> Option<(&Atom, &Atom)> {
         match self.kind() {
             AtomKind::Conj(x, y) => Some((x, y)),
             _ => None,
@@ -267,7 +265,7 @@ impl Logic for Atom {
             Atom::new(Conj(x, y))
         }
     }
-    fn is_disj<'a>(&'a self) -> Option<(&'a Atom, &'a Atom)> {
+    fn is_disj(&self) -> Option<(&Atom, &Atom)> {
         match self.kind() {
             AtomKind::Disj(x, y) => Some((x, y)),
             _ => None,

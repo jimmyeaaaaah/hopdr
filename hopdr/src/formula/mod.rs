@@ -207,9 +207,7 @@ impl Op {
             match y.kind() {
                 // assumes constant appears in the left-hand side of mul
                 // this is true if you construct muls with mk_mul
-                OpExpr::Op(OpKind::Mul, y, z) if y.check_const(-1) => {
-                    Op::mk_sub(x.clone(), z.clone())
-                }
+                OpExpr::Op(OpKind::Mul, y, z) if y.check_const(-1) => Op::mk_sub(x, z.clone()),
                 OpExpr::Const(c) if *c < 0 => Op::mk_sub(x, Op::mk_const(-c)),
                 OpExpr::Op(_, _, _) | OpExpr::Const(_) | OpExpr::Var(_) | OpExpr::Ptr(_, _) => {
                     Op::mk_bin_op_raw(OpKind::Add, x, y)
@@ -227,9 +225,7 @@ impl Op {
             match y.kind() {
                 // assumes constant appears in the left-hand side of mul
                 // this is true if you construct muls with mk_mul
-                OpExpr::Op(OpKind::Mul, y, z) if y.check_const(-1) => {
-                    Op::mk_add(x.clone(), z.clone())
-                }
+                OpExpr::Op(OpKind::Mul, y, z) if y.check_const(-1) => Op::mk_add(x, z.clone()),
                 OpExpr::Const(c) if *c < 0 => Op::mk_add(x, Op::mk_const(-c)),
                 OpExpr::Op(_, _, _) | OpExpr::Const(_) | OpExpr::Var(_) | OpExpr::Ptr(_, _) => {
                     Op::mk_bin_op_raw(OpKind::Sub, x, y)
@@ -1186,7 +1182,7 @@ impl Ident {
         let id = global_counter();
         Ident { id }
     }
-    pub fn rename_idents(args: &Vec<Ident>, x: &Ident, y: &Ident) -> Vec<Ident> {
+    pub fn rename_idents(args: &[Ident], x: &Ident, y: &Ident) -> Vec<Ident> {
         args.iter()
             .map(|arg| if arg == x { *y } else { *arg })
             .collect()
