@@ -14,8 +14,8 @@ fn gen_id() -> ID {
 // using petgraph's Graph as the core graph library is not a good choice since
 // it seems not to support merging two graphs in an efficient way
 // (c.f. https://github.com/petgraph/petgraph/issues/276)
-// However, in hopdr's usecase, merging two nodes happens everywhere.
-// I guess it does not cause any bottleneck imeediately, since basically the slowest
+// In hopdr's usecase, merging two nodes happens everywhere.
+// I guess it does not cause any bottleneck immediately, since basically the slowest
 // part of hopdr is SMT solving.
 // However, we should be aware that this part will be a bottleneck.
 //
@@ -55,7 +55,8 @@ impl<T> Tree<T> {
                 tree.graph.add_node(node);
             }
             for (a, b, _) in child.graph.all_edges() {
-                tree.graph.add_edge(a, b, ()).unwrap()
+                let n = tree.graph.add_edge(a, b, ());
+                debug_assert!(n.is_none());
             }
             tree.graph.add_edge(tree.root, child.root, ());
             tree.items.extend(child.items)
@@ -80,22 +81,35 @@ impl<T> Tree<T> {
             Node { item, id }
         })
     }
-    fn search<F>(&self, check: F) -> &T
+    pub fn search<'a, F>(&'a self, check: F) -> Option<Node<'a, T>>
     where
         F: Fn(&T) -> bool,
     {
-        unimplemented!()
+        self.graph.nodes().find_map(|id| {
+            let item = self.items.get(&id).unwrap();
+            if check(item) {
+                Some(Node { item, id })
+            } else {
+                None
+            }
+        })
     }
 }
 
 #[test]
 fn tree_basics() {
-    let t1 = Tree::singleton(2);
+    let t1 = Tree::singleton(3);
+    let t3 = Tree::tree_with_child(2, t1);
     let t2 = Tree::singleton(2);
-    let t = Tree::tree_with_two_children(1, t1, t2);
+    let t = Tree::tree_with_two_children(1, t3, t2);
     let root = t.root();
     assert_eq!(*root.item, 1);
     for child in t.get_children(root) {
-        assert_eq!(*child.item, 2)
+        assert_eq!(*child.item, 2);
+        for child in t.get_children(child) {
+            assert_eq!(*child.item, 3);
+        }
     }
+    assert!(t.search(|x| *x == 4).is_none());
+    assert!(t.search(|x| *x == 3).is_some());
 }
