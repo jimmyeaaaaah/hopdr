@@ -1,4 +1,5 @@
 mod derive_tree;
+mod tree;
 
 use super::optimizer;
 use super::optimizer::{variable_info, InferenceResult, Optimizer};
