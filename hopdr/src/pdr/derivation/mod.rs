@@ -4,6 +4,7 @@ mod tree;
 use super::optimizer;
 use super::optimizer::{variable_info, InferenceResult, Optimizer};
 use super::rtype::{PolymorphicType, Refinement, TBot, Tau, TauKind, TyEnv, TypeEnvironment};
+use derive_tree::Derivation;
 
 use crate::formula::hes::{Goal, GoalBase, GoalKind, Problem as ProblemBase};
 use crate::formula::{self, DerefPtr, FirstOrderLogic};
@@ -14,7 +15,7 @@ use crate::solver;
 use crate::util::Pretty;
 use crate::{pdebug, title};
 
-use rpds::{HashTrieMap, Stack};
+use rpds::Stack;
 
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -562,17 +563,11 @@ impl Context {
         let mut result_env = TypeEnvironment::new();
         for (pred_name, ids) in self.track_idents.iter() {
             for id in ids {
-                match derivation.expr.get_opt(id) {
-                    Some(tys) => {
-                        for ty in tys.iter() {
-                            debug!("{}({}): {}", pred_name, id, ty);
-                            let ty = ty.ty.clone();
-                            let ty = ty.assign(&model);
-                            let pty = PolymorphicType::poly(ty);
-                            result_env.add(*pred_name, pty);
-                        }
-                    }
-                    None => (),
+                for ty in derivation.get_types_by_id(id) {
+                    debug!("{}({}): {}", pred_name, id, ty);
+                    let ty = ty.assign(&model);
+                    let pty = PolymorphicType::poly(ty);
+                    result_env.add(*pred_name, pty);
                 }
             }
         }
@@ -1437,173 +1432,173 @@ fn reduce_until_normal_form(
     Context::new(normal_form, track_idents, reduction_sequence, config)
 }
 
-#[derive(Clone, Debug)]
-struct SavedTy {
-    ty: Ty,
-    context_ty: Ty, // to be coarsed
-}
-
-impl fmt::Display for SavedTy {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.ty)
-    }
-}
-impl formula::Subst for SavedTy {
-    type Item = Op;
-    type Id = Ident;
-
-    fn subst(&self, x: &Self::Id, v: &Self::Item) -> Self {
-        let ty = self.ty.subst(x, v);
-        let context_ty = self.context_ty.subst(x, v);
-        SavedTy::mk(ty, context_ty)
-    }
-}
-
-impl SavedTy {
-    fn mk(ty: Ty, context_ty: Ty) -> SavedTy {
-        SavedTy { ty, context_ty }
-    }
-}
-
-impl Rename for SavedTy {
-    fn rename(&self, x: &Ident, y: &Ident) -> Self {
-        let ty = self.ty.rename(x, y);
-        let context_ty = self.context_ty.rename(x, y);
-        SavedTy::mk(ty, context_ty)
-    }
-}
-
-#[derive(Clone, Debug)]
-struct DerivationMap<ID: Eq + std::hash::Hash + Copy, T>(HashTrieMap<ID, Stack<T>>);
-
-impl<ID: Eq + std::hash::Hash + Copy + Pretty, T: Clone + Pretty> Pretty for DerivationMap<ID, T> {
-    fn pretty<'b, D, A>(
-        &'b self,
-        al: &'b D,
-        config: &mut crate::util::printer::Config,
-    ) -> pretty::DocBuilder<'b, D, A>
-    where
-        D: pretty::DocAllocator<'b, A>,
-        D::Doc: Clone,
-        A: Clone,
-    {
-        self.0.iter().fold(al.nil(), |cur, (k, stack)| {
-            let k = cur.append(k.pretty(al, config)).append(": ");
-            let docs = stack.iter().map(|t| t.pretty(al, config));
-            k + al.intersperse(docs, ", ") + al.hardline()
-        })
-    }
-}
-
-impl<ID: Eq + std::hash::Hash + Copy + Pretty, T: Clone + Pretty> fmt::Display
-    for DerivationMap<ID, T>
-{
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.pretty_display())
-    }
-}
-
-impl<ID: Eq + std::hash::Hash + Copy, T: Clone + Subst<Item = Op, Id = Ident>>
-    DerivationMap<ID, T>
-{
-    fn new() -> DerivationMap<ID, T> {
-        DerivationMap(HashTrieMap::new())
-    }
-    fn merge_derivation_map(&mut self, y: DerivationMap<ID, T>) {
-        for (k, vs) in y.0.iter() {
-            let stack = match self.0.get(k) {
-                Some(s) => {
-                    let mut s = s.clone();
-                    for v in vs {
-                        s.push_mut(v.clone())
-                    }
-                    s
-                }
-                None => vs.clone(),
-            };
-            self.0.insert_mut(*k, stack);
-        }
-    }
-    fn insert(&mut self, level: ID, ty: T) {
-        let st = match self.0.get(&level) {
-            Some(st) => st.clone(),
-            None => Stack::new(),
-        };
-        self.0 = self.0.insert(level, st.push(ty.clone()))
-    }
-    fn push(&mut self, ident: ID, ty: T) {
-        let tys = match self.0.get(&ident) {
-            Some(tys) => tys.push(ty),
-            None => Stack::new().push(ty),
-        };
-        self.0 = self.0.insert(ident, tys);
-    }
-    fn get(&self, level: &ID) -> Stack<T> {
-        self.0.get(level).cloned().unwrap_or(Stack::new())
-    }
-    fn get_opt(&self, level: &ID) -> Option<Stack<T>> {
-        self.0.get(level).cloned()
-    }
-    fn update_with_model(&mut self, m: &solver::Model) {
-        let mut new_map = HashTrieMap::new();
-        for (k, tys) in self.0.iter() {
-            let mut new_tys = Stack::new();
-            for ty in tys.iter() {
-                let mut ty = ty.clone();
-                for (var, val) in m.model.iter() {
-                    ty = ty.subst(var, &Op::mk_const(*val));
-                }
-                new_tys.push_mut(ty);
-            }
-            new_map.insert_mut(*k, new_tys);
-        }
-        *self = DerivationMap(new_map)
-    }
-}
-#[derive(Clone, Debug)]
-struct Derivation {
-    arg: DerivationMap<usize, Ty>,
-    expr: DerivationMap<Ident, SavedTy>,
-}
-
-impl Derivation {
-    fn new() -> Derivation {
-        let arg = DerivationMap::new();
-        let expr = DerivationMap::new();
-        Derivation { arg, expr }
-    }
-    fn memorize(&mut self, level: usize, ty: Ty) {
-        self.arg.insert(level, ty);
-    }
-    // memorize expr : ty in a derivation
-    fn memorize_type_judgement(&mut self, expr: &G, ty: SavedTy, allow_duplicate: bool) {
-        if let Some(t) = self.get_expr_ty(&expr.aux.id).iter().next() {
-            if !allow_duplicate {
-                panic!("already registered!: {}: {}", expr, t);
-            } else {
-            }
-        }
-        for id in expr.aux.old_ids.iter() {
-            self.expr.push(*id, ty.clone())
-        }
-        self.expr.push(expr.aux.id, ty);
-    }
-    fn get_arg(&self, level: &usize) -> Stack<Ty> {
-        self.arg.get(level)
-    }
-    fn get_expr_ty(&self, level: &Ident) -> Stack<SavedTy> {
-        self.expr.get(level)
-    }
-    fn merge(&mut self, derivation: &Derivation) {
-        self.arg.merge_derivation_map(derivation.arg.clone());
-        self.expr.merge_derivation_map(derivation.expr.clone());
-    }
-    fn update_with_model(&mut self, m: &solver::Model) {
-        self.arg.update_with_model(&m);
-        self.expr.update_with_model(&m);
-    }
-}
-
+// #[derive(Clone, Debug)]
+// struct SavedTy {
+//     ty: Ty,
+//     context_ty: Ty, // to be coarsed
+// }
+//
+// impl fmt::Display for SavedTy {
+//     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+//         write!(f, "{}", self.ty)
+//     }
+// }
+// impl formula::Subst for SavedTy {
+//     type Item = Op;
+//     type Id = Ident;
+//
+//     fn subst(&self, x: &Self::Id, v: &Self::Item) -> Self {
+//         let ty = self.ty.subst(x, v);
+//         let context_ty = self.context_ty.subst(x, v);
+//         SavedTy::mk(ty, context_ty)
+//     }
+// }
+//
+// impl SavedTy {
+//     fn mk(ty: Ty, context_ty: Ty) -> SavedTy {
+//         SavedTy { ty, context_ty }
+//     }
+// }
+//
+// impl Rename for SavedTy {
+//     fn rename(&self, x: &Ident, y: &Ident) -> Self {
+//         let ty = self.ty.rename(x, y);
+//         let context_ty = self.context_ty.rename(x, y);
+//         SavedTy::mk(ty, context_ty)
+//     }
+// }
+//
+// #[derive(Clone, Debug)]
+// struct DerivationMap<ID: Eq + std::hash::Hash + Copy, T>(HashTrieMap<ID, Stack<T>>);
+//
+// impl<ID: Eq + std::hash::Hash + Copy + Pretty, T: Clone + Pretty> Pretty for DerivationMap<ID, T> {
+//     fn pretty<'b, D, A>(
+//         &'b self,
+//         al: &'b D,
+//         config: &mut crate::util::printer::Config,
+//     ) -> pretty::DocBuilder<'b, D, A>
+//     where
+//         D: pretty::DocAllocator<'b, A>,
+//         D::Doc: Clone,
+//         A: Clone,
+//     {
+//         self.0.iter().fold(al.nil(), |cur, (k, stack)| {
+//             let k = cur.append(k.pretty(al, config)).append(": ");
+//             let docs = stack.iter().map(|t| t.pretty(al, config));
+//             k + al.intersperse(docs, ", ") + al.hardline()
+//         })
+//     }
+// }
+//
+// impl<ID: Eq + std::hash::Hash + Copy + Pretty, T: Clone + Pretty> fmt::Display
+//     for DerivationMap<ID, T>
+// {
+//     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+//         write!(f, "{}", self.pretty_display())
+//     }
+// }
+//
+// impl<ID: Eq + std::hash::Hash + Copy, T: Clone + Subst<Item = Op, Id = Ident>>
+//     DerivationMap<ID, T>
+// {
+//     fn new() -> DerivationMap<ID, T> {
+//         DerivationMap(HashTrieMap::new())
+//     }
+//     fn merge_derivation_map(&mut self, y: DerivationMap<ID, T>) {
+//         for (k, vs) in y.0.iter() {
+//             let stack = match self.0.get(k) {
+//                 Some(s) => {
+//                     let mut s = s.clone();
+//                     for v in vs {
+//                         s.push_mut(v.clone())
+//                     }
+//                     s
+//                 }
+//                 None => vs.clone(),
+//             };
+//             self.0.insert_mut(*k, stack);
+//         }
+//     }
+//     fn insert(&mut self, level: ID, ty: T) {
+//         let st = match self.0.get(&level) {
+//             Some(st) => st.clone(),
+//             None => Stack::new(),
+//         };
+//         self.0 = self.0.insert(level, st.push(ty.clone()))
+//     }
+//     fn push(&mut self, ident: ID, ty: T) {
+//         let tys = match self.0.get(&ident) {
+//             Some(tys) => tys.push(ty),
+//             None => Stack::new().push(ty),
+//         };
+//         self.0 = self.0.insert(ident, tys);
+//     }
+//     fn get(&self, level: &ID) -> Stack<T> {
+//         self.0.get(level).cloned().unwrap_or(Stack::new())
+//     }
+//     fn get_opt(&self, level: &ID) -> Option<Stack<T>> {
+//         self.0.get(level).cloned()
+//     }
+//     fn update_with_model(&mut self, m: &solver::Model) {
+//         let mut new_map = HashTrieMap::new();
+//         for (k, tys) in self.0.iter() {
+//             let mut new_tys = Stack::new();
+//             for ty in tys.iter() {
+//                 let mut ty = ty.clone();
+//                 for (var, val) in m.model.iter() {
+//                     ty = ty.subst(var, &Op::mk_const(*val));
+//                 }
+//                 new_tys.push_mut(ty);
+//             }
+//             new_map.insert_mut(*k, new_tys);
+//         }
+//         *self = DerivationMap(new_map)
+//     }
+// }
+// #[derive(Clone, Debug)]
+// struct Derivation {
+//     arg: DerivationMap<usize, Ty>,
+//     expr: DerivationMap<Ident, SavedTy>,
+// }
+//
+// impl Derivation {
+//     fn new() -> Derivation {
+//         let arg = DerivationMap::new();
+//         let expr = DerivationMap::new();
+//         Derivation { arg, expr }
+//     }
+//     fn memorize(&mut self, level: usize, ty: Ty) {
+//         self.arg.insert(level, ty);
+//     }
+//     // memorize expr : ty in a derivation
+//     fn memorize_type_judgement(&mut self, expr: &G, ty: SavedTy, allow_duplicate: bool) {
+//         if let Some(t) = self.get_expr_ty(&expr.aux.id).iter().next() {
+//             if !allow_duplicate {
+//                 panic!("already registered!: {}: {}", expr, t);
+//             } else {
+//             }
+//         }
+//         for id in expr.aux.old_ids.iter() {
+//             self.expr.push(*id, ty.clone())
+//         }
+//         self.expr.push(expr.aux.id, ty);
+//     }
+//     fn get_arg(&self, level: &usize) -> Stack<Ty> {
+//         self.arg.get(level)
+//     }
+//     fn get_expr_ty(&self, level: &Ident) -> Stack<SavedTy> {
+//         self.expr.get(level)
+//     }
+//     fn merge(&mut self, derivation: &Derivation) {
+//         self.arg.merge_derivation_map(derivation.arg.clone());
+//         self.expr.merge_derivation_map(derivation.expr.clone());
+//     }
+//     fn update_with_model(&mut self, m: &solver::Model) {
+//         self.arg.update_with_model(&m);
+//         self.expr.update_with_model(&m);
+//     }
+// }
+//
 #[derive(Clone, Debug)]
 struct CandidateDerivation<C> {
     ty: Ty,

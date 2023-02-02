@@ -23,6 +23,8 @@ fn gen_id() -> ID {
 // without depending on any other external crate since we don't use almost nothing
 // other than add_node and connect two nodes.
 // So, if I have a time to do so, I'll do so...
+
+#[derive(Clone)]
 pub struct Tree<T> {
     graph: GraphMap<ID, (), Directed>,
     items: HashMap<ID, T>,
@@ -94,6 +96,19 @@ impl<T> Tree<T> {
             }
         })
     }
+    pub fn filter<'a, P>(&'a self, predicate: P) -> impl Iterator<Item = Node<'a, T>>
+    where
+        P: 'a + Fn(&T) -> bool,
+    {
+        self.graph.nodes().filter_map(move |id| {
+            let item = self.items.get(&id).unwrap();
+            if predicate(item) {
+                Some(Node { item, id })
+            } else {
+                None
+            }
+        })
+    }
 }
 
 #[test]
@@ -112,4 +127,6 @@ fn tree_basics() {
     }
     assert!(t.search(|x| *x == 4).is_none());
     assert!(t.search(|x| *x == 3).is_some());
+
+    assert_eq!(t.filter(|x| *x == 2).count(), 2)
 }
