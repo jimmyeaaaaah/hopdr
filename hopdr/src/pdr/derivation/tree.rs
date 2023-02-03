@@ -46,22 +46,24 @@ impl<T> Tree<T> {
         items.insert(root, item);
         Tree { graph, items, root }
     }
+    pub fn append_children(&mut self, child: Tree<T>) {
+        for node in child.graph.nodes() {
+            self.graph.add_node(node);
+        }
+        for (a, b, _) in child.graph.all_edges() {
+            let n = self.graph.add_edge(a, b, ());
+            debug_assert!(n.is_none());
+        }
+        self.graph.add_edge(self.root, child.root, ());
+        self.items.extend(child.items)
+    }
     pub fn tree_from_children<I>(item: T, children: I) -> Tree<T>
     where
         I: Iterator<Item = Tree<T>>,
     {
         let mut tree = Self::singleton(item);
         for child in children {
-            // add nodes
-            for node in child.graph.nodes() {
-                tree.graph.add_node(node);
-            }
-            for (a, b, _) in child.graph.all_edges() {
-                let n = tree.graph.add_edge(a, b, ());
-                debug_assert!(n.is_none());
-            }
-            tree.graph.add_edge(tree.root, child.root, ());
-            tree.items.extend(child.items)
+            tree.append_children(child)
         }
         tree
     }
