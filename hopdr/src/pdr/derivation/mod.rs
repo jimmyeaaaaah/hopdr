@@ -1479,16 +1479,26 @@ impl<C: Refinement> PossibleDerivation<C> {
         PossibleDerivation::new(ts)
     }
     fn quantify(&mut self, expr: G, x: &Ident) {
-        for pt1 in self.types.iter_mut() {
-            pt1.quantify(*x);
-        }
+        self.types = self
+            .types
+            .into_iter()
+            .map(|d| Derivation::rule_quantifier(expr.clone(), d, x))
+            .collect();
     }
     fn iarrow(self, expr: G, x: &Ident) -> PossibleDerivation<C> {
-        let types = self.types.into_iter().map(|ct| ct.iarrow(x)).collect();
+        let types = self
+            .types
+            .into_iter()
+            .map(|ct| Derivation::rule_iarrow(expr.clone(), ct, x))
+            .collect();
         PossibleDerivation { types }
     }
     fn arrow(self, expr: G, ts: &Vec<Ty>) -> PossibleDerivation<C> {
-        let types = self.types.into_iter().map(|ct| ct.arrow(ts)).collect();
+        let types = self
+            .types
+            .into_iter()
+            .map(|ct| Derivation::rule_arrow(expr.clone(), ct, ts))
+            .collect();
         PossibleDerivation { types }
     }
 }

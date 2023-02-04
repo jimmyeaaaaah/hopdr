@@ -62,8 +62,8 @@ impl DeriveNode {
 #[derive(Clone)]
 pub(super) struct Derivation<C> {
     tree: Tree<DeriveNode>,
-    coefficients: Stack<Ident>,
-    constraints: Stack<C>,
+    pub coefficients: Stack<Ident>,
+    pub constraints: Stack<C>,
 }
 
 fn concat_stacks<'a, T: 'a + Clone, I>(stacks: I) -> Stack<T>
