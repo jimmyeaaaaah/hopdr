@@ -1188,9 +1188,9 @@ impl Ident {
             .collect()
     }
     /// assumption: string expression is x_\d+
-    pub fn from_str(s: &str) -> Option<Ident> {
+    pub fn parse_ident(s: &str) -> Option<Ident> {
         debug!("Ident::from_str: {}", s);
-        match (&s[2..]).parse() {
+        match s[2..].parse() {
             Ok(id) => Some(Ident { id }),
             Err(_) => None,
         }
@@ -1206,7 +1206,7 @@ impl From<u64> for Ident {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct VariableS {
     pub id: Ident,
     pub ty: Type,
@@ -1272,6 +1272,12 @@ pub struct Env {
     map: std::collections::HashMap<Ident, i64>,
 }
 
+impl Default for Env {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Env {
     pub fn new() -> Self {
         Env {
@@ -1323,10 +1329,9 @@ impl Op {
     }
     /// simplifies the expression and reduce Ptr
     pub fn simplify(&self) -> Op {
-        match self.eval(&Env::new()) {
-            Some(x) => return Op::mk_const(x),
-            None => (),
-        };
+        if let Some(x) = self.eval(&Env::new()) {
+            return Op::mk_const(x);
+        }
         match self.kind() {
             OpExpr::Op(o, x, y) => {
                 let x = x.simplify();
@@ -1485,10 +1490,10 @@ impl Constraint {
                 let mut geq_track_new = Vec::new();
                 let mut inserted = false;
                 for (l, r) in geq_track.into_iter() {
-                    if &left == &r && &right == &l {
+                    if left == r && right == l {
                         inserted = true;
                         eqs.push((left.clone(), right.clone(), false))
-                    } else if &left == &l && &right == &r {
+                    } else if left == l && right == r {
                         // already inserted
                         inserted = true;
                     }
@@ -1652,15 +1657,13 @@ impl Constraint {
                         let right = &l[1];
                         let normalized =
                             Op::mk_sub(left.clone(), right.clone()).normalize(&vec![target_var]);
-                        match (
+
+                        if let (Some(1), Some(x)) = (
                             normalized[0].eval_with_empty_env(),
                             normalized[1].eval_with_empty_env(),
                         ) {
-                            (Some(1), Some(x)) => {
-                                // Note that we have to transpose v so that x <pred> v
-                                update(*pred, target_var, -x, &mut table, id);
-                            }
-                            _ => (),
+                            // Note that we have to transpose v so that x <pred> v
+                            update(*pred, target_var, -x, &mut table, id);
                         }
                     }
                     ConstraintExpr::Pred(_, _) | ConstraintExpr::True | ConstraintExpr::False => (),

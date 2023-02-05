@@ -18,7 +18,7 @@ pub fn encode_ident(x: &Ident) -> String {
 
 fn parse_variable(v: &str) -> Ident {
     assert!(v.starts_with('x'));
-    Ident::from_str(&v[1..]).unwrap_or_else(|| panic!("parse fail"))
+    Ident::parse_ident(&v[1..]).unwrap_or_else(|| panic!("parse fail"))
 }
 
 fn parse_declare_fun(v: lexpr::Value) -> (Ident, i64) {
