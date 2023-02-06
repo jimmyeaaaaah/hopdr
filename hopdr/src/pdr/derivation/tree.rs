@@ -38,6 +38,10 @@ pub struct Node<'a, T> {
 }
 
 impl<T> Tree<T> {
+    fn get_node_by_id<'a>(&'a self, id: ID) -> Node<'a, T> {
+        let item = self.items.get(&id).unwrap();
+        Node { item, id }
+    }
     pub fn singleton(item: T) -> Tree<T> {
         let root = gen_id();
         let mut graph = GraphMap::new();
@@ -74,25 +78,22 @@ impl<T> Tree<T> {
         Self::tree_from_children(item, std::iter::once(child1).chain(std::iter::once(child2)))
     }
     pub fn root(&self) -> Node<T> {
-        let id = self.root;
-        let item = self.items.get(&id).unwrap();
-        Node { id, item }
+        self.get_node_by_id(self.root)
     }
     pub fn get_children<'a>(&'a self, node: Node<'a, T>) -> impl Iterator<Item = Node<'a, T>> {
         let id = node.id;
-        self.graph.edges(id).map(move |(_, id, _)| {
-            let item = self.items.get(&id).unwrap();
-            Node { item, id }
-        })
+        self.graph
+            .edges(id)
+            .map(move |(_, id, _)| self.get_node_by_id(id))
     }
     pub fn search<'a, F>(&'a self, check: F) -> Option<Node<'a, T>>
     where
         F: Fn(&T) -> bool,
     {
         self.graph.nodes().find_map(|id| {
-            let item = self.items.get(&id).unwrap();
-            if check(item) {
-                Some(Node { item, id })
+            let node = self.get_node_by_id(id);
+            if check(node.item) {
+                Some(node)
             } else {
                 None
             }
@@ -103,23 +104,51 @@ impl<T> Tree<T> {
         P: 'a + Fn(&T) -> bool,
     {
         self.graph.nodes().filter_map(move |id| {
-            let item = self.items.get(&id).unwrap();
-            if predicate(item) {
-                Some(Node { item, id })
+            let node = self.get_node_by_id(id);
+            if predicate(node.item) {
+                Some(node)
             } else {
                 None
             }
         })
     }
-    pub fn map<'a, P>(&'a mut self, predicate: P)
+    pub fn iter_mut<'a, P>(&'a mut self, f: P)
     where
-        P: Fn(T) -> T,
+        P: Fn(&mut T),
     {
-        self.items = self
-            .items
-            .into_iter()
-            .map(|(key, item)| (key, predicate(item)))
+        self.items.iter_mut().for_each(|(key, item)| f(item))
+    }
+    fn parent(&self, node: ID) -> Option<ID> {
+        let v: Vec<_> = self
+            .graph
+            .neighbors_directed(node, petgraph::Incoming)
             .collect();
+        assert!(v.len() <= 1);
+        if v.len() == 0 {
+            None
+        } else {
+            Some(v[0])
+        }
+    }
+    pub fn traverse_parent_until<'a, P>(
+        &'a self,
+        base: Node<'a, T>,
+        predicate: P,
+    ) -> Option<Node<'a, T>>
+    where
+        P: Fn(&T) -> bool,
+    {
+        let mut cur = base;
+        loop {
+            if predicate(cur.item) {
+                break Some(cur);
+            }
+            if let Some(parent_id) = self.parent(cur.id) {
+                cur = self.get_node_by_id(parent_id)
+            } else {
+                break None;
+            }
+        }
     }
 }
 
@@ -133,8 +162,14 @@ fn tree_basics() {
     assert_eq!(*root.item, 1);
     for child in t.get_children(root) {
         assert_eq!(*child.item, 2);
-        for child in t.get_children(child) {
-            assert_eq!(*child.item, 3);
+        for child2 in t.get_children(child) {
+            assert_eq!(*child2.item, 3);
+
+            // parent
+            let parent = t.parent(child2.id).unwrap();
+            assert_eq!(parent, child.id);
+
+            assert!(t.traverse_parent_until(child2, |v| *v == 1).is_some())
         }
     }
     assert!(t.search(|x| *x == 4).is_none());
