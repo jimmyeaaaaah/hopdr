@@ -111,6 +111,16 @@ impl<T> Tree<T> {
             }
         })
     }
+    pub fn map<'a, P>(&'a mut self, predicate: P)
+    where
+        P: Fn(T) -> T,
+    {
+        self.items = self
+            .items
+            .into_iter()
+            .map(|(key, item)| (key, predicate(item)))
+            .collect();
+    }
 }
 
 #[test]

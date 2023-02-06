@@ -79,7 +79,7 @@ where
     s
 }
 
-impl<C: Clone> Derivation<C> {
+impl<C: Clone + Subst<Item = Op, Id = Ident>> Derivation<C> {
     pub fn get_types_by_id<'a>(&'a self, id: &'a Ident) -> impl Iterator<Item = Ty> + 'a {
         self.tree
             .filter(move |n| n.expr.aux.id == *id)
@@ -174,5 +174,8 @@ impl<C: Clone> Derivation<C> {
     pub fn rule_iapp(expr: G, d: Self, o: &Op) -> Self {
         let root = DeriveNode::iapp(expr, d.tree.root().item, o);
         Self::rule_one_arg_inner(root, d)
+    }
+    pub fn update_with_model(&self) -> Self {
+        unimplemented!()
     }
 }
