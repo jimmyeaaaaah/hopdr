@@ -199,13 +199,15 @@ impl<C: Clone + Subst<Item = Op, Id = Ident>> Derivation<C> {
         Self::rule_one_arg_inner(root, d)
     }
     pub fn update_with_model(&mut self, m: &solver::Model) {
-        self.tree.map(|mut item| {
+        self.tree.iter_mut(|item| {
             let mut ty = item.ty.clone();
             for (var, val) in m.model.iter() {
                 ty = ty.subst(var, &Op::mk_const(*val));
             }
             item.ty = ty;
-            item
         });
+    }
+    pub fn get_context_ty(&self, node: &Node<Ty>) -> Ty {
+        unimplemented!()
     }
 }
