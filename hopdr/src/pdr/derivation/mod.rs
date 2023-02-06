@@ -1058,7 +1058,7 @@ fn handle_app(
                                 .get_expr_ty(&pred.aux.id)
                                 .iter()
                                 .cloned()
-                                .map(|t| Derivation::rule_base(pred.clone(), t))
+                                .map(|t| Derivation::rule_atom(pred.clone(), t))
                                 .next()
                                 .unwrap();
                             vec![ct]
@@ -1165,7 +1165,7 @@ fn type_check_inner(
     ) -> (PossibleDerivation<Atom>, bool) {
         // [pruning]: since we can always derive ψ: ⊥, we do not have to care about this part
         if !config.construct_derivation && context_ty.is_bot() {
-            let cd = Derivation::rule_base(c.clone(), context_ty.clone());
+            let cd = Derivation::rule_atom(c.clone(), context_ty.clone());
             return (PossibleDerivation::singleton(cd), false);
         }
         // for App, we delegate the procedure to `handle_app`
@@ -1175,7 +1175,7 @@ fn type_check_inner(
             formula::hes::GoalKind::Constr(constraint) => {
                 let constraint = constraint.clone().into();
                 let t = Ty::mk_prop_ty(constraint);
-                let cd = Derivation::rule_base(c.clone(), t);
+                let cd = Derivation::rule_atom(c.clone(), t);
                 PossibleDerivation::singleton(cd)
             }
             formula::hes::GoalKind::Var(x) => match tenv.get(x) {
@@ -1202,7 +1202,7 @@ fn type_check_inner(
                                 .get_expr_ty(&c.aux.id)
                                 .iter()
                                 .cloned()
-                                .map(|t| Derivation::rule_base(c.clone(), t))
+                                .map(|t| Derivation::rule_atom(c.clone(), t))
                                 .next()
                                 .unwrap();
                             vec![ty]

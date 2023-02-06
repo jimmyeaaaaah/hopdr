@@ -2,36 +2,56 @@ use super::tree::*;
 use super::{Atom, Ty, G};
 use crate::formula::*;
 use crate::pdr::rtype::TauKind;
+use crate::solver;
+
 use rpds::Stack;
 
 #[derive(Clone, Debug)]
 pub(super) struct DeriveNode {
     // Γ ⊢ ψ : τ
     // Γ is omitted
+    rule: Rule,
     expr: G,
     ty: Ty,
 }
 
+#[derive(Clone, Debug)]
+pub enum Rule {
+    Conjoin,
+    Disjoin,
+    Var,
+    Univ(Ident),
+    IAbs(Ident),
+    Abs(Variable),
+    IApp(Op),
+    App,
+    Subsumption,
+    Atom,
+}
+
 impl DeriveNode {
     fn conjoin(expr: G, left: &Self, right: &Self) -> Self {
+        let rule = Rule::Conjoin;
         let ty = match (left.ty.kind(), right.ty.kind()) {
             (TauKind::Proposition(c1), TauKind::Proposition(c2)) => {
                 Ty::mk_prop_ty(Atom::mk_conj(c1.clone(), c2.clone()))
             }
             (_, _) => panic!("fatal: self.ty={} and c.ty={}", left.ty, right.ty),
         };
-        DeriveNode { expr, ty }
+        DeriveNode { rule, expr, ty }
     }
     fn disjoin(expr: G, left: &Self, right: &Self) -> Self {
+        let rule = Rule::Disjoin;
         let ty = match (left.ty.kind(), right.ty.kind()) {
             (TauKind::Proposition(c1), TauKind::Proposition(c2)) => {
                 Ty::mk_prop_ty(Atom::mk_disj(c1.clone(), c2.clone()))
             }
             (_, _) => panic!("fatal: self.ty={} and c.ty={}", left.ty, right.ty),
         };
-        DeriveNode { expr, ty }
+        DeriveNode { rule, expr, ty }
     }
     fn quantify(expr: G, node: &Self, ident: &Ident) -> Self {
+        let rule = Rule::Univ(*ident);
         let ty = match node.ty.kind() {
             TauKind::Proposition(c1) => Ty::mk_prop_ty(Atom::mk_quantifier_int(
                 crate::formula::QuantifierKind::Universal,
@@ -40,22 +60,23 @@ impl DeriveNode {
             )),
             TauKind::IArrow(_, _) | TauKind::Arrow(_, _) => panic!("fatal"),
         };
-        DeriveNode { expr, ty }
+        DeriveNode { rule, expr, ty }
     }
     fn iarrow(expr: G, node: &Self, ident: &Ident) -> Self {
+        let rule = Rule::IAbs(*ident);
         let ty = Ty::mk_iarrow(*ident, node.ty.clone());
-        DeriveNode { expr, ty }
+        DeriveNode { rule, expr, ty }
     }
     fn arrow(expr: G, node: &Self, ident: &Ident) -> Self {
-        let ty = Ty::mk_iarrow(*ident, node.ty.clone());
-        DeriveNode { expr, ty }
+        unimplemented!()
     }
     fn iapp(expr: G, node: &Self, op: &Op) -> Self {
+        let rule = Rule::IApp(op.clone());
         let ty = match node.ty.kind() {
             TauKind::IArrow(x, t2) => node.ty.subst(x, op),
             _ => panic!("fatal"),
         };
-        DeriveNode { expr, ty }
+        DeriveNode { rule, expr, ty }
     }
 }
 
@@ -91,8 +112,9 @@ impl<C: Clone + Subst<Item = Op, Id = Ident>> Derivation<C> {
             .map(|n| n.item.ty.clone())
     }
 
-    pub fn rule_base(expr: G, ty: Ty) -> Self {
-        let node = DeriveNode { expr, ty };
+    pub fn rule_atom(expr: G, ty: Ty) -> Self {
+        let rule = Rule::Atom;
+        let node = DeriveNode { rule, expr, ty };
         Self {
             tree: Tree::singleton(node),
             constraints: Stack::new(),
@@ -101,7 +123,8 @@ impl<C: Clone + Subst<Item = Op, Id = Ident>> Derivation<C> {
     }
 
     pub fn rule_var(expr: G, ty: Ty, coefficients: Stack<Ident>) -> Self {
-        let node = DeriveNode { expr, ty };
+        let rule = Rule::Var;
+        let node = DeriveNode { rule, expr, ty };
         Self {
             tree: Tree::singleton(node),
             constraints: Stack::new(),
@@ -116,10 +139,10 @@ impl<C: Clone + Subst<Item = Op, Id = Ident>> Derivation<C> {
         }
     }
 
-    pub fn rule_one_arg(expr: G, ty: Ty, d: Self) -> Self {
-        let node = DeriveNode { expr, ty };
-        Self::rule_one_arg_inner(node, d)
-    }
+    // pub fn rule_one_arg(expr: G, ty: Ty, d: Self) -> Self {
+    //     let node = DeriveNode { expr, ty };
+    //     Self::rule_one_arg_inner(node, d)
+    // }
 
     fn rule_two_arg_inner(node: DeriveNode, d1: Self, d2: Self) -> Self {
         Self {
@@ -129,32 +152,32 @@ impl<C: Clone + Subst<Item = Op, Id = Ident>> Derivation<C> {
         }
     }
 
-    pub fn rule_two_arg(expr: G, ty: Ty, d1: Self, d2: Self) -> Self {
-        let node = DeriveNode { expr, ty };
-        Self::rule_two_arg_inner(node, d1, d2)
-    }
+    // pub fn rule_two_arg(expr: G, ty: Ty, d1: Self, d2: Self) -> Self {
+    //     let node = DeriveNode { expr, ty };
+    //     Self::rule_two_arg_inner(node, d1, d2)
+    // }
 
-    pub fn rule_multiples<I>(expr: G, ty: Ty, derivations: I) -> Self
-    where
-        I: Iterator<Item = Self>,
-    {
-        let node = DeriveNode { expr, ty };
-        let mut tree = Tree::singleton(node);
-        let (_, constraints, coefficients) = derivations.fold(
-            (&mut tree, Stack::new(), Stack::new()),
-            |(t, constrs, coefs), d| {
-                t.append_children(d.tree);
-                let constraints = concat_stacks([constrs, d.constraints].iter());
-                let coefficients = concat_stacks([coefs, d.coefficients].iter());
-                (t, constraints, coefficients)
-            },
-        );
-        Self {
-            tree,
-            constraints,
-            coefficients,
-        }
-    }
+    // pub fn rule_multiples<I>(expr: G, ty: Ty, derivations: I) -> Self
+    // where
+    //     I: Iterator<Item = Self>,
+    // {
+    //     let node = DeriveNode { expr, ty };
+    //     let mut tree = Tree::singleton(node);
+    //     let (_, constraints, coefficients) = derivations.fold(
+    //         (&mut tree, Stack::new(), Stack::new()),
+    //         |(t, constrs, coefs), d| {
+    //             t.append_children(d.tree);
+    //             let constraints = concat_stacks([constrs, d.constraints].iter());
+    //             let coefficients = concat_stacks([coefs, d.coefficients].iter());
+    //             (t, constraints, coefficients)
+    //         },
+    //     );
+    //     Self {
+    //         tree,
+    //         constraints,
+    //         coefficients,
+    //     }
+    // }
     pub fn rule_conjoin(expr: G, d1: Self, d2: Self) -> Self {
         let root = DeriveNode::conjoin(expr, d1.tree.root().item, d2.tree.root().item);
         Self::rule_two_arg_inner(root, d1, d2)
@@ -175,7 +198,14 @@ impl<C: Clone + Subst<Item = Op, Id = Ident>> Derivation<C> {
         let root = DeriveNode::iapp(expr, d.tree.root().item, o);
         Self::rule_one_arg_inner(root, d)
     }
-    pub fn update_with_model(&self) -> Self {
-        unimplemented!()
+    pub fn update_with_model(&mut self, m: &solver::Model) {
+        self.tree.map(|mut item| {
+            let mut ty = item.ty.clone();
+            for (var, val) in m.model.iter() {
+                ty = ty.subst(var, &Op::mk_const(*val));
+            }
+            item.ty = ty;
+            item
+        });
     }
 }
