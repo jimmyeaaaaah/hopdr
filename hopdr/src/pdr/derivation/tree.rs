@@ -1,65 +1,36 @@
-use petgraph::graphmap::GraphMap;
-use petgraph::Directed;
-use std::collections::HashMap;
+use rpds::{HashTrieSet, List, HashTrieMap};
+use std::{collections::HashMap, rc::Weak, cell::RefCell, rc::Rc};
+use std::ops::Deref;
+use crate::util::P;
 
-use crate::util::global_counter;
-
-#[derive(Copy, Clone, Eq, PartialEq, Debug, Hash, PartialOrd, Ord)]
-pub struct ID(u64);
-
-fn gen_id() -> ID {
-    ID(global_counter())
-}
-
-// using petgraph's Graph as the core graph library is not a good choice since
-// it seems not to support merging two graphs in an efficient way
-// (c.f. https://github.com/petgraph/petgraph/issues/276)
-// In hopdr's usecase, merging two nodes happens everywhere.
-// I guess it does not cause any bottleneck immediately, since basically the slowest
-// part of hopdr is SMT solving.
-// However, we should be aware that this part will be a bottleneck.
-//
-// I think it is not so much hard to implement myself this tree library
-// without depending on any other external crate since we don't use almost nothing
-// other than add_node and connect two nodes.
-// So, if I have a time to do so, I'll do so...
 
 #[derive(Clone)]
-pub struct Tree<T> {
-    graph: GraphMap<ID, (), Directed>,
-    items: HashMap<ID, T>,
-    root: ID,
+pub struct TreeNode<T: ?Sized> {
+    parent: Weak<TreeNode<T>>,
+    children: Vec<Tree<T>>,
+    pub item: T,
 }
 
-#[derive(Copy, Clone)]
-pub struct Node<'a, T> {
-    pub item: &'a T,
-    id: ID,
+#[derive(Clone)]
+pub struct Tree<T: ?Sized> {
+    ptr: Rc<TreeNode<T>>,
 }
-
-impl<T> Tree<T> {
-    fn get_node_by_id<'a>(&'a self, id: ID) -> Node<'a, T> {
-        let item = self.items.get(&id).unwrap();
-        Node { item, id }
+impl <T>Tree<T> {
+    fn new(item: TreeNode<T>) -> Tree<T> {
+        Tree { ptr: Rc::new(item)}
     }
+}
+
+
+impl<T: Clone> Tree<T> {
     pub fn singleton(item: T) -> Tree<T> {
-        let root = gen_id();
-        let mut graph = GraphMap::new();
-        graph.add_node(root);
-        let mut items = HashMap::new();
-        items.insert(root, item);
-        Tree { graph, items, root }
+        let parent = RefCell::new(Weak::new());
+        let children = RefCell::new(Vec::new());
+        Tree::new(TreeNode { children, parent, item})
     }
     pub fn append_children(&mut self, child: Tree<T>) {
-        for node in child.graph.nodes() {
-            self.graph.add_node(node);
-        }
-        for (a, b, _) in child.graph.all_edges() {
-            let n = self.graph.add_edge(a, b, ());
-            debug_assert!(n.is_none());
-        }
-        self.graph.add_edge(self.root, child.root, ());
-        self.items.extend(child.items)
+        *child.ptr.parent.borrow_mut() = Rc::downgrade(&self.ptr);
+        self.ptr.children.borrow_mut().push(child);
     }
     pub fn tree_from_children<I>(item: T, children: I) -> Tree<T>
     where
@@ -77,19 +48,11 @@ impl<T> Tree<T> {
     pub fn tree_with_two_children(item: T, child1: Tree<T>, child2: Tree<T>) -> Tree<T> {
         Self::tree_from_children(item, std::iter::once(child1).chain(std::iter::once(child2)))
     }
-    pub fn root(&self) -> Node<T> {
-        self.get_node_by_id(self.root)
-    }
-    pub fn get_children<'a>(&'a self, node: Node<'a, T>) -> impl Iterator<Item = Node<'a, T>> {
-        let id = node.id;
-        self.graph
-            .edges(id)
-            .map(move |(_, id, _)| self.get_node_by_id(id))
-    }
-    pub fn search<'a, F>(&'a self, check: F) -> Option<Node<'a, T>>
+    pub fn search<'a, F>(&'a self, check: F) -> Option<Tree<T>>
     where
         F: Fn(&T) -> bool,
     {
+        self.
         self.graph.nodes().find_map(|id| {
             let node = self.get_node_by_id(id);
             if check(node.item) {
@@ -150,6 +113,25 @@ impl<T> Tree<T> {
             }
         }
     }
+    /// given an iterator whose items are indices of each child to some nodes
+    /// if there is no node specified, this function returns None.
+    ///
+    /// For example, if you want to get c, you have to pass path [0, 0, 0].
+    /// For b2, [0, 1]
+    /// `-- a
+    ///     |-- b
+    ///     |   |-- c
+    ///     |   `-- c2
+    ///     `-- b2
+    // pub fn at<'a, I>(&self, path: I) -> Option<Node<'a, T>>
+    // where
+    //     I: Iterator<Item = usize>,
+    // {
+    //     let mut cur = self.root();
+    //     while let Some(child) = {
+
+    //     }
+    // }
 }
 
 #[test]
