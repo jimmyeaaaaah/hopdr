@@ -24,7 +24,6 @@ pub enum Rule {
     IAbs(Ident),
     Abs(Variable),
     IApp(Op),
-    App,
     Subsumption,
     Atom,
 }

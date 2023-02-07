@@ -1,5 +1,3 @@
-use petgraph::graphmap::GraphMap;
-use petgraph::Directed;
 use std::collections::HashMap;
 
 use crate::util::global_counter;
@@ -25,8 +23,52 @@ fn gen_id() -> ID {
 // So, if I have a time to do so, I'll do so...
 
 #[derive(Clone)]
+struct IDTree {
+    //nodes: Vec<ID>,
+    edges: HashMap<ID, Vec<ID>>,
+    parent: HashMap<ID, ID>,
+}
+
+impl IDTree {
+    fn new() -> Self {
+        IDTree {
+            edges: HashMap::new(),
+            parent: HashMap::new(),
+        }
+    }
+    fn add_node(&mut self, node: ID) {
+        self.edges.insert(node, Vec::new());
+    }
+    fn add_edge(&mut self, from: ID, to: ID) {
+        debug_assert!(self.edges.contains_key(&from) && self.edges.contains_key(&to));
+        self.edges.get_mut(&from).unwrap().push(to);
+        let r = self.parent.insert(to, from);
+        debug_assert!(r.is_none())
+    }
+    fn nodes<'a>(&'a self) -> impl Iterator<Item = ID> + 'a {
+        self.edges.keys().copied()
+    }
+    fn all_edges<'a>(&'a self) -> impl Iterator<Item = (ID, ID)> + 'a {
+        self.edges
+            .iter()
+            .map(|(x, v)| v.iter().map(move |y| (*x, *y)))
+            .flatten()
+    }
+    fn get_parent(&self, node: ID) -> Option<ID> {
+        self.parent.get(&node).copied()
+    }
+    fn edges<'a>(&'a self, node: ID) -> impl Iterator<Item = (ID, ID)> + 'a {
+        self.edges
+            .get(&node)
+            .unwrap()
+            .iter()
+            .map(move |y| (node, *y))
+    }
+}
+
+#[derive(Clone)]
 pub struct Tree<T> {
-    graph: GraphMap<ID, (), Directed>,
+    graph: IDTree,
     items: HashMap<ID, T>,
     root: ID,
 }
@@ -44,7 +86,7 @@ impl<T> Tree<T> {
     }
     pub fn singleton(item: T) -> Tree<T> {
         let root = gen_id();
-        let mut graph = GraphMap::new();
+        let mut graph = IDTree::new();
         graph.add_node(root);
         let mut items = HashMap::new();
         items.insert(root, item);
@@ -54,11 +96,10 @@ impl<T> Tree<T> {
         for node in child.graph.nodes() {
             self.graph.add_node(node);
         }
-        for (a, b, _) in child.graph.all_edges() {
-            let n = self.graph.add_edge(a, b, ());
-            debug_assert!(n.is_none());
+        for (a, b) in child.graph.all_edges() {
+            let n = self.graph.add_edge(a, b);
         }
-        self.graph.add_edge(self.root, child.root, ());
+        self.graph.add_edge(self.root, child.root);
         self.items.extend(child.items)
     }
     pub fn tree_from_children<I>(item: T, children: I) -> Tree<T>
@@ -84,7 +125,7 @@ impl<T> Tree<T> {
         let id = node.id;
         self.graph
             .edges(id)
-            .map(move |(_, id, _)| self.get_node_by_id(id))
+            .map(move |(_, id)| self.get_node_by_id(id))
     }
     pub fn search<'a, F>(&'a self, check: F) -> Option<Node<'a, T>>
     where
@@ -119,16 +160,7 @@ impl<T> Tree<T> {
         self.items.iter_mut().for_each(|(key, item)| f(item))
     }
     fn parent(&self, node: ID) -> Option<ID> {
-        let v: Vec<_> = self
-            .graph
-            .neighbors_directed(node, petgraph::Incoming)
-            .collect();
-        assert!(v.len() <= 1);
-        if v.len() == 0 {
-            None
-        } else {
-            Some(v[0])
-        }
+        self.graph.get_parent(node)
     }
     pub fn traverse_parent_until<'a, P>(
         &'a self,
