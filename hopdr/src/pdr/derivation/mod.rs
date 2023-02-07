@@ -836,14 +836,10 @@ impl Context {
             debug!("");
         }
     }
-    fn infer_type(
-        &mut self,
-        mut derivation: Derivation<Atom>,
-        constraints: Stack<Atom>, // constraints generated during type checking due to type sharing
-    ) -> Option<TyEnv> {
+    fn infer_type(&mut self, mut derivation: Derivation<Atom>) -> Option<TyEnv> {
         let mut clauses = Vec::new();
         debug!("constraints generated during type checking");
-        for constraint in constraints.iter() {
+        for constraint in derivation.constraints.iter() {
             debug!("constraints: {constraint}");
             match constraint.to_chcs_or_pcsps() {
                 either::Left(chcs) => {
@@ -935,8 +931,7 @@ fn handle_abs(
                     if !b {
                         ienv.remove(&v.id);
                     }
-                    todo!();
-                    //pt.iarrow(&v.id)
+                    pt.iarrow(arg_expr.clone(), &v.id)
                 }
                 _ => panic!("program error"),
             },
@@ -948,20 +943,17 @@ fn handle_abs(
                         tenv.add(v.id, PolymorphicType::mono(t.clone()));
                     }
                     let pt = handle_abs_inner(config, &mut tenv, ienv, all_coefficients, g, t);
-                    todo!();
-                    //pt.arrow(ts)
+                    pt.arrow(arg_expr.clone(), ts)
                 }
                 _ => panic!("fatal"),
             },
             _ => {
-                let mut pt =
+                let pt =
                     type_check_inner(config, tenv, ienv, all_coefficients, arg_expr, t.clone());
-                pt.coarse_type(t);
                 // skip the continuation of this inner function
-                return pt;
+                return pt.coarse_type(t);
             }
         };
-        save_derivation(&mut pt, arg_expr, &t);
         pdebug!("handle_abs: |- ", arg_expr, " :",  pt ; bold ; white, " ",);
         pt
     }
@@ -972,8 +964,7 @@ fn handle_abs(
         }
         (TCFlag::Shared(_), Some(tys)) if tys.len() == 1 => {
             let mut pt = handle_abs_inner(config, tenv, ienv, all_coefficients, arg_expr, &tys[0]);
-            pt.coarse_type(t);
-            pt
+            pt.coarse_type(t)
         }
         (_, _) => panic!("program error"),
     }
@@ -997,26 +988,17 @@ enum TCFlag {
     Shared(InstantiationConfig),
 }
 
-fn coarse_expr_for_type_sharing(config: &TCConfig, pt: &mut PossibleDerivation<Atom>, expr: &G) {
+fn coarse_expr_for_type_sharing(
+    config: &TCConfig,
+    pt: PossibleDerivation<Atom>,
+    expr: &G,
+) -> PossibleDerivation<Atom> {
     // [feature shared_ty] template type sharing
     // if there is a shared type registered, coarse pt to obey the type.
     match (&config.tc_mode, &expr.aux.tys) {
         (TCFlag::Shared(_), Some(tys)) if tys.len() == 1 => pt.coarse_type(&tys[0]),
-        (TCFlag::Normal, _) | (_, None) => (),
+        (TCFlag::Normal, _) | (_, None) => pt,
         (_, _) => unimplemented!(),
-    }
-}
-
-fn save_derivation(pt: &mut PossibleDerivation<Atom>, expr: &G, context_ty: &Ty) {
-    for level in expr.aux.level_arg.iter() {
-        for ct in pt.types.iter_mut() {
-            todo!();
-            //ct.memorize(*level);
-        }
-    }
-    for ct in pt.types.iter_mut() {
-        todo!();
-        //ct.set_types(expr, context_ty.clone());
     }
 }
 
@@ -1108,7 +1090,7 @@ fn handle_app(
                     //     ty.constraints.clone(),
                     //     ty.derivation.clone(),
                     // );
-                    let result_ct = unimplemented!();
+                    let result_ct = todo!();
                     let mut tmp_cts = vec![result_ct];
                     // check if there exists a derivation for all types in the intersection type.
                     for t in arg_t {
@@ -1144,8 +1126,7 @@ fn handle_app(
     }
     let mut pt = handle_inner(config, tenv, ienv, all_coefficients, app_expr, cty.clone());
 
-    coarse_expr_for_type_sharing(config, &mut pt, &app_expr);
-    save_derivation(&mut pt, app_expr, &cty);
+    let mut pt = coarse_expr_for_type_sharing(config, pt, &app_expr);
 
     pdebug!("handle_abs: |- ", app_expr, " : ", pt ; bold ; white, " ",);
     pt
@@ -1278,13 +1259,7 @@ fn type_check_inner(
         };
         (result_pt, already_registered)
     }
-    let (mut pt, already_registered) =
-        go_inner(config, tenv, ienv, all_coefficients, c, context_ty.clone());
-
-    if !already_registered {
-        coarse_expr_for_type_sharing(config, &mut pt, &c);
-        save_derivation(&mut pt, c, &context_ty);
-    }
+    let (pt, _) = go_inner(config, tenv, ienv, all_coefficients, c, context_ty.clone());
 
     pdebug!("type_check_go(", c.aux.id, ") |- ", c, " : ", pt ; bold);
     pt
@@ -1337,7 +1312,7 @@ fn type_check_top_with_derivation(psi: &G, tenv: &mut Env) -> Option<Derivation<
         &psi,
         Ty::mk_prop_ty(Atom::mk_true()),
     );
-    pt.coarse_type(&Ty::mk_prop_ty(Atom::mk_true()));
+    let pt = pt.coarse_type(&Ty::mk_prop_ty(Atom::mk_true()));
 
     // check if there is an actually possible derivation
     pt.check_derivation()
@@ -1352,14 +1327,8 @@ fn type_check_top_with_derivation_and_constraints(
     previous_derivation: Derivation<Atom>,
     psi: &G,
     tenv: &mut Env,
-) -> (Derivation<Atom>, Stack<Atom>) {
+) -> Derivation<Atom> {
     title!("type_check_top_with_derivation_and_constraints");
-    // debug
-    //let ts = previous_derivation.expr.get(&psi.aux.id);
-    //let ts: Vec<_> = todo!();
-    //for t in ts.iter() {
-    //    debug!("saved top: {t}");
-    //}
     // using previous derivation,
     // constraints that are required for shared types can be generated.
     let mut ienv = HashSet::new();
@@ -1379,17 +1348,15 @@ fn type_check_top_with_derivation_and_constraints(
         &psi,
         Ty::mk_prop_ty(Atom::mk_true()),
     );
-    pt.coarse_type(&Ty::mk_prop_ty(Atom::mk_true()));
+    let mut pt = pt.coarse_type(&Ty::mk_prop_ty(Atom::mk_true()));
 
     // check if there is an actually possible derivation
     // since the derivation has the same shape as `previous_derivation`,
     // we do not have more than one derivation in pt.
     assert!(pt.types.len() == 1);
-    //let derivation = pt.types[0].derivation.clone();
-    let derivation = todo!();
+    let derivation = pt.types.remove(0);
 
-    let constraints = pt.types[0].constraints.clone();
-    (derivation, constraints)
+    derivation
 }
 
 /// Γ ⊢ ψ : •<T>
@@ -1436,7 +1403,7 @@ struct PossibleDerivation<C: Refinement> {
 //     }
 // }
 
-impl<C: Refinement> Pretty for PossibleDerivation<C> {
+impl Pretty for PossibleDerivation<Atom> {
     fn pretty<'b, D, A>(
         &'b self,
         al: &'b D,
@@ -1447,16 +1414,15 @@ impl<C: Refinement> Pretty for PossibleDerivation<C> {
         D::Doc: Clone,
         A: Clone,
     {
-        todo!()
-        //let docs = self.types.iter().map(|t| t.pretty(al, config));
-        //al.intersperse(docs, al.line().append(al.text("/\\ ")))
-        //    .hang(2)
-        //    .group()
+        let docs = self.types.iter().map(|t| t.root_ty().pretty(al, config));
+        al.intersperse(docs, al.line().append(al.text("/\\ ")))
+            .hang(2)
+            .group()
     }
 }
 
-impl<C: Refinement> PossibleDerivation<C> {
-    fn new(types: Vec<Derivation<C>>) -> Self {
+impl PossibleDerivation<Atom> {
+    fn new(types: Vec<Derivation<Atom>>) -> Self {
         PossibleDerivation { types }
     }
 
@@ -1464,7 +1430,7 @@ impl<C: Refinement> PossibleDerivation<C> {
         PossibleDerivation::new(Vec::new())
     }
 
-    fn singleton(cd: Derivation<C>) -> Self {
+    fn singleton(cd: Derivation<Atom>) -> Self {
         Self::new(vec![cd])
     }
 
@@ -1498,7 +1464,7 @@ impl<C: Refinement> PossibleDerivation<C> {
             .map(|d| Derivation::rule_quantifier(expr.clone(), d, x))
             .collect();
     }
-    fn iarrow(self, expr: G, x: &Ident) -> PossibleDerivation<C> {
+    fn iarrow(self, expr: G, x: &Ident) -> Self {
         let types = self
             .types
             .into_iter()
@@ -1506,7 +1472,7 @@ impl<C: Refinement> PossibleDerivation<C> {
             .collect();
         PossibleDerivation { types }
     }
-    fn arrow(self, expr: G, ts: &Vec<Ty>) -> PossibleDerivation<C> {
+    fn arrow(self, expr: G, ts: &Vec<Ty>) -> Self {
         let types = self
             .types
             .into_iter()
@@ -1516,16 +1482,18 @@ impl<C: Refinement> PossibleDerivation<C> {
     }
 }
 impl PossibleDerivation<Atom> {
-    fn coarse_type(&mut self, t: &Ty) {
-        for ct in self.types.iter_mut() {
-            //ct.coarse_type(t);
-            todo!();
-        }
+    fn coarse_type(mut self, t: &Ty) -> Self {
+        self.types = self
+            .types
+            .into_iter()
+            .map(|d| Derivation::rule_subsumption(d, t.clone()))
+            .collect();
+        self
     }
     /// check if there is a valid derivation by solving constraints generated
     /// on subsumptions, and returns one if exists.
-    fn check_derivation(&self) -> Option<Derivation<Atom>> {
-        for ct in self.types.iter() {
+    fn check_derivation(self) -> Option<Derivation<Atom>> {
+        for mut ct in self.types.into_iter() {
             let mut constraint = Constraint::mk_true();
             for c in ct.constraints.iter() {
                 constraint = Constraint::mk_conj(constraint, c.clone().into());
@@ -1552,11 +1520,9 @@ impl PossibleDerivation<Atom> {
                     debug!("constraint was sat: {}", constraint);
                     debug!("model is {}", m);
                     // replace all the integer coefficient
-                    //let mut derivation = ct.derivation.clone();
-                    let mut derivation: Derivation<_> = todo!();
-                    derivation.update_with_model(&m);
+                    ct.update_with_model(&m);
 
-                    return Some(derivation);
+                    return Some(ct);
                 }
                 Err(_) => (),
             }
@@ -1597,9 +1563,9 @@ pub fn search_for_type(
         debug!("{}", ctx.normal_form);
         //let candidate = ctx.normal_form.clone();
         let derivation = type_check_top_with_derivation(&ctx.normal_form, tenv)?;
-        let (derivation, constraints) =
+        let derivation =
             type_check_top_with_derivation_and_constraints(derivation, &ctx.normal_form, tenv);
-        match ctx.infer_type(derivation, constraints) {
+        match ctx.infer_type(derivation) {
             Some(x) => {
                 optimizer.report_inference_result(InferenceResult::new(true));
                 return Some(x);

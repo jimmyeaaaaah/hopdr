@@ -97,7 +97,7 @@ impl<T> Tree<T> {
             self.graph.add_node(node);
         }
         for (a, b) in child.graph.all_edges() {
-            let n = self.graph.add_edge(a, b);
+            self.graph.add_edge(a, b);
         }
         self.graph.add_edge(self.root, child.root);
         self.items.extend(child.items)
@@ -126,6 +126,9 @@ impl<T> Tree<T> {
         self.graph
             .edges(id)
             .map(move |(_, id)| self.get_node_by_id(id))
+    }
+    pub fn nth_child<'a>(&'a self, node: Node<'a, T>, n: usize) -> Option<Node<'a, T>> {
+        self.get_children(node).nth(n)
     }
     pub fn search<'a, F>(&'a self, check: F) -> Option<Node<'a, T>>
     where

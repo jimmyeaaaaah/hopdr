@@ -77,6 +77,11 @@ impl DeriveNode {
         };
         DeriveNode { rule, expr, ty }
     }
+    fn subsumption(node: &Self, ty: Ty) -> Self {
+        let rule = Rule::Subsumption;
+        let expr = node.expr.clone();
+        DeriveNode { rule, expr, ty }
+    }
 }
 
 #[derive(Clone)]
@@ -99,7 +104,7 @@ where
     s
 }
 
-impl<C: Clone + Subst<Item = Op, Id = Ident>> Derivation<C> {
+impl Derivation<Atom> {
     pub fn get_types_by_id<'a>(&'a self, id: &'a Ident) -> impl Iterator<Item = Ty> + 'a {
         self.tree
             .filter(move |n| n.expr.aux.id == *id)
@@ -197,6 +202,15 @@ impl<C: Clone + Subst<Item = Op, Id = Ident>> Derivation<C> {
         let root = DeriveNode::iapp(expr, d.tree.root().item, o);
         Self::rule_one_arg_inner(root, d)
     }
+    pub fn rule_subsumption(d: Self, ty: Ty) -> Self {
+        let child = d.tree.root();
+        let s = child.item.ty.clone();
+        let constraint = Ty::check_subtype(&Atom::mk_true(), &s, &ty);
+        let root = DeriveNode::subsumption(child.item, ty);
+        let mut d = Self::rule_one_arg_inner(root, d);
+        d.constraints.push_mut(constraint);
+        d
+    }
     pub fn update_with_model(&mut self, m: &solver::Model) {
         self.tree.iter_mut(|item| {
             let mut ty = item.ty.clone();
@@ -221,5 +235,8 @@ impl<C: Clone + Subst<Item = Op, Id = Ident>> Derivation<C> {
             })
             .expect("unstructured derivation");
         parent.item.ty.clone()
+    }
+    pub fn root_ty(&self) -> &Ty {
+        &self.tree.root().item.ty
     }
 }
