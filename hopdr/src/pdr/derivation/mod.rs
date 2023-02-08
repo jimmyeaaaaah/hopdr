@@ -1017,10 +1017,10 @@ fn handle_app(
         tenv: &mut Env,
         ienv: &mut HashSet<Ident>,
         all_coefficients: &mut HashSet<Ident>,
-        pred: &G,
+        pred_expr: &G,
         cty: Ty, // context ty
     ) -> PossibleDerivation<Atom> {
-        match pred.kind() {
+        match pred_expr.kind() {
             formula::hes::GoalKind::Var(x) => match tenv.get(x) {
                 Some(ts) => {
                     // [feature shared_ty] if shared type mode is enabled, instantiate the polymorphic types
@@ -1036,23 +1036,27 @@ fn handle_app(
                                         t.instantiate(ienv, &mut coefficients, all_coefficients);
                                     debug!("instantiate_type ienv: {:?}", ienv);
                                     debug!("instantiated: {t}");
-                                    Derivation::rule_var(pred.clone(), t, coefficients.clone())
+                                    Derivation::rule_var(pred_expr.clone(), t, coefficients.clone())
                                 })
                                 .collect();
                             types
                         }
                         // replay the previous instantiation here
                         TCFlag::Shared(d) => {
-                            let ct = todo!();
-                            //let ct = d
-                            //    .derivation
-                            //    .get_expr_ty(&pred.aux.id)
-                            //    .iter()
-                            //    .cloned()
-                            //    .map(|t| Derivation::rule_atom(pred.clone(), t))
-                            //    .next()
-                            //    .unwrap();
-                            vec![ct]
+                            let ct: Vec<_> =
+                                d.derivation.get_types_by_id(&pred_expr.aux.id).collect();
+                            // TODO: actually we have to consider the case where multiple types are assigned to one expr
+                            // This happens when intersection types are inferred; however, in the current setting,
+                            // if shared type is enabled, there is no intersection types.
+                            // So I just leave it as a future work.
+                            // To tackle this issue, there are multiple methods:
+                            //   1. track the current branches that we have passed so far every time intersection rules have been applied
+                            //   2. track the current node of the previous derivation in d, so that corresponding node of d can easily be
+                            //      retrieved
+                            //   3. ?
+                            assert!(ct.len() == 1);
+                            let d = Derivation::rule_atom(pred_expr.clone(), ct[0].clone());
+                            vec![d]
                         }
                     };
                     PossibleDerivation::new(types)
@@ -1079,40 +1083,44 @@ fn handle_app(
                 // Case: the argument is not integer
                 let mut result_cts = Vec::new();
                 // we calculate the argument's type. we have to enumerate all the possible type of pt1.
-                for ty in pred_pt.types {
-                    let (arg_t, result_t) = match /* ty.ty.kind()*/ todo!() {
+                for pred_derivation in pred_pt.types {
+                    let (arg_t, result_t) = match pred_derivation.root_ty().kind() {
                         TauKind::Arrow(arg, result) => (arg, result),
                         TauKind::Proposition(_) | TauKind::IArrow(_, _) => panic!("fatal"),
                     };
-                    // let result_ct = CandidateDerivation::new(
-                    //     result_t.clone(),
-                    //     ty.coefficients.clone(),
-                    //     ty.constraints.clone(),
-                    //     ty.derivation.clone(),
-                    // );
-                    let result_ct = todo!();
-                    let mut tmp_cts = vec![result_ct];
+                    let mut arg_derivations = vec![Stack::new()];
                     // check if there exists a derivation for all types in the intersection type.
-                    for t in arg_t {
+                    let arg_pts = arg_t.iter().map(|t| {
                         // check if arg_constraint |- argg: arg_t
                         let rty = cty.rty_no_exists();
                         let t_context = t.conjoin_constraint(&rty);
-                        let pt = handle_abs(config, tenv, ienv, all_coefficients, argg, &t_context);
-
-                        // permutation
+                        handle_abs(config, tenv, ienv, all_coefficients, argg, &t_context)
+                    });
+                    // Assume pred_pt = t1 /\ t2 -> t
+                    // then, we have to derive arg_t: t1 and arg_t: t2
+                    // for arg_t: t1, assume there are two derivations d1 and d2 (= arg_pts[0])
+                    // for arg_t: t2, also d3 and d4 (= arg_pts[1])
+                    // then possible derivations are [d1, d3], [d1, d4],  [d2, d3] and [d2, d4]
+                    for pt in arg_pts {
                         let mut new_tmp_cts = Vec::new();
-                        for ty2 in pt.types {
+                        // di = d1
+                        for di in pt.types {
                             // merge
-                            for tmp_ct in tmp_cts.iter() {
-                                unimplemented!()
-                                //new_tmp_cts.push(CandidateDerivation::merge(&tmp_ct, &ty2));
+                            for arg_derivations_so_far in arg_derivations.iter() {
+                                new_tmp_cts.push(arg_derivations_so_far.push(di.clone()));
                             }
                         }
-                        tmp_cts = new_tmp_cts;
+                        arg_derivations = new_tmp_cts
                     }
                     // Now that all the argument for `pred_pt` can be derived, we have candidatetype `result_t`
                     // with the derivations of `ct`s
-                    result_cts.append(&mut tmp_cts);
+                    for arg_derivation in arg_derivations {
+                        result_cts.push(Derivation::rule_app(
+                            pred_expr.clone(),
+                            pred_derivation.clone(),
+                            arg_derivation.iter().cloned(),
+                        ));
+                    }
                 }
                 PossibleDerivation::new(result_cts)
             }
@@ -1121,7 +1129,7 @@ fn handle_app(
             | formula::hes::GoalKind::Abs(_, _)
             | formula::hes::GoalKind::Conj(_, _)
             | formula::hes::GoalKind::Disj(_, _)
-            | formula::hes::GoalKind::Univ(_, _) => panic!("fatal: {}", pred),
+            | formula::hes::GoalKind::Univ(_, _) => panic!("fatal: {}", pred_expr),
         }
     }
     let mut pt = handle_inner(config, tenv, ienv, all_coefficients, app_expr, cty.clone());
@@ -1476,7 +1484,7 @@ impl PossibleDerivation<Atom> {
         let types = self
             .types
             .into_iter()
-            .map(|ct| /*Derivation::rule_arrow(expr.clone(), ct, ts)*/ todo!())
+            .map(|d| Derivation::rule_arrow(expr.clone(), d, ts.to_vec()))
             .collect();
         PossibleDerivation { types }
     }

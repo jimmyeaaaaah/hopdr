@@ -22,8 +22,9 @@ pub enum Rule {
     Var,
     Univ(Ident),
     IAbs(Ident),
-    Abs(Variable),
+    Abs,
     IApp(Op),
+    App,
     Subsumption,
     Atom,
 }
@@ -66,8 +67,10 @@ impl DeriveNode {
         let ty = Ty::mk_iarrow(*ident, node.ty.clone());
         DeriveNode { rule, expr, ty }
     }
-    fn arrow(expr: G, node: &Self, ident: &Ident) -> Self {
-        unimplemented!()
+    fn arrow(expr: G, node: &Self, ts: Vec<Ty>) -> Self {
+        let rule = Rule::Abs;
+        let ty = Ty::mk_arrow(ts, node.ty.clone());
+        DeriveNode { rule, expr, ty }
     }
     fn iapp(expr: G, node: &Self, op: &Op) -> Self {
         let rule = Rule::IApp(op.clone());
@@ -80,6 +83,16 @@ impl DeriveNode {
     fn subsumption(node: &Self, ty: Ty) -> Self {
         let rule = Rule::Subsumption;
         let expr = node.expr.clone();
+        DeriveNode { rule, expr, ty }
+    }
+    fn app(expr: G, pred_node: &Self) -> Self {
+        let rule = Rule::App;
+        let ty = match pred_node.ty.kind() {
+            TauKind::Arrow(_, rt) => rt.clone(),
+            TauKind::Proposition(_) | TauKind::IArrow(_, _) => {
+                panic!("app rule is used for a wrong derivation")
+            }
+        };
         DeriveNode { rule, expr, ty }
     }
 }
@@ -136,17 +149,12 @@ impl Derivation<Atom> {
         }
     }
 
-    pub fn rule_one_arg_inner(node: DeriveNode, d: Self) -> Self {
+    fn rule_one_arg_inner(node: DeriveNode, d: Self) -> Self {
         Self {
             tree: Tree::tree_with_child(node, d.tree),
             ..d
         }
     }
-
-    // pub fn rule_one_arg(expr: G, ty: Ty, d: Self) -> Self {
-    //     let node = DeriveNode { expr, ty };
-    //     Self::rule_one_arg_inner(node, d)
-    // }
 
     fn rule_two_arg_inner(node: DeriveNode, d1: Self, d2: Self) -> Self {
         Self {
@@ -156,32 +164,26 @@ impl Derivation<Atom> {
         }
     }
 
-    // pub fn rule_two_arg(expr: G, ty: Ty, d1: Self, d2: Self) -> Self {
-    //     let node = DeriveNode { expr, ty };
-    //     Self::rule_two_arg_inner(node, d1, d2)
-    // }
-
-    // pub fn rule_multiples<I>(expr: G, ty: Ty, derivations: I) -> Self
-    // where
-    //     I: Iterator<Item = Self>,
-    // {
-    //     let node = DeriveNode { expr, ty };
-    //     let mut tree = Tree::singleton(node);
-    //     let (_, constraints, coefficients) = derivations.fold(
-    //         (&mut tree, Stack::new(), Stack::new()),
-    //         |(t, constrs, coefs), d| {
-    //             t.append_children(d.tree);
-    //             let constraints = concat_stacks([constrs, d.constraints].iter());
-    //             let coefficients = concat_stacks([coefs, d.coefficients].iter());
-    //             (t, constraints, coefficients)
-    //         },
-    //     );
-    //     Self {
-    //         tree,
-    //         constraints,
-    //         coefficients,
-    //     }
-    // }
+    fn rule_multiples<I>(node: DeriveNode, derivations: I) -> Self
+    where
+        I: Iterator<Item = Self>,
+    {
+        let mut tree = Tree::singleton(node);
+        let (_, constraints, coefficients) = derivations.fold(
+            (&mut tree, Stack::new(), Stack::new()),
+            |(t, constrs, coefs), d| {
+                t.append_children(d.tree);
+                let constraints = concat_stacks([constrs, d.constraints].iter());
+                let coefficients = concat_stacks([coefs, d.coefficients].iter());
+                (t, constraints, coefficients)
+            },
+        );
+        Self {
+            tree,
+            constraints,
+            coefficients,
+        }
+    }
     pub fn rule_conjoin(expr: G, d1: Self, d2: Self) -> Self {
         let root = DeriveNode::conjoin(expr, d1.tree.root().item, d2.tree.root().item);
         Self::rule_two_arg_inner(root, d1, d2)
@@ -198,6 +200,10 @@ impl Derivation<Atom> {
         let root = DeriveNode::iarrow(expr, d.tree.root().item, x);
         Self::rule_one_arg_inner(root, d)
     }
+    pub fn rule_arrow(expr: G, d: Self, tys: Vec<Ty>) -> Self {
+        let root = DeriveNode::arrow(expr, d.tree.root().item, tys);
+        Self::rule_one_arg_inner(root, d)
+    }
     pub fn rule_iapp(expr: G, d: Self, o: &Op) -> Self {
         let root = DeriveNode::iapp(expr, d.tree.root().item, o);
         Self::rule_one_arg_inner(root, d)
@@ -210,6 +216,13 @@ impl Derivation<Atom> {
         let mut d = Self::rule_one_arg_inner(root, d);
         d.constraints.push_mut(constraint);
         d
+    }
+    pub fn rule_app<I>(expr: G, d1: Self, args: I) -> Self
+    where
+        I: Iterator<Item = Self>,
+    {
+        let root = DeriveNode::app(expr, &d1.tree.root().item);
+        Self::rule_multiples(root, std::iter::once(d1).chain(args))
     }
     pub fn update_with_model(&mut self, m: &solver::Model) {
         self.tree.iter_mut(|item| {
