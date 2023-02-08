@@ -76,7 +76,7 @@ pub struct Tree<T> {
 #[derive(Copy, Clone)]
 pub struct Node<'a, T> {
     pub item: &'a T,
-    id: ID,
+    pub id: ID,
 }
 
 impl<T> Tree<T> {

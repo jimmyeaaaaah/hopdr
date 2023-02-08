@@ -10,9 +10,9 @@ use rpds::Stack;
 pub(super) struct DeriveNode {
     // Γ ⊢ ψ : τ
     // Γ is omitted
-    rule: Rule,
-    expr: G,
-    ty: Ty,
+    pub rule: Rule,
+    pub expr: G,
+    pub ty: Ty,
 }
 
 #[derive(Clone, Debug)]
@@ -118,6 +118,12 @@ where
 }
 
 impl Derivation<Atom> {
+    pub fn get_nodes_by_id<'a>(
+        &'a self,
+        id: &'a Ident,
+    ) -> impl Iterator<Item = Node<'a, DeriveNode>> + 'a {
+        self.tree.filter(move |n| n.expr.aux.id == *id)
+    }
     pub fn get_types_by_id<'a>(&'a self, id: &'a Ident) -> impl Iterator<Item = Ty> + 'a {
         self.tree
             .filter(move |n| n.expr.aux.id == *id)
