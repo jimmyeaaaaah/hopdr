@@ -1,4 +1,6 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
+
+use rpds::List;
 
 use crate::util::global_counter;
 
@@ -64,6 +66,9 @@ impl IDTree {
             .iter()
             .map(move |y| (node, *y))
     }
+    fn children<'a>(&'a self, node: ID) -> impl Iterator<Item = ID> + 'a {
+        self.edges.get(&node).unwrap().iter().map(move |y| *y)
+    }
 }
 
 #[derive(Clone)]
@@ -79,8 +84,33 @@ pub struct Node<'a, T> {
     pub id: ID,
 }
 
+pub struct TreeIterator<'a, T> {
+    tree: &'a Tree<T>,
+    queue: VecDeque<ID>,
+}
+
+impl<'a, T> TreeIterator<'a, T> {
+    fn new(tree: &'a Tree<T>, from: ID) -> Self {
+        let mut queue = VecDeque::new();
+        queue.push_back(from);
+        Self { tree, queue }
+    }
+}
+
+impl<'a, T> Iterator for TreeIterator<'a, T> {
+    type Item = Node<'a, T>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let r = self.queue.pop_front()?;
+        for child in self.tree.graph.children(r) {
+            self.queue.push_back(child);
+        }
+        Some(self.tree.get_node_by_id(r))
+    }
+}
+
 impl<T> Tree<T> {
-    fn get_node_by_id<'a>(&'a self, id: ID) -> Node<'a, T> {
+    pub fn get_node_by_id<'a>(&'a self, id: ID) -> Node<'a, T> {
         let item = self.items.get(&id).unwrap();
         Node { item, id }
     }
@@ -143,6 +173,19 @@ impl<T> Tree<T> {
             }
         })
     }
+    pub fn iter_children<'a>(&'a self, node: Node<'a, T>) -> impl Iterator<Item = Node<'a, T>> {
+        TreeIterator::new(self, node.id)
+    }
+    pub fn filter_children<'a, P>(
+        &'a self,
+        node: Node<'a, T>,
+        predicate: P,
+    ) -> impl Iterator<Item = Node<'a, T>>
+    where
+        P: 'a + Fn(&T) -> bool,
+    {
+        self.iter_children(node).filter(move |x| predicate(&x.item))
+    }
     pub fn filter<'a, P>(&'a self, predicate: P) -> impl Iterator<Item = Node<'a, T>>
     where
         P: 'a + Fn(&T) -> bool,
@@ -189,6 +232,8 @@ impl<T> Tree<T> {
 
 #[test]
 fn tree_basics() {
+    // 1-2
+    // |-2-3
     let t1 = Tree::singleton(3);
     let t3 = Tree::tree_with_child(2, t1);
     let t2 = Tree::singleton(2);
@@ -207,8 +252,23 @@ fn tree_basics() {
             assert!(t.traverse_parent_until(child2, |v| *v == 1).is_some())
         }
     }
+
     assert!(t.search(|x| *x == 4).is_none());
     assert!(t.search(|x| *x == 3).is_some());
 
-    assert_eq!(t.filter(|x| *x == 2).count(), 2)
+    assert_eq!(t.filter(|x| *x == 2).count(), 2);
+
+    assert_eq!(
+        t.iter_children(t.root())
+            .map(|n| *n.item)
+            .collect::<Vec<_>>(),
+        vec![1, 2, 2, 3]
+    );
+    let child = t.get_children(root).nth(0).unwrap();
+    assert_eq!(
+        t.filter_children(child, |x| *x == 3)
+            .map(|n| *n.item)
+            .collect::<Vec<_>>(),
+        vec![3]
+    );
 }

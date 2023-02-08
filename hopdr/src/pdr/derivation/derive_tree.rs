@@ -129,7 +129,12 @@ impl Derivation<Atom> {
             .filter(move |n| n.expr.aux.id == *id)
             .map(|n| n.item.ty.clone())
     }
-    pub fn get_types_by_level<'a>(&'a self, level: &'a usize) -> impl Iterator<Item = Ty> + 'a {
+    pub fn get_types_by_level<'a>(
+        &'a self,
+        //node_id: ID,
+        level: &'a usize,
+    ) -> impl Iterator<Item = Ty> + 'a {
+        //let node = self.tree.get_node_by_id(node_id);
         self.tree
             .filter(move |n| n.expr.aux.level_arg.iter().any(|arg| arg == level))
             .map(|n| n.item.ty.clone())
