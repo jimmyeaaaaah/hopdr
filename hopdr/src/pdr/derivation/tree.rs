@@ -11,6 +11,12 @@ fn gen_id() -> ID {
     ID(global_counter())
 }
 
+impl ID {
+    pub fn to_item<'a, T>(&'a self, tree: &'a Tree<T>) -> &'a T {
+        tree.items.get(self).unwrap()
+    }
+}
+
 // using petgraph's Graph as the core graph library is not a good choice since
 // it seems not to support merging two graphs in an efficient way
 // (c.f. https://github.com/petgraph/petgraph/issues/276)

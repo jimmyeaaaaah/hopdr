@@ -628,10 +628,8 @@ impl Context {
         clauses: &mut Vec<chc::CHC<chc::Atom, Constraint>>,
     ) {
         // if ret_ty_idx > 0, then we push calculated types to derivation without "already exists" check
-        let context_ty: Ty = todo!();
-        let ret_ty: Ty = todo!();
+        let ret_ty = derivation.node_id_to_ty(&node_id).clone();
         pdebug!("ret_ty: ", ret_ty);
-        pdebug!("context_ty: ", context_ty);
 
         // retrieve argument types
         // if argument type is non-integer, then make sure that the context of the retrieved type matches
@@ -645,9 +643,8 @@ impl Context {
                 let arg_ty = match &ri.arg.aux.tys {
                     Some(tys) => tys.clone(), // when shared type exists
                     None => {
-                        todo!();
                         // retrieve types under the node_id
-                        //derivation.get_types_by_level(&ri.level).collect(),
+                        derivation.get_types_by_level(node_id, &ri.level).collect()
                     }
                 };
                 let arg_ty = if arg_ty.len() == 0 {
@@ -682,6 +679,7 @@ impl Context {
         let mut app_expr_ty = tmp_ret_ty.clone();
 
         // calculate the type for app_expr
+        // create a derivation for app exprs
         if is_shared_ty {
             for (arg_ty, reduction) in arg_tys.iter().rev().zip(reduction.args.iter()) {
                 match arg_ty {
@@ -741,8 +739,9 @@ impl Context {
         let constraint =
             Atom::mk_implies_opt(tmp_ty.rty_no_exists(), body_ty.rty_no_exists()).unwrap();
 
-        let constraint2 =
-            Atom::mk_implies_opt(context_ty.rty_no_exists(), app_expr_ty.rty_no_exists()).unwrap();
+        let constraint2: Atom = todo!();
+        //let constraint2 =
+        //    Atom::mk_implies_opt(context_ty.rty_no_exists(), app_expr_ty.rty_no_exists()).unwrap();
         pdebug!("constraint1: ", constraint);
         pdebug!("constraint2: ", constraint2);
         let constraint = Atom::mk_conj(constraint, constraint2);
@@ -800,7 +799,6 @@ impl Context {
         //    ret_ty_idx > 0,
         //);
         // the aux.id is saved above, so we don't have to for app_expr
-        debug!("");
     }
     fn infer_type_inner(
         &self,
@@ -841,7 +839,7 @@ impl Context {
             }
         }
 
-        for (ret_ty_idx, node_id) in node_ids.iter().enumerate() {
+        for node_id in node_ids.iter() {
             self.expand_node(*node_id, &app_exprs, derivation, reduction, clauses);
         }
     }
