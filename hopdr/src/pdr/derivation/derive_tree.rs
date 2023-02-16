@@ -75,7 +75,7 @@ impl DeriveNode {
     fn iapp(expr: G, node: &Self, op: &Op) -> Self {
         let rule = Rule::IApp(op.clone());
         let ty = match node.ty.kind() {
-            TauKind::IArrow(x, t2) => node.ty.subst(x, op),
+            TauKind::IArrow(x, t2) => t2.subst(x, op),
             _ => panic!("fatal"),
         };
         DeriveNode { rule, expr, ty }
