@@ -680,6 +680,7 @@ impl Context {
 
         // calculate the type for app_expr
         // create a derivation for app exprs
+        // FIXME: we should recrate the derivations of arguments and body of the predicate.
         if is_shared_ty {
             for (arg_ty, reduction) in arg_tys.iter().rev().zip(reduction.args.iter()) {
                 match arg_ty {
@@ -771,6 +772,7 @@ impl Context {
             //let temporal_saved_ty = SavedTy::mk(temporal_ty.clone(), context_ty.clone());
             let temporal_saved_ty = unimplemented!();
             //derivation.memorize_type_judgement(expr, temporal_saved_ty, ret_ty_idx > 0);
+
             todo!();
             match arg_ty {
                 either::Left(_) => {

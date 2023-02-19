@@ -268,4 +268,8 @@ impl Derivation<Atom> {
     pub fn node_id_to_ty<'a>(&'a self, id: &'a ID) -> &'a Ty {
         &id.to_item(&self.tree).ty
     }
+    pub fn sub_derivation<'a>(&'a self, id: &'a ID) -> Self {
+        let node = id.to_item(&self.tree);
+        unimplemented!()
+    }
 }

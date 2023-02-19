@@ -73,7 +73,27 @@ impl IDTree {
             .map(move |y| (node, *y))
     }
     fn children<'a>(&'a self, node: ID) -> impl Iterator<Item = ID> + 'a {
-        self.edges.get(&node).unwrap().iter().map(move |y| *y)
+        self.edges.get(&node).unwrap().iter().copied()
+    }
+    fn drop_sub_tree<'a>(&'a self, node: ID) -> Self {
+        fn traverse(
+            t: &IDTree,
+            cur: ID,
+            edges: &mut HashMap<ID, Vec<ID>>,
+            parent: &mut HashMap<ID, ID>,
+        ) {
+            for child in t.children(cur) {
+                traverse(t, child, edges, parent)
+            }
+            edges.remove(&cur);
+            parent.remove(&cur);
+        }
+        let mut edges = self.edges.clone();
+        let mut parent = self.parent.clone();
+        let ptr = edges.get_mut(parent.get(&node).unwrap()).unwrap();
+        ptr.retain(|elem| elem != &node);
+        traverse(self, node, &mut edges, &mut parent);
+        Self { edges, parent }
     }
 }
 
@@ -235,6 +255,30 @@ impl<T> Tree<T> {
         }
     }
 }
+impl<T: Clone> Tree<T> {
+    pub fn subtree<'a>(&'a self, node: Node<'a, T>) -> Self {
+        unimplemented!()
+    }
+    pub fn drop_subtree<'a>(&'a self, node: Node<'a, T>) -> Self {
+        // you cannot drop the whole tree (there is no empty tree)
+        assert_ne!(node.id, self.root);
+        let graph = self.graph.drop_sub_tree(node.id);
+        let items: HashMap<_, _> = self
+            .items
+            .iter()
+            .filter_map(|(id, item)| {
+                if graph.edges.contains_key(id) {
+                    Some((*id, item.clone()))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        let root = self.root;
+        let ids: Vec<_> = items.keys().collect();
+        Self { items, graph, root }
+    }
+}
 
 #[test]
 fn tree_basics() {
@@ -276,5 +320,13 @@ fn tree_basics() {
             .map(|n| *n.item)
             .collect::<Vec<_>>(),
         vec![3]
+    );
+
+    let t2 = t.drop_subtree(child);
+    assert_eq!(
+        t2.iter_children(t2.root())
+            .map(|n| *n.item)
+            .collect::<Vec<_>>(),
+        vec![1, 2]
     );
 }
