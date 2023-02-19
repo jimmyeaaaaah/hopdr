@@ -75,7 +75,25 @@ impl IDTree {
     fn children<'a>(&'a self, node: ID) -> impl Iterator<Item = ID> + 'a {
         self.edges.get(&node).unwrap().iter().copied()
     }
-    fn drop_sub_tree<'a>(&'a self, node: ID) -> Self {
+    fn subtree<'a>(&'a self, node: ID) -> Self {
+        fn traverse(
+            t: &IDTree,
+            cur: ID,
+            edges: &mut HashMap<ID, Vec<ID>>,
+            parent: &mut HashMap<ID, ID>,
+        ) {
+            for child in t.children(cur) {
+                traverse(t, child, edges, parent)
+            }
+            edges.insert(cur, t.edges.get(&cur).unwrap().clone());
+            parent.insert(cur, t.parent.get(&cur).unwrap().clone());
+        }
+        let mut edges = HashMap::new();
+        let mut parent = HashMap::new();
+        traverse(self, node, &mut edges, &mut parent);
+        Self { edges, parent }
+    }
+    fn drop_subtree<'a>(&'a self, node: ID) -> Self {
         fn traverse(
             t: &IDTree,
             cur: ID,
@@ -92,6 +110,39 @@ impl IDTree {
         let mut parent = self.parent.clone();
         let ptr = edges.get_mut(parent.get(&node).unwrap()).unwrap();
         ptr.retain(|elem| elem != &node);
+        traverse(self, node, &mut edges, &mut parent);
+        Self { edges, parent }
+    }
+    fn replace_subtree<'a>(&'a self, node: ID, graph: Self, root: ID) -> Self {
+        fn traverse(
+            t: &IDTree,
+            cur: ID,
+            edges: &mut HashMap<ID, Vec<ID>>,
+            parent: &mut HashMap<ID, ID>,
+        ) {
+            for child in t.children(cur) {
+                traverse(t, child, edges, parent)
+            }
+            edges.remove(&cur);
+            parent.remove(&cur);
+        }
+        let mut edges = self.edges.clone();
+        let mut parent = self.parent.clone();
+        let ptr = edges.get_mut(parent.get(&node).unwrap()).unwrap();
+        // replace the edge to the new tree
+        for item in ptr.iter_mut() {
+            if *item == node {
+                *item = root;
+                break;
+            }
+        }
+        for (id, e) in graph.edges {
+            edges.insert(id, e);
+        }
+        for (id, p) in graph.parent {
+            parent.insert(id, p);
+        }
+        // finally remove all the old graph related objects
         traverse(self, node, &mut edges, &mut parent);
         Self { edges, parent }
     }
@@ -256,13 +307,7 @@ impl<T> Tree<T> {
     }
 }
 impl<T: Clone> Tree<T> {
-    pub fn subtree<'a>(&'a self, node: Node<'a, T>) -> Self {
-        unimplemented!()
-    }
-    pub fn drop_subtree<'a>(&'a self, node: Node<'a, T>) -> Self {
-        // you cannot drop the whole tree (there is no empty tree)
-        assert_ne!(node.id, self.root);
-        let graph = self.graph.drop_sub_tree(node.id);
+    fn projection(&self, graph: IDTree, root: ID) -> Self {
         let items: HashMap<_, _> = self
             .items
             .iter()
@@ -274,9 +319,28 @@ impl<T: Clone> Tree<T> {
                 }
             })
             .collect();
-        let root = self.root;
-        let ids: Vec<_> = items.keys().collect();
         Self { items, graph, root }
+    }
+    pub fn subtree<'a>(&'a self, node: Node<'a, T>) -> Self {
+        let graph = self.graph.subtree(node.id);
+        self.projection(graph, node.id)
+    }
+    pub fn drop_subtree<'a>(&'a self, node: Node<'a, T>) -> Self {
+        // you cannot drop the whole tree (there is no empty tree)
+        assert_ne!(node.id, self.root);
+        let graph = self.graph.drop_subtree(node.id);
+        self.projection(graph, self.root)
+    }
+    pub fn replace_subtree<'a>(&'a self, node: Node<'a, T>, tree: Self) -> Self {
+        // you cannot drop the whole tree (there is no empty tree)
+        assert_ne!(node.id, self.root);
+        let graph = self.graph.replace_subtree(node.id, tree.graph, tree.root);
+        let mut result = self.projection(graph, self.root);
+        // append items in tree
+        for (id, item) in tree.items.into_iter() {
+            result.items.insert(id, item);
+        }
+        result
     }
 }
 
@@ -328,5 +392,21 @@ fn tree_basics() {
             .map(|n| *n.item)
             .collect::<Vec<_>>(),
         vec![1, 2]
+    );
+    let t5 = t.subtree(child);
+    assert_eq!(
+        t5.iter_children(t5.root())
+            .map(|n| *n.item)
+            .collect::<Vec<_>>(),
+        vec![2, 3]
+    );
+
+    let t7 = Tree::tree_with_child(4, Tree::singleton(5));
+    let t6 = t.replace_subtree(child, t7);
+    assert_eq!(
+        t6.iter_children(t6.root())
+            .map(|n| *n.item)
+            .collect::<Vec<_>>(),
+        vec![1, 4, 2, 5]
     );
 }
