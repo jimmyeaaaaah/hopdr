@@ -136,7 +136,7 @@ impl Derivation<Atom> {
     ) -> impl Iterator<Item = Ty> + 'a {
         let node = self.tree.get_node_by_id(node_id);
         self.tree
-            .filter_children(node, move |n| {
+            .filter_descendants(node, move |n| {
                 n.expr.aux.level_arg.iter().any(|arg| arg == level)
             })
             .map(|n| n.item.ty.clone())

@@ -250,10 +250,10 @@ impl<T> Tree<T> {
             }
         })
     }
-    pub fn iter_children<'a>(&'a self, node: Node<'a, T>) -> impl Iterator<Item = Node<'a, T>> {
+    pub fn iter_descendants<'a>(&'a self, node: Node<'a, T>) -> impl Iterator<Item = Node<'a, T>> {
         TreeIterator::new(self, node.id)
     }
-    pub fn filter_children<'a, P>(
+    pub fn filter_descendants<'a, P>(
         &'a self,
         node: Node<'a, T>,
         predicate: P,
@@ -261,7 +261,8 @@ impl<T> Tree<T> {
     where
         P: 'a + Fn(&T) -> bool,
     {
-        self.iter_children(node).filter(move |x| predicate(&x.item))
+        self.iter_descendants(node)
+            .filter(move |x| predicate(&x.item))
     }
     pub fn filter<'a, P>(&'a self, predicate: P) -> impl Iterator<Item = Node<'a, T>>
     where
@@ -280,7 +281,7 @@ impl<T> Tree<T> {
     where
         P: Fn(&mut T),
     {
-        self.items.iter_mut().for_each(|(key, item)| f(item))
+        self.items.iter_mut().for_each(|(_, item)| f(item))
     }
     fn parent(&self, node: ID) -> Option<ID> {
         self.graph.get_parent(node)
@@ -373,14 +374,14 @@ fn tree_basics() {
     assert_eq!(t.filter(|x| *x == 2).count(), 2);
 
     assert_eq!(
-        t.iter_children(t.root())
+        t.iter_descendants(t.root())
             .map(|n| *n.item)
             .collect::<Vec<_>>(),
         vec![1, 2, 2, 3]
     );
     let child = t.get_children(root).nth(0).unwrap();
     assert_eq!(
-        t.filter_children(child, |x| *x == 3)
+        t.filter_descendants(child, |x| *x == 3)
             .map(|n| *n.item)
             .collect::<Vec<_>>(),
         vec![3]
@@ -388,14 +389,14 @@ fn tree_basics() {
 
     let t2 = t.drop_subtree(child);
     assert_eq!(
-        t2.iter_children(t2.root())
+        t2.iter_descendants(t2.root())
             .map(|n| *n.item)
             .collect::<Vec<_>>(),
         vec![1, 2]
     );
     let t5 = t.subtree(child);
     assert_eq!(
-        t5.iter_children(t5.root())
+        t5.iter_descendants(t5.root())
             .map(|n| *n.item)
             .collect::<Vec<_>>(),
         vec![2, 3]
@@ -404,7 +405,7 @@ fn tree_basics() {
     let t7 = Tree::tree_with_child(4, Tree::singleton(5));
     let t6 = t.replace_subtree(child, t7);
     assert_eq!(
-        t6.iter_children(t6.root())
+        t6.iter_descendants(t6.root())
             .map(|n| *n.item)
             .collect::<Vec<_>>(),
         vec![1, 4, 2, 5]
