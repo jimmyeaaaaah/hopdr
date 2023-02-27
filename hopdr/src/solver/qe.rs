@@ -149,7 +149,9 @@ fn parse_constraint_cons(cons: &Cons) -> Constraint {
 fn parse_constraint(v: &Value) -> Constraint {
     match v {
         Value::Bool(t) if *t => Constraint::mk_true(),
+        Value::Symbol(s) if s.as_ref() == "true" => Constraint::mk_true(),
         Value::Bool(_) => Constraint::mk_false(),
+        Value::Symbol(s) if s.as_ref() == "false" => Constraint::mk_false(),
         Value::Cons(cons) => parse_constraint_cons(cons),
         Value::Nil
         | Value::Null
