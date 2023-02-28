@@ -6,6 +6,7 @@ pub mod hfl_preprocessor;
 mod safety;
 mod transform;
 mod typing;
+mod forall_pass;
 
 use crate::formula;
 use crate::formula::Type as SimpleType;
