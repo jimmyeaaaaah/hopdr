@@ -1,12 +1,54 @@
-// eta transformation
+// simplify some exprs in a peephole way
+//  - flatten (\x. g) g2 -> [g2/x]g
+//  - flatten (∀x. (x = 0 \/ g1) /\ (x != 0 \/ g2)) -> g1 /\ g2 when x ∉ fv(g1)∪fv(g2)
 
-use crate::formula::hes;
-use crate::formula::{self, Subst};
+use crate::formula::{self, Bot, Constraint, Negation, Subst};
+use crate::formula::{hes, Fv};
 
 fn transform_goal(goal: &hes::Goal<formula::Constraint>) -> hes::Goal<formula::Constraint> {
     use hes::GoalKind;
 
     type Goal = hes::Goal<formula::Constraint>;
+
+    fn divide_disj(g11: &Goal, g12: &Goal) -> (Constraint, Goal) {
+        let c1: Option<Constraint> = g11.clone().into();
+        match c1 {
+            Some(c) => (c, g12.clone()),
+            None => (g12.clone().into(), g11.clone()),
+        }
+    }
+
+    fn flatten(goal: Goal) -> Goal {
+        let (x, inner) = match goal.kind() {
+            GoalKind::Univ(x, inner) => (x, inner.clone()),
+            _ => return goal,
+        };
+        let (g1, g2) = match inner.kind() {
+            GoalKind::Conj(g1, g2) => (g1, g2),
+            _ => return goal,
+        };
+        let (c1, g1) = match g1.kind() {
+            GoalKind::Disj(g11, g12) => divide_disj(g11, g12),
+            GoalKind::Constr(c) => match c.kind() {
+                formula::ConstraintExpr::Disj(c1, c2) => (c1.clone(), Goal::mk_constr(c2.clone())),
+                _ => return goal,
+            },
+            _ => return goal,
+        };
+        let (c2, g2) = match g2.kind() {
+            GoalKind::Disj(left, right) => divide_disj(left, right),
+            GoalKind::Constr(c) => match c.kind() {
+                formula::ConstraintExpr::Disj(c1, c2) => (c1.clone(), Goal::mk_constr(c2.clone())),
+                _ => return goal,
+            },
+            _ => return goal,
+        };
+        if c1.negate().unwrap() == c2 && !g1.fv().contains(&x.id) && !g2.fv().contains(&x.id) {
+            Goal::mk_conj(g1, g2)
+        } else {
+            goal
+        }
+    }
 
     fn translate(goal: &Goal) -> Goal {
         match goal.kind() {
@@ -15,11 +57,12 @@ fn transform_goal(goal: &hes::Goal<formula::Constraint>) -> hes::Goal<formula::C
                 let g = translate(g);
                 Goal::mk_abs(x.clone(), g)
             }
+            // flatten (\x. g) g2 -> [g2/x]g
             GoalKind::App(g1, g2) => match g1.kind() {
                 GoalKind::Abs(x, g) => g.subst(x, g2),
                 _ => Goal::mk_app(translate(g1), translate(g2)),
             },
-            GoalKind::Univ(x, g) => Goal::mk_univ(x.clone(), translate(g)),
+            GoalKind::Univ(x, g) => flatten(Goal::mk_univ(x.clone(), translate(g))),
             GoalKind::Conj(g1, g2) => Goal::mk_conj(translate(g1), translate(g2)),
             GoalKind::Disj(g1, g2) => Goal::mk_disj(translate(g1), translate(g2)),
         }
@@ -51,7 +94,7 @@ fn test_transform() {
     let s = "
     %HES
     S =v F n.
-    F x =v (\\n. (n+1) > 0) x.
+    F x =v ∀m. (m = 0 \\/ (\\n. (n+1) > 0) x) /\\ (m != 0 \\/ x > 0).
     ";
     let (_, f) = parse::<VerboseError<&str>>(s).unwrap();
     // FIXME: hes::preprocess contains eta's path, and it's inevitable currently;
