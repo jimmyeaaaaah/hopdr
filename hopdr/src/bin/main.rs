@@ -11,7 +11,9 @@ use clap::Parser;
 use colored::Colorize;
 use hopdr::pdr::PDRConfig;
 use hopdr::pdr::VerificationResult;
+use hopdr::preprocess::Context;
 use hopdr::title;
+use hopdr::util::Pretty;
 use nom::error::VerboseError;
 
 use std::fs;
@@ -43,12 +45,13 @@ struct Args {
     detailed_results: bool,
 }
 
-fn report_result(args: &Args, r: VerificationResult) {
+fn report_result(args: &Args, r: VerificationResult, ctx: &Context) {
     match r {
         pdr::VerificationResult::Valid(c) => {
             println!("{}", "Valid".green());
             if args.detailed_results {
-                println!("[Type Environment]")
+                println!("[Type Environment]");
+                println!("{}", c.certificate.pretty_display_with_context(ctx));
             }
         }
         pdr::VerificationResult::Invalid => {
@@ -75,12 +78,12 @@ fn pdr_main(args: Args, contents: String, config: PDRConfig) {
     }
 
     title!("proprocessed");
-    let (vc, _ctx) = preprocess::hes::preprocess(f);
+    let (vc, ctx) = preprocess::hes::preprocess(f);
     for fml in vc.clauses.iter() {
         debug!("{}", fml);
     }
 
-    report_result(&args, pdr::run(vc, config))
+    report_result(&args, pdr::run(vc, config), &ctx)
 }
 
 fn gen_configuration_from_args(args: &Args) -> hopdr::Configuration {

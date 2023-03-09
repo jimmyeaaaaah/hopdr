@@ -32,18 +32,21 @@ pub struct Config<'a> {
 impl<'a> Config<'a> {
     fn get_name_by_ident(&mut self, id: &Ident) -> String {
         match self.context {
-            Some(m) => todo!(),
+            Some(m) => m
+                .inverse_map
+                .get(id)
+                .map_or_else(|| format!("x_{}", id.get_id()), |x| x.to_string()),
             None => format!("x_{}", id.get_id()),
         }
     }
 }
 
-pub struct PrettyDisplay<'a, A: Pretty>(&'a A, usize);
+pub struct PrettyDisplay<'a, A: Pretty>(&'a A, usize, Option<&'a preprocess::Context>);
 
 impl<'a, A: Pretty> Display for PrettyDisplay<'a, A> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let al = BoxAllocator;
-        let mut config = Config::default();
+        let mut config = Config { context: self.2 };
         self.0
             .pretty::<_, ()>(&al, &mut config)
             .1
@@ -72,7 +75,28 @@ pub trait Pretty {
     where
         Self: Sized,
     {
-        PrettyDisplay(self, width)
+        self.pretty_display_with_width_and_context(width, None)
+    }
+
+    fn pretty_display_with_width_and_context<'a>(
+        &'a self,
+        width: usize,
+        ctx: Option<&'a preprocess::Context>,
+    ) -> PrettyDisplay<'a, Self>
+    where
+        Self: Sized,
+    {
+        PrettyDisplay(self, width, ctx)
+    }
+
+    fn pretty_display_with_context<'a>(
+        &'a self,
+        ctx: &'a preprocess::Context,
+    ) -> PrettyDisplay<'a, Self>
+    where
+        Self: Sized,
+    {
+        self.pretty_display_with_width_and_context(get_default_width(), Some(ctx))
     }
 }
 
