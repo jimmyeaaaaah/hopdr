@@ -1,7 +1,7 @@
 use std::fmt::Display;
 
-use crate::formula::*;
 use crate::pdr::rtype;
+use crate::{formula::*, preprocess};
 use pretty::termcolor::{Color, ColorSpec};
 use pretty::{BoxAllocator, BoxDoc, DocAllocator, DocBuilder};
 
@@ -25,11 +25,16 @@ pub fn colored() -> bool {
 }
 
 #[derive(Default)]
-pub struct Config {}
+pub struct Config<'a> {
+    context: Option<&'a preprocess::Context>,
+}
 
-impl Config {
+impl<'a> Config<'a> {
     fn get_name_by_ident(&mut self, id: &Ident) -> String {
-        format!("x_{}", id.get_id())
+        match self.context {
+            Some(m) => todo!(),
+            None => format!("x_{}", id.get_id()),
+        }
     }
 }
 

@@ -2,7 +2,7 @@
 //  - flatten (\x. g) g2 -> [g2/x]g
 //  - flatten (∀x. (x = 0 \/ g1) /\ (x != 0 \/ g2)) -> g1 /\ g2 when x ∉ fv(g1)∪fv(g2)
 
-use crate::formula::{self, Bot, Constraint, Negation, Subst};
+use crate::formula::{self, Constraint, Negation, Subst};
 use crate::formula::{hes, Fv};
 
 fn transform_goal(goal: &hes::Goal<formula::Constraint>) -> hes::Goal<formula::Constraint> {

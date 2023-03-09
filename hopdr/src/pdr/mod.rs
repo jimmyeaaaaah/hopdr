@@ -10,9 +10,25 @@ use std::fmt;
 
 #[derive(Debug)]
 pub enum VerificationResult {
-    Valid,
+    Valid(ValidCertificate),
     Invalid,
     Unknown,
+}
+
+#[derive(Debug)]
+pub struct ValidCertificate {
+    certificate: rtype::TypeEnvironment<rtype::PolymorphicType<rtype::Ty>>,
+}
+impl ValidCertificate {
+    fn new(certificate: rtype::TypeEnvironment<rtype::PolymorphicType<rtype::Ty>>) -> Self {
+        Self { certificate }
+    }
+}
+
+impl fmt::Display for ValidCertificate {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.certificate)
+    }
 }
 
 impl fmt::Display for VerificationResult {
@@ -22,7 +38,7 @@ impl fmt::Display for VerificationResult {
             f,
             "{}",
             match self {
-                Valid => "valid",
+                Valid(_) => "valid",
                 Invalid => "invalid",
                 Unknown => "unknown",
             }
