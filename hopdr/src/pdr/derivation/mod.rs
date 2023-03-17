@@ -122,7 +122,7 @@ struct Reduction {
     // for each reduction. That is, when we have reduction
     //    expr1 expr2 -> expr3
     // this id is memorized in expr2's memory (as the argument) and expr3's memory (as the return value)
-    args: Vec<ReductionInfo>,
+    arg: ReductionInfo,
     // the result of beta reduction; predicate expr -> result
     result: G,
     // predicate's free variables of type int
@@ -134,16 +134,13 @@ struct Reduction {
 
 impl fmt::Display for Reduction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "[Reduction ")?;
-        for a in self.args.iter() {
-            write!(f, "{}, ", a.level)?;
-        }
+        write!(f, "[Reduction {}]", self.arg.level)?;
         write!(f, "] fvints: {:?}", self.fvints)?;
         writeln!(f, " constraint: {}", self.constraint)?;
         writeln!(f, "{} ", self.predicate)?;
-        for arg in self.args.iter() {
-            writeln!(f, "- {} ", arg.arg)?;
-        }
+        // for arg in self.args.iter() {
+        //     writeln!(f, "- {} ", arg.arg)?;
+        // }
         write!(f, "\n ==> {}", self.result)
     }
 }
@@ -160,7 +157,7 @@ impl Pretty for Reduction {
         A: Clone,
     {
         al.text("[Reduction ")
-            .append(al.intersperse(self.args.iter().map(|x| x.level.to_string()), ", "))
+            .append(self.arg.level.to_string())
             .append(al.text(format!(
                 "] fvints: {:?} constraint: {}",
                 self.fvints, self.constraint
@@ -170,10 +167,7 @@ impl Pretty for Reduction {
                 self.predicate
                     .pretty(al, config)
                     .append(al.hardline())
-                    .append(self.args.iter().fold(al.nil(), |cur, arg| {
-                        cur.append("- ")
-                            .append(arg.arg.pretty(al, config).append(al.hardline()))
-                    }))
+                    .append(self.arg.level.to_string())
                     .append("==> ")
                     .append(self.result.pretty(al, config))
                     .hang(2),
@@ -186,6 +180,7 @@ impl Reduction {
         app_expr: G,
         predicate: G,
         result: G,
+        arg: ReductionInfo,
         fvints: HashSet<Ident>,
         argints: HashSet<Ident>,
         constraint: Constraint,
@@ -193,24 +188,24 @@ impl Reduction {
         Reduction {
             app_expr,
             predicate,
-            args: Vec::new(),
+            arg,
             result,
             fvints,
             argints,
             constraint,
         }
     }
-    fn append_reduction(&mut self, reduction_info: ReductionInfo, result: G, app_expr: G) {
-        if reduction_info.arg_var.ty.is_int() {
-            self.fvints.insert(reduction_info.old_id);
-            self.argints.insert(reduction_info.old_id);
-        }
-        self.result = result;
-        self.app_expr = app_expr;
-        self.args.push(reduction_info);
-    }
+    // fn append_reduction(&mut self, reduction_info: ReductionInfo, result: G, app_expr: G) {
+    //     if reduction_info.arg_var.ty.is_int() {
+    //         self.fvints.insert(reduction_info.old_id);
+    //         self.argints.insert(reduction_info.old_id);
+    //     }
+    //     self.result = result;
+    //     self.app_expr = app_expr;
+    //     self.args.push(reduction_info);
+    // }
     fn level(&self) -> usize {
-        self.args[self.args.len() - 1].level
+        self.arg.level
     }
 }
 
@@ -377,54 +372,32 @@ fn generate_reduction_sequence(goal: &G, optimizer: &mut dyn Optimizer) -> (Vec<
                                 goal.clone(),
                                 predicate.clone(),
                                 ret.clone(),
+                                reduction_info,
                                 fvints.clone(),
                                 argints.clone(),
                                 constraint.clone(),
                             );
 
-                            reduction.append_reduction(reduction_info, ret.clone(), goal.clone());
                             return Some((ret.clone(), reduction));
                         }
                         None => (),
                     };
-                    match go_(
+                    // case where App(pred, arg) cannot be reduced.
+                    // then, we try to reduce pred or arg.
+                    go_(
                         optimizer,
                         predicate,
                         level,
                         fvints,
                         argints,
                         constraint.clone(),
-                    ) {
-                        Some((ret, mut reduction)) => {
-                            // case reduced above like App(App(Abs, arg)) -> App(Abs, arg)
-                            // [feature shared_ty]
-                            // TODO: fvints & argints <- polymorphic_type config should be used to determine which to use
-                            return match generate_reduction_info(
-                                optimizer,
-                                reduction.level() + 1,
-                                &ret,
-                                arg,
-                                fvints,
-                            ) {
-                                Some((ret, reduction_info)) => {
-                                    reduction.append_reduction(
-                                        reduction_info,
-                                        ret.clone(),
-                                        goal.clone(),
-                                    );
-                                    Some((ret, reduction))
-                                }
-                                None => Some((
-                                    G::mk_app_t(ret, arg.clone(), goal.aux.clone()),
-                                    reduction,
-                                )),
-                            };
-                        }
-                        None => (),
-                    };
-                    go_(optimizer, arg, level, fvints, argints, constraint.clone()).map(
-                        |(arg, pred)| (G::mk_app_t(predicate.clone(), arg, goal.aux.clone()), pred),
-                    )
+                    ).map(|(ret, reduction)|  {
+                            (G::mk_app_t(ret, arg.clone(), goal.aux.clone()), reduction)
+                    }).or_else(|| {
+                        go_(optimizer, arg, level, fvints, argints, constraint.clone()).map(
+                            |(arg, pred)| (G::mk_app_t(predicate.clone(), arg, goal.aux.clone()), pred),
+                        )
+                    })
                 }
                 GoalKind::Conj(g1, g2) => {
                     go_(optimizer, g1, level, fvints, argints, constraint.clone())
@@ -658,7 +631,7 @@ impl Context {
         }
         assert_eq!(app_exprs.len(), arg_tys.len());
 
-        // if there is a shared_ty, we have to use it
+        // if a shared_ty is attached with the predicate we are focusing on, we have to use it
         let (tmp_ret_ty, is_shared_ty) = match &reduction.predicate.aux.tys {
             Some(tys) => (tys[0].clone(), true),
             None => (
@@ -674,13 +647,17 @@ impl Context {
             ),
         };
 
+        // Given a app expr (\x1. \x2. g) g1 g2.
+        // tmp_ty is the type for \x1. \x2. g
+        // body_ty is the type for g
+        // app_expr_ty is the type for (\x1. \x2. g) g1 g2
         let mut tmp_ty = tmp_ret_ty.clone();
         let mut body_ty = ret_ty.clone();
         let mut app_expr_ty = tmp_ret_ty.clone();
 
+        let body_derivation = derivation.sub_derivation(node_id);
+
         // calculate the type for app_expr
-        // create a derivation for app exprs
-        // FIXME: we should recrate the derivations of arguments and body of the predicate.
         if is_shared_ty {
             for (arg_ty, reduction) in arg_tys.iter().rev().zip(reduction.args.iter()) {
                 match arg_ty {
@@ -697,6 +674,7 @@ impl Context {
                                 panic!("program error")
                             }
                         }
+                        intermediate_types.push(Either::Left(app_expr_ty.clone()));
                     }
                     // case: arg ty is higher-order
                     either::Right(arg_ty) => match app_expr_ty.kind() {
@@ -708,6 +686,7 @@ impl Context {
                                 &app_expr_ty.rty_no_exists(),
                             );
                             app_expr_ty = t_result.clone()
+                            intermediate_types.push(Either::Right(app_expr_ty.clone()));
                         }
                         TauKind::IArrow(_, _) | TauKind::Proposition(_) => {
                             panic!("program error")

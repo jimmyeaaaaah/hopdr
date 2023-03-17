@@ -141,6 +141,16 @@ impl Derivation<Atom> {
             })
             .map(|n| n.item.ty.clone())
     }
+    pub fn get_derivations_by_level<'a>(
+        &'a self,
+        node_id: ID,
+        level: &'a usize,
+    ) -> impl Iterator<Item = Self> + 'a {
+        let node = self.tree.get_node_by_id(node_id);
+        self.tree.filter_descendants(node, move |n| {
+            n.expr.aux.level_arg.iter().any(|arg| arg == level)
+        }).map(move |n| self.sub_derivation(&n.id))
+    }
 
     pub fn rule_atom(expr: G, ty: Ty) -> Self {
         let rule = Rule::Atom;
@@ -268,6 +278,7 @@ impl Derivation<Atom> {
     pub fn node_id_to_ty<'a>(&'a self, id: &'a ID) -> &'a Ty {
         &id.to_item(&self.tree).ty
     }
+    /// get subderivation of `id`
     pub fn sub_derivation<'a>(&'a self, id: &'a ID) -> Self {
         let node = id.to_item(&self.tree);
         unimplemented!()
