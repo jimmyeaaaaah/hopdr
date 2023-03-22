@@ -391,11 +391,15 @@ fn generate_reduction_sequence(goal: &G, optimizer: &mut dyn Optimizer) -> (Vec<
                         fvints,
                         argints,
                         constraint.clone(),
-                    ).map(|(ret, reduction)|  {
-                            (G::mk_app_t(ret, arg.clone(), goal.aux.clone()), reduction)
-                    }).or_else(|| {
+                    )
+                    .map(|(ret, reduction)| {
+                        (G::mk_app_t(ret, arg.clone(), goal.aux.clone()), reduction)
+                    })
+                    .or_else(|| {
                         go_(optimizer, arg, level, fvints, argints, constraint.clone()).map(
-                            |(arg, pred)| (G::mk_app_t(predicate.clone(), arg, goal.aux.clone()), pred),
+                            |(arg, pred)| {
+                                (G::mk_app_t(predicate.clone(), arg, goal.aux.clone()), pred)
+                            },
                         )
                     })
                 }
@@ -594,7 +598,12 @@ impl Context {
     // tmp_ty is the type for \x1. \x2. g
     // body_ty is the type for g
     // app_expr_ty is the type for (\x1. \x2. g) g1 g2
-    fn generate_constraint(clauses: &mut Vec<chc::CHC<chc::Atom, Constraint>>, tmp_ty: &Ty, body_ty: &Ty, app_expr_ty: &Ty) {
+    fn generate_constraint(
+        clauses: &mut Vec<chc::CHC<chc::Atom, Constraint>>,
+        tmp_ty: &Ty,
+        body_ty: &Ty,
+        app_expr_ty: &Ty,
+    ) {
         pdebug!("inferred type: ", tmp_ty);
         pdebug!("body type: ", body_ty);
         pdebug!("app_expr_type: ", app_expr_ty);
@@ -624,28 +633,30 @@ impl Context {
         ri: &ReductionInfo,
         is_shared_ty: bool,
         tmp_ret_ty: &Ty,
-        clauses: &mut Vec<chc::CHC<chc::Atom, Constraint>>
+        clauses: &mut Vec<chc::CHC<chc::Atom, Constraint>>,
     ) {
-            let mut body_ty = ret_ty.deref_ptr(&ri.arg_var.id).rename(&ri.arg_var.id, &ri.old_id);
-            let op: Op = ri.arg.clone().into();
-            let (tmp_ty, ret_ty, tmp_ret_ty) =  if is_shared_ty {
-                match tmp_ret_ty.kind() {
-                    TauKind::IArrow(id, t) => {
-                        let body_ty = body_ty.rename(&ri.old_id, id);
-                        let app_expr_ty = t.subst(&id, &op);
-                        (tmp_ret_ty.clone(), body_ty, app_expr_ty)
-                    }
-                    TauKind::Arrow(_, _) | TauKind::Proposition(_) => {
-                        panic!("program error")
-                    }
+        let mut body_ty = ret_ty
+            .deref_ptr(&ri.arg_var.id)
+            .rename(&ri.arg_var.id, &ri.old_id);
+        let op: Op = ri.arg.clone().into();
+        let (tmp_ty, ret_ty, tmp_ret_ty) = if is_shared_ty {
+            match tmp_ret_ty.kind() {
+                TauKind::IArrow(id, t) => {
+                    let body_ty = body_ty.rename(&ri.old_id, id);
+                    let app_expr_ty = t.subst(&id, &op);
+                    (tmp_ret_ty.clone(), body_ty, app_expr_ty)
                 }
-            } else {
-                let tmp_ty = Tau::mk_iarrow(ri.old_id, tmp_ret_ty.clone());
-                let app_expr_ty = tmp_ret_ty.subst(&ri.old_id, &op);
-                (tmp_ty, body_ty, app_expr_ty)
-            };
-            // generate derivation and constraints 
-            todo!()
+                TauKind::Arrow(_, _) | TauKind::Proposition(_) => {
+                    panic!("program error")
+                }
+            }
+        } else {
+            let tmp_ty = Tau::mk_iarrow(ri.old_id, tmp_ret_ty.clone());
+            let app_expr_ty = tmp_ret_ty.subst(&ri.old_id, &op);
+            (tmp_ty, body_ty, app_expr_ty)
+        };
+        // generate derivation and constraints
+        todo!()
     }
     fn expand_pred_node(
         &self,
@@ -657,41 +668,41 @@ impl Context {
         ri: &ReductionInfo,
         is_shared_ty: bool,
         tmp_ret_ty: &Ty,
-        clauses: &mut Vec<chc::CHC<chc::Atom, Constraint>>
+        clauses: &mut Vec<chc::CHC<chc::Atom, Constraint>>,
     ) {
         // if a shared_ty is attached with the predicate we are focusing on, we have to use it
-            let arg_ty: Vec<Ty> = match &ri.arg.aux.tys {
-                Some(tys) => tys.clone(),
-                None => derivation.get_types_by_level(node_id, &ri.level).collect(),
-            };
-            let arg_ty: Vec<Ty> = if arg_ty.len() == 0 {
-                vec![Ty::mk_bot(&ri.arg_var.ty)]
-            } else {
-                arg_ty
-            };
-            let arg_ty = arg_ty;
-            let (tmp_ty, ret_ty, tmp_ret_ty) = if is_shared_ty {
-                match tmp_ret_ty.kind() {
-                    TauKind::Arrow(ts, t_result) => {
-                        Self::append_clauses_by_subst(
-                            clauses,
-                            ts,
-                            &arg_ty,
-                            &tmp_ret_ty.rty_no_exists(),
-                        );
-                        let app_expr_ty = t_result.clone();
-                        (tmp_ret_ty.clone(), ret_ty, app_expr_ty)
-                    }
-                    TauKind::IArrow(_, _) | TauKind::Proposition(_) => {
-                        panic!("program error")
+        let arg_ty: Vec<Ty> = match &ri.arg.aux.tys {
+            Some(tys) => tys.clone(),
+            None => derivation.get_types_by_level(node_id, &ri.level).collect(),
+        };
+        let arg_ty: Vec<Ty> = if arg_ty.len() == 0 {
+            vec![Ty::mk_bot(&ri.arg_var.ty)]
+        } else {
+            arg_ty
+        };
+        let arg_ty = arg_ty;
+        let (tmp_ty, ret_ty, tmp_ret_ty) = if is_shared_ty {
+            match tmp_ret_ty.kind() {
+                TauKind::Arrow(ts, t_result) => {
+                    Self::append_clauses_by_subst(
+                        clauses,
+                        ts,
+                        &arg_ty,
+                        &tmp_ret_ty.rty_no_exists(),
+                    );
+                    let app_expr_ty = t_result.clone();
+                    (tmp_ret_ty.clone(), ret_ty, app_expr_ty)
+                }
+                TauKind::IArrow(_, _) | TauKind::Proposition(_) => {
+                    panic!("program error")
                 }
             }
-            } else {
-                let tmp_ty = Ty::mk_arrow(arg_ty.clone(), tmp_ret_ty.clone());
-                (tmp_ty, ret_ty, tmp_ret_ty.clone())
-            };
-            // generate derivation and generate constraints
-            todo!()
+        } else {
+            let tmp_ty = Ty::mk_arrow(arg_ty.clone(), tmp_ret_ty.clone());
+            (tmp_ty, ret_ty, tmp_ret_ty.clone())
+        };
+        // generate derivation and generate constraints
+        todo!()
     }
     // (\x. g) g' -> [g'/x] g
     fn expand_node(
@@ -727,9 +738,29 @@ impl Context {
         // case where the argument is an integer
         if ri.arg_var.ty.is_int() {
             // case where the argument is a predicate
-            self.expand_int_node(node_id, app_exprs, derivation, reduction, &ret_ty, ri, is_shared_ty, &tmp_ret_ty, clauses)
+            self.expand_int_node(
+                node_id,
+                app_exprs,
+                derivation,
+                reduction,
+                &ret_ty,
+                ri,
+                is_shared_ty,
+                &tmp_ret_ty,
+                clauses,
+            )
         } else {
-            self.expand_pred_node(node_id, app_exprs, derivation, reduction, &ret_ty, ri, is_shared_ty, &tmp_ret_ty, clauses)
+            self.expand_pred_node(
+                node_id,
+                app_exprs,
+                derivation,
+                reduction,
+                &ret_ty,
+                ri,
+                is_shared_ty,
+                &tmp_ret_ty,
+                clauses,
+            )
         };
 
         pdebug!(
@@ -738,7 +769,6 @@ impl Context {
             "): ",
             reduction.app_expr
         );
-
     }
     fn infer_type_inner(
         &self,

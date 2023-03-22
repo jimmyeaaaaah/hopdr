@@ -147,9 +147,11 @@ impl Derivation<Atom> {
         level: &'a usize,
     ) -> impl Iterator<Item = Self> + 'a {
         let node = self.tree.get_node_by_id(node_id);
-        self.tree.filter_descendants(node, move |n| {
-            n.expr.aux.level_arg.iter().any(|arg| arg == level)
-        }).map(move |n| self.sub_derivation(&n.id))
+        self.tree
+            .filter_descendants(node, move |n| {
+                n.expr.aux.level_arg.iter().any(|arg| arg == level)
+            })
+            .map(move |n| self.sub_derivation(&n.id))
     }
 
     pub fn rule_atom(expr: G, ty: Ty) -> Self {
