@@ -307,7 +307,7 @@ impl<T> Tree<T> {
             }
         }
     }
-    pub fn update_children<'a, P>(&'a mut self, node_id: ID, f: &P)
+    fn update_children_inner<'a, P>(&'a mut self, node_id: ID, f: &P)
     where
         P: 'a + Fn(&mut T),
     {
@@ -316,8 +316,14 @@ impl<T> Tree<T> {
 
         let children: Vec<_> = self.graph.children(node_id).collect();
         for child_id in children {
-            self.update_children(child_id, f)
+            self.update_children_inner(child_id, f)
         }
+    }
+    pub fn update_children<'a, P>(&'a mut self, node_id: ID, f: P)
+    where
+        P: 'a + Fn(&mut T),
+    {
+        self.update_children_inner(node_id, &f)
     }
 }
 impl<T: Clone> Tree<T> {
@@ -426,7 +432,7 @@ fn tree_basics() {
 
     // update children
     let mut t8 = t.clone();
-    t8.update_children(t8.root, &|x| *x = 10);
+    t8.update_children(t8.root, |x| *x = 10);
     assert_eq!(
         t8.iter_descendants(t8.root())
             .map(|n| *n.item)

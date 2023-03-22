@@ -622,6 +622,15 @@ impl Context {
         Self::append_clauses(clauses, &constraint);
     }
 
+    fn insert_derivation(
+        &self,
+        node_id: tree::ID,
+        derivation: &mut Derivation<Atom>,
+        predicate_ty: &Ty,
+        app_expr_ty: &Ty,
+    ) {
+    }
+
     ///// aux functions end
     fn expand_int_node(
         &self,
@@ -638,19 +647,18 @@ impl Context {
         // constructing body derivation
         let arg_derivations =
             derivation.replace_derivation_at_level_with_var(node_id, &ri.level, ri.arg_var.id);
+        assert_eq!(arg_derivations.len(), 0);
 
         // all Ptr(id) in the constraints in ty should be dereferenced
+        derivation.traverse_and_recover_int_var(node_id, &ri.arg_var.id, &ri.old_id);
 
-        let mut body_ty = ret_ty
-            .deref_ptr(&ri.arg_var.id)
-            .rename(&ri.arg_var.id, &ri.old_id);
         let op: Op = ri.arg.clone().into();
-        let (tmp_ty, ret_ty, tmp_ret_ty) = if is_shared_ty {
+        let (tmp_ty, tmp_ret_ty) = if is_shared_ty {
             match tmp_ret_ty.kind() {
                 TauKind::IArrow(id, t) => {
-                    let body_ty = body_ty.rename(&ri.old_id, id);
+                    derivation.rename_int_var(node_id, &ri.old_id, id);
                     let app_expr_ty = t.subst(&id, &op);
-                    (tmp_ret_ty.clone(), body_ty, app_expr_ty)
+                    (tmp_ret_ty.clone(), app_expr_ty)
                 }
                 TauKind::Arrow(_, _) | TauKind::Proposition(_) => {
                     panic!("program error")
@@ -659,7 +667,7 @@ impl Context {
         } else {
             let tmp_ty = Tau::mk_iarrow(ri.old_id, tmp_ret_ty.clone());
             let app_expr_ty = tmp_ret_ty.subst(&ri.old_id, &op);
-            (tmp_ty, body_ty, app_expr_ty)
+            (tmp_ty, app_expr_ty)
         };
         // generate derivation and constraints
         todo!()
@@ -676,18 +684,32 @@ impl Context {
         tmp_ret_ty: &Ty,
         clauses: &mut Vec<chc::CHC<chc::Atom, Constraint>>,
     ) {
-        // if a shared_ty is attached with the predicate we are focusing on, we have to use it
-        let arg_ty: Vec<Ty> = match &ri.arg.aux.tys {
-            Some(tys) => tys.clone(),
-            None => derivation.get_types_by_level(node_id, &ri.level).collect(),
-        };
-        let arg_ty: Vec<Ty> = if arg_ty.len() == 0 {
-            vec![Ty::mk_bot(&ri.arg_var.ty)]
+        let mut arg_derivations =
+            derivation.replace_derivation_at_level_with_var(node_id, &ri.level, ri.arg_var.id);
+
+        let (arg_ty, arg_derivations) = if arg_derivations.is_empty() {
+            (
+                vec![Ty::mk_bot(&ri.arg_var.ty)],
+                vec![Derivation::rule_atom(
+                    ri.arg.clone(),
+                    Ty::mk_bot(&ri.arg_var.ty),
+                )],
+            )
         } else {
-            arg_ty
+            // if a shared_ty is attached with the predicate we are focusing on, we have to use it
+            match &ri.arg.aux.tys {
+                Some(tys) => (tys.clone(), arg_derivations),
+                None => (
+                    arg_derivations
+                        .iter()
+                        .map(|d| d.root_ty().clone())
+                        .collect(),
+                    vec![arg_derivations.pop().unwrap()],
+                ),
+            }
         };
-        let arg_ty = arg_ty;
-        let (tmp_ty, ret_ty, tmp_ret_ty) = if is_shared_ty {
+
+        let (tmp_ty, tmp_ret_ty) = if is_shared_ty {
             match tmp_ret_ty.kind() {
                 TauKind::Arrow(ts, t_result) => {
                     Self::append_clauses_by_subst(
@@ -697,7 +719,7 @@ impl Context {
                         &tmp_ret_ty.rty_no_exists(),
                     );
                     let app_expr_ty = t_result.clone();
-                    (tmp_ret_ty.clone(), ret_ty, app_expr_ty)
+                    (tmp_ret_ty.clone(), app_expr_ty)
                 }
                 TauKind::IArrow(_, _) | TauKind::Proposition(_) => {
                     panic!("program error")
@@ -705,7 +727,7 @@ impl Context {
             }
         } else {
             let tmp_ty = Ty::mk_arrow(arg_ty.clone(), tmp_ret_ty.clone());
-            (tmp_ty, ret_ty, tmp_ret_ty.clone())
+            (tmp_ty, tmp_ret_ty.clone())
         };
         // generate derivation and generate constraints
         todo!()

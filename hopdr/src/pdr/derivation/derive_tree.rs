@@ -334,8 +334,19 @@ impl Derivation<Atom> {
         }
         derivations
     }
-
+    // traverse sub derivation from `from` and deref `id` and replace `id` with `old_id`
     pub fn traverse_and_recover_int_var(&mut self, from: ID, id: &Ident, old_id: &Ident) {
-        unimplemented!()
+        self.tree.update_children(from, |node| {
+            let ty = node.ty.clone();
+            let new_ty = ty.deref_ptr(id).rename(id, old_id);
+            node.ty = new_ty;
+        });
+    }
+    pub fn rename_int_var(&mut self, from: ID, old_id: &Ident, new_id: &Ident) {
+        self.tree.update_children(from, |node| {
+            let ty = node.ty.clone();
+            let new_ty = ty.rename(old_id, new_id);
+            node.ty = new_ty;
+        })
     }
 }
