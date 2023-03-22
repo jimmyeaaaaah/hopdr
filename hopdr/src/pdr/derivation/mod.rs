@@ -595,9 +595,8 @@ impl Context {
             Self::append_clauses(clauses, &constraint);
         }
     }
-    // tmp_ty is the type for \x1. \x2. g
-    // body_ty is the type for g
-    // app_expr_ty is the type for (\x1. \x2. g) g1 g2
+    // tmp_ty is the type for \x1.  g1
+    // app_expr_ty is the type for (\x1.  g1) g2
     fn generate_constraint(
         old_derivation: &Derivation<Atom>,
         clauses: &mut Vec<chc::CHC<chc::Atom, Constraint>>,
@@ -636,6 +635,12 @@ impl Context {
         tmp_ret_ty: &Ty,
         clauses: &mut Vec<chc::CHC<chc::Atom, Constraint>>,
     ) {
+        // constructing body derivation
+        let arg_derivations =
+            derivation.replace_derivation_at_level_with_var(node_id, &ri.level, ri.arg_var.id);
+
+        // all Ptr(id) in the constraints in ty should be dereferenced
+
         let mut body_ty = ret_ty
             .deref_ptr(&ri.arg_var.id)
             .rename(&ri.arg_var.id, &ri.old_id);

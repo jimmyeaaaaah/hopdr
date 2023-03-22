@@ -334,4 +334,8 @@ impl Derivation<Atom> {
         }
         derivations
     }
+
+    pub fn traverse_and_recover_int_var(&mut self, from: ID, id: &Ident, old_id: &Ident) {
+        unimplemented!()
+    }
 }

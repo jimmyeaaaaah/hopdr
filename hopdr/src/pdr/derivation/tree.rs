@@ -307,6 +307,18 @@ impl<T> Tree<T> {
             }
         }
     }
+    pub fn update_children<'a, P>(&'a mut self, node_id: ID, f: &P)
+    where
+        P: 'a + Fn(&mut T),
+    {
+        let item = self.items.get_mut(&node_id).unwrap();
+        f(item);
+
+        let children: Vec<_> = self.graph.children(node_id).collect();
+        for child_id in children {
+            self.update_children(child_id, f)
+        }
+    }
 }
 impl<T: Clone> Tree<T> {
     fn projection(&self, graph: IDTree, root: ID) -> Self {
@@ -410,5 +422,15 @@ fn tree_basics() {
             .map(|n| *n.item)
             .collect::<Vec<_>>(),
         vec![1, 4, 2, 5]
+    );
+
+    // update children
+    let mut t8 = t.clone();
+    t8.update_children(t8.root, &|x| *x = 10);
+    assert_eq!(
+        t8.iter_descendants(t8.root())
+            .map(|n| *n.item)
+            .collect::<Vec<_>>(),
+        vec![10, 10, 10, 10]
     );
 }
