@@ -591,6 +591,9 @@ impl Context {
             Self::append_clauses(clauses, &constraint);
         }
     }
+    // tmp_ty is the type for \x1. \x2. g
+    // body_ty is the type for g
+    // app_expr_ty is the type for (\x1. \x2. g) g1 g2
     fn generate_constraint(clauses: &mut Vec<chc::CHC<chc::Atom, Constraint>>, tmp_ty: &Ty, body_ty: &Ty, app_expr_ty: &Ty) {
         pdebug!("inferred type: ", tmp_ty);
         pdebug!("body type: ", body_ty);
