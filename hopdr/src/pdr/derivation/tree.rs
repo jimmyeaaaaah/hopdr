@@ -1,7 +1,5 @@
 use std::collections::{HashMap, VecDeque};
 
-use rpds::List;
-
 use crate::util::global_counter;
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Hash, PartialOrd, Ord)]
@@ -14,6 +12,9 @@ fn gen_id() -> ID {
 impl ID {
     pub fn to_item<'a, T>(&'a self, tree: &'a Tree<T>) -> &'a T {
         tree.items.get(self).unwrap()
+    }
+    pub fn to_node<'a, T>(&'a self, tree: &'a Tree<T>) -> Node<T> {
+        tree.get_node_by_id(*self)
     }
 }
 
@@ -113,7 +114,7 @@ impl IDTree {
         traverse(self, node, &mut edges, &mut parent);
         Self { edges, parent }
     }
-    fn replace_subtree<'a>(&'a self, node: ID, graph: Self, root: ID) -> Self {
+    pub fn replace_subtree<'a>(&'a self, node: ID, graph: Self, root: ID) -> Self {
         fn traverse(
             t: &IDTree,
             cur: ID,

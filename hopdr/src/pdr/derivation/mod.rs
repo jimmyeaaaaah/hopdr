@@ -599,6 +599,7 @@ impl Context {
     // body_ty is the type for g
     // app_expr_ty is the type for (\x1. \x2. g) g1 g2
     fn generate_constraint(
+        old_derivation: &Derivation<Atom>,
         clauses: &mut Vec<chc::CHC<chc::Atom, Constraint>>,
         tmp_ty: &Ty,
         body_ty: &Ty,

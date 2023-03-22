@@ -129,16 +129,22 @@ impl Derivation<Atom> {
             .filter(move |n| n.expr.aux.id == *id)
             .map(|n| n.item.ty.clone())
     }
+    fn get_node_by_level<'a>(
+        &'a self,
+        node_id: ID,
+        level: &'a usize,
+    ) -> impl Iterator<Item = Node<'a, DeriveNode>> + 'a {
+        let node = self.tree.get_node_by_id(node_id);
+        self.tree.filter_descendants(node, move |n| {
+            n.expr.aux.level_arg.iter().any(|arg| arg == level)
+        })
+    }
     pub fn get_types_by_level<'a>(
         &'a self,
         node_id: ID,
         level: &'a usize,
     ) -> impl Iterator<Item = Ty> + 'a {
-        let node = self.tree.get_node_by_id(node_id);
-        self.tree
-            .filter_descendants(node, move |n| {
-                n.expr.aux.level_arg.iter().any(|arg| arg == level)
-            })
+        self.get_node_by_level(node_id, level)
             .map(|n| n.item.ty.clone())
     }
     pub fn get_derivations_by_level<'a>(
@@ -281,8 +287,51 @@ impl Derivation<Atom> {
         &id.to_item(&self.tree).ty
     }
     /// get subderivation of `id`
-    pub fn sub_derivation<'a>(&'a self, id: &'a ID) -> Self {
-        let node = id.to_item(&self.tree);
-        unimplemented!()
+    fn sub_derivation<'a>(&'a self, id: &'a ID) -> Self {
+        let node = id.to_node(&self.tree);
+        let tree = self.tree.subtree(node);
+        // Assume constraints and coeffcients are saved in the main derivation, so
+        // we omit them here.
+        Derivation {
+            tree,
+            constraints: Stack::new(),
+            coefficients: Stack::new(),
+        }
+    }
+    // Assume a derivation tree like
+    //        π          ⋮
+    //   ----------  ---------
+    //   P x: *<c>   Q x: *<c2>
+    //   ------------------------
+    //     P x /\ Q x: *<c/\c2>
+    // and (\y. y /\ Q x) (P x) -> P x /\ Q x
+    // then, by using this function, we can create a derivation tree like
+    //                   ⋮
+    //   ----------  ---------
+    //   y: *<c>   Q x: *<c2>
+    //   ------------------------
+    //     P x /\ Q x: *<c/\c2>
+    // and returns [π]
+    pub fn replace_derivation_at_level_with_var(
+        &mut self,
+        node_id: ID,
+        level: &usize,
+        var: Ident,
+    ) -> Vec<Self> {
+        let var_expr = G::mk_var(var);
+        let mut tree = self.tree.clone();
+        let mut derivations = vec![];
+        for node in self
+            .tree
+            .filter_descendants(self.tree.get_node_by_id(node_id), move |n| {
+                n.expr.aux.level_arg.iter().any(|arg| arg == level)
+            })
+        {
+            let d = Self::rule_var(var_expr.clone(), node.item.ty.clone(), Stack::new());
+            let sub_derivation = self.sub_derivation(&node.id);
+            derivations.push(sub_derivation);
+            tree = tree.replace_subtree(node, d.tree);
+        }
+        derivations
     }
 }
