@@ -54,6 +54,13 @@ impl IDTree {
         let r = self.parent.insert(to, from);
         debug_assert!(r.is_none())
     }
+    fn add_edge_at(&mut self, from: ID, to: ID, child_idx: usize) {
+        debug_assert!(self.edges.contains_key(&from) && self.edges.contains_key(&to));
+        let v = self.edges.get_mut(&from).unwrap();
+        v.insert(child_idx, to);
+        let r = self.parent.insert(to, from);
+        debug_assert!(r.is_none())
+    }
     fn nodes<'a>(&'a self) -> impl Iterator<Item = ID> + 'a {
         self.edges.keys().copied()
     }
@@ -200,15 +207,22 @@ impl<T> Tree<T> {
         items.insert(root, item);
         Tree { graph, items, root }
     }
-    pub fn append_children(&mut self, child: Tree<T>) {
+    fn append_children_inner(&mut self, child: Tree<T>) {
         for node in child.graph.nodes() {
             self.graph.add_node(node);
         }
         for (a, b) in child.graph.all_edges() {
             self.graph.add_edge(a, b);
         }
-        self.graph.add_edge(self.root, child.root);
         self.items.extend(child.items)
+    }
+    pub fn append_children(&mut self, child: Tree<T>) {
+        self.graph.add_edge(self.root, child.root);
+        self.append_children_inner(child);
+    }
+    pub fn insert_children_at(&mut self, parent_node: ID, index: usize, child: Tree<T>) {
+        self.graph.add_edge_at(parent_node, child.root, index);
+        self.append_children_inner(child);
     }
     pub fn tree_from_children<I>(item: T, children: I) -> Tree<T>
     where
@@ -362,6 +376,48 @@ impl<T: Clone> Tree<T> {
         }
         result
     }
+    //             2  3
+    // insert here→ \/
+    //               1
+    //   ↓
+    //  2       ...
+    //   \     /
+    //    5   6
+    //     \ /
+    //      4  3
+    //      | /
+    //      1
+    // node_id: 2
+    //
+    pub fn insert_partial_tree<P>(&self, node_id: ID, f: P) -> Self
+    where
+        P: FnOnce(Self) -> Self,
+    {
+        let parent_node = self
+            .parent(node_id)
+            .expect("the node you specified is the root node");
+        let sub_tree = self.subtree(node_id.to_node(self));
+        let child_tree = f(sub_tree);
+
+        let mut target_idx = self
+            .get_children(parent_node.to_node(self))
+            .enumerate()
+            .find_map(
+                |(idx, child)| {
+                    if child.id == node_id {
+                        Some(idx)
+                    } else {
+                        None
+                    }
+                },
+            )
+            .unwrap();
+
+        // 1. first remove all the nodes and edges in sub_tree
+        let mut parent_tree = self.drop_subtree(node_id.to_node(self));
+        parent_tree.insert_children_at(parent_node, target_idx, child_tree);
+        parent_tree
+    }
 }
 
 #[test]
@@ -439,4 +495,39 @@ fn tree_basics() {
             .collect::<Vec<_>>(),
         vec![10, 10, 10, 10]
     );
+    //                 /
+    //             2  2
+    // insert here→ \/
+    //               1
+    //   ↓
+    //  2
+    //   \
+    //    5   6   3
+    //     \ /  /
+    //      4  2
+    //      | /
+    //      1
+    // node_id: 2
+    //
+    let t9 = t.insert_partial_tree(child.id, |t| {
+        let six = Tree::singleton(6);
+        let five = Tree::tree_with_child(5, t);
+        let four = Tree::tree_with_two_children(4, five, six);
+        four
+    });
+    assert_eq!(*t9.root().item, 1);
+    let v: Vec<_> = t9.get_children(t9.root()).collect();
+    assert_eq!(v.len(), 2);
+    let four_node = v[0];
+    let two_node = v[1];
+    let v: Vec<_> = t9.get_children(four_node).collect();
+    assert_eq!(v.len(), 2);
+    assert_eq!(*v[0].item, 5);
+    assert_eq!(*v[0].item, 6);
+    let v: Vec<_> = t9.get_children(v[0]).collect();
+    assert_eq!(*v[0].item, 2);
+
+    let v: Vec<_> = t9.get_children(two_node).collect();
+    assert_eq!(v.len(), 1);
+    assert_eq!(*v[0].item, 3);
 }

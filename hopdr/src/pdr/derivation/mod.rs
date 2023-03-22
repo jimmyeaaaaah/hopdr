@@ -626,9 +626,11 @@ impl Context {
         &self,
         node_id: tree::ID,
         derivation: &mut Derivation<Atom>,
-        predicate_ty: &Ty,
+        arg_derivations: Vec<Derivation<Atom>>,
+        pred_ty: &Ty,
         app_expr_ty: &Ty,
     ) {
+        // 1. get node_id's parent
     }
 
     ///// aux functions end
@@ -638,7 +640,6 @@ impl Context {
         app_exprs: &Vec<G>,
         derivation: &mut Derivation<Atom>,
         reduction: &Reduction,
-        ret_ty: &Ty,
         ri: &ReductionInfo,
         is_shared_ty: bool,
         tmp_ret_ty: &Ty,
@@ -653,7 +654,7 @@ impl Context {
         derivation.traverse_and_recover_int_var(node_id, &ri.arg_var.id, &ri.old_id);
 
         let op: Op = ri.arg.clone().into();
-        let (tmp_ty, tmp_ret_ty) = if is_shared_ty {
+        let (pred_ty, app_expr_ty) = if is_shared_ty {
             match tmp_ret_ty.kind() {
                 TauKind::IArrow(id, t) => {
                     derivation.rename_int_var(node_id, &ri.old_id, id);
@@ -678,7 +679,6 @@ impl Context {
         app_exprs: &Vec<G>,
         derivation: &mut Derivation<Atom>,
         reduction: &Reduction,
-        ret_ty: &Ty,
         ri: &ReductionInfo,
         is_shared_ty: bool,
         tmp_ret_ty: &Ty,
@@ -709,7 +709,7 @@ impl Context {
             }
         };
 
-        let (tmp_ty, tmp_ret_ty) = if is_shared_ty {
+        let (pred_ty, app_expr_ty) = if is_shared_ty {
             match tmp_ret_ty.kind() {
                 TauKind::Arrow(ts, t_result) => {
                     Self::append_clauses_by_subst(
@@ -730,7 +730,6 @@ impl Context {
             (tmp_ty, tmp_ret_ty.clone())
         };
         // generate derivation and generate constraints
-        todo!()
     }
     // (\x. g) g' -> [g'/x] g
     fn expand_node(
@@ -771,7 +770,6 @@ impl Context {
                 app_exprs,
                 derivation,
                 reduction,
-                &ret_ty,
                 ri,
                 is_shared_ty,
                 &tmp_ret_ty,
@@ -783,7 +781,6 @@ impl Context {
                 app_exprs,
                 derivation,
                 reduction,
-                &ret_ty,
                 ri,
                 is_shared_ty,
                 &tmp_ret_ty,
