@@ -207,22 +207,23 @@ impl<T> Tree<T> {
         items.insert(root, item);
         Tree { graph, items, root }
     }
-    fn append_children_inner(&mut self, child: Tree<T>) {
+    fn append_children_inner(&mut self, child: &Tree<T>) {
         for node in child.graph.nodes() {
             self.graph.add_node(node);
         }
         for (a, b) in child.graph.all_edges() {
             self.graph.add_edge(a, b);
         }
-        self.items.extend(child.items)
     }
     pub fn append_children(&mut self, child: Tree<T>) {
+        self.append_children_inner(&child);
         self.graph.add_edge(self.root, child.root);
-        self.append_children_inner(child);
+        self.items.extend(child.items)
     }
     pub fn insert_children_at(&mut self, parent_node: ID, index: usize, child: Tree<T>) {
+        self.append_children_inner(&child);
         self.graph.add_edge_at(parent_node, child.root, index);
-        self.append_children_inner(child);
+        self.items.extend(child.items)
     }
     pub fn tree_from_children<I>(item: T, children: I) -> Tree<T>
     where
@@ -495,19 +496,22 @@ fn tree_basics() {
             .collect::<Vec<_>>(),
         vec![10, 10, 10, 10]
     );
-    //                 /
+    //           3
+    //            \
     //             2  2
     // insert here→ \/
     //               1
     //   ↓
-    //  2
-    //   \
-    //    5   6   3
-    //     \ /  /
-    //      4  2
-    //      | /
-    //      1
-    // node_id: 2
+    // 3
+    //  \
+    //   2
+    //    \
+    //     5   6
+    //      \ /
+    //       4  2
+    //       | /
+    //       1
+    //  node_id: 2
     //
     let t9 = t.insert_partial_tree(child.id, |t| {
         let six = Tree::singleton(6);
@@ -523,11 +527,14 @@ fn tree_basics() {
     let v: Vec<_> = t9.get_children(four_node).collect();
     assert_eq!(v.len(), 2);
     assert_eq!(*v[0].item, 5);
-    assert_eq!(*v[0].item, 6);
+    assert_eq!(*v[1].item, 6);
     let v: Vec<_> = t9.get_children(v[0]).collect();
     assert_eq!(*v[0].item, 2);
 
-    let v: Vec<_> = t9.get_children(two_node).collect();
+    let v: Vec<_> = t9.get_children(v[0]).collect();
     assert_eq!(v.len(), 1);
     assert_eq!(*v[0].item, 3);
+
+    let v: Vec<_> = t9.get_children(two_node).collect();
+    assert_eq!(v.len(), 0);
 }
