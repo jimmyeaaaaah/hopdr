@@ -352,6 +352,9 @@ impl Derivation<Atom> {
     }
     fn update_parents(&mut self, target_id: ID, reduction: &super::Reduction) {
         // go up along with its parents
+        // self.tree.update_parent_until(target_id, |n| {
+        //     n.
+        // })
     }
     pub fn subject_expansion_int(
         &mut self,
@@ -384,7 +387,7 @@ impl Derivation<Atom> {
             let app_deriv = Derivation::rule_iapp(reduction.app_expr.clone(), tmp_deriv, &op);
             app_deriv.tree
         });
-        
+
         self.tree = t;
 
         let targets: Vec<_> = self

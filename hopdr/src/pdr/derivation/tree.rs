@@ -322,20 +322,26 @@ impl<T> Tree<T> {
             }
         }
     }
-    /// Searches up the tree from the given `base` node, returning the first node for which the
-    /// `predicate` closure returns `true`. If such a node is found, returns `Some(node)`. If the
-    /// top of the tree is reached without finding a node that satisfies the predicate, returns
-    /// `None`.
-    ///
-    /// The `predicate` closure takes a mutable reference to an item in the tree and returns a
-    /// boolean indicating whether the item satisfies the search criteria.
+    /// Searches up the tree from the given `base` node, passing a reference to the
+    /// item associated with each node and its children to the `predicate` closure. The `predicate`
+    /// closure returns a tuple containing a boolean indicating whether the target node has been
+    /// found, and an updated version of the target item. If the target node is found, the function
+    /// returns `Some(node)` containing a reference to that node. If the top of the tree is reached
+    /// without finding the target node, the function returns `None`.
     pub fn update_parent_until<'a, P>(&'a mut self, base: ID, predicate: P) -> Option<Node<'a, T>>
     where
-        P: Fn(&mut T) -> bool,
+        P: Fn(&T, Vec<&T>) -> (bool, T),
     {
         let mut cur = base;
         loop {
-            if predicate(self.items.get_mut(&cur).unwrap()) {
+            let target = self.items.get(&cur).unwrap();
+            let children = self
+                .get_children(self.get_node_by_id(cur))
+                .map(|n| n.item)
+                .collect();
+            let (cont, t) = predicate(target, children);
+            *self.items.get_mut(&cur).unwrap() = t;
+            if cont {
                 break Some(self.get_node_by_id(cur));
             }
             if let Some(parent_id) = self.parent(cur) {
@@ -583,13 +589,16 @@ fn tree_basics() {
     //       1
     let node = t9.search(|x| *x == 2).unwrap();
     let n = t9
-        .update_parent_until(node.id, |v| {
+        .update_parent_until(node.id, |v, children| {
             if *v != 1 {
                 println!("manipulating... {v}");
-                *v = 7;
-                false
+                println!("children:");
+                for child in children {
+                    println!("- {child}");
+                }
+                (false, 7)
             } else {
-                true
+                (true, *v)
             }
         })
         .unwrap();
