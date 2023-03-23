@@ -630,7 +630,7 @@ impl Context {
         pred_ty: &Ty,
         app_expr_ty: &Ty,
     ) {
-        // 1. get node_id's parent
+        unimplemented!()
     }
 
     ///// aux functions end
@@ -653,22 +653,18 @@ impl Context {
         // all Ptr(id) in the constraints in ty should be dereferenced
         derivation.traverse_and_recover_int_var(node_id, &ri.arg_var.id, &ri.old_id);
 
-        let op: Op = ri.arg.clone().into();
-        let (pred_ty, app_expr_ty) = if is_shared_ty {
+        let pred_ty = if is_shared_ty {
             match tmp_ret_ty.kind() {
                 TauKind::IArrow(id, t) => {
                     derivation.rename_int_var(node_id, &ri.old_id, id);
-                    let app_expr_ty = t.subst(&id, &op);
-                    (tmp_ret_ty.clone(), app_expr_ty)
+                    tmp_ret_ty.clone()
                 }
                 TauKind::Arrow(_, _) | TauKind::Proposition(_) => {
                     panic!("program error")
                 }
             }
         } else {
-            let tmp_ty = Tau::mk_iarrow(ri.old_id, tmp_ret_ty.clone());
-            let app_expr_ty = tmp_ret_ty.subst(&ri.old_id, &op);
-            (tmp_ty, app_expr_ty)
+            Tau::mk_iarrow(ri.old_id, tmp_ret_ty.clone())
         };
         // generate derivation and constraints
         todo!()
@@ -684,6 +680,7 @@ impl Context {
         tmp_ret_ty: &Ty,
         clauses: &mut Vec<chc::CHC<chc::Atom, Constraint>>,
     ) {
+        // TODO: we also have to replace the expr of each node in the derivation
         let mut arg_derivations =
             derivation.replace_derivation_at_level_with_var(node_id, &ri.level, ri.arg_var.id);
 

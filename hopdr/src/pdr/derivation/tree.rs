@@ -400,7 +400,7 @@ impl<T: Clone> Tree<T> {
         let sub_tree = self.subtree(node_id.to_node(self));
         let child_tree = f(sub_tree);
 
-        let mut target_idx = self
+        let target_idx = self
             .get_children(parent_node.to_node(self))
             .enumerate()
             .find_map(

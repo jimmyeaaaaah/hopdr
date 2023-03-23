@@ -1,3 +1,4 @@
+use super::super::rtype::Refinement;
 use super::tree::*;
 use super::{Atom, Ty, G};
 use crate::formula::*;
@@ -348,5 +349,43 @@ impl Derivation<Atom> {
             let new_ty = ty.rename(old_id, new_id);
             node.ty = new_ty;
         })
+    }
+    //fn update_parents() {}
+    pub fn subject_expansion_int(
+        &mut self,
+        node_id: ID,
+        ri: &super::ReductionInfo,
+        pred_ty: &Ty,
+        app_expr_ty: &Ty,
+    ) {
+        let body_ty = &self.tree.get_node_by_id(node_id).item.ty;
+        let constraint =
+            Atom::mk_implies_opt(pred_ty.rty_no_exists(), body_ty.rty_no_exists()).unwrap();
+        let (pred_arg_ident, pred_body_ty) = match pred_ty.kind() {
+            TauKind::IArrow(x, t) => (*x, t.clone()),
+            TauKind::Proposition(_) | TauKind::Arrow(_, _) => panic!("fail"),
+        };
+
+        self.constraints.push(constraint);
+        let t = self.tree.insert_partial_tree(node_id, |body| {
+            let body_expr = body.root().item.expr.clone();
+            let body = Derivation {
+                tree: body,
+                coefficients: Stack::new(),
+                constraints: Stack::new(),
+            };
+
+            let tmp_deriv = Derivation::rule_subsumption(body, pred_body_ty);
+
+            let expr = G::mk_abs(ri.arg_var.clone(), body_expr);
+            let tmp_deriv = Derivation::rule_iarrow(expr, tmp_deriv, &pred_arg_ident);
+
+            let expr = G::mk_app(expr, ri.arg.clone());
+            let op: Op = ri.arg.clone().into();
+            let app_deriv = Derivation::rule_iapp(expr, tmp_deriv, &op);
+            app_deriv.tree
+        });
+        unimplemented!()
+        //update_parents(node_id, ri)
     }
 }
