@@ -328,23 +328,33 @@ impl<T> Tree<T> {
     /// found, and an updated version of the target item. If the target node is found, the function
     /// returns `Some(node)` containing a reference to that node. If the top of the tree is reached
     /// without finding the target node, the function returns `None`.
-    pub fn update_parent_until<'a, P>(&'a mut self, base: ID, predicate: P) -> Option<Node<'a, T>>
+    pub fn update_parent_until<'a, P>(
+        &'a mut self,
+        base: ID,
+        mut predicate: P,
+    ) -> Option<Node<'a, T>>
     where
-        P: Fn(&T, Vec<&T>) -> (bool, T),
+        P: FnMut(&T, Vec<&T>, Option<&T>) -> (bool, T),
     {
         let mut cur = base;
+        let mut prev = None;
         loop {
             let target = self.items.get(&cur).unwrap();
             let children = self
                 .get_children(self.get_node_by_id(cur))
                 .map(|n| n.item)
                 .collect();
-            let (cont, t) = predicate(target, children);
+            let (cont, t) = predicate(
+                target,
+                children,
+                prev.map(|id| self.items.get(&id).unwrap()),
+            );
             *self.items.get_mut(&cur).unwrap() = t;
             if cont {
                 break Some(self.get_node_by_id(cur));
             }
             if let Some(parent_id) = self.parent(cur) {
+                prev = Some(cur);
                 cur = parent_id
             } else {
                 break None;
@@ -589,9 +599,12 @@ fn tree_basics() {
     //       1
     let node = t9.search(|x| *x == 2).unwrap();
     let n = t9
-        .update_parent_until(node.id, |v, children| {
+        .update_parent_until(node.id, |v, children, prev| {
             if *v != 1 {
                 println!("manipulating... {v}");
+                if let Some(prev) = prev {
+                    println!("prev_node: {prev}");
+                }
                 println!("children:");
                 for child in children {
                     println!("- {child}");

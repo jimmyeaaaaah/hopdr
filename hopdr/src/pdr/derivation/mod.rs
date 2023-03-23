@@ -595,32 +595,6 @@ impl Context {
             Self::append_clauses(clauses, &constraint);
         }
     }
-    // tmp_ty is the type for \x1.  g1
-    // app_expr_ty is the type for (\x1.  g1) g2
-    fn generate_constraint(
-        old_derivation: &Derivation<Atom>,
-        clauses: &mut Vec<chc::CHC<chc::Atom, Constraint>>,
-        tmp_ty: &Ty,
-        body_ty: &Ty,
-        app_expr_ty: &Ty,
-    ) {
-        pdebug!("inferred type: ", tmp_ty);
-        pdebug!("body type: ", body_ty);
-        pdebug!("app_expr_type: ", app_expr_ty);
-
-        // 3. generate constraint from subtyping t <: arg_ty -> ret_ty, and append them to constraints
-        // constrain by `old <= new_tmpty <= top`
-        let constraint =
-            Atom::mk_implies_opt(tmp_ty.rty_no_exists(), body_ty.rty_no_exists()).unwrap();
-
-        let constraint2: Atom = todo!();
-        //let constraint2 =
-        //    Atom::mk_implies_opt(context_ty.rty_no_exists(), app_expr_ty.rty_no_exists()).unwrap();
-        pdebug!("constraint1: ", constraint);
-        pdebug!("constraint2: ", constraint2);
-        let constraint = Atom::mk_conj(constraint, constraint2);
-        Self::append_clauses(clauses, &constraint);
-    }
 
     fn insert_derivation(
         &self,

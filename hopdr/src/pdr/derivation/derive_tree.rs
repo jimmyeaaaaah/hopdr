@@ -23,7 +23,7 @@ pub enum Rule {
     Var,
     Univ(Ident),
     IAbs(Ident),
-    Abs,
+    Abs(Vec<Ty>),
     IApp(Op),
     App,
     Subsumption,
@@ -69,7 +69,7 @@ impl DeriveNode {
         DeriveNode { rule, expr, ty }
     }
     fn arrow(expr: G, node: &Self, ts: Vec<Ty>) -> Self {
-        let rule = Rule::Abs;
+        let rule = Rule::Abs(ts.clone());
         let ty = Ty::mk_arrow(ts, node.ty.clone());
         DeriveNode { rule, expr, ty }
     }
@@ -350,17 +350,115 @@ impl Derivation<Atom> {
             node.ty = new_ty;
         })
     }
-    fn update_parents(&mut self, target_id: ID, reduction: &super::Reduction) {
-        // go up along with its parents
-        // self.tree.update_parent_until(target_id, |n| {
-        //     n.
-        // })
+    fn update_parents(
+        &mut self,
+        target_id: ID,
+        reduction: &super::Reduction,
+        clauses: &mut Vec<chc::CHC<chc::Atom, Constraint>>,
+    ) {
+        let constraints = &mut self.constraints;
+        self.tree
+            .update_parent_until(target_id, |n, children, prev| {
+                let ty = match &n.rule {
+                    Rule::Conjoin => {
+                        let cnstr = children
+                            .iter()
+                            .map(|child| match child.ty.kind() {
+                                TauKind::Proposition(c) => c.clone(),
+                                TauKind::IArrow(_, _) | TauKind::Arrow(_, _) => {
+                                    panic!("not conjoin")
+                                }
+                            })
+                            .fold(Atom::mk_true(), Atom::mk_conj);
+                        Ty::mk_prop_ty(cnstr)
+                    }
+                    Rule::Disjoin => {
+                        let cnstr = children
+                            .iter()
+                            .map(|child| match child.ty.kind() {
+                                TauKind::Proposition(c) => c.clone(),
+                                TauKind::IArrow(_, _) | TauKind::Arrow(_, _) => {
+                                    panic!("not conjoin")
+                                }
+                            })
+                            .fold(Atom::mk_false(), Atom::mk_disj);
+                        Ty::mk_prop_ty(cnstr)
+                    }
+                    Rule::Univ(x) => {
+                        assert_eq!(children.len(), 1);
+                        let cnstr = match children[0].ty.kind() {
+                            TauKind::Proposition(c) => c.clone(),
+                            TauKind::IArrow(_, _) | TauKind::Arrow(_, _) => panic!("not conjoin"),
+                        };
+                        Ty::mk_prop_ty(Atom::mk_univ_int(*x, cnstr))
+                    }
+                    Rule::IAbs(x) => {
+                        assert_eq!(children.len(), 1);
+                        Ty::mk_iarrow(*x, children[0].ty.clone())
+                    }
+                    Rule::Abs(x) => {
+                        assert_eq!(children.len(), 1);
+                        Ty::mk_arrow(x.clone(), children[0].ty.clone())
+                    }
+                    Rule::IApp(o) => {
+                        assert_eq!(children.len(), 1);
+                        match children[0].ty.kind() {
+                            TauKind::IArrow(x, t) => t.subst(&x, &o),
+                            _ => panic!("program error"),
+                        }
+                    }
+                    Rule::App => {
+                        assert_eq!(children.len(), 2);
+                        // todo?
+                        //assert!(children.len() >= 2);
+                        let node = prev.unwrap();
+
+                        // case1: the updated child was in pred
+                        if node.expr.aux.id == children[0].expr.aux.id {
+                            let pred = children[0].ty.clone();
+                            let body = children[1].ty.clone();
+                            let (arg_ty, ret_ty) = match pred.kind() {
+                                TauKind::Arrow(arg, t) => (arg.clone(), t.clone()),
+                                TauKind::Proposition(_) | TauKind::IArrow(_, _) => {
+                                    panic!("program error")
+                                }
+                            };
+                            super::Context::append_clauses_by_subst(
+                                clauses,
+                                &vec![body.clone()],
+                                &arg_ty,
+                                &pred.rty_no_exists(),
+                            );
+                            ret_ty.clone()
+                        }
+                        // case2: the updated child was in body
+                        else if node.expr.aux.id == children[1].expr.aux.id {
+                            return (true, n.clone());
+                        } else {
+                            panic!("program error")
+                        }
+                    }
+                    Rule::Subsumption => {
+                        assert_eq!(children.len(), 1);
+                        return (true, n.clone());
+                    }
+                    Rule::Var | Rule::Atom => panic!("program error"),
+                };
+                let n = DeriveNode {
+                    ty,
+                    rule: n.rule.clone(),
+                    expr: n.expr.clone(),
+                };
+                (false, n)
+            });
+        unimplemented!()
     }
     pub fn subject_expansion_int(
         &mut self,
         node_id: ID,
         reduction: &super::Reduction,
         pred_ty: &Ty,
+        clauses: &mut Vec<chc::CHC<chc::Atom, Constraint>>,
     ) {
         let body_ty = &self.tree.get_node_by_id(node_id).item.ty;
         let constraint =
@@ -397,6 +495,8 @@ impl Derivation<Atom> {
         assert_eq!(targets.len(), 1);
         let target_node = targets[0];
 
-        self.update_parents(target_node, reduction)
+        self.update_parents(target_node, reduction, clauses);
+        // finally replace the expressions in the derivation with the expr before the reduction
+        //self.update_expr(reduction.)
     }
 }
