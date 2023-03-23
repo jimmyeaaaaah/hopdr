@@ -322,6 +322,29 @@ impl<T> Tree<T> {
             }
         }
     }
+    /// Searches up the tree from the given `base` node, returning the first node for which the
+    /// `predicate` closure returns `true`. If such a node is found, returns `Some(node)`. If the
+    /// top of the tree is reached without finding a node that satisfies the predicate, returns
+    /// `None`.
+    ///
+    /// The `predicate` closure takes a mutable reference to an item in the tree and returns a
+    /// boolean indicating whether the item satisfies the search criteria.
+    pub fn update_parent_until<'a, P>(&'a mut self, base: ID, predicate: P) -> Option<Node<'a, T>>
+    where
+        P: Fn(&mut T) -> bool,
+    {
+        let mut cur = base;
+        loop {
+            if predicate(self.items.get_mut(&cur).unwrap()) {
+                break Some(self.get_node_by_id(cur));
+            }
+            if let Some(parent_id) = self.parent(cur) {
+                cur = parent_id
+            } else {
+                break None;
+            }
+        }
+    }
     fn update_children_inner<'a, P>(&'a mut self, node_id: ID, f: &P)
     where
         P: 'a + Fn(&mut T),
@@ -513,7 +536,7 @@ fn tree_basics() {
     //       1
     //  node_id: 2
     //
-    let t9 = t.insert_partial_tree(child.id, |t| {
+    let mut t9 = t.insert_partial_tree(child.id, |t| {
         let six = Tree::singleton(6);
         let five = Tree::tree_with_child(5, t);
         let four = Tree::tree_with_two_children(4, five, six);
@@ -530,6 +553,60 @@ fn tree_basics() {
     assert_eq!(*v[1].item, 6);
     let v: Vec<_> = t9.get_children(v[0]).collect();
     assert_eq!(*v[0].item, 2);
+
+    let v: Vec<_> = t9.get_children(v[0]).collect();
+    assert_eq!(v.len(), 1);
+    assert_eq!(*v[0].item, 3);
+
+    let v: Vec<_> = t9.get_children(two_node).collect();
+    assert_eq!(v.len(), 0);
+
+    // update 2's parents up to 1 is updated to 7
+    // 3
+    //  \
+    //   2  ← start here
+    //    \
+    //     5   6
+    //      \ /
+    //       4  2
+    //       | /
+    //       1
+    //
+    // 3
+    //  \
+    //   7
+    //    \
+    //     7   6
+    //      \ /
+    //       7  2
+    //       | /
+    //       1
+    let node = t9.search(|x| *x == 2).unwrap();
+    let n = t9
+        .update_parent_until(node.id, |v| {
+            if *v != 1 {
+                println!("manipulating... {v}");
+                *v = 7;
+                false
+            } else {
+                true
+            }
+        })
+        .unwrap();
+    assert_eq!(*n.item, 1);
+
+    assert_eq!(*t9.root().item, 1);
+    let v: Vec<_> = t9.get_children(t9.root()).collect();
+    assert_eq!(v.len(), 2);
+    let seven_node = v[0];
+    let two_node = v[1];
+    assert_eq!(*seven_node.item, 7);
+    let v: Vec<_> = t9.get_children(seven_node).collect();
+    assert_eq!(v.len(), 2);
+    assert_eq!(*v[0].item, 7);
+    assert_eq!(*v[1].item, 6);
+    let v: Vec<_> = t9.get_children(v[0]).collect();
+    assert_eq!(*v[0].item, 7);
 
     let v: Vec<_> = t9.get_children(v[0]).collect();
     assert_eq!(v.len(), 1);

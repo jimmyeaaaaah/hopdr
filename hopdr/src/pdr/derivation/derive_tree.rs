@@ -350,13 +350,14 @@ impl Derivation<Atom> {
             node.ty = new_ty;
         })
     }
-    //fn update_parents() {}
+    fn update_parents(&mut self, target_id: ID, reduction: &super::Reduction) {
+        // go up along with its parents
+    }
     pub fn subject_expansion_int(
         &mut self,
         node_id: ID,
-        ri: &super::ReductionInfo,
+        reduction: &super::Reduction,
         pred_ty: &Ty,
-        app_expr_ty: &Ty,
     ) {
         let body_ty = &self.tree.get_node_by_id(node_id).item.ty;
         let constraint =
@@ -366,9 +367,8 @@ impl Derivation<Atom> {
             TauKind::Proposition(_) | TauKind::Arrow(_, _) => panic!("fail"),
         };
 
-        self.constraints.push(constraint);
+        self.constraints.push_mut(constraint);
         let t = self.tree.insert_partial_tree(node_id, |body| {
-            let body_expr = body.root().item.expr.clone();
             let body = Derivation {
                 tree: body,
                 coefficients: Stack::new(),
@@ -377,15 +377,23 @@ impl Derivation<Atom> {
 
             let tmp_deriv = Derivation::rule_subsumption(body, pred_body_ty);
 
-            let expr = G::mk_abs(ri.arg_var.clone(), body_expr);
-            let tmp_deriv = Derivation::rule_iarrow(expr, tmp_deriv, &pred_arg_ident);
+            let tmp_deriv =
+                Derivation::rule_iarrow(reduction.predicate.clone(), tmp_deriv, &pred_arg_ident);
 
-            let expr = G::mk_app(expr, ri.arg.clone());
-            let op: Op = ri.arg.clone().into();
-            let app_deriv = Derivation::rule_iapp(expr, tmp_deriv, &op);
+            let op: Op = reduction.reduction_info.arg.clone().into();
+            let app_deriv = Derivation::rule_iapp(reduction.app_expr.clone(), tmp_deriv, &op);
             app_deriv.tree
         });
-        unimplemented!()
-        //update_parents(node_id, ri)
+        
+        self.tree = t;
+
+        let targets: Vec<_> = self
+            .get_nodes_by_id(&reduction.result.aux.id)
+            .map(|n| n.id)
+            .collect();
+        assert_eq!(targets.len(), 1);
+        let target_node = targets[0];
+
+        self.update_parents(target_node, reduction)
     }
 }
