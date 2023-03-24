@@ -641,7 +641,7 @@ impl Context {
             Tau::mk_iarrow(ri.old_id, tmp_ret_ty.clone())
         };
         // generate derivation and constraints
-        todo!()
+        derivation.subject_expansion_int(node_id, reduction, &pred_ty, clauses);
     }
     fn expand_pred_node(
         &self,
@@ -680,7 +680,7 @@ impl Context {
             }
         };
 
-        let (pred_ty, app_expr_ty) = if is_shared_ty {
+        let pred_ty = if is_shared_ty {
             match tmp_ret_ty.kind() {
                 TauKind::Arrow(ts, t_result) => {
                     Self::append_clauses_by_subst(
@@ -690,17 +690,17 @@ impl Context {
                         &tmp_ret_ty.rty_no_exists(),
                     );
                     let app_expr_ty = t_result.clone();
-                    (tmp_ret_ty.clone(), app_expr_ty)
+                    tmp_ret_ty.clone()
                 }
                 TauKind::IArrow(_, _) | TauKind::Proposition(_) => {
                     panic!("program error")
                 }
             }
         } else {
-            let tmp_ty = Ty::mk_arrow(arg_ty.clone(), tmp_ret_ty.clone());
-            (tmp_ty, tmp_ret_ty.clone())
+            Ty::mk_arrow(arg_ty.clone(), tmp_ret_ty.clone())
         };
         // generate derivation and generate constraints
+        derivation.subject_expansion_pred(node_id, arg_derivations, reduction, &pred_ty, clauses);
     }
     // (\x. g) g' -> [g'/x] g
     fn expand_node(

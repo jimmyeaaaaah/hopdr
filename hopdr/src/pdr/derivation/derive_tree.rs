@@ -353,7 +353,6 @@ impl Derivation<Atom> {
     fn update_parents(
         &mut self,
         target_id: ID,
-        reduction: &super::Reduction,
         clauses: &mut Vec<chc::CHC<chc::Atom, Constraint>>,
     ) {
         let constraints = &mut self.constraints;
@@ -453,6 +452,33 @@ impl Derivation<Atom> {
             });
         unimplemented!()
     }
+    fn update_expr(&mut self, expr: &G) {
+        unimplemented!()
+    }
+    fn finalize_subject_expansion(
+        &mut self,
+        node_id: ID,
+        pred_ty: &Ty,
+        reduction: &super::Reduction,
+        clauses: &mut Vec<chc::CHC<chc::Atom, Constraint>>,
+    ) {
+        // append constraints for body_ty subsumption
+        let body_ty = &self.tree.get_node_by_id(node_id).item.ty;
+        let constraint =
+            Atom::mk_implies_opt(pred_ty.rty_no_exists(), body_ty.rty_no_exists()).unwrap();
+        self.constraints.push_mut(constraint);
+
+        let targets: Vec<_> = self
+            .get_nodes_by_id(&reduction.result.aux.id)
+            .map(|n| n.id)
+            .collect();
+        assert_eq!(targets.len(), 1);
+        let target_node = targets[0];
+
+        self.update_parents(target_node, clauses);
+        // finally replace the expressions in the derivation with the expr before the reduction
+        self.update_expr(unimplemented!())
+    }
     pub fn subject_expansion_int(
         &mut self,
         node_id: ID,
@@ -460,15 +486,11 @@ impl Derivation<Atom> {
         pred_ty: &Ty,
         clauses: &mut Vec<chc::CHC<chc::Atom, Constraint>>,
     ) {
-        let body_ty = &self.tree.get_node_by_id(node_id).item.ty;
-        let constraint =
-            Atom::mk_implies_opt(pred_ty.rty_no_exists(), body_ty.rty_no_exists()).unwrap();
         let (pred_arg_ident, pred_body_ty) = match pred_ty.kind() {
             TauKind::IArrow(x, t) => (*x, t.clone()),
             TauKind::Proposition(_) | TauKind::Arrow(_, _) => panic!("fail"),
         };
 
-        self.constraints.push_mut(constraint);
         let t = self.tree.insert_partial_tree(node_id, |body| {
             let body = Derivation {
                 tree: body,
@@ -487,16 +509,42 @@ impl Derivation<Atom> {
         });
 
         self.tree = t;
+        self.finalize_subject_expansion(node_id, pred_ty, reduction, clauses);
+    }
+    pub fn subject_expansion_pred(
+        &mut self,
+        node_id: ID,
+        arg_derivations: Vec<Self>,
+        reduction: &super::Reduction,
+        pred_ty: &Ty,
+        clauses: &mut Vec<chc::CHC<chc::Atom, Constraint>>,
+    ) {
+        let (arg_tys, pred_body_ty) = match pred_ty.kind() {
+            TauKind::Arrow(tys, t) => (tys, t.clone()),
+            TauKind::Proposition(_) | TauKind::IArrow(_, _) => panic!("fail"),
+        };
 
-        let targets: Vec<_> = self
-            .get_nodes_by_id(&reduction.result.aux.id)
-            .map(|n| n.id)
-            .collect();
-        assert_eq!(targets.len(), 1);
-        let target_node = targets[0];
+        let t = self.tree.insert_partial_tree(node_id, |body| {
+            let body = Derivation {
+                tree: body,
+                coefficients: Stack::new(),
+                constraints: Stack::new(),
+            };
 
-        self.update_parents(target_node, reduction, clauses);
-        // finally replace the expressions in the derivation with the expr before the reduction
-        //self.update_expr(reduction.)
+            let tmp_deriv = Derivation::rule_subsumption(body, pred_body_ty);
+
+            let tmp_deriv =
+                Derivation::rule_arrow(reduction.predicate.clone(), tmp_deriv, arg_tys.clone());
+            let app_deriv = Derivation::rule_app(
+                reduction.app_expr.clone(),
+                tmp_deriv,
+                arg_derivations.into_iter(),
+            );
+
+            app_deriv.tree
+        });
+
+        self.tree = t;
+        self.finalize_subject_expansion(node_id, pred_ty, reduction, clauses);
     }
 }
