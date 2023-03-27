@@ -119,7 +119,10 @@ where
 }
 
 impl Derivation<Atom> {
-    pub fn get_nodes_by_id<'a>(
+    pub fn get_node_by_id<'a>(&'a self, node_id: ID) -> Node<'a, DeriveNode> {
+        self.tree.get_node_by_id(node_id)
+    }
+    pub fn get_nodes_by_goal_id<'a>(
         &'a self,
         id: &'a Ident,
     ) -> impl Iterator<Item = Node<'a, DeriveNode>> + 'a {
@@ -452,8 +455,65 @@ impl Derivation<Atom> {
             });
         unimplemented!()
     }
+    fn update_expr_inner(&mut self, node_id: ID, expr: &G) {
+        self.tree.update_node_by_id(node_id).expr = expr.clone();
+        let children: Vec<_> = self
+            .tree
+            .get_children(node_id.to_node(&self.tree))
+            .map(|child| child.id)
+            .collect();
+        match self.get_node_by_id(node_id).item.rule {
+            Rule::Conjoin => {
+                let (g1, g2) = expr.conj();
+                assert_eq!(children.len(), 2);
+                self.update_expr_inner(children[0], g1);
+                self.update_expr_inner(children[1], g2);
+            }
+            Rule::Disjoin => {
+                let (g1, g2) = expr.disj();
+                assert_eq!(children.len(), 2);
+                self.update_expr_inner(children[0], g1);
+                self.update_expr_inner(children[1], g2);
+            }
+            Rule::Var => {
+                debug_assert!(expr.is_var());
+            }
+            Rule::Atom => (),
+            Rule::Univ(x) => {
+                let (y, g) = expr.univ();
+                assert_eq!(x, y.id);
+                assert_eq!(children.len(), 1);
+                self.update_expr_inner(children[0], g);
+            }
+            Rule::IAbs(x) => {
+                let (y, g) = expr.abs();
+                assert_eq!(x, y.id);
+                debug_assert!(y.ty.is_int());
+                assert_eq!(children.len(), 1);
+                self.update_expr_inner(children[0], g);
+            }
+            Rule::Abs(_) => {
+                let (_, g) = expr.abs();
+                assert_eq!(children.len(), 1);
+                self.update_expr_inner(children[0], g);
+            }
+            Rule::IApp(_) | Rule::App => {
+                let (x, y) = expr.app();
+                assert!(children.len() >= 2);
+                self.update_expr_inner(children[0], x);
+                for i in 1..children.len() {
+                    self.update_expr_inner(children[i], y);
+                }
+            }
+            Rule::Subsumption => {
+                assert_eq!(children.len(), 2);
+                self.update_expr_inner(children[0], expr);
+            }
+        }
+    }
     fn update_expr(&mut self, expr: &G) {
-        unimplemented!()
+        let root_id = self.tree.root().id;
+        self.update_expr_inner(root_id, expr)
     }
     fn finalize_subject_expansion(
         &mut self,
@@ -469,7 +529,7 @@ impl Derivation<Atom> {
         self.constraints.push_mut(constraint);
 
         let targets: Vec<_> = self
-            .get_nodes_by_id(&reduction.result.aux.id)
+            .get_nodes_by_goal_id(&reduction.result.aux.id)
             .map(|n| n.id)
             .collect();
         assert_eq!(targets.len(), 1);
@@ -477,7 +537,7 @@ impl Derivation<Atom> {
 
         self.update_parents(target_node, clauses);
         // finally replace the expressions in the derivation with the expr before the reduction
-        self.update_expr(unimplemented!())
+        self.update_expr(&reduction.before_reduction)
     }
     pub fn subject_expansion_int(
         &mut self,

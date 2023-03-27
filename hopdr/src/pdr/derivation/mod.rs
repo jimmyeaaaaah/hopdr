@@ -130,6 +130,9 @@ struct Reduction {
     argints: HashSet<Ident>,
     // constraint of the redux where this reduction happens
     constraint: Constraint,
+    // before_reduction -> after_reduction
+    before_reduction: G,
+    after_reduction: G,
 }
 
 impl fmt::Display for Reduction {
@@ -193,17 +196,12 @@ impl Reduction {
             fvints,
             argints,
             constraint,
+            // dummy
+            // assumed to be filled later
+            before_reduction: G::mk_true(),
+            after_reduction: G::mk_true(),
         }
     }
-    // fn append_reduction(&mut self, reduction_info: ReductionInfo, result: G, app_expr: G) {
-    //     if reduction_info.arg_var.ty.is_int() {
-    //         self.fvints.insert(reduction_info.old_id);
-    //         self.argints.insert(reduction_info.old_id);
-    //     }
-    //     self.result = result;
-    //     self.app_expr = app_expr;
-    //     self.args.push(reduction_info);
-    // }
     fn level(&self) -> usize {
         self.reduction_info.level
     }
@@ -503,7 +501,11 @@ fn generate_reduction_sequence(goal: &G, optimizer: &mut dyn Optimizer) -> (Vec<
     let mut reduced = goal.clone();
 
     debug!("{}", reduced);
-    while let Some((g, r)) = go(optimizer, &reduced, &mut level) {
+    while let Some((g, mut r)) = go(optimizer, &reduced, &mut level) {
+        // save the formulas before and after reduction
+        r.before_reduction = reduced.clone();
+        r.after_reduction = g.clone();
+
         reduced = g.clone();
         //debug!("-> {}", reduced);
         //debug!("-> {}", r);
@@ -594,17 +596,6 @@ impl Context {
             let constraint = Atom::mk_conj(constraint1, constraint2);
             Self::append_clauses(clauses, &constraint);
         }
-    }
-
-    fn insert_derivation(
-        &self,
-        node_id: tree::ID,
-        derivation: &mut Derivation<Atom>,
-        arg_derivations: Vec<Derivation<Atom>>,
-        pred_ty: &Ty,
-        app_expr_ty: &Ty,
-    ) {
-        unimplemented!()
     }
 
     ///// aux functions end
@@ -775,7 +766,7 @@ impl Context {
         title!("Reduction");
         pdebug!(reduction);
         let node_ids: Stack<_> = derivation
-            .get_nodes_by_id(&reduction.result.aux.id)
+            .get_nodes_by_goal_id(&reduction.result.aux.id)
             .map(|n| n.id)
             .collect();
         if node_ids.iter().len() == 0 {

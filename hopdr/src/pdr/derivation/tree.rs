@@ -458,6 +458,9 @@ impl<T: Clone> Tree<T> {
         parent_tree.insert_children_at(parent_node, target_idx, child_tree);
         parent_tree
     }
+    pub fn update_node_by_id<'a>(&'a mut self, node_id: ID) -> &'a mut T {
+        self.items.get_mut(&node_id).unwrap()
+    }
 }
 
 #[test]
