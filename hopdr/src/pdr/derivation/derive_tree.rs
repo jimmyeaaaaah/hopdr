@@ -1,10 +1,10 @@
 use super::super::rtype::Refinement;
 use super::tree::*;
 use super::{Atom, Ty, G};
-use crate::formula::*;
 use crate::pdr::rtype::TauKind;
 use crate::solver;
 use crate::util::Pretty;
+use crate::{formula::*, pdebug};
 
 use rpds::Stack;
 
@@ -433,6 +433,7 @@ impl Derivation<Atom> {
         let r = self
             .tree
             .update_parent_until(target_id, |n, children, prev| {
+                debug!("updating parents... {}", n.pretty_display());
                 let ty = match &n.rule {
                     Rule::Conjoin => {
                         let cnstr = children
@@ -632,17 +633,8 @@ impl Derivation<Atom> {
             Atom::mk_implies_opt(pred_ty.rty_no_exists(), body_ty.rty_no_exists()).unwrap();
         self.constraints.push_mut(constraint);
 
-        // let targets: Vec<_> = self
-        //     .get_nodes_by_goal_id(&reduction.result.aux.id)
-        //     .map(|n| n.id)
-        //     .collect();
-        // for target in targets.iter() {
-        //     println!("{}", target.to_node(&self.tree).item.pretty_display());
-        // }
-        // crate::pdebug!(self);
-        // assert_eq!(targets.len(), 1);
         let target_node = self
-            .get_node_closest_to_root_by_goal_id(&reduction.result.aux.id)
+            .get_node_closest_to_root_by_goal_id(&reduction.app_expr.aux.id)
             .unwrap()
             .id;
 
