@@ -76,6 +76,11 @@ impl crate::util::printer::Pretty for DeriveNode {
     }
 }
 
+fn reset_expr_for_subsumption(expr: &mut G) {
+    expr.aux.level_arg = Stack::new();
+    expr.aux.id = Ident::fresh();
+}
+
 impl DeriveNode {
     fn conjoin(expr: G, left: &Self, right: &Self) -> Self {
         let rule = Rule::Conjoin;
@@ -129,7 +134,9 @@ impl DeriveNode {
     }
     fn subsumption(node: &Self, ty: Ty) -> Self {
         let rule = Rule::Subsumption;
-        let expr = node.expr.clone();
+        let mut expr = node.expr.clone();
+        // reset the information
+        reset_expr_for_subsumption(&mut expr);
         DeriveNode { rule, expr, ty }
     }
     fn app(expr: G, pred_node: &Self) -> Self {
@@ -397,6 +404,8 @@ impl Derivation<Atom> {
         let var_expr = G::mk_var(var);
         let mut tree = self.tree.clone();
         let mut derivations = vec![];
+        pdebug!("tries to replace");
+        pdebug!(self.tree);
         for node in self
             .tree
             .filter_descendants(self.tree.get_node_by_id(node_id), move |n| {
@@ -406,6 +415,9 @@ impl Derivation<Atom> {
             let d = Self::rule_var(var_expr.clone(), node.item.ty.clone(), Stack::new());
             let sub_derivation = self.sub_derivation(&node.id);
             derivations.push(sub_derivation);
+            pdebug!("replace_derivation_at_level_with_var var: ", var);
+            pdebug!("node: ", node.item);
+            pdebug!(tree);
             tree = tree.replace_subtree(node, d.tree);
         }
         derivations
@@ -612,7 +624,11 @@ impl Derivation<Atom> {
             }
             Rule::Subsumption => {
                 assert_eq!(children.len(), 1);
-                self.update_expr_inner(children[0], expr);
+                self.update_expr_inner(children[0], &expr);
+
+                let mut expr = expr.clone();
+                reset_expr_for_subsumption(&mut expr);
+                self.tree.update_node_by_id(node_id).expr = expr.clone();
             }
         }
     }
