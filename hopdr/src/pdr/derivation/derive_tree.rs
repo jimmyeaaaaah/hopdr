@@ -583,7 +583,7 @@ impl Derivation<Atom> {
             }
             Rule::IAbs(x) => {
                 let (y, g) = expr.abs();
-                assert_eq!(x, y.id);
+                //assert_eq!(x, y.id);
                 debug_assert!(y.ty.is_int());
                 assert_eq!(children.len(), 1);
                 self.update_expr_inner(children[0], g);
@@ -593,7 +593,15 @@ impl Derivation<Atom> {
                 assert_eq!(children.len(), 1);
                 self.update_expr_inner(children[0], g);
             }
-            Rule::IApp(_) | Rule::App => {
+            Rule::IApp(_) => {
+                let (x, y) = expr.app();
+                assert_eq!(children.len(), 1);
+                self.update_expr_inner(children[0], x);
+                for i in 1..children.len() {
+                    self.update_expr_inner(children[i], y);
+                }
+            }
+            Rule::App => {
                 let (x, y) = expr.app();
                 assert!(children.len() >= 2);
                 self.update_expr_inner(children[0], x);

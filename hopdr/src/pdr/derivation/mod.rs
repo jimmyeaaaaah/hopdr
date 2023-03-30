@@ -821,7 +821,9 @@ impl Context {
         }
 
         for reduction in self.reduction_sequence.iter().rev() {
-            self.infer_type_inner(&mut derivation, reduction, &mut clauses)
+            pdebug!("derivation ", reduction.reduction_info.level);
+            pdebug!(derivation);
+            self.infer_type_inner(&mut derivation, reduction, &mut clauses);
         }
         clauses.iter().for_each(|c| debug!("- {}", c));
         // 4. solve the constraints by using the interpolation solver
