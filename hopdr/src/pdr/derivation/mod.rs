@@ -170,8 +170,8 @@ impl Pretty for Reduction {
                 self.predicate
                     .pretty(al, config)
                     .append(al.hardline())
-                    .append(self.reduction_info.level.to_string())
-                    .append("==> ")
+                    .append(self.reduction_info.arg.pretty(al, config))
+                    .append(" ==> ")
                     .append(self.result.pretty(al, config))
                     .hang(2),
             )
@@ -366,7 +366,7 @@ fn generate_reduction_sequence(goal: &G, optimizer: &mut dyn Optimizer) -> (Vec<
                     match generate_reduction_info(optimizer, level, predicate, arg, fvints) {
                         // App(App(...(Abs(...) arg1) .. argn)
                         Some((ret, reduction_info)) => {
-                            let mut reduction = Reduction::new(
+                            let reduction = Reduction::new(
                                 goal.clone(),
                                 predicate.clone(),
                                 ret.clone(),

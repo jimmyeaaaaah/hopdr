@@ -30,6 +30,30 @@ pub enum Rule {
     Atom,
 }
 
+impl std::fmt::Display for Rule {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            Rule::Conjoin => "Conj",
+            Rule::Disjoin => "Disj",
+            Rule::Var => "Var",
+            Rule::Univ(_) => "Univ",
+            Rule::IAbs(_) => "IAbs",
+            Rule::Abs(_) => "Abs",
+            Rule::IApp(_) => "IApp",
+            Rule::App => "App",
+            Rule::Subsumption => "Sub",
+            Rule::Atom => "Atom",
+        };
+        write!(f, "{}", s)
+    }
+}
+
+impl std::fmt::Display for DeriveNode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "({}) |- {} : {}", self.rule, self.expr, self.ty)
+    }
+}
+
 impl DeriveNode {
     fn conjoin(expr: G, left: &Self, right: &Self) -> Self {
         let rule = Rule::Conjoin;
@@ -358,8 +382,8 @@ impl Derivation<Atom> {
         target_id: ID,
         clauses: &mut Vec<chc::CHC<chc::Atom, Constraint>>,
     ) {
-        let constraints = &mut self.constraints;
-        self.tree
+        let r = self
+            .tree
             .update_parent_until(target_id, |n, children, prev| {
                 let ty = match &n.rule {
                     Rule::Conjoin => {
@@ -435,6 +459,8 @@ impl Derivation<Atom> {
                         }
                         // case2: the updated child was in body
                         else if node.expr.aux.id == children[1].expr.aux.id {
+                            // insert subsumption here
+                            todo!();
                             return (true, n.clone());
                         } else {
                             panic!("program error")
@@ -453,7 +479,29 @@ impl Derivation<Atom> {
                 };
                 (false, n)
             });
-        unimplemented!()
+        let id = match r {
+            Some(n) => n.id,
+            None => {
+                panic!("parent not found")
+            }
+        };
+        // due to the lifetime reason...
+        let n = self.tree.get_node_by_id(id);
+        // append constraints here
+        assert!(matches!(n.item.rule, Rule::Subsumption));
+
+        let ty2 = n.item.ty.clone();
+
+        let children: Vec<_> = self.tree.get_children(n).collect();
+        assert_eq!(children.len(), 1);
+        let ty1 = children[0].item.ty.clone();
+        // ty1 <: ty2
+        super::Context::append_clauses_by_subst(
+            clauses,
+            &vec![ty1.clone()],
+            &vec![ty2],
+            &Atom::mk_true(),
+        );
     }
     fn update_expr_inner(&mut self, node_id: ID, expr: &G) {
         self.tree.update_node_by_id(node_id).expr = expr.clone();
@@ -532,6 +580,9 @@ impl Derivation<Atom> {
             .get_nodes_by_goal_id(&reduction.result.aux.id)
             .map(|n| n.id)
             .collect();
+        for target in targets.iter() {
+            println!("{}", target.to_node(&self.tree).item);
+        }
         assert_eq!(targets.len(), 1);
         let target_node = targets[0];
 
