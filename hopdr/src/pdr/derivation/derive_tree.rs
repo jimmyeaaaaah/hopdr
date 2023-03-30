@@ -189,6 +189,33 @@ impl Derivation<Atom> {
     ) -> impl Iterator<Item = Node<'a, DeriveNode>> + 'a {
         self.tree.filter(move |n| n.expr.aux.id == *id)
     }
+    pub fn get_node_closest_to_root_by_goal_id<'a>(
+        &'a self,
+        id: &'a Ident,
+    ) -> Option<Node<'a, DeriveNode>> {
+        fn inner<'a>(
+            d: &'a Derivation<Atom>,
+            id: &Ident,
+            cur: ID,
+            level: usize,
+        ) -> Option<(Node<'a, DeriveNode>, usize)> {
+            let node = d.tree.get_node_by_id(cur);
+            if node.item.expr.aux.id == *id {
+                Some((node, level))
+            } else {
+                let mut mx = None;
+                for child in d.tree.get_children(node) {
+                    match (inner(d, id, child.id, level + 1), &mx) {
+                        (Some((n, level)), Some((_, cur))) if level < *cur => mx = Some((n, level)),
+                        (Some((n, level)), None) => mx = Some((n, level)),
+                        (_, _) => (),
+                    }
+                }
+                mx
+            }
+        }
+        inner(self, id, self.tree.root().id, 0).map(|(n, _)| n)
+    }
     pub fn get_types_by_id<'a>(&'a self, id: &'a Ident) -> impl Iterator<Item = Ty> + 'a {
         self.tree
             .filter(move |n| n.expr.aux.id == *id)
@@ -575,7 +602,7 @@ impl Derivation<Atom> {
                 }
             }
             Rule::Subsumption => {
-                assert_eq!(children.len(), 2);
+                assert_eq!(children.len(), 1);
                 self.update_expr_inner(children[0], expr);
             }
         }
@@ -597,15 +624,19 @@ impl Derivation<Atom> {
             Atom::mk_implies_opt(pred_ty.rty_no_exists(), body_ty.rty_no_exists()).unwrap();
         self.constraints.push_mut(constraint);
 
-        let targets: Vec<_> = self
-            .get_nodes_by_goal_id(&reduction.result.aux.id)
-            .map(|n| n.id)
-            .collect();
-        for target in targets.iter() {
-            println!("{}", target.to_node(&self.tree).item.pretty_display());
-        }
-        assert_eq!(targets.len(), 1);
-        let target_node = targets[0];
+        // let targets: Vec<_> = self
+        //     .get_nodes_by_goal_id(&reduction.result.aux.id)
+        //     .map(|n| n.id)
+        //     .collect();
+        // for target in targets.iter() {
+        //     println!("{}", target.to_node(&self.tree).item.pretty_display());
+        // }
+        // crate::pdebug!(self);
+        // assert_eq!(targets.len(), 1);
+        let target_node = self
+            .get_node_closest_to_root_by_goal_id(&reduction.result.aux.id)
+            .unwrap()
+            .id;
 
         self.update_parents(target_node, clauses);
         // finally replace the expressions in the derivation with the expr before the reduction
