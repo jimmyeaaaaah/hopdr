@@ -806,15 +806,24 @@ where
     T: Pretty,
 {
     let cur = t.get_node_by_id(node_id);
-    cur.item.pretty(al, config).append(
-        al.intersperse(
-            t.get_children(cur)
-                .into_iter()
-                .map(|child| pretty_tree_inner(t, al, config, child.id)),
-            al.hardline(),
-        )
-        .nest(2),
-    )
+    let cur_node = cur.item.pretty(al, config);
+    let mut children = t.get_children(cur).peekable();
+    if children.peek().is_none() {
+        cur_node
+    } else {
+        let children = al
+            .hardline()
+            .append(
+                al.intersperse(
+                    children
+                        .into_iter()
+                        .map(|child| pretty_tree_inner(t, al, config, child.id)),
+                    al.hardline(),
+                ),
+            )
+            .nest(2);
+        cur_node.append(children)
+    }
 }
 
 impl<T: Pretty> Pretty for tree::Tree<T> {

@@ -602,7 +602,6 @@ impl Context {
     fn expand_int_node(
         &self,
         node_id: tree::ID,
-        app_exprs: &Vec<G>,
         derivation: &mut Derivation<Atom>,
         reduction: &Reduction,
         ri: &ReductionInfo,
@@ -620,7 +619,7 @@ impl Context {
 
         let pred_ty = if is_shared_ty {
             match tmp_ret_ty.kind() {
-                TauKind::IArrow(id, t) => {
+                TauKind::IArrow(id, _) => {
                     derivation.rename_int_var(node_id, &ri.old_id, id);
                     tmp_ret_ty.clone()
                 }
@@ -673,14 +672,13 @@ impl Context {
 
         let pred_ty = if is_shared_ty {
             match tmp_ret_ty.kind() {
-                TauKind::Arrow(ts, t_result) => {
+                TauKind::Arrow(ts, _) => {
                     Self::append_clauses_by_subst(
                         clauses,
                         ts,
                         &arg_ty,
                         &tmp_ret_ty.rty_no_exists(),
                     );
-                    let app_expr_ty = t_result.clone();
                     tmp_ret_ty.clone()
                 }
                 TauKind::IArrow(_, _) | TauKind::Proposition(_) => {
@@ -729,7 +727,6 @@ impl Context {
             // case where the argument is a predicate
             self.expand_int_node(
                 node_id,
-                app_exprs,
                 derivation,
                 reduction,
                 ri,
@@ -886,7 +883,7 @@ fn handle_abs(
         arg_expr: &G,
         t: &Ty,
     ) -> PossibleDerivation<Atom> {
-        let mut pt = match arg_expr.kind() {
+        let pt = match arg_expr.kind() {
             GoalKind::Abs(v, g) if v.ty.is_int() => match t.kind() {
                 TauKind::IArrow(id, t) if v.ty.is_int() => {
                     let t = t.rename(id, &v.id);
@@ -1547,6 +1544,8 @@ pub fn search_for_type(
         let derivation = type_check_top_with_derivation(&ctx.normal_form, tenv)?;
         let derivation =
             type_check_top_with_derivation_and_constraints(derivation, &ctx.normal_form, tenv);
+        pdebug!("[derivation]");
+        pdebug!(derivation);
         match ctx.infer_type(derivation) {
             Some(x) => {
                 optimizer.report_inference_result(InferenceResult::new(true));

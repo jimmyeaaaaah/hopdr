@@ -329,22 +329,6 @@ impl Derivation<Atom> {
             item.ty = ty;
         });
     }
-    pub fn get_context_ty(&self, node: Node<DeriveNode>) -> Ty {
-        // うそかも
-        // subsumptionに到達するというよりも、subject expansionのタイミングで
-        // Derivationの木を全体的に構成し直す。
-        // でもそれは、Disjoinでsubsumption入れれば同じことでは
-        // Conjoinの間は問題がない
-        // Disjoin後にsubsumptionを入れるようにする。
-        let parent = self
-            .tree
-            .traverse_parent_until(node, |node| {
-                debug_assert!(matches!(node.rule, Rule::Disjoin));
-                matches!(node.rule, Rule::Subsumption)
-            })
-            .expect("unstructured derivation");
-        parent.item.ty.clone()
-    }
     pub fn root_ty(&self) -> &Ty {
         &self.tree.root().item.ty
     }
