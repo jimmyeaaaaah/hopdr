@@ -619,13 +619,11 @@ impl Context {
 
         let pred_ty = if is_shared_ty {
             match tmp_ret_ty.kind() {
-                TauKind::IArrow(id, _) => {
-                    derivation.rename_int_var(node_id, &ri.old_id, id);
-                    tmp_ret_ty.clone()
+                TauKind::IArrow(x, t) => {
+                    let t = t.rename(x, &ri.old_id);
+                    Ty::mk_iarrow(ri.old_id, t)
                 }
-                TauKind::Arrow(_, _) | TauKind::Proposition(_) => {
-                    panic!("program error")
-                }
+                TauKind::Proposition(_) | TauKind::Arrow(_, _) => panic!("program error"),
             }
         } else {
             Tau::mk_iarrow(ri.old_id, tmp_ret_ty.clone())
