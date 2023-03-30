@@ -1,6 +1,7 @@
 use std::fmt::Display;
 
 use crate::formula::*;
+use crate::pdr::derivation::tree;
 use crate::pdr::rtype;
 use pretty::termcolor::{Color, ColorSpec};
 use pretty::{BoxAllocator, BoxDoc, DocAllocator, DocBuilder};
@@ -789,5 +790,40 @@ impl<T: Pretty> Pretty for rtype::TypeEnvironment<T> {
             var.append(al.text(" : ")).append(t.nest(4))
         });
         al.intersperse(docs, al.hardline())
+    }
+}
+
+fn pretty_tree_inner<'b, D, A, T>(
+    t: &'b tree::Tree<T>,
+    al: &'b D,
+    config: &mut Config,
+    node_id: tree::ID,
+) -> DocBuilder<'b, D, A>
+where
+    D: DocAllocator<'b, A>,
+    D::Doc: Clone,
+    A: Clone,
+    T: Pretty,
+{
+    let cur = t.get_node_by_id(node_id);
+    cur.item.pretty(al, config).append(
+        al.intersperse(
+            t.get_children(cur)
+                .into_iter()
+                .map(|child| pretty_tree_inner(t, al, config, child.id)),
+            al.hardline(),
+        )
+        .nest(2),
+    )
+}
+
+impl<T: Pretty> Pretty for tree::Tree<T> {
+    fn pretty<'b, D, A>(&'b self, al: &'b D, config: &mut Config) -> DocBuilder<'b, D, A>
+    where
+        D: DocAllocator<'b, A>,
+        D::Doc: Clone,
+        A: Clone,
+    {
+        pretty_tree_inner(self, al, config, self.root().id)
     }
 }

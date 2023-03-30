@@ -4,6 +4,7 @@ use super::{Atom, Ty, G};
 use crate::formula::*;
 use crate::pdr::rtype::TauKind;
 use crate::solver;
+use crate::util::Pretty;
 
 use rpds::Stack;
 
@@ -48,9 +49,30 @@ impl std::fmt::Display for Rule {
     }
 }
 
-impl std::fmt::Display for DeriveNode {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "({}) |- {} : {}", self.rule, self.expr, self.ty)
+impl crate::util::printer::Pretty for DeriveNode {
+    fn pretty<'b, D, A>(
+        &'b self,
+        al: &'b D,
+        config: &mut crate::util::printer::Config,
+    ) -> pretty::DocBuilder<'b, D, A>
+    where
+        D: pretty::DocAllocator<'b, A>,
+        D::Doc: Clone,
+        A: Clone,
+    {
+        al.text("(")
+            .append(self.rule.to_string())
+            .append(") |- ")
+            .append(
+                self.expr
+                    .pretty(al, config)
+                    .append(al.line())
+                    .append(":")
+                    .append(al.line())
+                    .append(self.ty.pretty(al, config))
+                    .hang(2)
+                    .group(),
+            )
     }
 }
 
@@ -127,6 +149,21 @@ pub(super) struct Derivation<C> {
     tree: Tree<DeriveNode>,
     pub coefficients: Stack<Ident>,
     pub constraints: Stack<C>,
+}
+
+impl<C> crate::util::printer::Pretty for Derivation<C> {
+    fn pretty<'b, D, A>(
+        &'b self,
+        al: &'b D,
+        config: &mut crate::util::printer::Config,
+    ) -> pretty::DocBuilder<'b, D, A>
+    where
+        D: pretty::DocAllocator<'b, A>,
+        D::Doc: Clone,
+        A: Clone,
+    {
+        self.tree.pretty(al, config)
+    }
 }
 
 fn concat_stacks<'a, T: 'a + Clone, I>(stacks: I) -> Stack<T>
@@ -581,7 +618,7 @@ impl Derivation<Atom> {
             .map(|n| n.id)
             .collect();
         for target in targets.iter() {
-            println!("{}", target.to_node(&self.tree).item);
+            println!("{}", target.to_node(&self.tree).item.pretty_display());
         }
         assert_eq!(targets.len(), 1);
         let target_node = targets[0];

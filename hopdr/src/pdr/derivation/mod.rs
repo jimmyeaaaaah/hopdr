@@ -1,5 +1,5 @@
 mod derive_tree;
-mod tree;
+pub mod tree;
 
 use self::derive_tree::DeriveNode;
 
