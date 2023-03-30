@@ -1016,7 +1016,11 @@ fn handle_app(
                             //      retrieved
                             //   3. ?
                             assert!(ct.len() == 1);
-                            let d = Derivation::rule_atom(pred_expr.clone(), ct[0].clone());
+                            let d = Derivation::rule_var(
+                                pred_expr.clone(),
+                                ct[0].clone(),
+                                Stack::new(),
+                            );
                             vec![d]
                         }
                     };
@@ -1033,7 +1037,7 @@ fn handle_app(
                         let types = pred_pt
                             .types
                             .into_iter()
-                            .map(|d| Derivation::rule_iapp(predg.clone(), d, &op))
+                            .map(|d| Derivation::rule_iapp(pred_expr.clone(), d, &op))
                             .collect();
                         return PossibleDerivation::new(types); // early return
                     }
