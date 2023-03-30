@@ -89,16 +89,19 @@ impl IDTree {
             cur: ID,
             edges: &mut HashMap<ID, Vec<ID>>,
             parent: &mut HashMap<ID, ID>,
+            root: bool,
         ) {
             for child in t.children(cur) {
-                traverse(t, child, edges, parent)
+                traverse(t, child, edges, parent, false)
             }
             edges.insert(cur, t.edges.get(&cur).unwrap().clone());
-            parent.insert(cur, t.parent.get(&cur).unwrap().clone());
+            if !root {
+                parent.insert(cur, t.parent.get(&cur).unwrap().clone());
+            }
         }
         let mut edges = HashMap::new();
         let mut parent = HashMap::new();
-        traverse(self, node, &mut edges, &mut parent);
+        traverse(self, node, &mut edges, &mut parent, true);
         Self { edges, parent }
     }
     fn drop_subtree<'a>(&'a self, node: ID) -> Self {
@@ -121,6 +124,9 @@ impl IDTree {
         traverse(self, node, &mut edges, &mut parent);
         Self { edges, parent }
     }
+    /// node: the base node to be replaced
+    /// graph: the graph to be inserted
+    /// root: the root of the graph to be inserted
     pub fn replace_subtree<'a>(&'a self, node: ID, graph: Self, root: ID) -> Self {
         fn traverse(
             t: &IDTree,
@@ -134,16 +140,40 @@ impl IDTree {
             edges.remove(&cur);
             parent.remove(&cur);
         }
+
+        #[cfg(debug_assertions)]
+        {
+            // sanity check
+            for (edge, children) in graph.edges.iter() {
+                assert!(!self.edges.contains_key(&edge));
+                for child in children {
+                    assert!(!self.edges.contains_key(&child));
+                }
+            }
+        }
+
         let mut edges = self.edges.clone();
         let mut parent = self.parent.clone();
-        let ptr = edges.get_mut(parent.get(&node).unwrap()).unwrap();
+
+        let (parent_id, ptr) = match parent.get(&node) {
+            Some(p) => (*p, edges.get_mut(p).unwrap()),
+            // the case where the node is the root
+            None => return graph,
+        };
         // replace the edge to the new tree
+        let mut found = false;
         for item in ptr.iter_mut() {
             if *item == node {
                 *item = root;
+                found = true;
                 break;
             }
         }
+        debug_assert!(found);
+
+        // also add parent entry
+        parent.insert(root, parent_id);
+
         for (id, e) in graph.edges {
             edges.insert(id, e);
         }
@@ -463,6 +493,24 @@ impl<T: Clone> Tree<T> {
     }
 }
 
+#[cfg(test)]
+/// Performs a sanity check on a Tree, ensuring parent-child relationships are consistent within its graph.
+fn sanity_check_tree(t6: &Tree<usize>) {
+    // check if the tree is still valid
+    for (from, children) in t6.graph.edges.iter() {
+        for child in children {
+            assert_eq!(t6.graph.parent.get(child), Some(from));
+        }
+        let s: std::collections::HashSet<_> = children.iter().collect();
+        if s.len() != children.len() {
+            panic!("duplicate children");
+        }
+    }
+    for (child, parent) in t6.graph.parent.iter() {
+        assert!(t6.graph.edges.get(parent).unwrap().contains(child));
+    }
+}
+
 #[test]
 fn tree_basics() {
     // 1-2
@@ -485,6 +533,7 @@ fn tree_basics() {
             assert!(t.traverse_parent_until(child2, |v| *v == 1).is_some())
         }
     }
+    sanity_check_tree(&t);
 
     assert!(t.search(|x| *x == 4).is_none());
     assert!(t.search(|x| *x == 3).is_some());
@@ -512,6 +561,7 @@ fn tree_basics() {
             .collect::<Vec<_>>(),
         vec![1, 2]
     );
+    sanity_check_tree(&t2);
     let t5 = t.subtree(child);
     assert_eq!(
         t5.iter_descendants(t5.root())
@@ -519,6 +569,7 @@ fn tree_basics() {
             .collect::<Vec<_>>(),
         vec![2, 3]
     );
+    sanity_check_tree(&t5);
 
     let t7 = Tree::tree_with_child(4, Tree::singleton(5));
     let t6 = t.replace_subtree(child, t7);
@@ -528,6 +579,7 @@ fn tree_basics() {
             .collect::<Vec<_>>(),
         vec![1, 4, 2, 5]
     );
+    sanity_check_tree(&t6);
 
     // update children
     let mut t8 = t.clone();
@@ -538,6 +590,7 @@ fn tree_basics() {
             .collect::<Vec<_>>(),
         vec![10, 10, 10, 10]
     );
+    sanity_check_tree(&t8);
     //           3
     //            \
     //             2  2
@@ -579,6 +632,7 @@ fn tree_basics() {
 
     let v: Vec<_> = t9.get_children(two_node).collect();
     assert_eq!(v.len(), 0);
+    sanity_check_tree(&t9);
 
     // update 2's parents up to 1 is updated to 7
     // 3
@@ -639,4 +693,5 @@ fn tree_basics() {
 
     let v: Vec<_> = t9.get_children(two_node).collect();
     assert_eq!(v.len(), 0);
+    sanity_check_tree(&t9);
 }
