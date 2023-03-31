@@ -448,6 +448,10 @@ impl Derivation<Atom> {
             .tree
             .update_parent_until(target_id, |n, children, prev| {
                 debug!("updating parents... {}", n.pretty_display());
+                let prev = match prev {
+                    Some(prev) => prev,
+                    None => return (false, n.clone()),
+                };
                 let ty = match &n.rule {
                     Rule::Conjoin => {
                         let cnstr = children
@@ -497,15 +501,16 @@ impl Derivation<Atom> {
                         }
                     }
                     Rule::App => {
-                        assert_eq!(children.len(), 2);
+                        //assert_eq!(children.len(), 2);
                         // todo?
-                        //assert!(children.len() >= 2);
-                        let node = prev.unwrap();
+                        assert!(children.len() >= 2);
+                        let node = prev;
 
                         // case1: the updated child was in pred
                         if node.expr.aux.id == children[0].expr.aux.id {
                             let pred = children[0].ty.clone();
-                            let body = children[1].ty.clone();
+                            let body_tys =
+                                children[1..].iter().map(|child| child.ty.clone()).collect();
                             let (arg_ty, ret_ty) = match pred.kind() {
                                 TauKind::Arrow(arg, t) => (arg.clone(), t.clone()),
                                 TauKind::Proposition(_) | TauKind::IArrow(_, _) => {
@@ -514,18 +519,21 @@ impl Derivation<Atom> {
                             };
                             super::Context::append_clauses_by_subst(
                                 clauses,
-                                &vec![body.clone()],
+                                &body_tys,
                                 &arg_ty,
                                 &pred.rty_no_exists(),
                             );
                             ret_ty.clone()
                         }
                         // case2: the updated child was in body
-                        else if node.expr.aux.id == children[1].expr.aux.id {
+                        else {
                             // insert subsumption here
-                            todo!();
-                            return (true, n.clone());
-                        } else {
+                            for child in children[1..].iter() {
+                                if node.expr.aux.id == child.expr.aux.id {
+                                    todo!();
+                                    return (true, n.clone());
+                                }
+                            }
                             panic!("program error")
                         }
                     }
@@ -655,9 +663,13 @@ impl Derivation<Atom> {
             .get_node_closest_to_root_by_goal_id(&reduction.app_expr.aux.id)
             .unwrap()
             .id;
+        pdebug!("derivation before updating parents");
+        pdebug!(self);
 
         self.update_parents(target_node, clauses);
         // finally replace the expressions in the derivation with the expr before the reduction
+        pdebug!("derivation before updating exprs");
+        pdebug!(self);
         self.update_expr(&reduction.before_reduction)
     }
     pub fn subject_expansion_int(
