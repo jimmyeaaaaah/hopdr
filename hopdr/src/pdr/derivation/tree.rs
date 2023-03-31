@@ -237,6 +237,12 @@ impl<T> Tree<T> {
         items.insert(root, item);
         Tree { graph, items, root }
     }
+    fn check_disjoint(&self, other: &Tree<T>) {
+        // let all_nodes = other.graph
+        // for node in other.graph.nodes() {
+        //     assert!(!self.graph.edges.contains_key(node));
+        // }
+    }
     fn append_children_inner(&mut self, child: &Tree<T>) {
         for node in child.graph.nodes() {
             self.graph.add_node(node);
@@ -497,6 +503,7 @@ impl<T: Clone> Tree<T> {
 /// Performs a sanity check on a Tree, ensuring parent-child relationships are consistent within its graph.
 fn sanity_check_tree(t6: &Tree<usize>) {
     // check if the tree is still valid
+    use std::collections::HashSet;
     for (from, children) in t6.graph.edges.iter() {
         for child in children {
             assert_eq!(t6.graph.parent.get(child), Some(from));
@@ -509,6 +516,17 @@ fn sanity_check_tree(t6: &Tree<usize>) {
     for (child, parent) in t6.graph.parent.iter() {
         assert!(t6.graph.edges.get(parent).unwrap().contains(child));
     }
+    // all nodes should be registered to `edges`
+    let mut all_nodes = HashSet::new();
+    for (from, children) in t6.graph.edges.iter() {
+        all_nodes.insert(*from);
+        for child in children {
+            all_nodes.insert(*child);
+        }
+    }
+    let nodes = t6.graph.nodes().collect();
+    let diff = all_nodes.difference(&nodes).collect::<Vec<_>>();
+    assert_eq!(diff.len(), 0);
 }
 
 #[test]

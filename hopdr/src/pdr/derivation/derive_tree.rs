@@ -302,6 +302,8 @@ impl Derivation<Atom> {
         let (_, constraints, coefficients) = derivations.fold(
             (&mut tree, Stack::new(), Stack::new()),
             |(t, constrs, coefs), d| {
+                pdebug!("rule_multiples");
+                pdebug!(d.tree);
                 t.append_children(d.tree);
                 let constraints = concat_stacks([constrs, d.constraints].iter());
                 let coefficients = concat_stacks([coefs, d.coefficients].iter());
