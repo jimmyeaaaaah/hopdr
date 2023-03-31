@@ -422,6 +422,7 @@ impl Derivation<Atom> {
             pdebug!(tree);
             tree = tree.replace_subtree(node, d.tree);
         }
+        self.tree = tree;
         derivations
     }
     // traverse sub derivation from `from` and deref `id` and replace `id` with `old_id`
@@ -581,7 +582,9 @@ impl Derivation<Atom> {
             .get_children(node_id.to_node(&self.tree))
             .map(|child| child.id)
             .collect();
-        match self.get_node_by_id(node_id).item.rule {
+        let n = self.get_node_by_id(node_id).item;
+        pdebug!("update_expr_inner: ", n);
+        match n.rule {
             Rule::Conjoin => {
                 let (g1, g2) = expr.conj();
                 assert_eq!(children.len(), 2);
