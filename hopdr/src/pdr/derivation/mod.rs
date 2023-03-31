@@ -584,6 +584,15 @@ impl Context {
         arg_ty: &Vec<Ty>,
         constraint: &Atom,
     ) {
+        pdebug!("adding subtyping constraints");
+        for t in ts {
+            pdebug!(t);
+        }
+        pdebug!("<:");
+        for t in arg_ty {
+            pdebug!(t);
+        }
+
         if ts.len() != 1 {
             unimplemented!()
         }
@@ -823,7 +832,10 @@ impl Context {
             pdebug!(derivation);
             self.infer_type_inner(&mut derivation, reduction, &mut clauses);
         }
+        pdebug!("final derivation");
+        pdebug!(derivation);
         clauses.iter().for_each(|c| debug!("- {}", c));
+        panic!("panic");
         // 4. solve the constraints by using the interpolation solver
         let m = match solver::chc::default_solver().solve(&clauses) {
             solver::chc::CHCResult::Sat(m) => m,

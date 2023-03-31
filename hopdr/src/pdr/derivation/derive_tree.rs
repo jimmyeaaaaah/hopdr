@@ -583,7 +583,6 @@ impl Derivation<Atom> {
             .map(|child| child.id)
             .collect();
         let n = self.get_node_by_id(node_id).item;
-        pdebug!("update_expr_inner: ", n);
         match n.rule {
             Rule::Conjoin => {
                 let (g1, g2) = expr.conj();
