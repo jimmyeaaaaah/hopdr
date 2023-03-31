@@ -83,6 +83,30 @@ impl IDTree {
     fn children<'a>(&'a self, node: ID) -> impl Iterator<Item = ID> + 'a {
         self.edges.get(&node).unwrap().iter().copied()
     }
+    fn renumber(&mut self) -> HashMap<ID, ID> {
+        let map = self
+            .edges
+            .iter()
+            .map(|(k, _)| (*k, gen_id()))
+            .collect::<HashMap<_, _>>();
+        self.edges = self
+            .edges
+            .iter()
+            .map(|(k, v)| {
+                (
+                    *map.get(k).unwrap(),
+                    v.iter().map(|node| *map.get(node).unwrap()).collect(),
+                )
+            })
+            .collect();
+        self.parent = self
+            .parent
+            .iter()
+            .map(|(n, m)| (*map.get(n).unwrap(), *map.get(m).unwrap()))
+            .collect();
+        map
+    }
+    /// returns (new tree, root of the subtree)
     fn subtree<'a>(&'a self, node: ID) -> Self {
         fn traverse(
             t: &IDTree,
@@ -431,9 +455,19 @@ impl<T: Clone> Tree<T> {
             .collect();
         Self { items, graph, root }
     }
+    fn renumber(&mut self) {
+        let map = self.graph.renumber();
+        for (old, new) in map.iter() {
+            let item = self.items.remove(old).unwrap();
+            self.items.insert(*new, item);
+        }
+        self.root = *map.get(&self.root).unwrap();
+    }
     pub fn subtree<'a>(&'a self, node: Node<'a, T>) -> Self {
         let graph = self.graph.subtree(node.id);
-        self.projection(graph, node.id)
+        let mut t = self.projection(graph, node.id);
+        t.renumber();
+        t
     }
     pub fn drop_subtree<'a>(&'a self, node: Node<'a, T>) -> Self {
         // you cannot drop the whole tree (there is no empty tree)
