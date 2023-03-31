@@ -1,6 +1,6 @@
 use std::collections::{HashMap, VecDeque};
 
-use crate::util::global_counter;
+use crate::util::{global_counter, Pretty};
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Hash, PartialOrd, Ord)]
 pub struct ID(u64);
@@ -266,6 +266,7 @@ impl<T> Tree<T> {
         // for node in other.graph.nodes() {
         //     assert!(!self.graph.edges.contains_key(node));
         // }
+        todo!()
     }
     fn append_children_inner(&mut self, child: &Tree<T>) {
         for node in child.graph.nodes() {
@@ -643,6 +644,7 @@ fn tree_basics() {
         vec![10, 10, 10, 10]
     );
     sanity_check_tree(&t8);
+    println!("{}", t8.pretty_display());
     //           3
     //            \
     //             2  2
@@ -685,6 +687,7 @@ fn tree_basics() {
     let v: Vec<_> = t9.get_children(two_node).collect();
     assert_eq!(v.len(), 0);
     sanity_check_tree(&t9);
+    println!("{}", t9.pretty_display());
 
     // update 2's parents up to 1 is updated to 7
     // 3
@@ -706,7 +709,8 @@ fn tree_basics() {
     //       7  2
     //       | /
     //       1
-    let node = t9.search(|x| *x == 2).unwrap();
+    let node = t9.search(|x| *x == 3).unwrap();
+    let node = t9.get_node_by_id(t9.parent(node.id).unwrap());
     let n = t9
         .update_parent_until(node.id, |v, children, prev| {
             if *v != 1 {
@@ -726,6 +730,7 @@ fn tree_basics() {
         .unwrap();
     assert_eq!(*n.item, 1);
 
+    println!("{}", t9.pretty_display());
     assert_eq!(*t9.root().item, 1);
     let v: Vec<_> = t9.get_children(t9.root()).collect();
     assert_eq!(v.len(), 2);
