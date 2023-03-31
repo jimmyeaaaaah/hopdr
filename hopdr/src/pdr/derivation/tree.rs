@@ -498,9 +498,9 @@ impl<T: Clone> Tree<T> {
     //      4  3
     //      | /
     //      1
-    // node_id: 2
-    //
-    pub fn insert_partial_tree<P>(&self, node_id: ID, f: P) -> Self
+    // also, returns the new node_id since subtree() will assign new node_id
+    // for the inserted subtree
+    pub fn insert_partial_tree<P>(&self, node_id: ID, f: P) -> (Self, ID)
     where
         P: FnOnce(Self) -> Self,
     {
@@ -508,6 +508,7 @@ impl<T: Clone> Tree<T> {
             .parent(node_id)
             .expect("the node you specified is the root node");
         let sub_tree = self.subtree(node_id.to_node(self));
+        let root = sub_tree.root;
         let child_tree = f(sub_tree);
 
         let target_idx = self
@@ -527,7 +528,7 @@ impl<T: Clone> Tree<T> {
         // 1. first remove all the nodes and edges in sub_tree
         let mut parent_tree = self.drop_subtree(node_id.to_node(self));
         parent_tree.insert_children_at(parent_node, target_idx, child_tree);
-        parent_tree
+        (parent_tree, root)
     }
     pub fn update_node_by_id<'a>(&'a mut self, node_id: ID) -> &'a mut T {
         self.items.get_mut(&node_id).unwrap()
@@ -662,7 +663,7 @@ fn tree_basics() {
     //       1
     //  node_id: 2
     //
-    let mut t9 = t.insert_partial_tree(child.id, |t| {
+    let (mut t9, _) = t.insert_partial_tree(child.id, |t| {
         let six = Tree::singleton(6);
         let five = Tree::tree_with_child(5, t);
         let four = Tree::tree_with_two_children(4, five, six);

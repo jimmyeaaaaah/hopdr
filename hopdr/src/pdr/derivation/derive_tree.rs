@@ -672,7 +672,7 @@ impl Derivation<Atom> {
             TauKind::Proposition(_) | TauKind::Arrow(_, _) => panic!("fail"),
         };
 
-        let t = self.tree.insert_partial_tree(node_id, |body| {
+        let (t, node_id) = self.tree.insert_partial_tree(node_id, |body| {
             let body = Derivation {
                 tree: body,
                 coefficients: Stack::new(),
@@ -705,7 +705,7 @@ impl Derivation<Atom> {
             TauKind::Proposition(_) | TauKind::IArrow(_, _) => panic!("fail"),
         };
 
-        let t = self.tree.insert_partial_tree(node_id, |body| {
+        let (t, node_id) = self.tree.insert_partial_tree(node_id, |body| {
             let body = Derivation {
                 tree: body,
                 coefficients: Stack::new(),
