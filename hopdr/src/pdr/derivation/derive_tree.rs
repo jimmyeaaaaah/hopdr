@@ -152,13 +152,12 @@ impl DeriveNode {
 }
 
 #[derive(Clone)]
-pub(super) struct Derivation<C> {
+pub(super) struct Derivation {
     tree: Tree<DeriveNode>,
     pub coefficients: Stack<Ident>,
-    pub constraints: Stack<C>,
 }
 
-impl<C> crate::util::printer::Pretty for Derivation<C> {
+impl crate::util::printer::Pretty for Derivation {
     fn pretty<'b, D, A>(
         &'b self,
         al: &'b D,
@@ -186,7 +185,7 @@ where
     s
 }
 
-impl Derivation<Atom> {
+impl Derivation {
     pub fn get_node_by_id<'a>(&'a self, node_id: ID) -> Node<'a, DeriveNode> {
         self.tree.get_node_by_id(node_id)
     }
@@ -201,7 +200,7 @@ impl Derivation<Atom> {
         id: &'a Ident,
     ) -> Option<Node<'a, DeriveNode>> {
         fn inner<'a>(
-            d: &'a Derivation<Atom>,
+            d: &'a Derivation,
             id: &Ident,
             cur: ID,
             level: usize,
@@ -264,7 +263,6 @@ impl Derivation<Atom> {
         let node = DeriveNode { rule, expr, ty };
         Self {
             tree: Tree::singleton(node),
-            constraints: Stack::new(),
             coefficients: Stack::new(),
         }
     }
@@ -274,7 +272,6 @@ impl Derivation<Atom> {
         let node = DeriveNode { rule, expr, ty };
         Self {
             tree: Tree::singleton(node),
-            constraints: Stack::new(),
             coefficients,
         }
     }
@@ -289,7 +286,6 @@ impl Derivation<Atom> {
     fn rule_two_arg_inner(node: DeriveNode, d1: Self, d2: Self) -> Self {
         Self {
             tree: Tree::tree_with_two_children(node, d1.tree, d2.tree),
-            constraints: concat_stacks([d1.constraints, d2.constraints].iter()),
             coefficients: concat_stacks([d1.coefficients, d2.coefficients].iter()),
         }
     }
@@ -299,22 +295,14 @@ impl Derivation<Atom> {
         I: Iterator<Item = Self>,
     {
         let mut tree = Tree::singleton(node);
-        let (_, constraints, coefficients) = derivations.fold(
-            (&mut tree, Stack::new(), Stack::new()),
-            |(t, constrs, coefs), d| {
-                pdebug!("rule_multiples");
-                pdebug!(d.tree);
-                t.append_children(d.tree);
-                let constraints = concat_stacks([constrs, d.constraints].iter());
-                let coefficients = concat_stacks([coefs, d.coefficients].iter());
-                (t, constraints, coefficients)
-            },
-        );
-        Self {
-            tree,
-            constraints,
-            coefficients,
-        }
+        let (_, coefficients) = derivations.fold((&mut tree, Stack::new()), |(t, coefs), d| {
+            pdebug!("rule_multiples");
+            pdebug!(d.tree);
+            t.append_children(d.tree);
+            let coefficients = concat_stacks([coefs, d.coefficients].iter());
+            (t, coefficients)
+        });
+        Self { tree, coefficients }
     }
     pub fn rule_conjoin(expr: G, d1: Self, d2: Self) -> Self {
         let root = DeriveNode::conjoin(expr, d1.tree.root().item, d2.tree.root().item);
@@ -346,7 +334,6 @@ impl Derivation<Atom> {
         let constraint = Ty::check_subtype(&Atom::mk_true(), &s, &ty);
         let root = DeriveNode::subsumption(child.item, ty);
         let mut d = Self::rule_one_arg_inner(root, d);
-        d.constraints.push_mut(constraint);
         d
     }
     pub fn rule_app<I>(expr: G, d1: Self, args: I) -> Self
@@ -379,7 +366,6 @@ impl Derivation<Atom> {
         // we omit them here.
         Derivation {
             tree,
-            constraints: Stack::new(),
             coefficients: Stack::new(),
         }
     }
@@ -655,12 +641,6 @@ impl Derivation<Atom> {
         reduction: &super::Reduction,
         clauses: &mut Vec<chc::CHC<chc::Atom, Constraint>>,
     ) {
-        // append constraints for body_ty subsumption
-        let body_ty = &self.tree.get_node_by_id(node_id).item.ty;
-        let constraint =
-            Atom::mk_implies_opt(pred_ty.rty_no_exists(), body_ty.rty_no_exists()).unwrap();
-        self.constraints.push_mut(constraint);
-
         let target_node = self
             .get_node_closest_to_root_by_goal_id(&reduction.app_expr.aux.id)
             .unwrap()
@@ -690,7 +670,6 @@ impl Derivation<Atom> {
             let body = Derivation {
                 tree: body,
                 coefficients: Stack::new(),
-                constraints: Stack::new(),
             };
 
             let tmp_deriv = Derivation::rule_subsumption(body, pred_body_ty);
@@ -723,7 +702,6 @@ impl Derivation<Atom> {
             let body = Derivation {
                 tree: body,
                 coefficients: Stack::new(),
-                constraints: Stack::new(),
             };
 
             let tmp_deriv = Derivation::rule_subsumption(body, pred_body_ty);
@@ -741,5 +719,18 @@ impl Derivation<Atom> {
 
         self.tree = t;
         self.finalize_subject_expansion(node_id, pred_ty, reduction, clauses);
+    }
+
+    pub fn collect_constraints<'a>(&'a self) -> impl Iterator<Item = Atom> + 'a {
+        // collect all subsumptions
+        self.tree
+            .filter(|n| matches!(n.rule, Rule::Subsumption))
+            .map(move |n| {
+                let ty = n.item.ty.clone();
+                let children: Vec<_> = self.tree.get_children(n).collect();
+                assert_eq!(children.len(), 1);
+                let child = &children[0];
+                Ty::check_subtype(&Atom::mk_true(), &child.item.ty, &ty)
+            })
     }
 }
