@@ -215,7 +215,7 @@ where
 #[macro_export]
 macro_rules! _plog {
     ($al:ident, $config:ident, $($es:expr $(; $deco:ident)* ,)+) => {{
-        let doc = $crate::_pdebug!($al, $config $(, $es)+, "\n" ).group().1;
+        let doc = $crate::_pdebug!($al, $config $(, $es)+ ).group().1;
         $crate::util::printer::PLog{doc}
     }};
 }

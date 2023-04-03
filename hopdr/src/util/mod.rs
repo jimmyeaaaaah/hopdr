@@ -1,3 +1,5 @@
+use std::io;
+use std::io::BufRead;
 use std::marker::PhantomData;
 use std::ops::Deref;
 use std::sync::mpsc;
@@ -196,6 +198,13 @@ macro_rules! title {
         log::debug!("{}{}{}", "[".bold(), $arg.bold(), "]".bold());
     }};
 }
+#[macro_export]
+macro_rules! highlight {
+    ($arg:tt) => {{
+        use colored::Colorize;
+        log::debug!("{}", $arg.red());
+    }};
+}
 
 // Function executor with timeouts
 // idea taken from https://gist.github.com/junha1/8ebaf53f46ea6fc14ab6797b9939b0f8,
@@ -258,4 +267,16 @@ pub fn executes_with_timeout_and_ctrlc<T: Send + 'static, F: FnOnce() -> T + Sen
         }
     }
     join_handler.join().map_err(|_| ExecutionError::Panic)
+}
+
+#[allow(dead_code)]
+/// Pauses program execution for debugging purposes, prompting the user to input a line.
+pub fn wait_for_line() {
+    use colored::Colorize;
+    println!("{}", "Input something to proceed".green());
+    let mut line = String::new();
+    io::stdin()
+        .lock()
+        .read_line(&mut line)
+        .expect("failed to read stdin");
 }

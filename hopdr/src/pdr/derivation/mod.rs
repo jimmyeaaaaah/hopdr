@@ -13,9 +13,9 @@ use crate::formula::{self, DerefPtr, FirstOrderLogic};
 use crate::formula::{
     chc, fofml, Constraint, Fv, Ident, Logic, Negation, Op, Rename, Subst, Top, Variable,
 };
-use crate::solver;
 use crate::util::Pretty;
-use crate::{pdebug, title};
+use crate::{highlight, pdebug, title};
+use crate::{plog_colored, solver};
 
 use rpds::Stack;
 
@@ -697,7 +697,6 @@ impl Context {
     ) {
         // if ret_ty_idx > 0, then we push calculated types to derivation without "already exists" check
         let ret_ty = derivation.node_id_to_ty(&node_id).clone();
-        pdebug!("ret_ty: ", ret_ty);
         let ri = &reduction.reduction_info;
 
         // prepare a template type for predicate g
@@ -740,12 +739,12 @@ impl Context {
             )
         };
 
-        pdebug!(
-            "app_expr(",
-            reduction.app_expr.aux.id,
-            "): ",
-            reduction.app_expr
-        );
+        // pdebug!(
+        //     "app_expr(",
+        //     reduction.app_expr.aux.id,
+        //     "): ",
+        //     reduction.app_expr
+        // );
     }
     fn infer_type_inner(&self, derivation: &mut Derivation, reduction: &Reduction) {
         title!("Reduction");
@@ -786,15 +785,19 @@ impl Context {
         }
     }
     fn infer_type(&mut self, mut derivation: Derivation) -> Option<TyEnv> {
+        title!("infer_type");
         for reduction in self.reduction_sequence.iter().rev() {
+            self.infer_type_inner(&mut derivation, reduction);
             pdebug!("derivation ", reduction.reduction_info.level);
             pdebug!(derivation);
-            self.infer_type_inner(&mut derivation, reduction);
         }
         pdebug!("final derivation");
         pdebug!(derivation);
-        panic!("panic");
-        let clauses: Vec<_> = todo!();
+        title!("interpolation");
+        let clauses: Vec<_> = derivation.collect_chcs().collect();
+        for c in clauses.iter() {
+            pdebug!(c);
+        }
         // 4. solve the constraints by using the interpolation solver
         let m = match solver::chc::default_solver().solve(&clauses) {
             solver::chc::CHCResult::Sat(m) => m,
@@ -811,6 +814,7 @@ impl Context {
 
         crate::title!("model from CHC solver");
         debug!("{}", m);
+        panic!("uon");
         let config = solver::interpolation::InterpolationConfig::new().use_chc_if_requied();
         let model = solver::interpolation::solve(&clauses, &config);
         debug!("interpolated:");
@@ -886,7 +890,7 @@ fn handle_abs(
                 return pt.coarse_type(t);
             }
         };
-        pdebug!("handle_abs: |- ", arg_expr, " :",  pt ; bold ; white, " ",);
+        //pdebug!("handle_abs: |- ", arg_expr, " :",  pt ; bold ; white, " ",);
         pt
     }
     // [feature shared_ty]
@@ -1072,7 +1076,7 @@ fn handle_app(
 
     let pt = coarse_expr_for_type_sharing(config, pt, &app_expr);
 
-    pdebug!("handle_abs: |- ", app_expr, " : ", pt ; bold ; white, " ",);
+    // pdebug!("handle_abs: |- ", app_expr, " : ", pt ; bold ; white, " ",);
     pt
 }
 
@@ -1215,7 +1219,7 @@ fn type_check_inner(
     }
     let (pt, _) = go_inner(config, tenv, ienv, all_coefficients, c, context_ty.clone());
 
-    pdebug!("type_check_go(", c.aux.id, ") |- ", c, " : ", pt ; bold);
+    //pdebug!("type_check_go(", c.aux.id, ") |- ", c, " : ", pt ; bold);
     pt
 }
 
@@ -1447,6 +1451,7 @@ impl PossibleDerivation {
     /// check if there is a valid derivation by solving constraints generated
     /// on subsumptions, and returns one if exists.
     fn check_derivation(self) -> Option<Derivation> {
+        title!("check derivation");
         for mut ct in self.types.into_iter() {
             let mut constraint = Constraint::mk_true();
             for c in ct.collect_constraints() {
@@ -1473,8 +1478,12 @@ impl PossibleDerivation {
                 Ok(m) => {
                     debug!("constraint was sat: {}", constraint);
                     debug!("model is {}", m);
+                    pdebug!("derivation before update with model");
+                    pdebug!(ct);
                     // replace all the integer coefficient
                     ct.update_with_model(&m);
+                    pdebug!("derivation after update with model");
+                    pdebug!(ct);
 
                     return Some(ct);
                 }
@@ -1516,11 +1525,15 @@ pub fn search_for_type(
         let mut ctx = reduce_until_normal_form(candidate, problem, config, &mut optimizer);
         debug!("{}", ctx.normal_form);
         //let candidate = ctx.normal_form.clone();
-        let derivation = type_check_top_with_derivation(&ctx.normal_form, tenv)?;
+        let derivation = match type_check_top_with_derivation(&ctx.normal_form, tenv) {
+            Some(derivation) => derivation,
+            None => continue,
+        };
         let derivation =
             type_check_top_with_derivation_and_constraints(derivation, &ctx.normal_form, tenv);
         pdebug!("[derivation]");
         pdebug!(derivation);
+        crate::util::wait_for_line();
         match ctx.infer_type(derivation) {
             Some(x) => {
                 optimizer.report_inference_result(InferenceResult::new(true));
@@ -1528,6 +1541,7 @@ pub fn search_for_type(
             }
             None => (),
         }
+        highlight!("failed to interpolate the constraints");
         optimizer.report_inference_result(InferenceResult::new(false));
     }
     if infer_polymorphic_type {

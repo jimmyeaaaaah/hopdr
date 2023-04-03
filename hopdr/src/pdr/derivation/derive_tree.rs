@@ -1,6 +1,7 @@
 use super::super::rtype::Refinement;
 use super::tree::*;
 use super::{Atom, Ty, G};
+use crate::formula::chc::CHC;
 use crate::pdr::rtype::TauKind;
 use crate::solver;
 use crate::util::Pretty;
@@ -296,8 +297,6 @@ impl Derivation {
     {
         let mut tree = Tree::singleton(node);
         let (_, coefficients) = derivations.fold((&mut tree, Stack::new()), |(t, coefs), d| {
-            pdebug!("rule_multiples");
-            pdebug!(d.tree);
             t.append_children(d.tree);
             let coefficients = concat_stacks([coefs, d.coefficients].iter());
             (t, coefficients)
@@ -392,8 +391,6 @@ impl Derivation {
         let var_expr = G::mk_var(var);
         let mut tree = self.tree.clone();
         let mut derivations = vec![];
-        pdebug!("tries to replace");
-        pdebug!(self.tree);
         for node in self
             .tree
             .filter_descendants(self.tree.get_node_by_id(node_id), move |n| {
@@ -403,9 +400,6 @@ impl Derivation {
             let d = Self::rule_var(var_expr.clone(), node.item.ty.clone(), Stack::new());
             let sub_derivation = self.sub_derivation(&node.id);
             derivations.push(sub_derivation);
-            pdebug!("replace_derivation_at_level_with_var var: ", var);
-            pdebug!("node: ", node.item);
-            pdebug!(tree);
             tree = tree.replace_subtree(node, d.tree);
         }
         self.tree = tree;
@@ -430,7 +424,6 @@ impl Derivation {
         let r = self
             .tree
             .update_parent_until(target_id, |n, children, prev| {
-                debug!("updating parents... {}", n.pretty_display());
                 let prev = match prev {
                     Some(prev) => prev,
                     None => return (false, n.clone()),
@@ -629,13 +622,9 @@ impl Derivation {
             .get_node_closest_to_root_by_goal_id(&reduction.app_expr.aux.id)
             .unwrap()
             .id;
-        pdebug!("derivation before updating parents");
-        pdebug!(self);
 
         self.update_parents(target_node);
         // finally replace the expressions in the derivation with the expr before the reduction
-        pdebug!("derivation before updating exprs");
-        pdebug!(self);
         self.update_expr(&reduction.before_reduction)
     }
     pub fn subject_expansion_int(
@@ -714,5 +703,15 @@ impl Derivation {
                 let child = &children[0];
                 Ty::check_subtype(&Atom::mk_true(), &child.item.ty, &ty)
             })
+    }
+    pub fn collect_chcs<'a>(
+        &'a self,
+    ) -> impl Iterator<Item = chc::CHC<chc::Atom, Constraint>> + 'a {
+        self.collect_constraints()
+            .map(|c| match c.to_chcs_or_pcsps() {
+                either::Either::Left(c) => c.into_iter(),
+                either::Either::Right(_) => panic!(""),
+            })
+            .flatten()
     }
 }
