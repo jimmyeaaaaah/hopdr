@@ -426,11 +426,7 @@ impl Derivation {
             node.ty = new_ty;
         })
     }
-    fn update_parents(
-        &mut self,
-        target_id: ID,
-        clauses: &mut Vec<chc::CHC<chc::Atom, Constraint>>,
-    ) {
+    fn update_parents(&mut self, target_id: ID) {
         let r = self
             .tree
             .update_parent_until(target_id, |n, children, prev| {
@@ -496,7 +492,7 @@ impl Derivation {
                         // case1: the updated child was in pred
                         if node.expr.aux.id == children[0].expr.aux.id {
                             let pred = children[0].ty.clone();
-                            let body_tys =
+                            let body_tys: Vec<_> =
                                 children[1..].iter().map(|child| child.ty.clone()).collect();
                             let (arg_ty, ret_ty) = match pred.kind() {
                                 TauKind::Arrow(arg, t) => (arg.clone(), t.clone()),
@@ -504,12 +500,8 @@ impl Derivation {
                                     panic!("program error")
                                 }
                             };
-                            super::Context::append_clauses_by_subst(
-                                clauses,
-                                &body_tys,
-                                &arg_ty,
-                                &pred.rty_no_exists(),
-                            );
+                            // subsumption
+                            todo!();
                             ret_ty.clone()
                         }
                         // case2: the updated child was in body
@@ -553,13 +545,6 @@ impl Derivation {
         let children: Vec<_> = self.tree.get_children(n).collect();
         assert_eq!(children.len(), 1);
         let ty1 = children[0].item.ty.clone();
-        // ty1 <: ty2
-        super::Context::append_clauses_by_subst(
-            clauses,
-            &vec![ty1.clone()],
-            &vec![ty2],
-            &Atom::mk_true(),
-        );
     }
     fn update_expr_inner(&mut self, node_id: ID, expr: &G) {
         self.tree.update_node_by_id(node_id).expr = expr.clone();
@@ -639,7 +624,6 @@ impl Derivation {
         node_id: ID,
         pred_ty: &Ty,
         reduction: &super::Reduction,
-        clauses: &mut Vec<chc::CHC<chc::Atom, Constraint>>,
     ) {
         let target_node = self
             .get_node_closest_to_root_by_goal_id(&reduction.app_expr.aux.id)
@@ -648,7 +632,7 @@ impl Derivation {
         pdebug!("derivation before updating parents");
         pdebug!(self);
 
-        self.update_parents(target_node, clauses);
+        self.update_parents(target_node);
         // finally replace the expressions in the derivation with the expr before the reduction
         pdebug!("derivation before updating exprs");
         pdebug!(self);
@@ -659,7 +643,6 @@ impl Derivation {
         node_id: ID,
         reduction: &super::Reduction,
         pred_ty: &Ty,
-        clauses: &mut Vec<chc::CHC<chc::Atom, Constraint>>,
     ) {
         let (pred_arg_ident, pred_body_ty) = match pred_ty.kind() {
             TauKind::IArrow(x, t) => (*x, t.clone()),
@@ -683,7 +666,7 @@ impl Derivation {
         });
 
         self.tree = t;
-        self.finalize_subject_expansion(node_id, pred_ty, reduction, clauses);
+        self.finalize_subject_expansion(node_id, pred_ty, reduction);
     }
     pub fn subject_expansion_pred(
         &mut self,
@@ -691,7 +674,6 @@ impl Derivation {
         arg_derivations: Vec<Self>,
         reduction: &super::Reduction,
         pred_ty: &Ty,
-        clauses: &mut Vec<chc::CHC<chc::Atom, Constraint>>,
     ) {
         let (arg_tys, pred_body_ty) = match pred_ty.kind() {
             TauKind::Arrow(tys, t) => (tys, t.clone()),
@@ -718,7 +700,7 @@ impl Derivation {
         });
 
         self.tree = t;
-        self.finalize_subject_expansion(node_id, pred_ty, reduction, clauses);
+        self.finalize_subject_expansion(node_id, pred_ty, reduction);
     }
 
     pub fn collect_constraints<'a>(&'a self) -> impl Iterator<Item = Atom> + 'a {

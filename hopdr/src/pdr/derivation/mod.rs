@@ -612,7 +612,6 @@ impl Context {
         ri: &ReductionInfo,
         is_shared_ty: bool,
         tmp_ret_ty: &Ty,
-        clauses: &mut Vec<chc::CHC<chc::Atom, Constraint>>,
     ) {
         // constructing body derivation
         let arg_derivations =
@@ -634,7 +633,7 @@ impl Context {
             Tau::mk_iarrow(ri.old_id, tmp_ret_ty.clone())
         };
         // generate derivation and constraints
-        derivation.subject_expansion_int(node_id, reduction, &pred_ty, clauses);
+        derivation.subject_expansion_int(node_id, reduction, &pred_ty);
     }
     fn expand_pred_node(
         &self,
@@ -645,7 +644,6 @@ impl Context {
         ri: &ReductionInfo,
         is_shared_ty: bool,
         tmp_ret_ty: &Ty,
-        clauses: &mut Vec<chc::CHC<chc::Atom, Constraint>>,
     ) {
         // TODO: we also have to replace the expr of each node in the derivation
         let mut arg_derivations =
@@ -676,12 +674,7 @@ impl Context {
         let pred_ty = if is_shared_ty {
             match tmp_ret_ty.kind() {
                 TauKind::Arrow(ts, _) => {
-                    Self::append_clauses_by_subst(
-                        clauses,
-                        ts,
-                        &arg_ty,
-                        &tmp_ret_ty.rty_no_exists(),
-                    );
+                    todo!();
                     tmp_ret_ty.clone()
                 }
                 TauKind::IArrow(_, _) | TauKind::Proposition(_) => {
@@ -692,7 +685,7 @@ impl Context {
             Ty::mk_arrow(arg_ty.clone(), tmp_ret_ty.clone())
         };
         // generate derivation and generate constraints
-        derivation.subject_expansion_pred(node_id, arg_derivations, reduction, &pred_ty, clauses);
+        derivation.subject_expansion_pred(node_id, arg_derivations, reduction, &pred_ty);
     }
     // (\x. g) g' -> [g'/x] g
     fn expand_node(
@@ -701,7 +694,6 @@ impl Context {
         app_exprs: &Vec<G>,
         derivation: &mut Derivation,
         reduction: &Reduction,
-        clauses: &mut Vec<chc::CHC<chc::Atom, Constraint>>,
     ) {
         // if ret_ty_idx > 0, then we push calculated types to derivation without "already exists" check
         let ret_ty = derivation.node_id_to_ty(&node_id).clone();
@@ -735,7 +727,6 @@ impl Context {
                 ri,
                 is_shared_ty,
                 &tmp_ret_ty,
-                clauses,
             )
         } else {
             self.expand_pred_node(
@@ -746,7 +737,6 @@ impl Context {
                 ri,
                 is_shared_ty,
                 &tmp_ret_ty,
-                clauses,
             )
         };
 
@@ -757,12 +747,7 @@ impl Context {
             reduction.app_expr
         );
     }
-    fn infer_type_inner(
-        &self,
-        derivation: &mut Derivation,
-        reduction: &Reduction,
-        clauses: &mut Vec<chc::CHC<chc::Atom, Constraint>>,
-    ) {
+    fn infer_type_inner(&self, derivation: &mut Derivation, reduction: &Reduction) {
         title!("Reduction");
         pdebug!(reduction);
         let node_ids: Stack<_> = derivation
@@ -797,22 +782,19 @@ impl Context {
         }
 
         for node_id in node_ids.iter() {
-            self.expand_node(*node_id, &app_exprs, derivation, reduction, clauses);
+            self.expand_node(*node_id, &app_exprs, derivation, reduction);
         }
     }
     fn infer_type(&mut self, mut derivation: Derivation) -> Option<TyEnv> {
-        let mut clauses = Vec::new();
-        debug!("constraints generated during type checking");
-
         for reduction in self.reduction_sequence.iter().rev() {
             pdebug!("derivation ", reduction.reduction_info.level);
             pdebug!(derivation);
-            self.infer_type_inner(&mut derivation, reduction, &mut clauses);
+            self.infer_type_inner(&mut derivation, reduction);
         }
         pdebug!("final derivation");
         pdebug!(derivation);
-        clauses.iter().for_each(|c| debug!("- {}", c));
         panic!("panic");
+        let clauses: Vec<_> = todo!();
         // 4. solve the constraints by using the interpolation solver
         let m = match solver::chc::default_solver().solve(&clauses) {
             solver::chc::CHCResult::Sat(m) => m,
