@@ -737,7 +737,7 @@ impl<C: Pretty> Pretty for rtype::Tau<C> {
         A: Clone,
     {
         match self.kind() {
-            rtype::TauKind::Proposition(c) => al.text("bool[") + c.pretty(al, config) + "]",
+            rtype::TauKind::Proposition(c) => al.text("*[") + c.pretty(al, config) + "]",
             rtype::TauKind::IArrow(i, t) => (i.pretty(al, config)
                 + (al.text(":int") + al.line() + al.text("-> ") + t.pretty(al, config)).hang(2))
             .group(),

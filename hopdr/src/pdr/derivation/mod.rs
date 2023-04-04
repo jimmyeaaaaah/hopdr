@@ -646,8 +646,24 @@ impl Context {
         tmp_ret_ty: &Ty,
     ) {
         // TODO: we also have to replace the expr of each node in the derivation
-        let mut arg_derivations =
+        let arg_derivations =
             derivation.replace_derivation_at_level_with_var(node_id, &ri.level, ri.arg_var.id);
+
+        let mut arg_derivations_new: Vec<Derivation> = Vec::new();
+        for arg_d in arg_derivations {
+            let mut should_append = true;
+            for d2 in arg_derivations_new.iter() {
+                if arg_d.root_ty() == d2.root_ty() {
+                    // already exists
+                    should_append = false;
+                    break;
+                }
+            }
+            if should_append {
+                arg_derivations_new.push(arg_d);
+            }
+        }
+        let mut arg_derivations = arg_derivations_new;
 
         let (arg_ty, arg_derivations) = if arg_derivations.is_empty() {
             (
@@ -791,8 +807,6 @@ impl Context {
             pdebug!("derivation ", reduction.reduction_info.level);
             pdebug!(derivation);
         }
-        pdebug!("final derivation");
-        pdebug!(derivation);
         title!("interpolation");
         let clauses: Vec<_> = derivation.collect_chcs().collect();
         for c in clauses.iter() {
@@ -814,7 +828,6 @@ impl Context {
 
         crate::title!("model from CHC solver");
         debug!("{}", m);
-        panic!("uon");
         let config = solver::interpolation::InterpolationConfig::new().use_chc_if_requied();
         let model = solver::interpolation::solve(&clauses, &config);
         debug!("interpolated:");
@@ -1262,7 +1275,7 @@ fn type_check_top_with_derivation(psi: &G, tenv: &mut Env) -> Option<Derivation>
         tc_mode: TCFlag::Normal,
         construct_derivation: true,
     };
-    let mut pt = type_check_inner(
+    let pt = type_check_inner(
         &config,
         tenv,
         &mut ienv,
@@ -1298,7 +1311,7 @@ fn type_check_top_with_derivation_and_constraints(
         tc_mode: TCFlag::Shared(ic),
         construct_derivation: true,
     };
-    let mut pt = type_check_inner(
+    let pt = type_check_inner(
         &config,
         tenv,
         &mut ienv,
