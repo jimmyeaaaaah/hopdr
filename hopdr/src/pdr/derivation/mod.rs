@@ -637,10 +637,7 @@ impl Context {
 
         let pred_ty = if is_shared_ty {
             match tmp_ret_ty.kind() {
-                TauKind::Arrow(ts, _) => {
-                    todo!();
-                    tmp_ret_ty.clone()
-                }
+                TauKind::Arrow(ts, _) => tmp_ret_ty.clone(),
                 TauKind::IArrow(_, _) | TauKind::Proposition(_) => {
                     panic!("program error")
                 }
@@ -1110,29 +1107,50 @@ fn type_check_inner(
             }
             formula::hes::GoalKind::Disj(g1, g2) => {
                 let c1: Option<Constraint> = g1.clone().into();
-                let (constr, g, g_) = match c1 {
-                    Some(c) => (c, g2, g1),
-                    None => (g2.clone().into(), g1, g2),
-                };
-                let c_neg = constr.negate().unwrap();
-                let t1 = type_check_inner(
-                    config,
-                    tenv,
-                    ienv,
-                    all_coefficients,
-                    g,
-                    context_ty.conjoin_constraint(&c_neg.into()),
-                );
-                // type check of constraints (to track the type derivation, checking g2 is necessary)
-                let t2 = type_check_inner(
-                    config,
-                    tenv,
-                    ienv,
-                    all_coefficients,
-                    g_,
-                    context_ty.conjoin_constraint(&constr.into()),
-                );
-                PossibleDerivation::disjoin(expr.clone(), t1, t2)
+                let c2: Option<Constraint> = g2.clone().into();
+                match (c1, c2) {
+                    (Some(c1), _) => {
+                        let t1 = type_check_inner(
+                            config,
+                            tenv,
+                            ienv,
+                            all_coefficients,
+                            g1,
+                            context_ty.conjoin_constraint(&c1.clone().into()),
+                        );
+                        let t2 = type_check_inner(
+                            config,
+                            tenv,
+                            ienv,
+                            all_coefficients,
+                            g2,
+                            context_ty.conjoin_constraint(&c1.negate().unwrap().into()),
+                        );
+                        PossibleDerivation::disjoin(expr.clone(), t1, t2)
+                    }
+                    (_, Some(c2)) => {
+                        let t1 = type_check_inner(
+                            config,
+                            tenv,
+                            ienv,
+                            all_coefficients,
+                            g1,
+                            context_ty.conjoin_constraint(&c2.negate().unwrap().into()),
+                        );
+                        let t2 = type_check_inner(
+                            config,
+                            tenv,
+                            ienv,
+                            all_coefficients,
+                            g2,
+                            context_ty.conjoin_constraint(&c2.into()),
+                        );
+                        PossibleDerivation::disjoin(expr.clone(), t1, t2)
+                    }
+                    (_, _) => {
+                        panic!("program error")
+                    }
+                }
             }
             formula::hes::GoalKind::Univ(x, g) => {
                 let b = ienv.insert(x.id);

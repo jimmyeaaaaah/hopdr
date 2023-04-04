@@ -1,8 +1,8 @@
 use super::tree::*;
 use super::{Atom, Ty, G};
-use crate::formula::*;
 use crate::pdr::rtype::TauKind;
 use crate::solver;
+use crate::{formula::*, highlight};
 
 use rpds::Stack;
 
@@ -522,6 +522,8 @@ impl Derivation {
             .map(|child| child.id)
             .collect();
         let n = self.get_node_by_id(node_id).item;
+        // crate::title!("update_expr_inner");
+        // crate::pdebug!(n);
         match n.rule {
             Rule::Conjoin => {
                 let (g1, g2) = expr.conj();
