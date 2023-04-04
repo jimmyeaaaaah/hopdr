@@ -1,27 +1,24 @@
 mod derive_tree;
 pub mod tree;
 
-use self::derive_tree::DeriveNode;
-
 use super::optimizer;
 use super::optimizer::{variable_info, InferenceResult, Optimizer};
-use super::rtype::{PolymorphicType, Refinement, TBot, Tau, TauKind, TyEnv, TypeEnvironment};
+use super::rtype::{PolymorphicType, TBot, Tau, TauKind, TyEnv, TypeEnvironment};
 use derive_tree::Derivation;
 
 use crate::formula::hes::{Goal, GoalBase, GoalKind, Problem as ProblemBase};
-use crate::formula::{self, DerefPtr, FirstOrderLogic};
+use crate::formula::{self};
 use crate::formula::{
-    chc, fofml, Constraint, Fv, Ident, Logic, Negation, Op, Rename, Subst, Top, Variable,
+    chc, fofml, Constraint, Fv, Ident, Logic, Negation, Rename, Subst, Top, Variable,
 };
+use crate::solver;
 use crate::util::Pretty;
 use crate::{highlight, pdebug, title};
-use crate::{plog_colored, solver};
 
 use rpds::Stack;
 
 use std::collections::{HashMap, HashSet};
 use std::fmt;
-use std::fmt::Formatter;
 
 type Atom = fofml::Atom;
 type Candidate = Goal<Constraint>;
@@ -554,54 +551,6 @@ impl Context {
         }
         result_env
     }
-    ///// aux functions
-    fn append_clauses(clauses: &mut Vec<chc::CHC<chc::Atom, Constraint>>, constraint: &Atom) {
-        match constraint.to_chcs_or_pcsps() {
-            either::Left(chcs) => {
-                pdebug!("constraints" ; title);
-                for c in chcs {
-                    pdebug!("  -", c);
-                    clauses.push(c);
-                }
-            }
-            either::Right(pcsps) => {
-                pdebug!("constriant: ", constraint);
-                pdebug!("failed to translate the constraint to chcs");
-                for c in pcsps {
-                    pdebug!(c)
-                }
-                panic!("fatal")
-            }
-        }
-    }
-    fn append_clauses_by_subst(
-        clauses: &mut Vec<chc::CHC<chc::Atom, Constraint>>,
-        ts: &Vec<Ty>,
-        arg_ty: &Vec<Ty>,
-        constraint: &Atom,
-    ) {
-        pdebug!("adding subtyping constraints");
-        for t in ts {
-            pdebug!(t);
-        }
-        pdebug!("<:");
-        for t in arg_ty {
-            pdebug!(t);
-        }
-
-        if ts.len() != 1 {
-            unimplemented!()
-        }
-        let t = &ts[0];
-        // arg_ty -> result -> <: ts -> t(arg_ty)
-        // ts <: arg_ty
-        for s in arg_ty.iter() {
-            let constraint1 = Tau::check_subtype(&constraint.clone(), s, t);
-            let constraint2 = Tau::check_subtype(&constraint.clone(), t, s);
-            let constraint = Atom::mk_conj(constraint1, constraint2);
-            Self::append_clauses(clauses, &constraint);
-        }
-    }
 
     ///// aux functions end
     fn expand_int_node(
@@ -638,7 +587,6 @@ impl Context {
     fn expand_pred_node(
         &self,
         node_id: tree::ID,
-        app_exprs: &Vec<G>,
         derivation: &mut Derivation,
         reduction: &Reduction,
         ri: &ReductionInfo,
@@ -704,13 +652,7 @@ impl Context {
         derivation.subject_expansion_pred(node_id, arg_derivations, reduction, &pred_ty);
     }
     // (\x. g) g' -> [g'/x] g
-    fn expand_node(
-        &self,
-        node_id: tree::ID,
-        app_exprs: &Vec<G>,
-        derivation: &mut Derivation,
-        reduction: &Reduction,
-    ) {
+    fn expand_node(&self, node_id: tree::ID, derivation: &mut Derivation, reduction: &Reduction) {
         // if ret_ty_idx > 0, then we push calculated types to derivation without "already exists" check
         let ret_ty = derivation.node_id_to_ty(&node_id).clone();
         let ri = &reduction.reduction_info;
@@ -746,7 +688,6 @@ impl Context {
         } else {
             self.expand_pred_node(
                 node_id,
-                app_exprs,
                 derivation,
                 reduction,
                 ri,
@@ -781,23 +722,8 @@ impl Context {
             panic!("fatal");
         }
 
-        // we have to track all the temporal ids
-        // since there are more than one reductions in Reduction object itself
-        let mut app_exprs = Vec::new();
-        let mut p = reduction.app_expr.clone();
-        loop {
-            match p.kind() {
-                GoalKind::App(g, _) => {
-                    debug!("id={}, g={}", g.aux.id, g);
-                    app_exprs.push(g.clone());
-                    p = g.clone();
-                }
-                _ => break,
-            }
-        }
-
         for node_id in node_ids.iter() {
-            self.expand_node(*node_id, &app_exprs, derivation, reduction);
+            self.expand_node(*node_id, derivation, reduction);
         }
     }
     fn infer_type(&mut self, mut derivation: Derivation) -> Option<TyEnv> {
@@ -912,7 +838,7 @@ fn handle_abs(
             handle_abs_inner(config, tenv, ienv, all_coefficients, arg_expr, t)
         }
         (TCFlag::Shared(_), Some(tys)) if tys.len() == 1 => {
-            let mut pt = handle_abs_inner(config, tenv, ienv, all_coefficients, arg_expr, &tys[0]);
+            let pt = handle_abs_inner(config, tenv, ienv, all_coefficients, arg_expr, &tys[0]);
             pt.coarse_type(t)
         }
         (_, _) => panic!("program error"),

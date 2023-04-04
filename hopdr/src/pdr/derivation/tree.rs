@@ -1,6 +1,6 @@
 use std::collections::{HashMap, VecDeque};
 
-use crate::util::{global_counter, Pretty};
+use crate::util::global_counter;
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Hash, PartialOrd, Ord)]
 pub struct ID(u64);
@@ -260,13 +260,6 @@ impl<T> Tree<T> {
         let mut items = HashMap::new();
         items.insert(root, item);
         Tree { graph, items, root }
-    }
-    fn check_disjoint(&self, other: &Tree<T>) {
-        // let all_nodes = other.graph
-        // for node in other.graph.nodes() {
-        //     assert!(!self.graph.edges.contains_key(node));
-        // }
-        todo!()
     }
     fn append_children_inner(&mut self, child: &Tree<T>) {
         for node in child.graph.nodes() {
@@ -567,6 +560,7 @@ fn sanity_check_tree(t6: &Tree<usize>) {
 
 #[test]
 fn tree_basics() {
+    use crate::util::Pretty;
     // 1-2
     // |-2-3
     let t1 = Tree::singleton(3);

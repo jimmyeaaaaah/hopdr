@@ -1,11 +1,8 @@
-use super::super::rtype::Refinement;
 use super::tree::*;
 use super::{Atom, Ty, G};
-use crate::formula::chc::CHC;
+use crate::formula::*;
 use crate::pdr::rtype::TauKind;
 use crate::solver;
-use crate::util::Pretty;
-use crate::{formula::*, pdebug};
 
 use rpds::Stack;
 
@@ -228,6 +225,7 @@ impl Derivation {
             .filter(move |n| n.expr.aux.id == *id)
             .map(|n| n.item.ty.clone())
     }
+    #[allow(dead_code)]
     fn get_node_by_level<'a>(
         &'a self,
         node_id: ID,
@@ -238,6 +236,7 @@ impl Derivation {
             n.expr.aux.level_arg.iter().any(|arg| arg == level)
         })
     }
+    #[allow(dead_code)]
     pub fn get_types_by_level<'a>(
         &'a self,
         node_id: ID,
@@ -246,6 +245,7 @@ impl Derivation {
         self.get_node_by_level(node_id, level)
             .map(|n| n.item.ty.clone())
     }
+    #[allow(dead_code)]
     pub fn get_derivations_by_level<'a>(
         &'a self,
         node_id: ID,
@@ -329,10 +329,8 @@ impl Derivation {
     }
     pub fn rule_subsumption(d: Self, ty: Ty) -> Self {
         let child = d.tree.root();
-        let s = child.item.ty.clone();
-        let constraint = Ty::check_subtype(&Atom::mk_true(), &s, &ty);
         let root = DeriveNode::subsumption(child.item, ty);
-        let mut d = Self::rule_one_arg_inner(root, d);
+        let d = Self::rule_one_arg_inner(root, d);
         d
     }
     pub fn rule_app<I>(expr: G, d1: Self, args: I) -> Self
@@ -413,16 +411,8 @@ impl Derivation {
             node.ty = new_ty;
         });
     }
-    pub fn rename_int_var(&mut self, from: ID, old_id: &Ident, new_id: &Ident) {
-        self.tree.update_children(from, |node| {
-            let ty = node.ty.clone();
-            let new_ty = ty.rename(old_id, new_id);
-            node.ty = new_ty;
-        })
-    }
     fn update_parents(&mut self, target_id: ID) {
-        let r = self
-            .tree
+        self.tree
             .update_parent_until(target_id, |n, children, prev| {
                 let prev = match prev {
                     Some(prev) => prev,
@@ -521,23 +511,8 @@ impl Derivation {
                     expr: n.expr.clone(),
                 };
                 (false, n)
-            });
-        let id = match r {
-            Some(n) => n.id,
-            None => {
-                panic!("parent not found")
-            }
-        };
-        // due to the lifetime reason...
-        let n = self.tree.get_node_by_id(id);
-        // append constraints here
-        assert!(matches!(n.item.rule, Rule::Subsumption));
-
-        let ty2 = n.item.ty.clone();
-
-        let children: Vec<_> = self.tree.get_children(n).collect();
-        assert_eq!(children.len(), 1);
-        let ty1 = children[0].item.ty.clone();
+            })
+            .unwrap();
     }
     fn update_expr_inner(&mut self, node_id: ID, expr: &G) {
         self.tree.update_node_by_id(node_id).expr = expr.clone();
@@ -612,12 +587,7 @@ impl Derivation {
         let root_id = self.tree.root().id;
         self.update_expr_inner(root_id, expr)
     }
-    fn finalize_subject_expansion(
-        &mut self,
-        node_id: ID,
-        pred_ty: &Ty,
-        reduction: &super::Reduction,
-    ) {
+    fn finalize_subject_expansion(&mut self, reduction: &super::Reduction) {
         let target_node = self
             .get_node_closest_to_root_by_goal_id(&reduction.app_expr.aux.id)
             .unwrap()
@@ -638,7 +608,7 @@ impl Derivation {
             TauKind::Proposition(_) | TauKind::Arrow(_, _) => panic!("fail"),
         };
 
-        let (t, node_id) = self.tree.insert_partial_tree(node_id, |body| {
+        let (t, _node_id) = self.tree.insert_partial_tree(node_id, |body| {
             let body = Derivation {
                 tree: body,
                 coefficients: Stack::new(),
@@ -655,7 +625,7 @@ impl Derivation {
         });
 
         self.tree = t;
-        self.finalize_subject_expansion(node_id, pred_ty, reduction);
+        self.finalize_subject_expansion(reduction);
     }
     pub fn subject_expansion_pred(
         &mut self,
@@ -669,7 +639,7 @@ impl Derivation {
             TauKind::Proposition(_) | TauKind::IArrow(_, _) => panic!("fail"),
         };
 
-        let (t, node_id) = self.tree.insert_partial_tree(node_id, |body| {
+        let (t, _node_id) = self.tree.insert_partial_tree(node_id, |body| {
             let body = Derivation {
                 tree: body,
                 coefficients: Stack::new(),
@@ -689,7 +659,7 @@ impl Derivation {
         });
 
         self.tree = t;
-        self.finalize_subject_expansion(node_id, pred_ty, reduction);
+        self.finalize_subject_expansion(reduction);
     }
 
     pub fn collect_constraints<'a>(&'a self) -> impl Iterator<Item = Atom> + 'a {
