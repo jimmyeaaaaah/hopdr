@@ -1471,16 +1471,14 @@ pub fn search_for_type(
     while optimizer.continuable() {
         let mut ctx = reduce_until_normal_form(candidate, problem, config, &mut optimizer);
         debug!("{}", ctx.normal_form);
-        //let candidate = ctx.normal_form.clone();
-        let derivation = match type_check_top_with_derivation(&ctx.normal_form, tenv) {
-            Some(derivation) => derivation,
-            None => continue,
-        };
+        // If type_check_top_with_derivation fails, it's not related to
+        // optimizers or shared_type issues. Instead, it indicates that
+        // normal_form is untypable. In this case, the function returns None.
+        let derivation = type_check_top_with_derivation(&ctx.normal_form, tenv)?;
         let derivation =
             type_check_top_with_derivation_and_constraints(derivation, &ctx.normal_form, tenv);
         pdebug!("[derivation]");
         pdebug!(derivation);
-        crate::util::wait_for_line();
         match ctx.infer_type(derivation) {
             Some(x) => {
                 optimizer.report_inference_result(InferenceResult::new(true));
@@ -1488,7 +1486,7 @@ pub fn search_for_type(
             }
             None => (),
         }
-        highlight!("failed to interpolate the constraints");
+        debug!("failed to interpolate the constraints");
         optimizer.report_inference_result(InferenceResult::new(false));
     }
     if infer_polymorphic_type {
