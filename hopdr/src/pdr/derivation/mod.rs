@@ -661,18 +661,26 @@ impl Context {
         // if a shared_ty is attached with the predicate we are focusing on, we have to use it
         let (tmp_ret_ty, is_shared_ty) = match &reduction.predicate.aux.tys {
             Some(tys) => (tys[0].clone(), true),
-            None => (
-                ret_ty.clone_with_rty_template(
-                    Atom::mk_true(),
-                    &mut if self.infer_polymorphic_type {
-                        reduction.fvints.clone()
-                    } else {
-                        reduction.argints.clone()
-                    },
-                ),
-                false,
-            ),
+            None => {
+                let mut integers = if self.infer_polymorphic_type {
+                    reduction.fvints.clone()
+                } else {
+                    reduction.argints.clone()
+                };
+                if ri.arg_var.ty.is_int() {
+                    integers.insert(ri.old_id);
+                }
+                (
+                    ret_ty.clone_with_rty_template(Atom::mk_true(), &mut integers),
+                    false,
+                )
+            }
         };
+        debug!(
+            "shared type is {}. Type: {}",
+            if is_shared_ty { "enabled" } else { "disabled" },
+            tmp_ret_ty
+        );
 
         // case where the argument is an integer
         if ri.arg_var.ty.is_int() {
