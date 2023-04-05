@@ -210,6 +210,8 @@ struct TypeMemory {
     id: Ident, // unique id for each sub expression of the formula
     old_ids: Stack<Ident>,
     tys: Option<Vec<Ty>>,
+    // idents that are free variables at this position
+    ints: Stack<Ident>,
 }
 impl TypeMemory {
     fn new() -> TypeMemory {
@@ -218,6 +220,7 @@ impl TypeMemory {
             id: Ident::fresh(),
             old_ids: Stack::new(),
             tys: None,
+            ints: Stack::new(),
         }
     }
     fn add_arg_level(&mut self, level: usize) {
@@ -322,6 +325,51 @@ impl GoalBase<Constraint, TypeMemory> {
         };
         expr.aux = self.aux.update_id();
         expr
+    }
+    fn calculate_free_variables(self) -> G {
+        fn go(g: &G, ints: Stack<Ident>) -> G {
+            let mut g = match g.kind() {
+                GoalKind::Constr(_) | GoalKind::Op(_) | GoalKind::Var(_) => g.clone(),
+                GoalKind::Abs(x, g2) => {
+                    let x = x.clone();
+                    let ints = if x.ty.is_int() {
+                        ints.push(x.id)
+                    } else {
+                        ints.clone()
+                    };
+                    let g2 = go(g2, ints.clone());
+                    G::mk_abs_t(x, g2, g.aux.clone())
+                }
+                GoalKind::App(g1, g2) => {
+                    let g1 = go(g1, ints.clone());
+                    let g2 = go(g2, ints.clone());
+                    G::mk_app_t(g1, g2, g.aux.clone())
+                }
+                GoalKind::Conj(g1, g2) => {
+                    let g1 = go(g1, ints.clone());
+                    let g2 = go(g2, ints.clone());
+                    G::mk_conj_t(g1, g2, g.aux.clone())
+                }
+                GoalKind::Disj(g1, g2) => {
+                    let g1 = go(g1, ints.clone());
+                    let g2 = go(g2, ints.clone());
+                    G::mk_disj_t(g1, g2, g.aux.clone())
+                }
+                GoalKind::Univ(x, g2) => {
+                    let x = x.clone();
+                    let ints = if x.ty.is_int() {
+                        ints.push(x.id)
+                    } else {
+                        ints.clone()
+                    };
+                    let g2 = go(g2, ints);
+                    G::mk_univ_t(x, g2, g.aux.clone())
+                }
+            };
+            g.aux.ints = ints.clone();
+            g
+        }
+        go(&self, Stack::new())
     }
 }
 
@@ -1333,6 +1381,8 @@ fn reduce_until_normal_form(
     let candidate = candidate.clone().into(); // assign `aux` to candidate.
     let goal = subst_predicate(&candidate, problem, &mut track_idents);
     let goal = goal.alpha_renaming();
+    // calculate free variables for each term
+    let goal = goal.calculate_free_variables();
     title!("generate_reduction_sequence");
     let (reduction_sequence, normal_form) = generate_reduction_sequence(&goal, optimizer);
     Context::new(normal_form, track_idents, reduction_sequence, config)
