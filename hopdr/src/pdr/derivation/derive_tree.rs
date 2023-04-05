@@ -702,8 +702,13 @@ impl Derivation {
     /// This function is used to check that the derivation is well-formed
     pub fn check_sanity(&self) -> bool {
         // now only check if app is sane since others are probably fine
-        fn go(d: &Derivation, node_id: ID) -> bool {
+        fn go(d: &Derivation, node_id: ID, ints: &Stack<Ident>) -> bool {
             let n = d.get_node_by_id(node_id);
+            let fvs = n.item.ty.fv();
+            assert!(fvs
+                .difference(&ints.iter().cloned().collect())
+                .next()
+                .is_none());
             match n.item.rule {
                 Rule::Var | Rule::Atom => {
                     d.tree.get_no_child(n);
@@ -711,15 +716,25 @@ impl Derivation {
                 }
                 Rule::Conjoin | Rule::Disjoin => {
                     let (child1, child2) = d.tree.get_two_children(n);
-                    go(d, child1.id) && go(d, child2.id)
+                    go(d, child1.id, ints) && go(d, child2.id, ints)
                 }
-                Rule::Univ(_)
-                | Rule::IApp(_)
-                | Rule::IAbs(_)
-                | Rule::Abs(_)
-                | Rule::Subsumption => {
+                Rule::IAbs(_) => {
+                    let x = n.item.expr.abs().0;
+                    assert!(x.ty.is_int());
+                    let ints = ints.push(x.id);
                     let child = d.tree.get_one_child(n);
-                    go(d, child.id)
+                    go(d, child.id, &ints)
+                }
+                Rule::Univ(_) => {
+                    let x = n.item.expr.univ().0;
+                    assert!(x.ty.is_int());
+                    let ints = ints.push(x.id);
+                    let child = d.tree.get_one_child(n);
+                    go(d, child.id, &ints)
+                }
+                Rule::IApp(_) | Rule::Abs(_) | Rule::Subsumption => {
+                    let child = d.tree.get_one_child(n);
+                    go(d, child.id, ints)
                 }
                 Rule::App => {
                     let children: Vec<_> = d.tree.get_children(n).collect();
@@ -744,10 +759,10 @@ impl Derivation {
                         .zip(arg_tys.iter().filter(|x| !x.is_bot()))
                         .all(|(t1, t2)| t1 == t2));
 
-                    children.iter().all(|c| go(d, c.id))
+                    children.iter().all(|c| go(d, c.id, ints))
                 }
             }
         }
-        go(self, self.tree.root().id)
+        go(self, self.tree.root().id, &Stack::new())
     }
 }
