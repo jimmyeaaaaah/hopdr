@@ -736,7 +736,14 @@ impl Context {
             Some(tys) => (tys[0].clone(), true),
             None => {
                 let mut integers = if self.infer_polymorphic_type {
-                    reduction.fvints.clone()
+                    reduction
+                        .predicate
+                        .aux
+                        .ints
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .collect()
                 } else {
                     reduction.argints.clone()
                 };
