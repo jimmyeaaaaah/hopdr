@@ -685,7 +685,7 @@ impl Derivation {
                 let children: Vec<_> = self.tree.get_children(n).collect();
                 assert_eq!(children.len(), 1);
                 let child = &children[0];
-                Ty::check_subtype(&Atom::mk_true(), &child.item.ty, &ty)
+                Ty::check_subtype_result(&child.item.ty, &ty)
             })
     }
     pub fn collect_chcs<'a>(
@@ -694,7 +694,7 @@ impl Derivation {
         self.collect_constraints()
             .map(|c| match c.to_chcs_or_pcsps() {
                 either::Either::Left(c) => c.into_iter(),
-                either::Either::Right(_) => panic!(""),
+                either::Either::Right(_) => panic!("failed to transform to chcs: {}", c),
             })
             .flatten()
     }
@@ -730,7 +730,7 @@ impl Derivation {
                         .collect();
                     let body_tys = pred_ty.arrow().0;
                     // subsumption
-                    // debug!("subsumption");
+                    // debug!("subsumption");git
                     // for body_ty in body_tys.iter() {
                     //     crate::pdebug!(body_ty);
                     // }

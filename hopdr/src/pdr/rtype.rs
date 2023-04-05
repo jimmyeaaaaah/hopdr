@@ -415,6 +415,23 @@ impl<C: Refinement> Tau<C> {
             (_, _) => panic!("fatal"),
         }
     }
+    pub fn check_subtype_result(t: &Tau<C>, s: &Tau<C>) -> C {
+        match (t.kind(), s.kind()) {
+            (TauKind::Proposition(c1), TauKind::Proposition(c2)) => {
+                C::mk_implies_opt(c2.clone(), c1.clone()).unwrap()
+            }
+            (TauKind::IArrow(x1, t1), TauKind::IArrow(x2, t2)) => {
+                let t2 = t2.rename(x2, x1);
+                Tau::check_subtype_result(t1, &t2)
+            }
+            (TauKind::Arrow(ts1, t1), TauKind::Arrow(ts2, t2)) => {
+                // check ts2 <: ts1
+                assert!(ts1.iter().zip(ts2.iter()).all(|(t1, t2)| t1 == t2));
+                Tau::check_subtype_result(t1, t2)
+            }
+            (_, _) => panic!("fatal"),
+        }
+    }
     /// this subtyping is different in that for the argument of τ₁ ∧ τ₂ → τ₃ < τ₁' ∧ τ₂' → τ₃'
     /// we do τ₁ < τ₁' and τ₂ < τ₂'
     pub fn check_subtype_structural(constraint: &C, t: &Tau<C>, s: &Tau<C>) -> C {
