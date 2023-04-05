@@ -304,6 +304,19 @@ impl<T> Tree<T> {
             .edges(id)
             .map(move |(_, id)| self.get_node_by_id(id))
     }
+    pub fn get_one_child<'a>(&'a self, node: Node<'a, T>) -> Node<'a, T> {
+        let mut iter = self.get_children(node);
+        let r = iter.next().unwrap();
+        assert!(iter.next().is_none());
+        r
+    }
+    pub fn get_two_children<'a>(&'a self, node: Node<'a, T>) -> (Node<'a, T>, Node<'a, T>) {
+        let mut iter = self.get_children(node);
+        let a = iter.next().unwrap();
+        let b = iter.next().unwrap();
+        assert!(iter.next().is_none());
+        (a, b)
+    }
     pub fn nth_child<'a>(&'a self, node: Node<'a, T>, n: usize) -> Option<Node<'a, T>> {
         self.get_children(node).nth(n)
     }

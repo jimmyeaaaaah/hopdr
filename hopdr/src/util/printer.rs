@@ -83,6 +83,17 @@ impl Pretty for str {
     }
 }
 
+impl Pretty for bool {
+    fn pretty<'b, D, A>(&'b self, al: &'b D, _config: &mut Config) -> DocBuilder<'b, D, A>
+    where
+        D: DocAllocator<'b, A>,
+        D::Doc: Clone,
+        A: Clone,
+    {
+        al.text(if *self { "true" } else { "false" })
+    }
+}
+
 macro_rules! pretty_to_string {
     ($ty:ident) => {
         impl Pretty for $ty {

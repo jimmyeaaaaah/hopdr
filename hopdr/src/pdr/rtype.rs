@@ -499,12 +499,29 @@ impl<C: Refinement> Tau<C> {
     }
     pub fn mk_arrow(t: Vec<Tau<C>>, s: Tau<C>) -> Tau<C> {
         let t_fst = t[0].clone();
-        let t: Vec<_> = t.into_iter().filter(|t| !t.is_bot()).collect();
+        let mut t: Vec<_> = t.into_iter().filter(|t| !t.is_bot()).collect();
         if t.len() == 0 {
-            // t_fst must be bot ty
-            Tau::new(TauKind::Arrow(vec![t_fst], s))
-        } else {
-            Tau::new(TauKind::Arrow(t, s))
+            // t_fst must be bot ty where all bot types are filtered out.
+            t.push(t_fst);
+        }
+        Tau::new(TauKind::Arrow(t, s))
+    }
+    pub fn prop<'a>(&'a self) -> &'a C {
+        match self.kind() {
+            TauKind::Proposition(c) => c,
+            _ => panic!("program error"),
+        }
+    }
+    pub fn iarrow<'a>(&'a self) -> (&'a Ident, &'a Self) {
+        match self.kind() {
+            TauKind::IArrow(x, t) => (x, t),
+            _ => panic!("program error"),
+        }
+    }
+    pub fn arrow<'a>(&'a self) -> (&'a Vec<Self>, &'a Self) {
+        match self.kind() {
+            TauKind::Arrow(ts, t) => (ts, t),
+            _ => panic!("program error"),
         }
     }
 }

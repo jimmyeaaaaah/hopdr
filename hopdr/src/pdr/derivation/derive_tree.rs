@@ -1,6 +1,6 @@
 use super::tree::*;
 use super::{Atom, Ty, G};
-use crate::pdr::rtype::TauKind;
+use crate::pdr::rtype::{TBot, TauKind};
 use crate::solver;
 use crate::{formula::*, highlight};
 
@@ -492,7 +492,11 @@ impl Derivation {
                             for body_ty in arg_ty.iter() {
                                 crate::pdebug!(body_ty);
                             }
-                            assert!(body_tys.iter().zip(arg_ty.iter()).all(|(t1, t2)| t1 == t2));
+                            assert!(body_tys
+                                .iter()
+                                .filter(|x| !x.is_bot())
+                                .zip(arg_ty.iter().filter(|x| !x.is_bot()))
+                                .all(|(t1, t2)| t1 == t2));
                             ret_ty.clone()
                         }
                         // case2: the updated child was in body
@@ -694,4 +698,34 @@ impl Derivation {
             })
             .flatten()
     }
+    #[allow(dead_code)]
+    /// This function is used to check that the derivation is well-formed
+    // pub fn check_sanity(&self) {
+    //     fn go(d: &Derivation, node_id: ID) -> bool {
+    //         let n = d.get_node_by_id(node_id);
+    //         match n.item.rule {
+    //             Rule::Conjoin => {
+    //                 let (child1, child2) = d.tree.get_two_children(n);
+    //                 let b = G::mk_conj(child1.item.expr.clone(), child2.item.expr.clone());
+    //                 let c1 = child1.item.ty.prop();
+    //                 let c2 = child2.item.ty.prop();
+    //                 let c3 = n.item.ty.prop();
+
+    //                 c3 == &Atom::mk_conj(c1.clone(), c2.clone())
+    //                     && &b == n.item.expr
+    //                     && go(d, child1.id)
+    //                     && go(d, child2.id)
+    //             }
+    //             Rule::Disjoin => todo!(),
+    //             Rule::Var => todo!(),
+    //             Rule::Univ(_) => todo!(),
+    //             Rule::IAbs(_) => todo!(),
+    //             Rule::Abs(_) => todo!(),
+    //             Rule::IApp(_) => todo!(),
+    //             Rule::App => todo!(),
+    //             Rule::Subsumption => todo!(),
+    //             Rule::Atom => todo!(),
+    //         }
+    //     }
+    // }
 }

@@ -259,6 +259,28 @@ impl From<Candidate> for G {
         }
     }
 }
+impl From<G> for Goal<Constraint> {
+    fn from(g: G) -> Self {
+        match g.kind() {
+            GoalKind::Constr(c) => Goal::mk_constr(c.clone()),
+            GoalKind::Op(op) => Goal::mk_op(op.clone()),
+            GoalKind::Var(id) => Goal::mk_var(*id),
+            GoalKind::Abs(v, g) => Goal::mk_abs(v.clone(), g.clone().into()),
+            GoalKind::App(x, y) => Goal::mk_app(x.clone().into(), y.clone().into()),
+            GoalKind::Conj(x, y) => Goal::mk_conj(x.clone().into(), y.clone().into()),
+            GoalKind::Disj(x, y) => Goal::mk_disj(x.clone().into(), y.clone().into()),
+            GoalKind::Univ(x, g) => Goal::mk_univ(x.clone(), g.clone().into()),
+        }
+    }
+}
+
+impl PartialEq for G {
+    fn eq(&self, other: &Self) -> bool {
+        let g1: Goal<Constraint> = self.clone().into();
+        let g2: Goal<Constraint> = other.clone().into();
+        g1 == g2
+    }
+}
 
 impl TypeMemory {
     fn update_id(&self) -> Self {
@@ -610,12 +632,12 @@ impl Context {
                 }
             }
             highlight!("expand node");
-            pdebug!(arg_d);
+            pdebug!(arg_d, should_append);
             if should_append {
                 arg_derivations_new.push(arg_d);
             }
         }
-        let mut arg_derivations = arg_derivations_new;
+        let arg_derivations = arg_derivations_new;
 
         let (arg_ty, arg_derivations) = if arg_derivations.is_empty() {
             (
@@ -650,6 +672,7 @@ impl Context {
         } else {
             Ty::mk_arrow(arg_ty.clone(), tmp_ret_ty.clone())
         };
+        pdebug!("pred_ty", pred_ty);
         // generate derivation and generate constraints
         derivation.subject_expansion_pred(node_id, arg_derivations, reduction, &pred_ty);
     }
@@ -1502,7 +1525,7 @@ pub fn search_for_type(
             type_check_top_with_derivation_and_constraints(derivation, &ctx.normal_form, tenv);
         pdebug!("[derivation]");
         pdebug!(derivation);
-        crate::util::wait_for_line();
+        //crate::util::wait_for_line();
         match ctx.infer_type(derivation) {
             Some(x) => {
                 optimizer.report_inference_result(InferenceResult::new(true));
