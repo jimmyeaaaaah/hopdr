@@ -603,10 +603,14 @@ impl Context {
             for d2 in arg_derivations_new.iter() {
                 if arg_d.root_ty() == d2.root_ty() {
                     // already exists
+                    highlight!("arg derivations already exists");
+                    pdebug!(arg_d, " vs ", d2);
                     should_append = false;
                     break;
                 }
             }
+            highlight!("expand node");
+            pdebug!(arg_d);
             if should_append {
                 arg_derivations_new.push(arg_d);
             }
@@ -630,7 +634,8 @@ impl Context {
                         .iter()
                         .map(|d| d.root_ty().clone())
                         .collect(),
-                    vec![arg_derivations.pop().unwrap()],
+                    arg_derivations,
+                    //vec![arg_derivations.pop().unwrap()],
                 ),
             }
         };
@@ -1485,7 +1490,7 @@ pub fn search_for_type(
     debug!("{}", candidate);
     let infer_polymorphic_type = config.infer_polymorphic_type;
     // TODO: expand candidate once based on problem.
-    let mut optimizer = optimizer::NaiveOptimizer::new();
+    let mut optimizer = optimizer::VoidOptimizer::new();
     while optimizer.continuable() {
         let mut ctx = reduce_until_normal_form(candidate, problem, config, &mut optimizer);
         debug!("{}", ctx.normal_form);
@@ -1497,6 +1502,7 @@ pub fn search_for_type(
             type_check_top_with_derivation_and_constraints(derivation, &ctx.normal_form, tenv);
         pdebug!("[derivation]");
         pdebug!(derivation);
+        crate::util::wait_for_line();
         match ctx.infer_type(derivation) {
             Some(x) => {
                 optimizer.report_inference_result(InferenceResult::new(true));

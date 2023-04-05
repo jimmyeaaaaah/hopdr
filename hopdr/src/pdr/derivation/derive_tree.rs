@@ -484,7 +484,15 @@ impl Derivation {
                                 }
                             };
                             // subsumption
-                            todo!();
+                            debug!("subsumption");
+                            for body_ty in body_tys.iter() {
+                                crate::pdebug!(body_ty);
+                            }
+                            debug!("<:");
+                            for body_ty in arg_ty.iter() {
+                                crate::pdebug!(body_ty);
+                            }
+                            assert!(body_tys.iter().zip(arg_ty.iter()).all(|(t1, t2)| t1 == t2));
                             ret_ty.clone()
                         }
                         // case2: the updated child was in body
