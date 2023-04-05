@@ -766,6 +766,7 @@ impl Context {
             pdebug!("derivation ", reduction.reduction_info.level);
             pdebug!(derivation);
         }
+        debug!("checking sanity... {}", derivation.check_sanity());
         title!("interpolation");
         let clauses: Vec<_> = derivation.collect_chcs().collect();
         for c in clauses.iter() {
@@ -1525,6 +1526,7 @@ pub fn search_for_type(
             type_check_top_with_derivation_and_constraints(derivation, &ctx.normal_form, tenv);
         pdebug!("[derivation]");
         pdebug!(derivation);
+        debug!("checking sanity... {}", derivation.check_sanity());
         //crate::util::wait_for_line();
         match ctx.infer_type(derivation) {
             Some(x) => {

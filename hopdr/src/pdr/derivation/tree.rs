@@ -304,6 +304,10 @@ impl<T> Tree<T> {
             .edges(id)
             .map(move |(_, id)| self.get_node_by_id(id))
     }
+    pub fn get_no_child<'a>(&'a self, node: Node<'a, T>) {
+        let mut iter = self.get_children(node);
+        assert!(iter.next().is_none());
+    }
     pub fn get_one_child<'a>(&'a self, node: Node<'a, T>) -> Node<'a, T> {
         let mut iter = self.get_children(node);
         let r = iter.next().unwrap();

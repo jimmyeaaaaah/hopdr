@@ -700,32 +700,54 @@ impl Derivation {
     }
     #[allow(dead_code)]
     /// This function is used to check that the derivation is well-formed
-    // pub fn check_sanity(&self) {
-    //     fn go(d: &Derivation, node_id: ID) -> bool {
-    //         let n = d.get_node_by_id(node_id);
-    //         match n.item.rule {
-    //             Rule::Conjoin => {
-    //                 let (child1, child2) = d.tree.get_two_children(n);
-    //                 let b = G::mk_conj(child1.item.expr.clone(), child2.item.expr.clone());
-    //                 let c1 = child1.item.ty.prop();
-    //                 let c2 = child2.item.ty.prop();
-    //                 let c3 = n.item.ty.prop();
+    pub fn check_sanity(&self) -> bool {
+        // now only check if app is sane since others are probably fine
+        fn go(d: &Derivation, node_id: ID) -> bool {
+            let n = d.get_node_by_id(node_id);
+            match n.item.rule {
+                Rule::Var | Rule::Atom => {
+                    d.tree.get_no_child(n);
+                    true
+                }
+                Rule::Conjoin | Rule::Disjoin => {
+                    let (child1, child2) = d.tree.get_two_children(n);
+                    go(d, child1.id) && go(d, child2.id)
+                }
+                Rule::Univ(_)
+                | Rule::IApp(_)
+                | Rule::IAbs(_)
+                | Rule::Abs(_)
+                | Rule::Subsumption => {
+                    let child = d.tree.get_one_child(n);
+                    go(d, child.id)
+                }
+                Rule::App => {
+                    let children: Vec<_> = d.tree.get_children(n).collect();
+                    let pred_ty = children[0].item.ty.clone();
+                    let arg_tys: Vec<_> = children[1..]
+                        .iter()
+                        .map(|child| child.item.ty.clone())
+                        .collect();
+                    let body_tys = pred_ty.arrow().0;
+                    // subsumption
+                    // debug!("subsumption");
+                    // for body_ty in body_tys.iter() {
+                    //     crate::pdebug!(body_ty);
+                    // }
+                    // debug!("<:");
+                    // for body_ty in arg_tys.iter() {
+                    //     crate::pdebug!(body_ty);
+                    // }
+                    assert!(body_tys
+                        .iter()
+                        .filter(|x| !x.is_bot())
+                        .zip(arg_tys.iter().filter(|x| !x.is_bot()))
+                        .all(|(t1, t2)| t1 == t2));
 
-    //                 c3 == &Atom::mk_conj(c1.clone(), c2.clone())
-    //                     && &b == n.item.expr
-    //                     && go(d, child1.id)
-    //                     && go(d, child2.id)
-    //             }
-    //             Rule::Disjoin => todo!(),
-    //             Rule::Var => todo!(),
-    //             Rule::Univ(_) => todo!(),
-    //             Rule::IAbs(_) => todo!(),
-    //             Rule::Abs(_) => todo!(),
-    //             Rule::IApp(_) => todo!(),
-    //             Rule::App => todo!(),
-    //             Rule::Subsumption => todo!(),
-    //             Rule::Atom => todo!(),
-    //         }
-    //     }
-    // }
+                    children.iter().all(|c| go(d, c.id))
+                }
+            }
+        }
+        go(self, self.tree.root().id)
+    }
 }
