@@ -918,7 +918,7 @@ fn handle_abs(
                 return pt.coarse_type(t);
             }
         };
-        //pdebug!("handle_abs: |- ", arg_expr, " :",  pt ; bold ; white, " ",);
+        pdebug!("handle_abs: |- ", arg_expr, " :",  pt ; bold ; white, " ",);
         pt
     }
     // [feature shared_ty]
@@ -1060,9 +1060,12 @@ fn handle_app(
                     // check if there exists a derivation for all types in the intersection type.
                     let arg_pts = arg_t.iter().map(|t| {
                         // check if arg_constraint |- argg: arg_t
-                        let rty = cty.rty_no_exists();
-                        let t_context = t.conjoin_constraint(&rty);
-                        handle_abs(config, tenv, ienv, all_coefficients, argg, &t_context)
+                        debug!("arg_t: {t}");
+                        // TODO: I think sometimes I have to consider its context
+                        //let rty = cty.rty_no_exists();
+                        //let t_context = t.conjoin_constraint(&rty);
+                        //debug!("rty: {rty} {t_context}");
+                        handle_abs(config, tenv, ienv, all_coefficients, argg, t)
                     });
                     // Assume pred_pt = t1 /\ t2 -> t
                     // then, we have to derive arg_t: t1 and arg_t: t2
@@ -1104,7 +1107,7 @@ fn handle_app(
 
     let pt = coarse_expr_for_type_sharing(config, pt, &app_expr);
 
-    // pdebug!("handle_abs: |- ", app_expr, " : ", pt ; bold ; white, " ",);
+    pdebug!("handle_abs: |- ", app_expr, " : ", pt ; bold ; white, " ",);
     pt
 }
 
@@ -1268,7 +1271,7 @@ fn type_check_inner(
     }
     let (pt, _) = go_inner(config, tenv, ienv, all_coefficients, c, context_ty.clone());
 
-    //pdebug!("type_check_go(", c.aux.id, ") |- ", c, " : ", pt ; bold);
+    pdebug!("type_check_go(", c.aux.id, ") |- ", c, " : ", pt ; bold);
     pt
 }
 
@@ -1573,6 +1576,7 @@ pub fn search_for_type(
     debug!("{}", candidate);
     let infer_polymorphic_type = config.infer_polymorphic_type;
     // TODO: expand candidate once based on problem.
+    const SHARED: bool = false;
     let mut optimizer = optimizer::VoidOptimizer::new();
     while optimizer.continuable() {
         let mut ctx = reduce_until_normal_form(candidate, problem, config, &mut optimizer);
@@ -1581,8 +1585,12 @@ pub fn search_for_type(
         // optimizers or shared_type issues. Instead, it indicates that
         // normal_form is untypable. In this case, the function returns None.
         let derivation = type_check_top_with_derivation(&ctx.normal_form, tenv)?;
-        let derivation =
-            type_check_top_with_derivation_and_constraints(derivation, &ctx.normal_form, tenv);
+        let derivation = if SHARED {
+            type_check_top_with_derivation_and_constraints(derivation, &ctx.normal_form, tenv)
+        } else {
+            derivation
+        };
+
         pdebug!("[derivation]");
         pdebug!(derivation);
         debug!("checking sanity... {}", derivation.check_sanity());
