@@ -20,8 +20,8 @@ pub enum Rule {
     Conjoin,
     Disjoin,
     Var,
-    Univ(Ident),
-    IAbs(Ident),
+    Univ,
+    IAbs,
     Abs(Vec<Ty>),
     IApp(Op),
     App,
@@ -35,8 +35,8 @@ impl std::fmt::Display for Rule {
             Rule::Conjoin => "Conj",
             Rule::Disjoin => "Disj",
             Rule::Var => "Var",
-            Rule::Univ(_) => "Univ",
-            Rule::IAbs(_) => "IAbs",
+            Rule::Univ => "Univ",
+            Rule::IAbs => "IAbs",
             Rule::Abs(_) => "Abs",
             Rule::IApp(_) => "IApp",
             Rule::App => "App",
@@ -101,7 +101,7 @@ impl DeriveNode {
         DeriveNode { rule, expr, ty }
     }
     fn quantify(expr: G, node: &Self, ident: &Ident) -> Self {
-        let rule = Rule::Univ(*ident);
+        let rule = Rule::Univ;
         let ty = match node.ty.kind() {
             TauKind::Proposition(c1) => Ty::mk_prop_ty(Atom::mk_quantifier_int(
                 crate::formula::QuantifierKind::Universal,
@@ -113,7 +113,7 @@ impl DeriveNode {
         DeriveNode { rule, expr, ty }
     }
     fn iarrow(expr: G, node: &Self, ident: &Ident) -> Self {
-        let rule = Rule::IAbs(*ident);
+        let rule = Rule::IAbs;
         let ty = Ty::mk_iarrow(*ident, node.ty.clone());
         DeriveNode { rule, expr, ty }
     }
@@ -443,17 +443,19 @@ impl Derivation {
                             .fold(Atom::mk_false(), Atom::mk_disj);
                         Ty::mk_prop_ty(cnstr)
                     }
-                    Rule::Univ(x) => {
+                    Rule::Univ => {
                         assert_eq!(children.len(), 1);
                         let cnstr = match children[0].ty.kind() {
                             TauKind::Proposition(c) => c.clone(),
                             TauKind::IArrow(_, _) | TauKind::Arrow(_, _) => panic!("not conjoin"),
                         };
-                        Ty::mk_prop_ty(Atom::mk_univ_int(*x, cnstr))
+                        let x = n.expr.univ().0;
+                        Ty::mk_prop_ty(Atom::mk_univ_int(x.id, cnstr))
                     }
-                    Rule::IAbs(x) => {
+                    Rule::IAbs => {
                         assert_eq!(children.len(), 1);
-                        Ty::mk_iarrow(*x, children[0].ty.clone())
+                        let x = n.expr.abs().0;
+                        Ty::mk_iarrow(x.id, children[0].ty.clone())
                     }
                     Rule::Abs(x) => {
                         assert_eq!(children.len(), 1);
@@ -553,15 +555,13 @@ impl Derivation {
                 debug_assert!(expr.is_var());
             }
             Rule::Atom => (),
-            Rule::Univ(x) => {
+            Rule::Univ => {
                 let (y, g) = expr.univ();
-                assert_eq!(x, y.id);
                 assert_eq!(children.len(), 1);
                 self.update_expr_inner(children[0], g);
             }
-            Rule::IAbs(x) => {
+            Rule::IAbs => {
                 let (y, g) = expr.abs();
-                //assert_eq!(x, y.id);
                 debug_assert!(y.ty.is_int());
                 assert_eq!(children.len(), 1);
                 self.update_expr_inner(children[0], g);
@@ -719,14 +719,14 @@ impl Derivation {
                     let (child1, child2) = d.tree.get_two_children(n);
                     go(d, child1.id, ints) && go(d, child2.id, ints)
                 }
-                Rule::IAbs(_) => {
+                Rule::IAbs => {
                     let x = n.item.expr.abs().0;
                     assert!(x.ty.is_int());
                     let ints = ints.push(x.id);
                     let child = d.tree.get_one_child(n);
                     go(d, child.id, &ints)
                 }
-                Rule::Univ(_) => {
+                Rule::Univ => {
                     let x = n.item.expr.univ().0;
                     assert!(x.ty.is_int());
                     let ints = ints.push(x.id);
