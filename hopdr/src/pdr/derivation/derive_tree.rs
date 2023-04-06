@@ -417,16 +417,17 @@ impl Derivation {
         println!("updating parents");
         crate::pdebug!(self);
         self.tree
-            .update_parent_until(target_id, |n, children, prev| {
+            .update_parent_until(target_id, |t, cur, prev| {
+                let n = t.get_node_by_id(cur).item;
                 println!("update_parent: {}", n.pretty_display());
                 let ty = match prev {
                     None => n.ty.clone(),
                     Some(prev) => {
                         match &n.rule {
                             Rule::Conjoin => {
-                                let cnstr = children
-                                    .iter()
-                                    .map(|child| match child.ty.kind() {
+                                let cnstr = t
+                                    .get_children(t.get_node_by_id(cur))
+                                    .map(|child| match child.item.ty.kind() {
                                         TauKind::Proposition(c) => c.clone(),
                                         TauKind::IArrow(_, _) | TauKind::Arrow(_, _) => {
                                             panic!("not conjoin")
@@ -436,9 +437,9 @@ impl Derivation {
                                 Ty::mk_prop_ty(cnstr)
                             }
                             Rule::Disjoin => {
-                                let cnstr = children
-                                    .iter()
-                                    .map(|child| match child.ty.kind() {
+                                let cnstr = t
+                                    .get_children(t.get_node_by_id(cur))
+                                    .map(|child| match child.item.ty.kind() {
                                         TauKind::Proposition(c) => c.clone(),
                                         TauKind::IArrow(_, _) | TauKind::Arrow(_, _) => {
                                             panic!("not conjoin")
@@ -448,6 +449,10 @@ impl Derivation {
                                 Ty::mk_prop_ty(cnstr)
                             }
                             Rule::Univ => {
+                                let children: Vec<_> = t
+                                    .get_children(t.get_node_by_id(cur))
+                                    .map(|child| child.item)
+                                    .collect();
                                 assert_eq!(children.len(), 1);
                                 let cnstr = match children[0].ty.kind() {
                                     TauKind::Proposition(c) => c.clone(),
@@ -459,15 +464,27 @@ impl Derivation {
                                 Ty::mk_prop_ty(Atom::mk_univ_int(x.id, cnstr))
                             }
                             Rule::IAbs => {
+                                let children: Vec<_> = t
+                                    .get_children(t.get_node_by_id(cur))
+                                    .map(|child| child.item)
+                                    .collect();
                                 assert_eq!(children.len(), 1);
                                 let x = n.expr.abs().0;
                                 Ty::mk_iarrow(x.id, children[0].ty.clone())
                             }
                             Rule::Abs(x) => {
+                                let children: Vec<_> = t
+                                    .get_children(t.get_node_by_id(cur))
+                                    .map(|child| child.item)
+                                    .collect();
                                 assert_eq!(children.len(), 1);
                                 Ty::mk_arrow(x.clone(), children[0].ty.clone())
                             }
                             Rule::IApp(o) => {
+                                let children: Vec<_> = t
+                                    .get_children(t.get_node_by_id(cur))
+                                    .map(|child| child.item)
+                                    .collect();
                                 assert_eq!(children.len(), 1);
                                 match children[0].ty.kind() {
                                     TauKind::IArrow(x, t) => t.subst(&x, &o),
@@ -475,10 +492,14 @@ impl Derivation {
                                 }
                             }
                             Rule::App => {
+                                let children: Vec<_> = t
+                                    .get_children(t.get_node_by_id(cur))
+                                    .map(|child| child.item)
+                                    .collect();
                                 //assert_eq!(children.len(), 2);
                                 // todo?
                                 assert!(children.len() >= 2);
-                                let node = prev;
+                                let node = t.get_node_by_id(prev).item;
 
                                 // case1: the updated child was in pred
                                 if node.expr.aux.id == children[0].expr.aux.id {
@@ -522,6 +543,10 @@ impl Derivation {
                                 }
                             }
                             Rule::Subsumption => {
+                                let children: Vec<_> = t
+                                    .get_children(t.get_node_by_id(cur))
+                                    .map(|child| child.item)
+                                    .collect();
                                 assert_eq!(children.len(), 1);
                                 return (true, n.clone());
                             }

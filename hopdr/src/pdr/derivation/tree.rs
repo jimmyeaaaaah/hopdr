@@ -405,21 +405,14 @@ impl<T> Tree<T> {
         mut predicate: P,
     ) -> Option<Node<'a, T>>
     where
-        P: FnMut(&T, Vec<&T>, Option<&T>) -> (bool, T),
+        // tree, cur, prev
+        P: FnMut(&mut Self, ID, Option<ID>) -> (bool, T),
     {
         let mut cur = base;
         let mut prev = None;
         loop {
             let target = self.items.get(&cur).unwrap();
-            let children = self
-                .get_children(self.get_node_by_id(cur))
-                .map(|n| n.item)
-                .collect();
-            let (cont, t) = predicate(
-                target,
-                children,
-                prev.map(|id| self.items.get(&id).unwrap()),
-            );
+            let (cont, t) = predicate(self, cur, prev);
             *self.items.get_mut(&cur).unwrap() = t;
             if cont {
                 break Some(self.get_node_by_id(cur));
@@ -724,15 +717,16 @@ fn tree_basics() {
     let node = t9.search(|x| *x == 3).unwrap();
     let node = t9.get_node_by_id(t9.parent(node.id).unwrap());
     let n = t9
-        .update_parent_until(node.id, |v, children, prev| {
+        .update_parent_until(node.id, |t, cur, prev| {
+            let v = t.get_node_by_id(cur).item;
             if *v != 1 {
                 println!("manipulating... {v}");
                 if let Some(prev) = prev {
-                    println!("prev_node: {prev}");
+                    println!("prev_node: {}", t.get_node_by_id(prev).item);
                 }
                 println!("children:");
-                for child in children {
-                    println!("- {child}");
+                for child in t.get_children(t.get_node_by_id(cur)) {
+                    println!("- {}", child.item);
                 }
                 (false, 7)
             } else {
