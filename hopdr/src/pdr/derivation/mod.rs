@@ -1504,6 +1504,8 @@ impl PossibleDerivation {
     fn check_derivation(self) -> Option<Derivation> {
         title!("check derivation");
         for mut ct in self.types.into_iter() {
+            debug!("derivation");
+            pdebug!(ct);
             let mut constraint = Constraint::mk_true();
             for c in ct.collect_constraints() {
                 constraint = Constraint::mk_conj(constraint, c.clone().into());

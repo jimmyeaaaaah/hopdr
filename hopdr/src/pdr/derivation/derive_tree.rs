@@ -686,6 +686,7 @@ impl Derivation {
                 assert_eq!(children.len(), 1);
                 let child = &children[0];
                 Ty::check_subtype_result(&child.item.ty, &ty)
+                    .unwrap_or_else(|| Ty::check_subtype(&Atom::mk_true(), &child.item.ty, &ty))
             })
     }
     pub fn collect_chcs<'a>(
