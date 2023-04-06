@@ -425,12 +425,12 @@ impl Derivation {
                 update_app_branchs(t, child, ident, op);
             }
         }
-        println!("updating parents");
+        debug!("updating parents");
         crate::pdebug!(self);
         self.tree
             .update_parent_until(target_id, |t, cur, prev| {
                 let n = t.get_node_by_id(cur).item;
-                println!("update_parent: {}", n.pretty_display());
+                debug!("update_parent: {}", n.pretty_display());
                 let ty = match prev {
                     None => n.ty.clone(),
                     Some(prev) => {
@@ -584,7 +584,7 @@ impl Derivation {
                         }
                     }
                 };
-                println!("subst {ty} with {int_substitution:?}");
+                debug!("subst {ty} with {int_substitution:?}");
                 let ty = int_substitution
                     .as_ref()
                     .map(|(id, op)| ty.subst(id, op))
@@ -824,14 +824,14 @@ impl Derivation {
                         .collect();
                     let body_tys = pred_ty.arrow().0;
                     // subsumption
-                    // debug!("subsumption");git
-                    // for body_ty in body_tys.iter() {
-                    //     crate::pdebug!(body_ty);
-                    // }
-                    // debug!("<:");
-                    // for body_ty in arg_tys.iter() {
-                    //     crate::pdebug!(body_ty);
-                    // }
+                    debug!("subsumption");
+                    for body_ty in body_tys.iter() {
+                        crate::pdebug!(body_ty);
+                    }
+                    debug!("<:");
+                    for body_ty in arg_tys.iter() {
+                        crate::pdebug!(body_ty);
+                    }
                     assert!(body_tys
                         .iter()
                         .filter(|x| !x.is_bot())
