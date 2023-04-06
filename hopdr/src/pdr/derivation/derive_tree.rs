@@ -414,6 +414,17 @@ impl Derivation {
     }
 
     fn update_parents(&mut self, target_id: ID, int_substitution: Option<(Ident, Op)>) {
+        fn update_app_branchs(t: &mut Tree<DeriveNode>, target_id: ID, ident: &Ident, op: &Op) {
+            t.update_node_by_id(target_id).ty =
+                t.get_node_by_id(target_id).item.ty.subst(ident, op);
+            for child in t
+                .get_children(target_id.to_node(&t))
+                .map(|n| n.id)
+                .collect::<Vec<_>>()
+            {
+                update_app_branchs(t, child, ident, op);
+            }
+        }
         println!("updating parents");
         crate::pdebug!(self);
         self.tree
@@ -494,7 +505,7 @@ impl Derivation {
                             Rule::App => {
                                 let children: Vec<_> = t
                                     .get_children(t.get_node_by_id(cur))
-                                    .map(|child| child.item)
+                                    .map(|child| child)
                                     .collect();
                                 //assert_eq!(children.len(), 2);
                                 // todo?
@@ -502,7 +513,26 @@ impl Derivation {
                                 let node = t.get_node_by_id(prev).item;
 
                                 // case1: the updated child was in pred
-                                if node.expr.aux.id == children[0].expr.aux.id {
+                                if node.expr.aux.id == children[0].item.expr.aux.id {
+                                    // first we update other children
+                                    match &int_substitution {
+                                        Some((x, o)) => {
+                                            for child_id in children[1..]
+                                                .into_iter()
+                                                .map(|child| child.id)
+                                                .collect::<Vec<_>>()
+                                            {
+                                                update_app_branchs(t, child_id, &x, &o);
+                                            }
+                                        }
+                                        None => (),
+                                    }
+
+                                    // then we retrieve the updated children
+                                    let children: Vec<_> = t
+                                        .get_children(t.get_node_by_id(cur))
+                                        .map(|child| child.item)
+                                        .collect();
                                     let pred = children[0].ty.clone();
                                     let body_tys: Vec<_> = children[1..]
                                         .iter()
@@ -534,7 +564,7 @@ impl Derivation {
                                 else {
                                     // insert subsumption here
                                     for child in children[1..].iter() {
-                                        if node.expr.aux.id == child.expr.aux.id {
+                                        if node.expr.aux.id == child.item.expr.aux.id {
                                             todo!();
                                             return (true, n.clone());
                                         }
@@ -559,6 +589,7 @@ impl Derivation {
                     .as_ref()
                     .map(|(id, op)| ty.subst(id, op))
                     .unwrap_or(ty);
+                let n = t.get_node_by_id(cur).item;
                 let n = DeriveNode {
                     ty,
                     rule: n.rule.clone(),
