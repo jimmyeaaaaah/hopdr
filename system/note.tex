@@ -22,6 +22,174 @@
 
 \begin{document}
 
+\section{debugging for parameters}
+
+HES
+\begin{align*}
+    F = \lambda x.\: \lambda f.\: z=0 \vee F\, (x-1) (\lambda y.\: f(1+y))
+\end{align*}
+
+Consider the following candidate
+\begin{align*}
+    \pdrtop = \forall z.\: z=0 \vee F\, z\, (\lambda w.\: w = z)
+\end{align*}
+We first expand the predicate once:
+\begin{align*}
+    \forall z.\: z =0\vee (\lambda x.\: \lambda f.\: F\, (x-1) (\lambda y.\: f\,(1+y)))\, z\, (\lambda w.\: w = z)
+\end{align*}
+and reduce it to its normal form:
+\begin{align*}
+    &\forall z.\: z=0 \vee (\lambda x.\: \lambda f.\: F\, (x-1)\, (\lambda y.\: f\,(1+y)))\, z\, (\lambda w.\: w = z) \\
+    &\breduc \forall z.\: z=0\vee (\lambda f.\: F\, (z-1)\, (\lambda y.\: f\,(1+y)))\, (\lambda w.\: w = z) \\
+    &\breduc \forall z.\: z=0 \vee F\, (z-1) \,(\lambda y.\: (\lambda w.\: w = z)\,(1+y))\\
+    &\breduc \forall z.\: z=0 \vee F\, (z-1)\, (\lambda y.\: 1+y = z)
+\end{align*}
+
+We consider its typeable or not under the following type environment:
+\begin{align*}
+    \Gamma = \{\, F \COL \ti{x} \to (\ti{y} \to \tb{x = 0 \wedge y = 0}) \to \tb{\true} \,\}
+\end{align*}
+
+And, it is typeable as follows (some parts are omitted):
+\begin{equation*}
+    \dfrac{
+        \frac{
+            \vdots
+        }{
+            F\, (z-1) \COL (\ti{y} \to \tb{z-1 = 0 \wedge y = 0}) \to \tb{\true}
+        }
+        \qquad
+        \dfrac{
+            \dfrac{
+                \dfrac{
+                }{
+                    1 + y = z \COL \tb{1 + y = z}
+                }
+            }{
+                \begin{aligned}
+                    &1 + y = z \COL \tb{z-1 = 0 \wedge y = 0} \\
+                    &\qquad \tb{1 + y = z} \prec \tb{z-1 = 0 \wedge y = 0}
+                \end{aligned}
+            }
+        }{
+            \lambda y.\: 1+y = z \COL \ti{y} \to \tb{z-1 = 0 \wedge y = 0}
+        }
+    }{
+        F\, (z-1)\, (\lambda y.\: 1+y = z) \COL \tb{\true}
+    }
+\end{equation*}
+
+\subsubsection{subject expansion 1}
+
+\begin{equation*}
+    \dfrac{
+    \dfrac{
+        \cdots
+        \qquad
+        \dfrac{
+            \dfrac{
+                \dfrac{
+                    \dfrac{
+                        \dfrac{
+                            w = y \COL \tb{ w = y}
+                        }{
+                            w = y \COL \tb{P(w, y, z)}
+                        }
+                    }{
+                        \lambda w. w = y \COL \ti{w} \to \tb{P(w, y, z)}
+                    }
+                }{
+                    (\lambda w.\: w = z)\,(1+y) \COL \tb{P(1+y, y, z)}
+                }
+            }{
+                (\lambda w.\: w = z)\,(1+y) \COL \tb{z-1 = 0 \wedge y = 0}
+            }
+        }{
+            \lambda y.\: (\lambda w.\: w = z)\,(1+y) \COL \ti{y} \to \tb{z-1 = 0 \wedge y = 0}
+        }
+    }{
+        F\, (z-1) \,(\lambda y.\: (\lambda w.\: w = z)\,(1+y)) \COL \tb{\true}
+    }
+    }{\vdots}
+\end{equation*}
+
+\subsubsection{subject expansion 2}
+
+\begin{equation*}
+    \dfrac{
+        \dfrac{
+            \dfrac{
+                \dfrac{
+                    \cdots
+                    \quad
+                    \dfrac{
+                        \dfrac{
+                            \dfrac{}{
+                                f \COL \ti{w} \to \tb{P(w, y, z)}
+                            }
+                        }{
+                            f\,(1+y) \COL \tb{P(y+1, y, z)}
+                        }
+                    } {
+                        \lambda y.\: f\,(1+y) \COL \ti{y} \to \tb{z - 1 = 0 \wedge y = 0}
+                    }
+                }{
+                    F\, (z-1)\, (\lambda y.\: f\,(1+y))  \COL \tb{Q(z)}
+                }
+            }{
+                \lambda f.\: F\, (z-1)\, (\lambda y.\: f\,(1+y)) \COL (\ti{w} \to \tb{P(w, y, z)}) \to \tb{Q(z)}
+            }
+            \qquad 
+            \dfrac{
+                \dfrac{
+                    w = y \COL \tb{ w = y}
+                }{
+                    w = y \COL \tb{P(w, y, z)}
+                }
+            }{
+                \lambda w. w = y \COL \ti{w} \to \tb{P(w, y, z)}
+            }
+        }{
+            (\lambda f.\: F\, (z-1)\, (\lambda y.\: f\,(1+y)))\, (\lambda w.\: w = z) \COL \tb{Q(z)}
+        }
+    }{
+        (\lambda f.\: F\, (z-1)\, (\lambda y.\: f\,(1+y)))\, (\lambda w.\: w = z) \COL \tb{\true}
+    }
+\end{equation*}
+
+
+\subsubsection{subject expansion 3}
+\begin{equation*}
+    \dfrac{
+        \dfrac{
+            \dfrac{
+                \dfrac{
+                    \dfrac{
+                        \dfrac{
+                            F\, (x-1)\COL  \tb{x - 1 \wedge y = 0} \to \tb{}  \qquad
+                            \lambda y.\: f\,(1+y) \COL \ti{y} \to \tb{x - 1 \wedge y = 0}
+                        }{
+                            F\, (x-1)\, (\lambda y.\: f\,(1+y)) \COL \tb{Q(z)}
+                        }
+                    } {
+                        F\, (x-1)\, (\lambda y.\: f\,(1+y)) \COL \tb{\true}
+                    }
+                }{
+                    \lambda f. F\, (x-1)\, (\lambda y.\: f\,(1+y)) \COL (\ti{w} \to \tb{P(w, y, z)}) \to \tb{R(z, x)}
+                }
+            }{
+                \lambda x.\: \lambda f.\: F\, (x-1)\, (\lambda y.\: f\,(1+y)) \COL \ti{x} \to (\ti{w} \to \tb{P(w, y, z)}) \to \tb{R(z, x)}
+            }
+        }{
+            (\lambda x.\: \lambda f.\: F\, (x-1)\, (\lambda y.\: f\,(1+y)))\, z\, (\lambda w.\: w = z) \COL \tb{R(z, z)}
+        }
+    }{
+        (\lambda x.\: \lambda f.\: F\, (x-1)\, (\lambda y.\: f\,(1+y)))\, z\, (\lambda w.\: w = z) \COL \tb{\true}
+    }
+\end{equation*}
+
+\section{outdated}
+
 \begin{align*}
     \pdrtop &:= (\forall x_{ 18 }: \stypeint . ((x_{ 14 }\  x_{ 18 } )\ (\lambda x_{ 19 }: \stypeint . ( x_{ 18 }  \leq  x_{ 19 } ))))\\
     x_{ 14 } &=
