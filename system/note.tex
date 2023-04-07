@@ -134,26 +134,26 @@ And, it is typeable as follows (some parts are omitted):
                         \lambda y.\: f\,(1+y) \COL \ti{y} \to \tb{z - 1 = 0 \wedge y = 0}
                     }
                 }{
-                    F\, (z-1)\, (\lambda y.\: f\,(1+y))  \COL \tb{Q(z)}
+                    F\, (z-1)\, (\lambda y.\: f\,(1+y))  \COL \tb{\true}
                 }
             }{
-                \lambda f.\: F\, (z-1)\, (\lambda y.\: f\,(1+y)) \COL (\ti{w} \to \tb{P(w, y, z)}) \to \tb{Q(z)}
-            }
-            \qquad 
-            \dfrac{
-                \dfrac{
-                    w = y \COL \tb{ w = y}
-                }{
-                    w = y \COL \tb{P(w, y, z)}
-                }
-            }{
-                \lambda w. w = y \COL \ti{w} \to \tb{P(w, y, z)}
+                F\, (z-1)\, (\lambda y.\: f\,(1+y))  \COL \tb{Q(z)}
             }
         }{
-            (\lambda f.\: F\, (z-1)\, (\lambda y.\: f\,(1+y)))\, (\lambda w.\: w = z) \COL \tb{Q(z)}
+            \lambda f.\: F\, (z-1)\, (\lambda y.\: f\,(1+y)) \COL (\ti{w} \to \tb{P(w, y, z)}) \to \tb{Q(z)}
+        }
+        \qquad 
+        \dfrac{
+            \dfrac{
+                w = y \COL \tb{ w = y}
+            }{
+                w = y \COL \tb{P(w, y, z)}
+            }
+        }{
+            \lambda w. w = y \COL \ti{w} \to \tb{P(w, y, z)}
         }
     }{
-        (\lambda f.\: F\, (z-1)\, (\lambda y.\: f\,(1+y)))\, (\lambda w.\: w = z) \COL \tb{\true}
+        (\lambda f.\: F\, (z-1)\, (\lambda y.\: f\,(1+y)))\, (\lambda w.\: w = z) \COL \tb{Q(z)}
     }
 \end{equation*}
 
@@ -166,10 +166,10 @@ And, it is typeable as follows (some parts are omitted):
                 \dfrac{
                     \dfrac{
                         \dfrac{
-                            F\, (x-1)\COL  \tb{x - 1 \wedge y = 0} \to \tb{}  \qquad
+                            F\, (x-1)\COL  (\ti{y} \to \tb{x - 1 \wedge y = 0}) \to \tb{\true} \qquad
                             \lambda y.\: f\,(1+y) \COL \ti{y} \to \tb{x - 1 \wedge y = 0}
                         }{
-                            F\, (x-1)\, (\lambda y.\: f\,(1+y)) \COL \tb{Q(z)}
+                            F\, (x-1)\, (\lambda y.\: f\,(1+y)) \COL \tb{Q(x, z)}
                         }
                     } {
                         F\, (x-1)\, (\lambda y.\: f\,(1+y)) \COL \tb{\true}
@@ -184,7 +184,7 @@ And, it is typeable as follows (some parts are omitted):
             (\lambda x.\: \lambda f.\: F\, (x-1)\, (\lambda y.\: f\,(1+y)))\, z\, (\lambda w.\: w = z) \COL \tb{R(z, z)}
         }
     }{
-        (\lambda x.\: \lambda f.\: F\, (x-1)\, (\lambda y.\: f\,(1+y)))\, z\, (\lambda w.\: w = z) \COL \tb{\true}
+        \vdots
     }
 \end{equation*}
 
