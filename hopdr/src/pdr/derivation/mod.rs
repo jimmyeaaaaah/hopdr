@@ -818,12 +818,42 @@ impl Context {
     fn infer_with_shared_type(
         &mut self,
         derivation: &Derivation,
-    ) -> Option<(Model, Vec<chc::CHC<chc::Atom, Constraint>>)> {
+    ) -> Option<(Model, Vec<chc::CHC<chc::Atom, Constraint>>, Derivation)> {
         let d = derivation.clone_with_template();
         let clauses: Vec<_> = d.collect_chcs().collect();
+
+        crate::title!("infer_with_shared_type");
+        pdebug!(d);
+        for c in clauses.iter() {
+            pdebug!(c);
+        }
+
         match solver::chc::default_solver().solve(&clauses) {
-            solver::chc::CHCResult::Sat(m) => Some((m, clauses)),
+            solver::chc::CHCResult::Sat(m) => Some((m, clauses, d)),
             _ => None,
+        }
+    }
+    fn infer_type_with_subject_expansion(
+        &mut self,
+        derivation: Derivation,
+    ) -> Option<(Model, Vec<chc::CHC<chc::Atom, Constraint>>, Derivation)> {
+        title!("interpolation");
+        let clauses: Vec<_> = derivation.collect_chcs().collect();
+        for c in clauses.iter() {
+            pdebug!(c);
+        }
+        // 4. solve the constraints by using the interpolation solver
+        match solver::chc::default_solver().solve(&clauses) {
+            solver::chc::CHCResult::Sat(m) => Some((m, clauses, derivation)),
+            solver::chc::CHCResult::Unsat => None,
+            solver::chc::CHCResult::Unknown => {
+                panic!(
+                    "PDR fails to infer a refinement type due to the background CHC solver's error"
+                )
+            }
+            solver::chc::CHCResult::Timeout => panic!(
+                "PDR fails to infer a refinement type due to timeout of the background CHC solver"
+            ),
         }
     }
     fn infer_type(&mut self, mut derivation: Derivation) -> Option<TyEnv> {
@@ -833,31 +863,12 @@ impl Context {
             pdebug!("derivation ", reduction.reduction_info.level);
             pdebug!(derivation);
         }
+        debug!("checking sanity... {}", derivation.check_sanity());
 
         // try to infer a type with shared type.
-        let (m, clauses) = match self.infer_with_shared_type(&derivation) {
+        let (m, clauses, derivation) = match self.infer_with_shared_type(&derivation) {
             Some(m) => m,
-            None => {
-                debug!("checking sanity... {}", derivation.check_sanity());
-                title!("interpolation");
-                let clauses: Vec<_> = derivation.collect_chcs().collect();
-                for c in clauses.iter() {
-                    pdebug!(c);
-                }
-                // 4. solve the constraints by using the interpolation solver
-                match solver::chc::default_solver().solve(&clauses) {
-                    solver::chc::CHCResult::Sat(m) => (m, clauses),
-                    solver::chc::CHCResult::Unsat => return None,
-                    solver::chc::CHCResult::Unknown => {
-                        panic!(
-                    "PDR fails to infer a refinement type due to the background CHC solver's error"
-                )
-                    }
-                    solver::chc::CHCResult::Timeout => panic!(
-                "PDR fails to infer a refinement type due to timeout of the background CHC solver"
-            ),
-                }
-            }
+            None => self.infer_type_with_subject_expansion(derivation)?,
         };
 
         crate::title!("model from CHC solver");
