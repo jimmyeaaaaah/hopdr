@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use super::tree::*;
 use super::{Atom, Ty, G};
 use crate::pdr::rtype::{TBot, TauKind};
@@ -776,6 +778,107 @@ impl Derivation {
                 either::Either::Right(_) => panic!("failed to transform to chcs: {}", c),
             })
             .flatten()
+    }
+
+    fn clone_with_template_inner(
+        &self,
+        node_id: ID,
+        env: &mut HashMap<Ident, Ty>,
+        ints: Stack<Ident>,
+    ) -> Self {
+        let n = self.get_node_by_id(node_id);
+        crate::pdebug!(n.item);
+        let expr = n.item.expr.clone();
+        let t = match n.item.rule {
+            Rule::Conjoin => {
+                let (child1, child2) = self.tree.get_two_children(n);
+                let d1 = self.clone_with_template_inner(child1.id, env, ints.clone());
+                let d2 = self.clone_with_template_inner(child2.id, env, ints.clone());
+                Self::rule_conjoin(expr, d1, d2)
+            }
+            Rule::Disjoin => {
+                let (child1, child2) = self.tree.get_two_children(n);
+                let d1 = self.clone_with_template_inner(child1.id, env, ints.clone());
+                let d2 = self.clone_with_template_inner(child2.id, env, ints.clone());
+                Self::rule_disjoin(expr, d1, d2)
+            }
+            Rule::Var => {
+                let v = expr.var();
+                let ty = env.get(v).cloned().unwrap_or_else(|| n.item.ty.clone());
+                self.tree.get_no_child(n);
+                Self::rule_var(expr, ty, Stack::new())
+            }
+            Rule::Univ => {
+                let x = expr.univ().0.id;
+                let child = self.tree.get_one_child(n);
+                let d = self.clone_with_template_inner(child.id, env, ints.push(x));
+                Self::rule_quantifier(expr, d, &x)
+            }
+            Rule::IAbs => {
+                let x = expr.abs().0.id;
+                let child = self.tree.get_one_child(n);
+                let d = self.clone_with_template_inner(child.id, env, ints.push(x));
+                Self::rule_iarrow(expr, d, &x)
+            }
+            Rule::Abs(_) => {
+                let x = expr.abs().0;
+                let ty = Ty::from_sty(&x.ty, &ints.iter().cloned().collect());
+                let old = env.insert(x.id, ty.clone());
+                let child = self.tree.get_one_child(n);
+                let d = self.clone_with_template_inner(child.id, env, ints.clone());
+                if let Some(ty) = old {
+                    env.insert(x.id, ty);
+                }
+                Self::rule_arrow(expr, d, vec![ty.clone()])
+            }
+            Rule::IApp(_) => {
+                let (_, e) = expr.app();
+                let o: Op = e.clone().into();
+                let child = self.tree.get_one_child(n);
+                let d = self.clone_with_template_inner(child.id, env, ints);
+                Self::rule_iapp(expr, d, &o)
+            }
+            Rule::App => {
+                let mut c = self.tree.get_children(n);
+                let c1 = c.next().unwrap();
+                let c2 = c.next().unwrap();
+                let d1 = self.clone_with_template_inner(c1.id, env, ints.clone());
+                let d2 = self.clone_with_template_inner(c2.id, env, ints.clone());
+                let ty1 = d1.root_ty().clone();
+                let ty2 = d2.root_ty().clone();
+
+                let (_, ret_ty) = ty1.arrow();
+                let ret_tmp_ty = ret_ty.clone_with_template(&mut ints.iter().cloned().collect());
+                let ty3 = Ty::mk_arrow(vec![ty2], ret_tmp_ty);
+
+                let d3 = Self::rule_subsumption(d1, ty3);
+                Self::rule_app(expr, d3, std::iter::once(d2))
+            }
+            // skip subsumption
+            Rule::Subsumption => {
+                let child = self.tree.get_one_child(n);
+                let d = self.clone_with_template_inner(child.id, env, ints);
+                d
+            }
+            Rule::Atom => Self::rule_atom(expr, n.item.ty.clone()),
+        };
+        Derivation {
+            tree: t.tree,
+            coefficients: t.coefficients,
+        }
+    }
+    pub fn clone_with_template(&self) -> Self {
+        let root = self.tree.root().id;
+        let mut env = HashMap::new();
+        let ints = Stack::new();
+        let d = self.clone_with_template_inner(root, &mut env, ints);
+        let n = self.get_node_by_id(root);
+        match n.item.rule {
+            Rule::Subsumption => (),
+            _ => panic!("program error"),
+        }
+        let ty = n.item.ty.clone();
+        Self::rule_subsumption(d, ty)
     }
     #[allow(dead_code)]
     /// This function is used to check that the derivation is well-formed

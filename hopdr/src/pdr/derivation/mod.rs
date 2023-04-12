@@ -6,6 +6,7 @@ use super::optimizer::{variable_info, InferenceResult, Optimizer};
 use super::rtype::{PolymorphicType, TBot, Tau, TauKind, TyEnv, TypeEnvironment};
 use derive_tree::Derivation;
 
+use crate::formula::chc::Model;
 use crate::formula::hes::{Goal, GoalBase, GoalKind, Problem as ProblemBase};
 use crate::formula::{self};
 use crate::formula::{
@@ -814,6 +815,17 @@ impl Context {
             self.expand_node(*node_id, derivation, reduction);
         }
     }
+    fn infer_with_shared_type(
+        &mut self,
+        derivation: &Derivation,
+    ) -> Option<(Model, Vec<chc::CHC<chc::Atom, Constraint>>)> {
+        let d = derivation.clone_with_template();
+        let clauses: Vec<_> = d.collect_chcs().collect();
+        match solver::chc::default_solver().solve(&clauses) {
+            solver::chc::CHCResult::Sat(m) => Some((m, clauses)),
+            _ => None,
+        }
+    }
     fn infer_type(&mut self, mut derivation: Derivation) -> Option<TyEnv> {
         title!("infer_type");
         for reduction in self.reduction_sequence.iter().rev() {
@@ -821,24 +833,31 @@ impl Context {
             pdebug!("derivation ", reduction.reduction_info.level);
             pdebug!(derivation);
         }
-        debug!("checking sanity... {}", derivation.check_sanity());
-        title!("interpolation");
-        let clauses: Vec<_> = derivation.collect_chcs().collect();
-        for c in clauses.iter() {
-            pdebug!(c);
-        }
-        // 4. solve the constraints by using the interpolation solver
-        let m = match solver::chc::default_solver().solve(&clauses) {
-            solver::chc::CHCResult::Sat(m) => m,
-            solver::chc::CHCResult::Unsat => return None,
-            solver::chc::CHCResult::Unknown => {
-                panic!(
+
+        // try to infer a type with shared type.
+        let (m, clauses) = match self.infer_with_shared_type(&derivation) {
+            Some(m) => m,
+            None => {
+                debug!("checking sanity... {}", derivation.check_sanity());
+                title!("interpolation");
+                let clauses: Vec<_> = derivation.collect_chcs().collect();
+                for c in clauses.iter() {
+                    pdebug!(c);
+                }
+                // 4. solve the constraints by using the interpolation solver
+                match solver::chc::default_solver().solve(&clauses) {
+                    solver::chc::CHCResult::Sat(m) => (m, clauses),
+                    solver::chc::CHCResult::Unsat => return None,
+                    solver::chc::CHCResult::Unknown => {
+                        panic!(
                     "PDR fails to infer a refinement type due to the background CHC solver's error"
                 )
-            }
-            solver::chc::CHCResult::Timeout => panic!(
+                    }
+                    solver::chc::CHCResult::Timeout => panic!(
                 "PDR fails to infer a refinement type due to timeout of the background CHC solver"
             ),
+                }
+            }
         };
 
         crate::title!("model from CHC solver");

@@ -302,6 +302,12 @@ impl<C, T> GoalBase<C, T> {
             _ => panic!("the given expr is not app"),
         }
     }
+    pub fn var<'a>(&'a self) -> &'a Ident {
+        match self.kind() {
+            GoalKind::Var(x) => x,
+            _ => panic!("the given expr is not abs"),
+        }
+    }
 }
 impl<C, T> GoalBase<C, T> {
     pub fn is_conj(&self) -> bool {
