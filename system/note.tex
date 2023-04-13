@@ -55,8 +55,16 @@ We consider its typeable or not under the following type environment:
 And, it is typeable as follows (some parts are omitted):
 \begin{equation*}
     \dfrac{
-        \frac{
-            \vdots
+    \dfrac{
+        \dfrac{
+            \dfrac{
+            }{
+            F \COL \ti{x} \to (\ti{y} \to \tb{x = 0 \wedge y = 0}) \to \tb{\true}
+            }
+            \qquad
+            \dfrac{}{
+            z - 1 \COL \stypeint
+            }
         }{
             F\, (z-1) \COL (\ti{y} \to \tb{z-1 = 0 \wedge y = 0}) \to \tb{\true}
         }
@@ -78,171 +86,34 @@ And, it is typeable as follows (some parts are omitted):
         }
     }{
         F\, (z-1)\, (\lambda y.\: 1+y = z) \COL \tb{\true}
-    }
-\end{equation*}
-
-\subsubsection{subject expansion 1}
-
-\begin{equation*}
-    \dfrac{
-    \dfrac{
-        \cdots
-        \qquad
-        \dfrac{
-            \dfrac{
-                \dfrac{
-                    \dfrac{
-                        \dfrac{
-                            w = z \COL \tb{ w = y}
-                        }{
-                            w = z \COL \tb{P(w, y, z)}
-                        }
-                    }{
-                        \lambda w. w = z \COL \ti{w} \to \tb{P(w, y, z)}
-                    }
-                }{
-                    (\lambda w.\: w = z)\,(1+y) \COL \tb{P(1+y, y, z)}
-                }
-            }{
-                (\lambda w.\: w = z)\,(1+y) \COL \tb{z-1 = 0 \wedge y = 0}
-            }
-        }{
-            \lambda y.\: (\lambda w.\: w = z)\,(1+y) \COL \ti{y} \to \tb{z-1 = 0 \wedge y = 0}
-        }
-    }{
-        F\, (z-1) \,(\lambda y.\: (\lambda w.\: w = z)\,(1+y)) \COL \tb{\true}
-    }
-    }{\vdots}
-\end{equation*}
-
-\subsubsection{subject expansion 2}
-
-\begin{equation*}
-    \dfrac{
-    \dfrac{
-        \dfrac{
-            \dfrac{
-                \dfrac{
-                    \cdots
-                    \quad
-                    \dfrac{
-                        \dfrac{
-                            \dfrac{}{
-                                f \COL \ti{w} \to \tb{P(w, y, z)}
-                            }
-                        }{
-                            f\,(1+y) \COL \tb{P(y+1, y, z)}
-                        }
-                    } {
-                        \lambda y.\: f\,(1+y) \COL \ti{y} \to \tb{z - 1 = 0 \wedge y = 0}
-                    }
-                }{
-                    F\, (z-1)\, (\lambda y.\: f\,(1+y))  \COL \tb{\true}
-                }
-            }{
-                F\, (z-1)\, (\lambda y.\: f\,(1+y))  \COL \tb{Q(z)}
-            }
-        }{
-            \lambda f.\: F\, (z-1)\, (\lambda y.\: f\,(1+y)) \COL (\ti{w} \to \tb{P(w, y, z)}) \to \tb{Q(z)}
-        }
-        \qquad 
-        \dfrac{
-            \dfrac{
-                w = y \COL \tb{ w = y}
-            }{
-                w = y \COL \tb{P(w, y, z)}
-            }
-        }{
-            \lambda w. w = y \COL \ti{w} \to \tb{P(w, y, z)}
-        }
-    }{
-        (\lambda f.\: F\, (z-1)\, (\lambda y.\: f\,(1+y)))\, (\lambda w.\: w = z) \COL \tb{Q(z)}
     }}{
-    \vdots
-    }
-\end{equation*}
-
-
-\subsubsection{subject expansion 3}
-\begin{equation*}
-    \dfrac{
-        \dfrac{
-            \dfrac{
-                \dfrac{
-                    \dfrac{
-                        \dfrac{
-                            \dfrac{
-                                \cdots
-                                \quad
-                                \dfrac{
-                                    \dfrac{
-                                        \dfrac{}{
-                                            f \COL \ti{w} \to \tb{P(w, y, z)}
-                                        }
-                                    }{
-                                        f\,(1+y) \COL \tb{P(y+1, y, z)}
-                                    }
-                                } {
-                                    \lambda y.\: f\,(1+y) \COL \ti{y} \to \tb{x - 1 = 0 \wedge y = 0}
-                                }
-                            }{
-                                F\, (x-1)\, (\lambda y.\: f\,(1+y))  \COL \tb{\true}
-                            }
-                        }{
-                            F\, (x-1)\, (\lambda y.\: f\,(1+y))  \COL \tb{Q(z)}
-                        }
-                    }{
-                        \lambda f.\: F\, (x-1)\, (\lambda y.\: f\,(1+y)) \COL (\ti{w} \to \tb{P(w, y, z)}) \to \tb{R(z, x)}
-                    }
-                } {
-                    \lambda x.\: \lambda f.\: F\, (x-1)\, (\lambda y.\: f\,(1+y)) \COL \ti{x} \to (\ti{w} \to \tb{P(w, y, z)}) \to \tb{R(z, x)}
-                }
-            }{
-                (\lambda x.\: \lambda f.\: F\, (x-1)\, (\lambda y.\: f\,(1+y)))\, z \COL (\ti{w} \to \tb{P(w, y, z)}) \to \tb{R(z, x)}
-            }
-        }{
-            (\lambda x.\: \lambda f.\: F\, (x-1)\, (\lambda y.\: f\,(1+y)))\, z\, (\lambda w.\: w = z) \COL \tb{R(z, z)}
-        }
-    }{
         \vdots
     }
 \end{equation*}
 
-If we do not introduce any templates and interpolations, then
+Then, we consider constructing the derivation for the original formula by subject expansions:
+(Note that we mark \( (S) \) when the subsumption rule is used)
+\subsubsection{subject expansion 1}
+\begin{align*}
+    &\forall z.\: z=0 \vee F\, (z-1) \,(\lambda y.\: (\lambda w.\: w = z)\,(1+y))\\
+    &\breduc \forall z.\: z=0 \vee F\, (z-1)\, (\lambda y.\: 1+y = z)
+\end{align*}
+
 \begin{equation*}
     \dfrac{
-        \frac{
-            \vdots
+    \dfrac{
+        \dfrac{
+            \dfrac{
+            }{
+            F \COL \ti{x} \to (\ti{y} \to \tb{x = 0 \wedge y = 0}) \to \tb{\true}
+            }
+            \qquad
+            \dfrac{}{
+            z - 1 \COL \stypeint
+            }
         }{
             F\, (z-1) \COL (\ti{y} \to \tb{z-1 = 0 \wedge y = 0}) \to \tb{\true}
         }
-        \qquad
-        \dfrac{
-            \dfrac{
-                \dfrac{
-                }{
-                    1 + y = z \COL \tb{1 + y = z}
-                }
-            }{
-                \begin{aligned}
-                    &1 + y = z \COL \tb{z-1 = 0 \wedge y = 0} \\
-                    &\qquad \tb{1 + y = z} \prec \tb{z-1 = 0 \wedge y = 0}
-                \end{aligned}
-            }
-        }{
-            \lambda y.\: 1+y = z \COL \ti{y} \to \tb{z-1 = 0 \wedge y = 0}
-        }
-    }{
-        F\, (z-1)\, (\lambda y.\: 1+y = z) \COL \tb{\true}
-    }
-\end{equation*}
-
-\subsubsection{subject expansion 1}
-
-\begin{equation*}
-    \dfrac{
-    \dfrac{
-        \cdots
         \qquad
         \dfrac{
             \dfrac{
@@ -252,12 +123,16 @@ If we do not introduce any templates and interpolations, then
                     }{
                         \lambda w. w = z \COL \ti{w} \to \tb{w=z}
                     }
+                    \qquad
+                    \dfrac{}{
+                        1 + y \COL \stypeint
+                    }
                 }{
                     (\lambda w.\: w = z)\,(1+y) \COL \tb{1+y=z}
                 }
             }{
                 (\lambda w.\: w = z)\,(1+y) \COL \tb{z-1 = 0 \wedge y = 0}
-            }
+            }(S)
         }{
             \lambda y.\: (\lambda w.\: w = z)\,(1+y) \COL \ti{y} \to \tb{z-1 = 0 \wedge y = 0}
         }
@@ -268,14 +143,25 @@ If we do not introduce any templates and interpolations, then
 \end{equation*}
 
 \subsubsection{subject expansion 2}
+\begin{align*}
+    &\forall z.\: z=0\vee (\lambda f.\: F\, (z-1)\, (\lambda y.\: f\,(1+y)))\, (\lambda w.\: w = z) \\
+    &\breduc \forall z.\: z=0 \vee F\, (z-1) \,(\lambda y.\: (\lambda w.\: w = z)\,(1+y))
+\end{align*}
 
 \begin{equation*}
     \dfrac{
     \dfrac{
         \dfrac{
             \dfrac{
-                \cdots
-                \quad
+                \dfrac{
+                }{
+                F \COL \ti{x} \to (\ti{y} \to \tb{x = 0 \wedge y = 0}) \to \tb{\true}
+                }
+                \qquad
+                \dfrac{}{
+                z - 1 \COL \stypeint
+                }
+                \qquad
                 \dfrac{
                     \dfrac{
                         \dfrac{
@@ -287,7 +173,7 @@ If we do not introduce any templates and interpolations, then
                         }
                     } {
                         f\,(1+y) \COL \tb{z - 1 = 0 \wedge y = 0}
-                    }\text{(Subst)}
+                    }\text{(S)}
                 } {
                     \lambda y.\: f\,(1+y) \COL \ti{y} \to \tb{z - 1 = 0 \wedge y = 0}
                 }
@@ -311,12 +197,23 @@ If we do not introduce any templates and interpolations, then
 \end{equation*}
 
 \subsubsection{subject expansion 3}
+\begin{align*}
+    &\forall z.\: z=0 \vee (\lambda x.\: \lambda f.\: F\, (x-1)\, (\lambda y.\: f\,(1+y)))\, z\, (\lambda w.\: w = z) \\
+    &\breduc \forall z.\: z=0\vee (\lambda f.\: F\, (z-1)\, (\lambda y.\: f\,(1+y)))\, (\lambda w.\: w = z) 
+\end{align*}
 
 \begin{equation*}
     \dfrac{
     \dfrac{
         \dfrac{
-            \cdots
+                \dfrac{
+                }{
+                F \COL \ti{x} \to (\ti{y} \to \tb{x = 0 \wedge y = 0}) \to \tb{\true}
+                }
+                \qquad
+                \dfrac{}{
+                x - 1 \COL \stypeint
+                }
             \quad
             \dfrac{
                 \dfrac{
@@ -329,7 +226,7 @@ If we do not introduce any templates and interpolations, then
                     }
                 } {
                     f\,(1+y) \COL \tb{x - 1 = 0 \wedge y = 0}
-                }\text{(Subst)}
+                }\text{(S)}
             } {
                 \lambda y.\: f\,(1+y) \COL \ti{y} \to \tb{x - 1 = 0 \wedge y = 0}
             }
@@ -338,16 +235,31 @@ If we do not introduce any templates and interpolations, then
         }
     }{
         \lambda x. \lambda f.\: F\, (x-1)\, (\lambda y.\: f\,(1+y)) \COL \ti{x} \to (\ti{w} \to \tb{w = z}) \to \tb{\true}
-        %\qquad 
-        %\dfrac{
-        %    w = y \COL \tb{ w = y}
-        %}{
-        %    \lambda w. w = y \COL \ti{w} \to \tb{w = z}
-        %}
-    }}{
+    }
+        \quad
+        \dfrac{}{
+        z \COL \stypeint
+        }
+        \qquad 
+        \dfrac{
+            w = y \COL \tb{ w = y}
+        }{
+            \lambda w. w = y \COL \ti{w} \to \tb{w = z}
+        }
+    }{
         (\lambda x. \lambda f. F\, (x-1))\, z (\lambda w.\: w = z) \COL \tb{\true}
     }
 \end{equation*}
+
+\subsection{How to make the last derivation valid}
+
+\subsubsection{replace \( z \) in \( \ti{w} \to \tb{w = z} \) with \( x \)}
+
+Problem: how do I determine which expr should be replaced
+(since that \( w \) is not generated by any reduction, we cannot utilize the technique that we used before directory)
+
+\subsubsection{introduce another polymorhic type ?}
+
 
 \section{outdated}
 
