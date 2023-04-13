@@ -383,7 +383,7 @@ impl<C: Refinement> Tau<C> {
             }
             TauKind::Arrow(ts, t) => {
                 let t = t.conjoin_constraint(c);
-                let ts = ts.clone();
+                let ts = ts.iter().map(|t| t.conjoin_constraint(c)).collect();
                 Self::mk_arrow(ts, t)
             }
         }
@@ -657,10 +657,10 @@ impl<C> Tau<C> {
         Tau::new(TauKind::Arrow(vec![t], s))
     }
     pub fn is_proposition(&self) -> bool {
-        match self.kind() {
-            TauKind::Proposition(_) => true,
-            _ => false,
-        }
+        matches!(self.kind(), TauKind::Proposition(_))
+    }
+    pub fn is_arrow(&self) -> bool {
+        matches!(self.kind(), TauKind::Arrow(_, _))
     }
     pub fn order(&self) -> usize {
         match self.kind() {

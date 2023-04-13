@@ -1062,7 +1062,8 @@ fn handle_app(
                 None => PossibleDerivation::empty(),
             },
             formula::hes::GoalKind::App(predg, argg) => {
-                let pred_pt = handle_app(config, tenv, ienv, all_coefficients, predg, cty.clone());
+                let mut pred_pt =
+                    handle_app(config, tenv, ienv, all_coefficients, predg, cty.clone());
                 // Case: the argument is integer
                 match argg.check_int_expr(ienv) {
                     // Case: the type of argument is int
@@ -1081,6 +1082,21 @@ fn handle_app(
                 // Case: the argument is not integer
                 let mut result_cts = Vec::new();
                 // we calculate the argument's type. we have to enumerate all the possible type of pt1.
+
+                // first introduce weakening if the argument is higher-order
+                if pred_pt.types.len() > 0 && pred_pt.types[0].root_ty().is_arrow() {
+                    pred_pt.types = pred_pt
+                        .types
+                        .into_iter()
+                        .map(|d| {
+                            let root_ty = d.root_ty();
+                            let rty = cty.rty_no_exists();
+                            let root_ty = root_ty.conjoin_constraint(&rty);
+                            Derivation::rule_subsumption(d, root_ty)
+                        })
+                        .collect();
+                }
+
                 for pred_derivation in pred_pt.types {
                     let (arg_t, result_t) = match pred_derivation.root_ty().kind() {
                         TauKind::Arrow(arg, result) => (arg, result),
@@ -1091,10 +1107,6 @@ fn handle_app(
                     let arg_pts = arg_t.iter().map(|t| {
                         // check if arg_constraint |- argg: arg_t
                         debug!("arg_t: {t}");
-                        // TODO: I think sometimes I have to consider its context
-                        //let rty = cty.rty_no_exists();
-                        //let t_context = t.conjoin_constraint(&rty);
-                        //debug!("rty: {rty} {t_context}");
                         handle_abs(config, tenv, ienv, all_coefficients, argg, t)
                     });
                     // Assume pred_pt = t1 /\ t2 -> t
