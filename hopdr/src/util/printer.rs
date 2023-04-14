@@ -1,5 +1,7 @@
 use std::fmt::Display;
 
+use crate::formula::*;
+use crate::pdr::derivation::tree;
 use crate::pdr::rtype;
 use crate::{formula::*, preprocess};
 use pretty::termcolor::{Color, ColorSpec};
@@ -108,6 +110,17 @@ impl Pretty for str {
         A: Clone,
     {
         al.text(self)
+    }
+}
+
+impl Pretty for bool {
+    fn pretty<'b, D, A>(&'b self, al: &'b D, _config: &mut Config) -> DocBuilder<'b, D, A>
+    where
+        D: DocAllocator<'b, A>,
+        D::Doc: Clone,
+        A: Clone,
+    {
+        al.text(if *self { "true" } else { "false" })
     }
 }
 
@@ -243,7 +256,7 @@ where
 #[macro_export]
 macro_rules! _plog {
     ($al:ident, $config:ident, $($es:expr $(; $deco:ident)* ,)+) => {{
-        let doc = $crate::_pdebug!($al, $config $(, $es)+, "\n" ).group().1;
+        let doc = $crate::_pdebug!($al, $config $(, $es)+ ).group().1;
         $crate::util::printer::PLog{doc}
     }};
 }
@@ -765,7 +778,7 @@ impl<C: Pretty> Pretty for rtype::Tau<C> {
         A: Clone,
     {
         match self.kind() {
-            rtype::TauKind::Proposition(c) => al.text("bool[") + c.pretty(al, config) + "]",
+            rtype::TauKind::Proposition(c) => al.text("*[") + c.pretty(al, config) + "]",
             rtype::TauKind::IArrow(i, t) => (i.pretty(al, config)
                 + (al.text(":int") + al.line() + al.text("-> ") + t.pretty(al, config)).hang(2))
             .group(),
@@ -818,5 +831,49 @@ impl<T: Pretty> Pretty for rtype::TypeEnvironment<T> {
             var.append(al.text(" : ")).append(t.nest(4))
         });
         al.intersperse(docs, al.hardline())
+    }
+}
+
+fn pretty_tree_inner<'b, D, A, T>(
+    t: &'b tree::Tree<T>,
+    al: &'b D,
+    config: &mut Config,
+    node_id: tree::ID,
+) -> DocBuilder<'b, D, A>
+where
+    D: DocAllocator<'b, A>,
+    D::Doc: Clone,
+    A: Clone,
+    T: Pretty,
+{
+    let cur = t.get_node_by_id(node_id);
+    let cur_node = cur.item.pretty(al, config);
+    let mut children = t.get_children(cur).peekable();
+    if children.peek().is_none() {
+        cur_node
+    } else {
+        let children = al
+            .hardline()
+            .append(
+                al.intersperse(
+                    children
+                        .into_iter()
+                        .map(|child| pretty_tree_inner(t, al, config, child.id)),
+                    al.hardline(),
+                ),
+            )
+            .nest(2);
+        cur_node.append(children)
+    }
+}
+
+impl<T: Pretty> Pretty for tree::Tree<T> {
+    fn pretty<'b, D, A>(&'b self, al: &'b D, config: &mut Config) -> DocBuilder<'b, D, A>
+    where
+        D: DocAllocator<'b, A>,
+        D::Doc: Clone,
+        A: Clone,
+    {
+        pretty_tree_inner(self, al, config, self.root().id)
     }
 }

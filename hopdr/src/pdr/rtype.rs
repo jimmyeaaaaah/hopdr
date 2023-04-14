@@ -383,7 +383,7 @@ impl<C: Refinement> Tau<C> {
             }
             TauKind::Arrow(ts, t) => {
                 let t = t.conjoin_constraint(c);
-                let ts = ts.clone();
+                let ts = ts.iter().map(|t| t.conjoin_constraint(c)).collect();
                 Self::mk_arrow(ts, t)
             }
         }
@@ -411,6 +411,26 @@ impl<C: Refinement> Tau<C> {
                     result_constraint = C::mk_conj(result_constraint, tmpc);
                 }
                 result_constraint
+            }
+            (_, _) => panic!("fatal"),
+        }
+    }
+    pub fn check_subtype_result(t: &Tau<C>, s: &Tau<C>) -> Option<C> {
+        match (t.kind(), s.kind()) {
+            (TauKind::Proposition(c1), TauKind::Proposition(c2)) => {
+                Some(C::mk_implies_opt(c2.clone(), c1.clone()).unwrap())
+            }
+            (TauKind::IArrow(x1, t1), TauKind::IArrow(x2, t2)) => {
+                let t2 = t2.rename(x2, x1);
+                Tau::check_subtype_result(t1, &t2)
+            }
+            (TauKind::Arrow(ts1, t1), TauKind::Arrow(ts2, t2)) => {
+                // check ts2 <: ts1
+                if ts1.iter().zip(ts2.iter()).all(|(t1, t2)| t1 == t2) {
+                    Tau::check_subtype_result(t1, t2)
+                } else {
+                    None
+                }
             }
             (_, _) => panic!("fatal"),
         }
@@ -499,12 +519,29 @@ impl<C: Refinement> Tau<C> {
     }
     pub fn mk_arrow(t: Vec<Tau<C>>, s: Tau<C>) -> Tau<C> {
         let t_fst = t[0].clone();
-        let t: Vec<_> = t.into_iter().filter(|t| !t.is_bot()).collect();
-        if t.is_empty() {
-            // t_fst must be bot ty
-            Tau::new(TauKind::Arrow(vec![t_fst], s))
-        } else {
-            Tau::new(TauKind::Arrow(t, s))
+        let mut t: Vec<_> = t.into_iter().filter(|t| !t.is_bot()).collect();
+        if t.len() == 0 {
+            // t_fst must be bot ty where all bot types are filtered out.
+            t.push(t_fst);
+        }
+        Tau::new(TauKind::Arrow(t, s))
+    }
+    pub fn prop<'a>(&'a self) -> &'a C {
+        match self.kind() {
+            TauKind::Proposition(c) => c,
+            _ => panic!("program error"),
+        }
+    }
+    pub fn iarrow<'a>(&'a self) -> (&'a Ident, &'a Self) {
+        match self.kind() {
+            TauKind::IArrow(x, t) => (x, t),
+            _ => panic!("program error"),
+        }
+    }
+    pub fn arrow<'a>(&'a self) -> (&'a Vec<Self>, &'a Self) {
+        match self.kind() {
+            TauKind::Arrow(ts, t) => (ts, t),
+            _ => panic!("program error"),
         }
     }
 }
@@ -621,6 +658,9 @@ impl<C> Tau<C> {
     }
     pub fn is_proposition(&self) -> bool {
         matches!(self.kind(), TauKind::Proposition(_))
+    }
+    pub fn is_arrow(&self) -> bool {
+        matches!(self.kind(), TauKind::Arrow(_, _))
     }
     pub fn order(&self) -> usize {
         match self.kind() {

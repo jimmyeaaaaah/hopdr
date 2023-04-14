@@ -266,6 +266,48 @@ impl<C, T> GoalBase<C, T> {
             aux,
         }
     }
+    pub fn is_var(&self) -> bool {
+        matches!(self.kind(), GoalKind::Var(_))
+    }
+    pub fn is_univ(&self) -> bool {
+        matches!(self.kind(), GoalKind::Univ(_, _))
+    }
+    pub fn conj<'a>(&'a self) -> (&'a Self, &'a Self) {
+        match self.kind() {
+            GoalKind::Conj(g1, g2) => (g1, g2),
+            _ => panic!("the given expr is not conj"),
+        }
+    }
+    pub fn disj<'a>(&'a self) -> (&'a Self, &'a Self) {
+        match self.kind() {
+            GoalKind::Disj(g1, g2) => (g1, g2),
+            _ => panic!("the given expr is not disj"),
+        }
+    }
+    pub fn univ<'a>(&'a self) -> (&'a Variable, &'a Self) {
+        match self.kind() {
+            GoalKind::Univ(x, g) => (x, g),
+            _ => panic!("the given expr is not univ"),
+        }
+    }
+    pub fn abs<'a>(&'a self) -> (&'a Variable, &'a Self) {
+        match self.kind() {
+            GoalKind::Abs(x, g) => (x, g),
+            _ => panic!("the given expr is not abs"),
+        }
+    }
+    pub fn app<'a>(&'a self) -> (&'a Self, &'a Self) {
+        match self.kind() {
+            GoalKind::App(x, y) => (x, y),
+            _ => panic!("the given expr is not app"),
+        }
+    }
+    pub fn var<'a>(&'a self) -> &'a Ident {
+        match self.kind() {
+            GoalKind::Var(x) => x,
+            _ => panic!("the given expr is not abs"),
+        }
+    }
 }
 impl<C, T> GoalBase<C, T> {
     pub fn is_conj(&self) -> bool {

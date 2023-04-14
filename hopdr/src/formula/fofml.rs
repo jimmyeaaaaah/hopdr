@@ -25,11 +25,14 @@ impl fmt::Display for Atom {
         write!(f, "{}", self.pretty_display())
     }
 }
+
 impl PartialEq for Atom {
     fn eq(&self, other: &Self) -> bool {
         let r = match (self.kind(), other.kind()) {
             (AtomKind::True, AtomKind::True) => true,
             (AtomKind::Constraint(c1), AtomKind::Constraint(c2)) => c1 == c2,
+            (AtomKind::True, AtomKind::Constraint(c))
+            | (AtomKind::Constraint(c), AtomKind::True) => c.is_true(),
             (AtomKind::Predicate(p1, l1), AtomKind::Predicate(p2, l2)) => p1 == p2 && l1 == l2,
             (AtomKind::Conj(x1, y1), AtomKind::Conj(x2, y2)) => x1 == x2 && y1 == y2,
             (AtomKind::Disj(x1, y1), AtomKind::Disj(x2, y2)) => x1 == x2 && y1 == y2,
@@ -39,7 +42,6 @@ impl PartialEq for Atom {
             }
             (_, _) => false,
         };
-        debug!("{} == {}?: {}", self, other, r);
         r
     }
 }
