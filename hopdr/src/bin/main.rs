@@ -10,14 +10,17 @@ use hopdr::*;
 use clap::Parser;
 use colored::Colorize;
 use hopdr::pdr::PDRConfig;
+use hopdr::pdr::VerificationResult;
+use hopdr::preprocess::Context;
 use hopdr::title;
+use hopdr::util::Pretty;
 use nom::error::VerboseError;
 
 use std::fs;
 use std::time;
 
 /// Validity checker for νHFL(Z)
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Clone)]
 #[clap(author = "Hiroyuki Katsura", version, about, long_about = None)]
 struct Args {
     /// Name of the person to greet
@@ -38,9 +41,29 @@ struct Args {
     remove_disjunction: bool,
     #[clap(long)]
     smt_interpol: Option<String>,
+    #[clap(long)]
+    detailed_results: bool,
 }
 
-fn pdr_main(contents: String, config: PDRConfig) -> hopdr::pdr::VerificationResult {
+fn report_result(args: &Args, r: VerificationResult, ctx: &Context) {
+    match r {
+        pdr::VerificationResult::Valid(c) => {
+            println!("{}", "Valid".green());
+            if args.detailed_results {
+                println!("[Type Environment]");
+                println!("{}", c.certificate.pretty_display_with_context(ctx));
+            }
+        }
+        pdr::VerificationResult::Invalid => {
+            println!("{}", "Invalid".red());
+        }
+        pdr::VerificationResult::Unknown => {
+            println!("{}", "Unknown".red());
+        }
+    }
+}
+
+fn pdr_main(args: Args, contents: String, config: PDRConfig) {
     debug!("starting PDR...");
     let (_, f) = parse::parse::<VerboseError<&str>>(&contents).unwrap();
 
@@ -55,12 +78,12 @@ fn pdr_main(contents: String, config: PDRConfig) -> hopdr::pdr::VerificationResu
     }
 
     title!("proprocessed");
-    let (vc, _ctx) = preprocess::hes::preprocess(f);
+    let (vc, ctx) = preprocess::hes::preprocess(f);
     for fml in vc.clauses.iter() {
         debug!("{}", fml);
     }
 
-    pdr::run(vc, config)
+    report_result(&args, pdr::run(vc, config), &ctx)
 }
 
 fn gen_configuration_from_args(args: &Args) -> hopdr::Configuration {
@@ -111,23 +134,18 @@ fn main() {
 
     // executes PDR with timeout
     // following https://gist.github.com/junha1/8ebaf53f46ea6fc14ab6797b9939b0f8
-
+    let args_cloned = args.clone(); // FIXME
     let r = if args.timeout == 0 {
-        util::executes_with_timeout_and_ctrlc(move || pdr_main(contents, config), None)
+        util::executes_with_timeout_and_ctrlc(move || pdr_main(args_cloned, contents, config), None)
     } else {
         let timeout = time::Duration::from_secs(args.timeout);
-        util::executes_with_timeout_and_ctrlc(move || pdr_main(contents, config), Some(timeout))
+        util::executes_with_timeout_and_ctrlc(
+            move || pdr_main(args_cloned, contents, config),
+            Some(timeout),
+        )
     };
     match r {
-        Ok(pdr::VerificationResult::Valid) => {
-            println!("{}", "Valid".green());
-        }
-        Ok(pdr::VerificationResult::Invalid) => {
-            println!("{}", "Invalid".red());
-        }
-        Ok(pdr::VerificationResult::Unknown) => {
-            println!("{}", "Unknown".red());
-        }
+        Ok(()) => (),
         Err(util::ExecutionError::Timeout) => {
             println!("{}", "Timeout".red());
         }

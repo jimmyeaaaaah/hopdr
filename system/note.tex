@@ -2,11 +2,15 @@
 \documentclass{article}
 
 
+\usepackage[margin=1cm,landscape]{geometry}
+\usepackage{pdflscape}
 \usepackage{algorithmic}
 \usepackage{amsmath}
 \usepackage{bcprules}
 \usepackage{braket}
 \usepackage{color}
+\usepackage{xcolor}
+
 
 \usepackage{graphicx}
 \usepackage{listings}
@@ -21,6 +25,534 @@
 \input{local}
 
 \begin{document}
+
+\section{debugging for parameters}
+
+HES
+\begin{align*}
+    F = \lambda x.\: \lambda f.\: z=0 \vee F\, (x-1) (\lambda y.\: f(1+y))
+\end{align*}
+
+Consider the following candidate
+\begin{align*}
+    \pdrtop = \forall z.\: z=0 \vee F\, z\, (\lambda w.\: w = z)
+\end{align*}
+We first expand the predicate once:
+\begin{align*}
+    \forall z.\: z =0\vee (\lambda x.\: \lambda f.\: F\, (x-1) (\lambda y.\: f\,(1+y)))\, z\, (\lambda w.\: w = z)
+\end{align*}
+and reduce it to its normal form:
+\begin{align*}
+    &\forall z.\: z=0 \vee (\lambda x.\: \lambda f.\: F\, (x-1)\, (\lambda y.\: f\,(1+y)))\, z\, (\lambda w.\: w = z) \\
+    &\breduc \forall z.\: z=0\vee (\lambda f.\: F\, (z-1)\, (\lambda y.\: f\,(1+y)))\, (\lambda w.\: w = z) \\
+    &\breduc \forall z.\: z=0 \vee F\, (z-1) \,(\lambda y.\: (\lambda w.\: w = z)\,(1+y))\\
+    &\breduc \forall z.\: z=0 \vee F\, (z-1)\, (\lambda y.\: 1+y = z)
+\end{align*}
+
+We consider its typeable or not under the following type environment:
+\begin{align*}
+    \Gamma = \{\, F \COL \ti{x} \to (\ti{y} \to \tb{x = 0 \wedge y = 0}) \to \tb{\true} \,\}
+\end{align*}
+
+And, it is typeable as follows (some parts are omitted):
+\begin{equation*}
+    \dfrac{
+    \dfrac{
+        \dfrac{
+            \dfrac{
+            }{
+            F \COL \ti{x} \to (\ti{y} \to \tb{x = 0 \wedge y = 0}) \to \tb{\true}
+            }
+            \qquad
+            \dfrac{}{
+            z - 1 \COL \stypeint
+            }
+        }{
+            F\, (z-1) \COL (\ti{y} \to \tb{z-1 = 0 \wedge y = 0}) \to \tb{\true}
+        }
+        \qquad
+        \dfrac{
+            \dfrac{
+                \dfrac{
+                }{
+                    1 + y = z \COL \tb{1 + y = z}
+                }
+            }{
+                \begin{aligned}
+                    &1 + y = z \COL \tb{z-1 = 0 \wedge y = 0} \\
+                    &\qquad \tb{1 + y = z} \prec \tb{z-1 = 0 \wedge y = 0}
+                \end{aligned}
+            }
+        }{
+            \lambda y.\: 1+y = z \COL \ti{y} \to \tb{z-1 = 0 \wedge y = 0}
+        }
+    }{
+        F\, (z-1)\, (\lambda y.\: 1+y = z) \COL \tb{\true}
+    }}{
+        \vdots
+    }
+\end{equation*}
+
+Then, we consider constructing the derivation for the original formula by subject expansions:
+(Note that we mark \( (S) \) when the subsumption rule is used)
+\subsubsection{subject expansion 1}
+\begin{align*}
+    &\forall z.\: z=0 \vee F\, (z-1) \,(\lambda y.\: (\lambda w.\: w = z)\,(1+y))\\
+    &\breduc \forall z.\: z=0 \vee F\, (z-1)\, (\lambda y.\: 1+y = z)
+\end{align*}
+
+\begin{equation*}
+    \dfrac{
+    \dfrac{
+        \dfrac{
+            \dfrac{
+            }{
+            F \COL \ti{x} \to (\ti{y} \to \tb{x = 0 \wedge y = 0}) \to \tb{\true}
+            }
+            \qquad
+            \dfrac{}{
+            z - 1 \COL \stypeint
+            }
+        }{
+            F\, (z-1) \COL (\ti{y} \to \tb{z-1 = 0 \wedge y = 0}) \to \tb{\true}
+        }
+        \qquad
+        \dfrac{
+            \dfrac{
+                \dfrac{
+                    \dfrac{
+                        w = z \COL \tb{ w = z}
+                    }{
+                        \lambda w. w = z \COL \ti{w} \to \tb{w=z}
+                    }
+                    \qquad
+                    \dfrac{}{
+                        1 + y \COL \stypeint
+                    }
+                }{
+                    (\lambda w.\: w = z)\,(1+y) \COL \tb{1+y=z}
+                }
+            }{
+                (\lambda w.\: w = z)\,(1+y) \COL \tb{z-1 = 0 \wedge y = 0}
+            }(S)
+        }{
+            \lambda y.\: (\lambda w.\: w = z)\,(1+y) \COL \ti{y} \to \tb{z-1 = 0 \wedge y = 0}
+        }
+    }{
+        F\, (z-1) \,(\lambda y.\: (\lambda w.\: w = z)\,(1+y)) \COL \tb{\true}
+    }
+    }{\vdots}
+\end{equation*}
+
+\subsubsection{subject expansion 2}
+\begin{align*}
+    &\forall z.\: z=0\vee (\lambda f.\: F\, (z-1)\, (\lambda y.\: f\,(1+y)))\, (\lambda w.\: w = z) \\
+    &\breduc \forall z.\: z=0 \vee F\, (z-1) \,(\lambda y.\: (\lambda w.\: w = z)\,(1+y))
+\end{align*}
+
+\begin{equation*}
+    \dfrac{
+    \dfrac{
+        \dfrac{
+            \dfrac{
+                \dfrac{
+                }{
+                F \COL \ti{x} \to (\ti{y} \to \tb{x = 0 \wedge y = 0}) \to \tb{\true}
+                }
+                \qquad
+                \dfrac{}{
+                z - 1 \COL \stypeint
+                }
+                \qquad
+                \dfrac{
+                    \dfrac{
+                        \dfrac{
+                            \dfrac{}{
+                                f \COL \ti{w} \to \tb{w=z}
+                            }
+                        }{
+                            f\,(1+y) \COL \tb{1+y=z}
+                        }
+                    } {
+                        f\,(1+y) \COL \tb{z - 1 = 0 \wedge y = 0}
+                    }\text{(S)}
+                } {
+                    \lambda y.\: f\,(1+y) \COL \ti{y} \to \tb{z - 1 = 0 \wedge y = 0}
+                }
+            }{
+                F\, (z-1)\, (\lambda y.\: f\,(1+y))  \COL \tb{\true}
+            }
+        }{
+            \lambda f.\: F\, (z-1)\, (\lambda y.\: f\,(1+y)) \COL (\ti{w} \to \tb{w = z}) \to \tb{\true}
+        }
+        \qquad 
+        \dfrac{
+            w = z \COL \tb{ w = z}
+        }{
+            \lambda w. w = z \COL \ti{w} \to \tb{w = z}
+        }
+    }{
+        (\lambda f.\: F\, (z-1)\, (\lambda y.\: f\,(1+y)))\, (\lambda w.\: w = z) \COL \tb{\true}
+    }}{
+    \vdots
+    }
+\end{equation*}
+
+\subsubsection{subject expansion 3}
+\begin{align*}
+    &\forall z.\: z=0 \vee (\lambda x.\: \lambda f.\: F\, (x-1)\, (\lambda y.\: f\,(1+y)))\, z\, (\lambda w.\: w = z) \\
+    &\breduc \forall z.\: z=0\vee (\lambda f.\: F\, (z-1)\, (\lambda y.\: f\,(1+y)))\, (\lambda w.\: w = z) 
+\end{align*}
+
+\begin{equation*}
+    \dfrac{
+    \dfrac{
+        \dfrac{
+            \dfrac{
+                    \dfrac{
+                    }{
+                    F \COL \ti{x} \to (\ti{y} \to \tb{x = 0 \wedge y = 0}) \to \tb{\true}
+                    }
+                    \qquad
+                    \dfrac{}{
+                    x - 1 \COL \stypeint
+                    }
+                \quad
+                \dfrac{
+                    \dfrac{
+                        \dfrac{
+                            \dfrac{}{
+                                f \COL \ti{w} \to \tb{w=z}
+                            }
+                            \qquad
+                            \dfrac{}{
+                                1+y \COL \stypeint
+                            }
+                        }{
+                            f\,(1+y) \COL \tb{1+y=z}
+                        }
+                    } {
+                        f\,(1+y) \COL \tb{x - 1 = 0 \wedge y = 0}
+                    }\text{\textcolor{red}{(S)}}
+                } {
+                    \lambda y.\: f\,(1+y) \COL \ti{y} \to \tb{x - 1 = 0 \wedge y = 0}
+                }
+            }{
+                F\, (x-1)\, (\lambda y.\: f\,(1+y))  \COL \tb{\true}
+            }
+        }{
+            \lambda x. \lambda f.\: F\, (x-1)\, (\lambda y.\: f\,(1+y)) \COL \ti{x} \to (\ti{w} \to \tb{w =z}) \to \tb{\true}
+        }
+        \quad
+        \dfrac{}{
+        z \COL \stypeint
+        }
+        }{
+            (\lambda x. \lambda f.\: F\, (x-1)\, (\lambda y.\: f\,(1+y)))\, z \COL (\ti{w} \to \tb{w = z}) \to \tb{\true}
+        }
+        \qquad 
+        \dfrac{
+            w = z \COL \tb{ w = z}
+        }{
+            \lambda w. w = z \COL \ti{w} \to \tb{w = z}
+        }
+    }{
+        (\lambda x. \lambda f. F\, (x-1))\, z (\lambda w.\: w = z) \COL \tb{\true}
+    }
+\end{equation*}
+
+However, the highlighted subsumption is invalid since \( x -1 = 0 \wedge y = 0 \Rightarrow 1 + y = z \) does not hold for any \( x \), \( y \) and \( z \).
+If \( z \) were \( x \), this subsumption would be valid.
+
+\subsection{How to make the last derivation valid}
+
+\subsubsection{Add the substitution to the context}
+
+\subsubsection{subject expansion 3}
+\begin{align*}
+    &\forall z.\: z=0 \vee (\lambda x.\: \lambda f.\: F\, (x-1)\, (\lambda y.\: f\,(1+y)))\, z\, (\lambda w.\: w = z) \\
+    &\breduc \forall z.\: z=0\vee (\lambda f.\: F\, (z-1)\, (\lambda y.\: f\,(1+y)))\, (\lambda w.\: w = z) 
+\end{align*}
+
+\begin{equation*}
+    \dfrac{
+    \dfrac{
+        \dfrac{
+            \dfrac{
+                    \dfrac{
+                    }{
+                    F \COL \ti{x} \to (\ti{y} \to \tb{x = 0 \wedge y = 0}) \to \tb{\true}
+                    }
+                    \qquad
+                    \dfrac{}{
+                    x - 1 \COL \stypeint
+                    }
+                \quad
+                \dfrac{
+                    \dfrac{
+                        \dfrac{
+                            \dfrac{}{
+                                f \COL \ti{w} \to \tb{ w=z}
+                            }
+                            \qquad
+                            \dfrac{}{
+                                1+y \COL \stypeint
+                            }
+                        }{
+                            f\,(1+y) \COL \tb{1+y=z}
+                        }
+                    } {
+                        f\,(1+y) \COL \tb{x - 1 = 0 \wedge y = 0 \wedge x = z}
+                    }\text{\textcolor{red}{(S)}}
+                } {
+                    \lambda y.\: f\,(1+y) \COL \ti{y} \to \tb{x - 1 = 0 \wedge y = 0 \wedge x = z}
+                }
+            }{
+                F\, (x-1)\, (\lambda y.\: f\,(1+y))  \COL \tb{x = z}
+            }
+        }{
+            \lambda x. \lambda f.\: F\, (x-1)\, (\lambda y.\: f\,(1+y)) \COL \ti{x} \to (\ti{w} \to \tb{w=z}) \to \tb{x = z}
+        }
+        \quad
+        \dfrac{}{
+        z \COL \stypeint
+        }
+        }{
+            (\lambda x. \lambda f.\: F\, (x-1)\, (\lambda y.\: f\,(1+y)))\, z \COL (\ti{w} \to \tb{w = z}) \to \tb{\true}
+        }
+        \qquad 
+        \dfrac{
+            w = z \COL \tb{ w = z}
+        }{
+            \lambda w. w = z \COL \ti{w} \to \tb{w = z}
+        }
+    }{
+        (\lambda x. \lambda f. F\, (x-1))\, z (\lambda w.\: w = z) \COL \tb{\true}
+    }
+\end{equation*}
+
+\subsubsection{replace \( z \) in \( \ti{w} \to \tb{w = z} \) with \( x \)}
+
+
+outdated
+
+\begin{equation*}
+    \dfrac{
+    \dfrac{
+        \dfrac{
+            \dfrac{
+                    \dfrac{
+                    }{
+                    F \COL \ti{x} \to (\ti{y} \to \tb{x = 0 \wedge y = 0}) \to \tb{\true}
+                    }
+                    \qquad
+                    \dfrac{}{
+                    x - 1 \COL \stypeint
+                    }
+                \quad
+                \dfrac{
+                    \dfrac{
+                        \dfrac{
+                            \dfrac{}{
+                                f \COL \ti{w} \to \tb{w=\textcolor{red}{\boldsymbol x}}
+                            }
+                            \qquad
+                            \dfrac{}{
+                                1+y \COL \stypeint
+                            }
+                        }{
+                            f\,(1+y) \COL \tb{1+y=\textcolor{red}{\boldsymbol x}}
+                        }
+                    } {
+                        f\,(1+y) \COL \tb{x - 1 = 0 \wedge y = 0}
+                    }\text{(S)}
+                } {
+                    \lambda y.\: f\,(1+y) \COL \ti{y} \to \tb{x - 1 = 0 \wedge y = 0}
+                }
+            }{
+                F\, (x-1)\, (\lambda y.\: f\,(1+y))  \COL \tb{\true}
+            }
+        }{
+            \lambda x. \lambda f.\: F\, (x-1)\, (\lambda y.\: f\,(1+y)) \COL \ti{x} \to (\ti{w} \to \tb{w = \textcolor{red}{\boldsymbol x}}) \to \tb{\true}
+        }
+        \quad
+        \dfrac{}{
+        z \COL \stypeint
+        }
+        }{
+            (\lambda x. \lambda f.\: F\, (x-1)\, (\lambda y.\: f\,(1+y)))\, z \COL (\ti{w} \to \tb{w = z}) \to \tb{\true}
+        }
+        \qquad 
+        \dfrac{
+            w = z \COL \tb{ w = z}
+        }{
+            \lambda w. w = z \COL \ti{w} \to \tb{w = z}
+        }
+    }{
+        (\lambda x. \lambda f. F\, (x-1))\, z (\lambda w.\: w = z) \COL \tb{\true}
+    }
+\end{equation*}
+
+Problem: how do I determine which expr should be replaced
+(since that \( w \) is not generated by any reduction, we cannot utilize the technique that we used before directly)
+
+
+If you naively replace all the occurrences of \( z \) with \( x \), the derivation will go wrong. For example, consider \( \forall z.\: z \neq x \lor (\lambda x.\: x = z)\, z\) where the reduction sequence is 
+The derivation for the normal form is as follows:
+\begin{align*}
+    \dfrac{
+        \dfrac{
+            y = y \COL \tb{y = y}
+        }{
+            \forall y.\: y = y \COL \tb{\forall y. y = y}
+        }
+    }{
+        \forall y.\: y = y \COL \tb{\true}
+    }
+\end{align*}
+Then, we consider expanding the derivation
+\begin{align*}
+    \dfrac{
+        \dfrac{
+            \dfrac{
+                \dfrac{
+                    x = y \COL \tb{x = x}
+                }{
+                    \lambda x.\: x = y \COL \ti{x} \to \tb{x = x}
+                }
+                \qquad
+                \dfrac{}{
+                    y \COL \stypeint
+                }
+            }{
+                (\lambda x.\: x = y)\, y \COL \tb{y = y}
+            }
+        }{
+            \forall y.\: (\lambda x.\: x = y) = y \COL \tb{\forall y.\: y = y}
+        }
+    }{
+        \forall y.\: (\lambda x.\: x = y) = y \COL \tb{\true}
+    }
+\end{align*}
+
+
+
+\subsubsection{introduce another polymorhic type ?}
+
+discarded idea
+
+\small
+\begin{equation*}
+    \dfrac{
+    \dfrac{
+        \dfrac{
+            \dfrac{
+                    \dfrac{
+                    }{
+                    F \COL \ti{x} \to (\ti{y} \to \tb{x = 0 \wedge y = 0}) \to \tb{\true}
+                    }
+                    \qquad
+                    \dfrac{}{
+                    x - 1 \COL \stypeint
+                    }
+                \quad
+                \dfrac{
+                    \dfrac{
+                        \dfrac{
+                            \dfrac{f \COL \forall z.\: \ti{w} \to \tb{w = z}\qquad z := x}{
+                                f \COL \ti{w} \to \tb{w=\textcolor{red}{\boldsymbol x}}
+                            }
+                            \qquad
+                            \dfrac{}{
+                                1+y \COL \stypeint
+                            }
+                        }{
+                            f\,(1+y) \COL \tb{1+y=\textcolor{red}{\boldsymbol x}}
+                        }
+                    } {
+                        f\,(1+y) \COL \tb{x - 1 = 0 \wedge y = 0}
+                    }\text{(S)}
+                } {
+                    \lambda y.\: f\,(1+y) \COL \ti{y} \to \tb{x - 1 = 0 \wedge y = 0}
+                }
+            }{
+                F\, (x-1)\, (\lambda y.\: f\,(1+y))  \COL \tb{\true}
+            }
+        }{
+            \lambda x. \lambda f.\: F\, (x-1)\, (\lambda y.\: f\,(1+y)) \COL \ti{x} \to (\ti{w} \to \tb{w = \textcolor{red}{\boldsymbol x}}) \to \tb{\true}
+        }
+        \quad
+        \dfrac{}{
+        z \COL \stypeint
+        }
+        }{
+            (\lambda x. \lambda f.\: F\, (x-1)\, (\lambda y.\: f\,(1+y)))\, z \COL (\forall z.\: \ti{w} \to \tb{w = z}) \to \tb{\true}
+        }
+        \qquad 
+        \dfrac{
+            w = z \COL \tb{ w = z}
+        }{
+            \forall z.\: \lambda w. w = z \COL \ti{w} \to \tb{w = z}
+        }
+    }{
+        (\lambda x. \lambda f. F\, (x-1))\, z (\lambda w.\: w = z) \COL \tb{\true}
+    }
+\end{equation*}
+
+\subsubsection{previous method}
+
+
+For every reduction \( C[(\lambda x:\stypeint.\: \psi) o] \breduc C[[o/x]\psi] \), we memorize how each variable is substituted. 
+When we expand the reduction, we utilize this information to retrieve an appropriate constraint in each type as explained below.
+
+Consider the following reduction:
+\begin{align*}
+    \forall y.\: (\lambda x.: x = y)\, y 
+    \breduc \forall y.\: [x \mapsto y] = y
+\end{align*}
+
+Note that \( [x \mapsto y ] \) denotes an arithmetic expression equals to \( y \), which has previously undergone substitution with \( [y/x] \).
+
+The derivation for the normal form is as follows:
+\begin{align*}
+    \dfrac{
+        \dfrac{
+            y = y \COL \tb{[x \mapsto y] = y}
+        }{
+            \forall y.\: y = y \COL \tb{\forall y. [x \mapsto y] = y}
+        }
+    }{
+        \forall y.\: y = y \COL \tb{\true}
+    }
+\end{align*}
+Then, we consider expanding the derivation
+\begin{align*}
+    \dfrac{
+        \dfrac{
+            \dfrac{
+                \dfrac{
+                    x = y \COL \tb{x = y}
+                }{
+                    \lambda x.\: x = y \COL \ti{x} \to \tb{x = y}
+                }
+                \qquad
+                \dfrac{}{
+                    y \COL \stypeint
+                }
+            }{
+                (\lambda x.\: x = y)\, y \COL \tb{[x \mapsto y] = y}
+            }
+        }{
+            \forall y.\: (\lambda x.\: x = y) = y \COL \tb{\forall y.\: [x \mapsto y] = y}
+        }
+    }{
+        \forall y.\: (\lambda x.\: x = y) = y \COL \tb{\true}
+    }
+\end{align*}
+
+
+
+\section{outdated}
 
 \begin{align*}
     \pdrtop &:= (\forall x_{ 18 }: \stypeint . ((x_{ 14 }\  x_{ 18 } )\ (\lambda x_{ 19 }: \stypeint . ( x_{ 18 }  \leq  x_{ 19 } ))))\\

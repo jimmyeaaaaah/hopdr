@@ -1,5 +1,5 @@
 use super::rtype::{PolymorphicType, Refinement, Tau, TyEnv, TypeEnvironment};
-use super::{PDRConfig, VerificationResult};
+use super::{PDRConfig, ValidCertificate, VerificationResult};
 use crate::formula::hes::Problem;
 use crate::formula::{hes, Constraint, TeXPrinter};
 use crate::pdr::derivation;
@@ -300,7 +300,10 @@ impl HoPDR {
 pub fn run(problem: Problem<Constraint>, config: PDRConfig) -> VerificationResult {
     let mut pdr = HoPDR::new(problem, config);
     match pdr.run() {
-        Ok(PDRResult::Valid) => VerificationResult::Valid,
+        Ok(PDRResult::Valid) => {
+            let certificate = ValidCertificate::new(pdr.envs[pdr.envs.len() - 1].clone());
+            VerificationResult::Valid(certificate)
+        }
         Ok(PDRResult::Invalid) => VerificationResult::Invalid,
         Err(x) => {
             warn!("{}", "Failed to complete PDR".red());

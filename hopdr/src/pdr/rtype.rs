@@ -105,7 +105,7 @@ impl<C: TeXFormat> TeXFormat for Tau<C> {
             }
             TauKind::Arrow(t1, t2) => {
                 write!(f, "(")?;
-                if t1.len() == 0 {
+                if t1.is_empty() {
                     write!(f, r"\top")?;
                 } else {
                     if t1.len() > 1 {
@@ -131,8 +131,8 @@ impl<C: Refinement> PartialEq for Tau<C> {
             (TauKind::Proposition(c), TauKind::Proposition(c2)) => c == c2,
             (TauKind::IArrow(x1, t1), TauKind::IArrow(x2, t2)) => {
                 let y = Ident::fresh();
-                let t1 = t1.rename(&x1, &y);
-                let t2 = t2.rename(&x2, &y);
+                let t1 = t1.rename(x1, &y);
+                let t2 = t2.rename(x2, &y);
                 t1 == t2
             }
             (TauKind::Arrow(ts1, t1), TauKind::Arrow(ts2, t2)) => t1 == t2 && ts1 == ts2,
@@ -667,7 +667,7 @@ impl<C> Tau<C> {
             TauKind::Proposition(_) => 0,
             TauKind::IArrow(_, t) => std::cmp::max(1, t.order()),
             TauKind::Arrow(ts, y) => {
-                debug_assert!(ts.len() != 0);
+                debug_assert!(!ts.is_empty());
                 let o1 = ts[0].order();
                 let o2 = y.order();
                 std::cmp::max(o1 + 1, o2)
@@ -742,7 +742,7 @@ impl Tau<Constraint> {
             polarity: formula::Polarity,
             env: &mut HashSet<Ident>,
             constraint: &Constraint,
-            ts: &Vec<Ty>,
+            ts: &[Ty],
         ) -> Vec<Ty> {
             let t = &ts[0].clone_with_template(env);
             let constraint = constraint.clone().into();
@@ -763,7 +763,7 @@ impl Tau<Constraint> {
             }
             let _ = match solver::chc::default_solver().solve(&clauses) {
                 solver::chc::CHCResult::Sat(m) => m,
-                solver::chc::CHCResult::Unsat => return ts.clone(),
+                solver::chc::CHCResult::Unsat => return ts.to_owned(),
                 solver::chc::CHCResult::Unknown | solver::chc::CHCResult::Timeout => {
                     panic!("panic")
                 }
@@ -1030,7 +1030,7 @@ impl<T: Display> Display for PolymorphicType<T> {
 
 impl<T: PartialEq + Display> PartialEq for PolymorphicType<T> {
     fn eq(&self, other: &Self) -> bool {
-        &self.vars == &other.vars && &self.ty == &other.ty
+        self.vars == other.vars && self.ty == other.ty
     }
 }
 
@@ -1160,10 +1160,10 @@ fn search_eqs_from_constraint(
             let left = l[0].flatten();
             let right = l[1].flatten();
             match (left.kind(), right.kind()) {
-                (OpExpr::Var(x), _) if vars.contains(&x) && l[1].fv().is_disjoint(vars) => {
+                (OpExpr::Var(x), _) if vars.contains(x) && l[1].fv().is_disjoint(vars) => {
                     pairs.push_mut((*x, l[1].clone()))
                 }
-                (_, OpExpr::Var(x)) if vars.contains(&x) && l[0].fv().is_disjoint(vars) => {
+                (_, OpExpr::Var(x)) if vars.contains(x) && l[0].fv().is_disjoint(vars) => {
                     pairs.push_mut((*x, l[0].clone()))
                 }
                 (_, _) => match preprocess_eq(&left, &right, vars) {
@@ -1312,7 +1312,7 @@ impl PTy {
                 TauKind::Arrow(ts, t) => {
                     let t = tr(t, args, eqs.clone(), vars, toplevel);
                     let ts = ts
-                        .into_iter()
+                        .iter()
                         .map(|t| tr(t, args, eqs.clone(), vars, false))
                         .collect();
                     Ty::mk_arrow(ts, t)
@@ -1364,7 +1364,7 @@ impl PTy {
         for (x, o) in eqs.iter() {
             eq_idents
                 .entry(*x)
-                .or_insert_with(|| vec![])
+                .or_insert_with(|| Vec::new())
                 .push(o.clone())
         }
 
@@ -1414,7 +1414,7 @@ impl PTy {
             let pty = PTy::poly(t);
             result.push(pty);
         }
-        if result.len() > 0 {
+        if !result.is_empty() {
             title!("generate_trivial_types_by_eq");
             for t in result.iter() {
                 debug!("- {t}");
@@ -1435,11 +1435,7 @@ impl PTy {
                 TauKind::IArrow(x, _) if x == var => false,
                 TauKind::IArrow(_, t) => check(t, var, toplevel),
                 TauKind::Arrow(ts, t) => {
-                    check(t, var, toplevel)
-                        || ts
-                            .iter()
-                            .map(|t| check(t, var, false))
-                            .fold(false, |x, y| x || y)
+                    check(t, var, toplevel) || ts.iter().map(|t| check(t, var, false)).any(|y| y)
                 }
             }
         }
@@ -1529,7 +1525,7 @@ impl PTy {
         }
         debug!("replaced: {replaced}, ty: {ty}");
         let new_pty = PTy::poly(ty);
-        if replaced && PTy::check_subtype_polymorphic(&new_pty, &self) {
+        if replaced && PTy::check_subtype_polymorphic(&new_pty, self) {
             new_pty
         } else {
             self.clone()
@@ -1537,11 +1533,10 @@ impl PTy {
     }
     fn optimize_ty(&self) -> Self {
         let ty = self.ty.optimize();
-        let pty = Self {
+        Self {
             ty,
             vars: self.vars.clone(),
-        };
-        pty
+        }
     }
     pub fn optimize(&self) -> Self {
         debug!("PTy optimize before: {self}");
@@ -1551,8 +1546,7 @@ impl PTy {
         debug!("PTy optimized by ty optimize: {pty}");
         let pty = pty.optimize_replace_top();
         debug!("PTy optimized by optimize_replace_top: {pty}");
-        let pty = pty.optimize_ty();
-        pty
+        pty.optimize_ty()
     }
 }
 
@@ -1750,7 +1744,7 @@ impl<C: Refinement> PolymorphicType<Tau<C>> {
         for fv in self.vars.iter() {
             let o = generate_arithmetic_template(ints, coefficients, all_coefficients);
             debug!("template: {}", o);
-            ts = ts.subst(&fv, &o);
+            ts = ts.subst(fv, &o);
         }
         debug!("instantiated: {}", ts);
         ts
@@ -1811,6 +1805,12 @@ fn add_if_not_exist<T: PartialEq + Display>(ts: &mut Vec<T>, t: T) {
     }
 }
 
+impl<T: PartialEq + Display> Default for TypeEnvironment<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<T: PartialEq + Display> TypeEnvironment<T> {
     pub fn new() -> TypeEnvironment<T> {
         TypeEnvironment {
@@ -1832,7 +1832,7 @@ impl<T: PartialEq + Display> TypeEnvironment<T> {
         self.add_(v, t);
     }
     pub fn remove(&mut self, key: &Ident) {
-        self.map.remove(&key);
+        self.map.remove(key);
     }
     pub fn exists(&self, v: &Ident) -> bool {
         self.map.get(v).is_some()
@@ -1881,7 +1881,7 @@ impl<C: Refinement> TypeEnvironment<PolymorphicType<Tau<C>>> {
                     }
                 }
                 None => {
-                    self.map.insert(*k, v.iter().cloned().collect());
+                    self.map.insert(*k, v.to_vec());
                 }
             }
         }
@@ -1892,7 +1892,7 @@ impl<C: Refinement> TypeEnvironment<PolymorphicType<Tau<C>>> {
     ) -> TypeEnvironment<Tau<C>> {
         let mut map: HashMap<Ident, Vec<Tau<C>>> = HashMap::new();
         for (k, v) in env1.map.iter() {
-            map.insert(*k, v.iter().cloned().collect());
+            map.insert(*k, v.to_vec());
         }
         for (k, ts) in env2.map.iter() {
             match map.get_mut(k) {
@@ -1902,7 +1902,7 @@ impl<C: Refinement> TypeEnvironment<PolymorphicType<Tau<C>>> {
                     }
                 }
                 None => {
-                    map.insert(*k, ts.iter().cloned().collect());
+                    map.insert(*k, ts.to_vec());
                 }
             }
         }
@@ -1944,18 +1944,17 @@ impl TyEnv {
         for (k, ts) in self.map.iter() {
             let new_ts: Vec<_> = ts
                 .iter()
-                .map(|t| {
+                .flat_map(|t| {
                     let t = t.optimize();
                     let mut ts: Vec<_> = t
                         .generate_trivial_types_by_eq()
                         .into_iter()
                         // filter out non-polymophic type
-                        .filter(|t| t.vars.len() == 0)
+                        .filter(|t| t.vars.is_empty())
                         .collect();
                     ts.push(t);
                     ts.into_iter()
                 })
-                .flatten()
                 .collect();
 
             new_map.insert(*k, new_ts);
@@ -2010,10 +2009,7 @@ pub fn to_fml<C: Refinement>(c: Goal<C>, t: Tau<C>) -> Goal<C> {
 
 // ⌊τ⌋_tt
 pub fn least_fml<C: Refinement>(t: Tau<C>) -> Goal<C> {
-    let f = to_fml(Goal::mk_true(), t.clone());
-    // debug
-    // println!("least_fml: {} ---> {}", t, f);
-    f
+    to_fml(Goal::mk_true(), t)
 }
 
 // ψ↑τ
@@ -2046,16 +2042,12 @@ pub fn type_check<C: Refinement>(g: &Goal<C>, t: &Tau<C>) -> C {
 // g ↑ ti where t = t1 ∧ ⋯ ∧ t2
 pub fn types_check<C: Refinement>(g: &Goal<C>, ts: impl IntoIterator<Item = Tau<C>>) -> C {
     let f = g;
-    let cnstr = ts
-        .into_iter()
+    ts.into_iter()
         .map(|t| {
             debug!("type_check: {} : {}", g, t);
-            let cnstr = types(f.clone(), t.clone()).reduce();
-            //println!("constr: {}", cnstr);
-            cnstr
+            types(f.clone(), t).reduce()
         })
-        .fold(C::mk_true(), |x, y| C::mk_conj(x, y));
-    cnstr
+        .fold(C::mk_true(), |x, y| C::mk_conj(x, y))
 }
 
 // TODO: Reconsider whether it is restricted to fofml::Atom

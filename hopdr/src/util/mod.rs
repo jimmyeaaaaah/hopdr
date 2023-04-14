@@ -227,7 +227,7 @@ const STACK_SIZE: usize = 4 * 1024 * 1024;
 /// returns Some(x) if `f` finishes within `timeout`; None otherwise.
 /// if timeout is None, the execution continues until ctrl-c or termination of the
 /// given procedure.
-pub fn executes_with_timeout_and_ctrlc<T: Send + 'static, F: FnOnce() -> T + Send + 'static>(
+pub fn executes_with_timeout_and_ctrlc<'a, T: Send + 'static, F: FnOnce() -> T + Send + 'static>(
     f: F,
     timeout: Option<time::Duration>,
 ) -> Result<T, ExecutionError> {
