@@ -266,8 +266,75 @@ If \( z \) were \( x \), this subsumption would be valid.
 
 \subsection{How to make the last derivation valid}
 
+\subsubsection{Add the substitution to the context}
+
+\subsubsection{subject expansion 3}
+\begin{align*}
+    &\forall z.\: z=0 \vee (\lambda x.\: \lambda f.\: F\, (x-1)\, (\lambda y.\: f\,(1+y)))\, z\, (\lambda w.\: w = z) \\
+    &\breduc \forall z.\: z=0\vee (\lambda f.\: F\, (z-1)\, (\lambda y.\: f\,(1+y)))\, (\lambda w.\: w = z) 
+\end{align*}
+
+\begin{equation*}
+    \dfrac{
+    \dfrac{
+        \dfrac{
+            \dfrac{
+                    \dfrac{
+                    }{
+                    F \COL \ti{x} \to (\ti{y} \to \tb{x = 0 \wedge y = 0}) \to \tb{\true}
+                    }
+                    \qquad
+                    \dfrac{}{
+                    x - 1 \COL \stypeint
+                    }
+                \quad
+                \dfrac{
+                    \dfrac{
+                        \dfrac{
+                            \dfrac{}{
+                                f \COL \ti{w} \to \tb{ w=z}
+                            }
+                            \qquad
+                            \dfrac{}{
+                                1+y \COL \stypeint
+                            }
+                        }{
+                            f\,(1+y) \COL \tb{1+y=z}
+                        }
+                    } {
+                        f\,(1+y) \COL \tb{x - 1 = 0 \wedge y = 0 \wedge x = z}
+                    }\text{\textcolor{red}{(S)}}
+                } {
+                    \lambda y.\: f\,(1+y) \COL \ti{y} \to \tb{x - 1 = 0 \wedge y = 0 \wedge x = z}
+                }
+            }{
+                F\, (x-1)\, (\lambda y.\: f\,(1+y))  \COL \tb{x = z}
+            }
+        }{
+            \lambda x. \lambda f.\: F\, (x-1)\, (\lambda y.\: f\,(1+y)) \COL \ti{x} \to (\ti{w} \to \tb{w=z}) \to \tb{x = z}
+        }
+        \quad
+        \dfrac{}{
+        z \COL \stypeint
+        }
+        }{
+            (\lambda x. \lambda f.\: F\, (x-1)\, (\lambda y.\: f\,(1+y)))\, z \COL (\ti{w} \to \tb{w = z}) \to \tb{\true}
+        }
+        \qquad 
+        \dfrac{
+            w = z \COL \tb{ w = z}
+        }{
+            \lambda w. w = z \COL \ti{w} \to \tb{w = z}
+        }
+    }{
+        (\lambda x. \lambda f. F\, (x-1))\, z (\lambda w.\: w = z) \COL \tb{\true}
+    }
+\end{equation*}
+
 \subsubsection{replace \( z \) in \( \ti{w} \to \tb{w = z} \) with \( x \)}
 
+
+outdated
 
 \begin{equation*}
     \dfrac{
