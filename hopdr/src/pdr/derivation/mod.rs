@@ -624,84 +624,6 @@ impl Context {
     }
 
     ///// aux functions end
-    fn expand_int_node(
-        &self,
-        node_id: tree::ID,
-        derivation: &mut Derivation,
-        reduction: &Reduction,
-        ri: &ReductionInfo,
-        ret_ty: &Ty,
-    ) {
-        // constructing body derivation
-        let arg_derivations =
-            derivation.replace_derivation_at_level_with_var(node_id, &ri.level, ri.arg_var.id);
-        assert_eq!(arg_derivations.len(), 0);
-
-        // all Ptr(id) in the constraints in ty should be dereferenced
-        derivation.traverse_and_recover_int_var(node_id, &ri.arg_var.id, &ri.old_id);
-
-        // todo: conjoin the context
-        let pred_ty = Tau::mk_iarrow(ri.old_id, ret_ty.clone());
-        // generate derivation and constraints
-        derivation.subject_expansion_int(node_id, reduction, &pred_ty);
-    }
-    fn expand_pred_node(
-        &self,
-        node_id: tree::ID,
-        derivation: &mut Derivation,
-        reduction: &Reduction,
-        ri: &ReductionInfo,
-        ret_ty: &Ty,
-    ) {
-        // TODO: we also have to replace the expr of each node in the derivation
-        let arg_derivations =
-            derivation.replace_derivation_at_level_with_var(node_id, &ri.level, ri.arg_var.id);
-
-        let mut arg_derivations_new: Vec<Derivation> = Vec::new();
-        for arg_d in arg_derivations {
-            let mut should_append = true;
-            for d2 in arg_derivations_new.iter() {
-                if arg_d.root_ty() == d2.root_ty() {
-                    // already exists
-                    highlight!("arg derivations already exists");
-                    pdebug!(arg_d, " vs ", d2);
-                    should_append = false;
-                    break;
-                }
-            }
-            highlight!("expand node");
-            pdebug!(arg_d, should_append);
-            if should_append {
-                arg_derivations_new.push(arg_d);
-            }
-        }
-        let arg_derivations = arg_derivations_new;
-
-        let (arg_ty, arg_derivations) = if arg_derivations.is_empty() {
-            (
-                vec![Ty::mk_bot(&ri.arg_var.ty)],
-                vec![Derivation::rule_atom(
-                    ri.arg.clone(),
-                    Ty::mk_bot(&ri.arg_var.ty),
-                )],
-            )
-        } else {
-            // if a shared_ty is attached with the predicate we are focusing on, we have to use it
-            (
-                arg_derivations
-                    .iter()
-                    .map(|d| d.root_ty().clone())
-                    .collect(),
-                arg_derivations,
-            )
-        };
-
-        let pred_ty = Ty::mk_arrow(arg_ty.clone(), ret_ty.clone());
-
-        pdebug!("pred_ty", pred_ty);
-        // generate derivation and generate constraints
-        derivation.subject_expansion_pred(node_id, arg_derivations, reduction, &pred_ty);
-    }
     // (\x. g) g' -> [g'/x] g
     fn expand_node(&self, node_id: tree::ID, derivation: &mut Derivation, reduction: &Reduction) {
         // if ret_ty_idx > 0, then we push calculated types to derivation without "already exists" check
@@ -711,9 +633,9 @@ impl Context {
         // case where the argument is an integer
         if ri.arg_var.ty.is_int() {
             // case where the argument is a predicate
-            self.expand_int_node(node_id, derivation, reduction, ri, &ret_ty)
+            derivation.subject_expansion_int(node_id, reduction, &ret_ty)
         } else {
-            self.expand_pred_node(node_id, derivation, reduction, ri, &ret_ty)
+            derivation.subject_expansion_pred(node_id, reduction, &ret_ty);
         };
     }
     fn infer_type_inner(&self, derivation: &mut Derivation, reduction: &Reduction) {

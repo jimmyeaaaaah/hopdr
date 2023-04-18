@@ -2,7 +2,8 @@ use std::collections::HashMap;
 
 use super::tree::*;
 use super::{Atom, Ty, G};
-use crate::pdr::rtype::{TBot, TauKind};
+use crate::pdebug;
+use crate::pdr::rtype::{TBot, Tau, TauKind};
 use crate::solver;
 use crate::util::Pretty;
 use crate::{formula::*, highlight};
@@ -692,25 +693,39 @@ impl Derivation {
         &mut self,
         node_id: ID,
         reduction: &super::Reduction,
-        pred_ty: &Ty,
+        ret_ty: &Ty,
     ) {
-        let (pred_arg_ident, pred_body_ty) = match pred_ty.kind() {
-            TauKind::IArrow(x, t) => (*x, t.clone()),
-            TauKind::Proposition(_) | TauKind::Arrow(_, _) => panic!("fail"),
-        };
+        let ri = &reduction.reduction_info;
+        // constructing body derivation
+        let arg_derivations =
+            self.replace_derivation_at_level_with_var(node_id, &ri.level, ri.arg_var.id);
+        assert_eq!(arg_derivations.len(), 0);
 
+        // all Ptr(id) in the constraints in ty should be dereferenced
+        // derivation.traverse_and_recover_int_var(node_id, &ri.arg_var.id, &ri.old_id);
+
+        // TODO: update body's type derivation
+        // first insert abs derivation
         let (t, _node_id) = self.tree.insert_partial_tree(node_id, |body| {
             let body = Derivation {
                 tree: body,
                 coefficients: Stack::new(),
             };
-
-            let tmp_deriv = Derivation::rule_subsumption(body, pred_body_ty);
-
-            let tmp_deriv =
-                Derivation::rule_iarrow(reduction.predicate.clone(), tmp_deriv, &pred_arg_ident);
+            let mut tmp_deriv =
+                Derivation::rule_iarrow(reduction.predicate.clone(), body, &ri.old_id);
 
             let op: Op = reduction.reduction_info.arg.clone().into();
+            let eq_constr =
+                Atom::mk_constraint(Constraint::mk_eq(Op::mk_var(ri.old_id.clone()), op.clone()));
+            // todo: conjoin the context
+            let pred_ty = Tau::mk_iarrow(ri.old_id, ret_ty.clone());
+            let pred_ty = pred_ty.conjoin_constraint(&eq_constr);
+
+            tmp_deriv
+                .tree
+                .update_node_by_id(tmp_deriv.tree.root().id)
+                .ty = pred_ty;
+
             let app_deriv = Derivation::rule_iapp(reduction.app_expr.clone(), tmp_deriv, &op);
             app_deriv.tree
         });
@@ -724,10 +739,51 @@ impl Derivation {
     pub fn subject_expansion_pred(
         &mut self,
         node_id: ID,
-        arg_derivations: Vec<Self>,
         reduction: &super::Reduction,
         pred_ty: &Ty,
     ) {
+        let ri = &reduction.reduction_info;
+        let arg_derivations =
+            self.replace_derivation_at_level_with_var(node_id, &ri.level, ri.arg_var.id);
+        let mut arg_derivations_new: Vec<Derivation> = Vec::new();
+        for arg_d in arg_derivations {
+            let mut should_append = true;
+            for d2 in arg_derivations_new.iter() {
+                if arg_d.root_ty() == d2.root_ty() {
+                    // already exists
+                    highlight!("arg derivations already exists");
+                    pdebug!(arg_d, " vs ", d2);
+                    should_append = false;
+                    break;
+                }
+            }
+            highlight!("expand node");
+            pdebug!(arg_d, should_append);
+            if should_append {
+                arg_derivations_new.push(arg_d);
+            }
+        }
+        let arg_derivations = arg_derivations_new;
+
+        let (arg_ty, arg_derivations) = if arg_derivations.is_empty() {
+            (
+                vec![Ty::mk_bot(&ri.arg_var.ty)],
+                vec![Derivation::rule_atom(
+                    ri.arg.clone(),
+                    Ty::mk_bot(&ri.arg_var.ty),
+                )],
+            )
+        } else {
+            // if a shared_ty is attached with the predicate we are focusing on, we have to use it
+            (
+                arg_derivations
+                    .iter()
+                    .map(|d| d.root_ty().clone())
+                    .collect(),
+                arg_derivations,
+            )
+        };
+
         let (arg_tys, pred_body_ty) = match pred_ty.kind() {
             TauKind::Arrow(tys, t) => (tys, t.clone()),
             TauKind::Proposition(_) | TauKind::IArrow(_, _) => panic!("fail"),
