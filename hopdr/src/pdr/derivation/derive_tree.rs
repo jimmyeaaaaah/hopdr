@@ -740,7 +740,7 @@ impl Derivation {
         &mut self,
         node_id: ID,
         reduction: &super::Reduction,
-        pred_ty: &Ty,
+        ret_ty: &Ty,
     ) {
         let ri = &reduction.reduction_info;
         let arg_derivations =
@@ -765,7 +765,7 @@ impl Derivation {
         }
         let arg_derivations = arg_derivations_new;
 
-        let (arg_ty, arg_derivations) = if arg_derivations.is_empty() {
+        let (arg_tys, arg_derivations) = if arg_derivations.is_empty() {
             (
                 vec![Ty::mk_bot(&ri.arg_var.ty)],
                 vec![Derivation::rule_atom(
@@ -784,21 +784,14 @@ impl Derivation {
             )
         };
 
-        let (arg_tys, pred_body_ty) = match pred_ty.kind() {
-            TauKind::Arrow(tys, t) => (tys, t.clone()),
-            TauKind::Proposition(_) | TauKind::IArrow(_, _) => panic!("fail"),
-        };
-
         let (t, _node_id) = self.tree.insert_partial_tree(node_id, |body| {
             let body = Derivation {
                 tree: body,
                 coefficients: Stack::new(),
             };
 
-            let tmp_deriv = Derivation::rule_subsumption(body, pred_body_ty);
-
             let tmp_deriv =
-                Derivation::rule_arrow(reduction.predicate.clone(), tmp_deriv, arg_tys.clone());
+                Derivation::rule_arrow(reduction.predicate.clone(), body, arg_tys.clone());
             let app_deriv = Derivation::rule_app(
                 reduction.app_expr.clone(),
                 tmp_deriv,
