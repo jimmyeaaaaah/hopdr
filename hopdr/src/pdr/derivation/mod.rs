@@ -630,8 +630,7 @@ impl Context {
         derivation: &mut Derivation,
         reduction: &Reduction,
         ri: &ReductionInfo,
-        is_shared_ty: bool,
-        tmp_ret_ty: &Ty,
+        ret_ty: &Ty,
     ) {
         // constructing body derivation
         let arg_derivations =
@@ -641,17 +640,8 @@ impl Context {
         // all Ptr(id) in the constraints in ty should be dereferenced
         derivation.traverse_and_recover_int_var(node_id, &ri.arg_var.id, &ri.old_id);
 
-        let pred_ty = if is_shared_ty {
-            match tmp_ret_ty.kind() {
-                TauKind::IArrow(x, t) => {
-                    let t = t.rename(x, &ri.old_id);
-                    Ty::mk_iarrow(ri.old_id, t)
-                }
-                TauKind::Proposition(_) | TauKind::Arrow(_, _) => panic!("program error"),
-            }
-        } else {
-            Tau::mk_iarrow(ri.old_id, tmp_ret_ty.clone())
-        };
+        // todo: conjoin the context
+        let pred_ty = Tau::mk_iarrow(ri.old_id, ret_ty.clone());
         // generate derivation and constraints
         derivation.subject_expansion_int(node_id, reduction, &pred_ty);
     }
@@ -661,8 +651,7 @@ impl Context {
         derivation: &mut Derivation,
         reduction: &Reduction,
         ri: &ReductionInfo,
-        is_shared_ty: bool,
-        tmp_ret_ty: &Ty,
+        ret_ty: &Ty,
     ) {
         // TODO: we also have to replace the expr of each node in the derivation
         let arg_derivations =
@@ -698,29 +687,17 @@ impl Context {
             )
         } else {
             // if a shared_ty is attached with the predicate we are focusing on, we have to use it
-            match &ri.arg.aux.tys {
-                Some(tys) => (tys.clone(), arg_derivations),
-                None => (
-                    arg_derivations
-                        .iter()
-                        .map(|d| d.root_ty().clone())
-                        .collect(),
-                    arg_derivations,
-                    //vec![arg_derivations.pop().unwrap()],
-                ),
-            }
+            (
+                arg_derivations
+                    .iter()
+                    .map(|d| d.root_ty().clone())
+                    .collect(),
+                arg_derivations,
+            )
         };
 
-        let pred_ty = if is_shared_ty {
-            match tmp_ret_ty.kind() {
-                TauKind::Arrow(ts, _) => tmp_ret_ty.clone(),
-                TauKind::IArrow(_, _) | TauKind::Proposition(_) => {
-                    panic!("program error")
-                }
-            }
-        } else {
-            Ty::mk_arrow(arg_ty.clone(), tmp_ret_ty.clone())
-        };
+        let pred_ty = Ty::mk_arrow(arg_ty.clone(), ret_ty.clone());
+
         pdebug!("pred_ty", pred_ty);
         // generate derivation and generate constraints
         derivation.subject_expansion_pred(node_id, arg_derivations, reduction, &pred_ty);
@@ -731,66 +708,13 @@ impl Context {
         let ret_ty = derivation.node_id_to_ty(&node_id).clone();
         let ri = &reduction.reduction_info;
 
-        // prepare a template type for predicate g
-        // if a shared_ty is attached with the predicate we are focusing on, we have to use it
-        let (tmp_ret_ty, is_shared_ty) = match &reduction.predicate.aux.tys {
-            Some(tys) => (tys[0].clone(), true),
-            None => {
-                let mut integers = if self.infer_polymorphic_type {
-                    reduction
-                        .predicate
-                        .aux
-                        .ints
-                        .clone()
-                        .iter()
-                        .cloned()
-                        .collect()
-                } else {
-                    reduction.argints.clone()
-                };
-                if ri.arg_var.ty.is_int() {
-                    integers.insert(ri.old_id);
-                }
-                (
-                    ret_ty.clone_with_rty_template(Atom::mk_true(), &mut integers),
-                    false,
-                )
-            }
-        };
-        debug!(
-            "shared type is {}. Type: {}",
-            if is_shared_ty { "enabled" } else { "disabled" },
-            tmp_ret_ty
-        );
-
         // case where the argument is an integer
         if ri.arg_var.ty.is_int() {
             // case where the argument is a predicate
-            self.expand_int_node(
-                node_id,
-                derivation,
-                reduction,
-                ri,
-                is_shared_ty,
-                &tmp_ret_ty,
-            )
+            self.expand_int_node(node_id, derivation, reduction, ri, &ret_ty)
         } else {
-            self.expand_pred_node(
-                node_id,
-                derivation,
-                reduction,
-                ri,
-                is_shared_ty,
-                &tmp_ret_ty,
-            )
+            self.expand_pred_node(node_id, derivation, reduction, ri, &ret_ty)
         };
-
-        // pdebug!(
-        //     "app_expr(",
-        //     reduction.app_expr.aux.id,
-        //     "): ",
-        //     reduction.app_expr
-        // );
     }
     fn infer_type_inner(&self, derivation: &mut Derivation, reduction: &Reduction) {
         title!("Reduction");
@@ -819,6 +743,7 @@ impl Context {
         &mut self,
         derivation: &Derivation,
     ) -> Option<(Model, Vec<chc::CHC<chc::Atom, Constraint>>, Derivation)> {
+        return None;
         let d = derivation.clone_with_template();
         let clauses: Vec<_> = d.collect_chcs().collect();
 
