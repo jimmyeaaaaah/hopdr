@@ -970,7 +970,12 @@ fn handle_app(
                         result_cts.push(Derivation::rule_app(
                             pred_expr.clone(),
                             pred_derivation.clone(),
-                            arg_derivation.iter().cloned(),
+                            arg_derivation
+                                .iter()
+                                .cloned()
+                                .collect::<Vec<_>>()
+                                .into_iter()
+                                .rev(),
                         ));
                     }
                 }
