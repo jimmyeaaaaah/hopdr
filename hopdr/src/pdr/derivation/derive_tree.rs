@@ -700,6 +700,65 @@ impl Derivation {
         let root_id = self.tree.root().id;
         self.update_expr_inner(root_id, expr)
     }
+
+    fn update_children(&mut self, node_id: ID, constraint: &Atom) {
+        let ty = &mut self.tree.update_node_by_id(node_id).ty;
+        *ty = ty.conjoin_constraint(constraint);
+
+        let children: Vec<_> = self
+            .tree
+            .get_children(node_id.to_node(&self.tree))
+            .map(|child| child.id)
+            .collect();
+        let n = self.get_node_by_id(node_id).item;
+        match n.rule {
+            Rule::Conjoin => {
+                assert_eq!(children.len(), 2);
+                self.update_children(children[0], constraint);
+                self.update_children(children[1], constraint);
+            }
+            Rule::Disjoin => {
+                assert_eq!(children.len(), 2);
+                self.update_children(children[0], constraint);
+                self.update_children(children[1], constraint);
+            }
+            Rule::Var => {}
+            Rule::Atom => (),
+            Rule::Univ => {
+                assert_eq!(children.len(), 1);
+                self.update_children(children[0], constraint);
+            }
+            Rule::IAbs => {
+                assert_eq!(children.len(), 1);
+                self.update_children(children[0], constraint);
+            }
+            Rule::Abs(_) => {
+                assert_eq!(children.len(), 1);
+                self.update_children(children[0], constraint);
+            }
+            Rule::IApp(_) => {
+                assert_eq!(children.len(), 1);
+                self.update_children(children[0], constraint);
+                for i in 1..children.len() {
+                    self.update_children(children[i], constraint);
+                }
+            }
+            Rule::App => {
+                assert!(children.len() >= 2);
+                self.update_children(children[0], constraint);
+                for i in 1..children.len() {
+                    self.update_children(children[i], constraint);
+                }
+            }
+            Rule::Subsumption => {
+                assert_eq!(children.len(), 1);
+            }
+            Rule::Equivalence => {
+                assert_eq!(children.len(), 1);
+                self.update_children(children[0], constraint);
+            }
+        }
+    }
     fn finalize_subject_expansion(
         &mut self,
         reduction: &super::Reduction,
@@ -710,7 +769,26 @@ impl Derivation {
             .unwrap()
             .id;
 
-        self.update_parents(target_node, int_substitution);
+        // TODO: this can be removed
+        self.update_parents(target_node, int_substitution.clone());
+
+        match int_substitution {
+            Some((x, o)) => {
+                // get the body of the predicate
+                let child = self
+                    .tree
+                    .get_one_child(self.tree.get_node_by_id(target_node));
+                pdebug!(child.item);
+                let child = self.tree.get_one_child(child);
+                let node_id = self.tree.get_one_child(child).id;
+
+                self.update_children(
+                    node_id,
+                    &Atom::mk_constraint(Constraint::mk_eq(Op::mk_var(x), o)),
+                );
+            }
+            None => (),
+        }
         // finally replace the expressions in the derivation with the expr before the reduction
         self.update_expr(&reduction.before_reduction)
     }
