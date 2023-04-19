@@ -14,7 +14,7 @@ use crate::formula::{
 };
 use crate::solver;
 use crate::util::Pretty;
-use crate::{highlight, pdebug, title};
+use crate::{pdebug, title};
 
 use rpds::Stack;
 
@@ -588,7 +588,6 @@ struct Context {
     normal_form: G,
     track_idents: HashMap<Ident, Vec<Ident>>,
     reduction_sequence: Vec<Reduction>,
-    infer_polymorphic_type: bool,
 }
 
 impl Context {
@@ -596,15 +595,12 @@ impl Context {
         normal_form: G,
         track_idents: HashMap<Ident, Vec<Ident>>,
         reduction_sequence: Vec<Reduction>,
-        config: InferenceConfig,
     ) -> Context {
         // default
-        let infer_polymorphic_type = config.infer_polymorphic_type;
         Context {
             normal_form,
             track_idents,
             reduction_sequence,
-            infer_polymorphic_type,
         }
     }
     fn retrieve_from_track_idents(&self, model: &chc::Model, derivation: &Derivation) -> TyEnv {
@@ -626,16 +622,12 @@ impl Context {
     ///// aux functions end
     // (\x. g) g' -> [g'/x] g
     fn expand_node(&self, node_id: tree::ID, derivation: &mut Derivation, reduction: &Reduction) {
-        // if ret_ty_idx > 0, then we push calculated types to derivation without "already exists" check
-        let ret_ty = derivation.node_id_to_ty(&node_id).clone();
-        let ri = &reduction.reduction_info;
-
         // case where the argument is an integer
-        if ri.arg_var.ty.is_int() {
+        if reduction.reduction_info.arg_var.ty.is_int() {
             // case where the argument is a predicate
-            derivation.subject_expansion_int(node_id, reduction, &ret_ty)
+            derivation.subject_expansion_int(node_id, reduction)
         } else {
-            derivation.subject_expansion_pred(node_id, reduction, &ret_ty);
+            derivation.subject_expansion_pred(node_id, reduction);
         };
     }
     fn infer_type_inner(&self, derivation: &mut Derivation, reduction: &Reduction) {
@@ -1273,7 +1265,6 @@ pub fn type_check_top(candidate: &Candidate, tenv: &TyEnv) -> bool {
 fn reduce_until_normal_form(
     candidate: &Candidate,
     problem: &Problem,
-    config: InferenceConfig,
     optimizer: &mut dyn Optimizer,
 ) -> Context {
     let mut track_idents = HashMap::new();
@@ -1284,7 +1275,7 @@ fn reduce_until_normal_form(
     let goal = goal.calculate_free_variables();
     title!("generate_reduction_sequence");
     let (reduction_sequence, normal_form) = generate_reduction_sequence(&goal, optimizer);
-    Context::new(normal_form, track_idents, reduction_sequence, config)
+    Context::new(normal_form, track_idents, reduction_sequence)
 }
 
 /// Since type environment can contain multiple candidate types,
@@ -1468,7 +1459,7 @@ pub fn search_for_type(
     const SHARED: bool = false;
     let mut optimizer = optimizer::VoidOptimizer::new();
     while optimizer.continuable() {
-        let mut ctx = reduce_until_normal_form(candidate, problem, config, &mut optimizer);
+        let mut ctx = reduce_until_normal_form(candidate, problem, &mut optimizer);
         debug!("{}", ctx.normal_form);
         // If type_check_top_with_derivation fails, it's not related to
         // optimizers or shared_type issues. Instead, it indicates that

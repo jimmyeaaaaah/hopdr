@@ -714,13 +714,10 @@ impl Derivation {
         // finally replace the expressions in the derivation with the expr before the reduction
         self.update_expr(&reduction.before_reduction)
     }
-    pub fn subject_expansion_int(
-        &mut self,
-        node_id: ID,
-        reduction: &super::Reduction,
-        ret_ty: &Ty,
-    ) {
+    pub fn subject_expansion_int(&mut self, node_id: ID, reduction: &super::Reduction) {
         let ri = &reduction.reduction_info;
+        let ret_ty = self.node_id_to_ty(&node_id).clone();
+
         // constructing body derivation
         let arg_derivations =
             self.replace_derivation_at_level_with_var(node_id, &ri.level, ri.arg_var.id);
@@ -761,12 +758,7 @@ impl Derivation {
         self.tree = t;
         self.finalize_subject_expansion(reduction, Some((x, op)));
     }
-    pub fn subject_expansion_pred(
-        &mut self,
-        node_id: ID,
-        reduction: &super::Reduction,
-        ret_ty: &Ty,
-    ) {
+    pub fn subject_expansion_pred(&mut self, node_id: ID, reduction: &super::Reduction) {
         let ri = &reduction.reduction_info;
         let arg_derivations =
             self.replace_derivation_at_level_with_var(node_id, &ri.level, ri.arg_var.id);

@@ -411,7 +411,6 @@ impl<T> Tree<T> {
         let mut cur = base;
         let mut prev = None;
         loop {
-            let target = self.items.get(&cur).unwrap();
             let (cont, t) = predicate(self, cur, prev);
             *self.items.get_mut(&cur).unwrap() = t;
             if cont {
