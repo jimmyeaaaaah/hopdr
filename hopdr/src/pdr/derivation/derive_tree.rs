@@ -46,7 +46,7 @@ impl std::fmt::Display for Rule {
             Rule::IApp(_) => "IApp",
             Rule::App => "App",
             Rule::Subsumption => "Sub",
-            Rule::Equivalence => "Weakening",
+            Rule::Equivalence => "Equi",
             Rule::Atom => "Atom",
         };
         write!(f, "{}", s)
@@ -346,8 +346,8 @@ impl Derivation {
     }
     pub fn rule_equivalence(mut d: Self, ty: Ty) -> Self {
         let child_id = d.tree.root().id;
-        reset_expr_for_subsumption(&mut d.tree.update_node_by_id(child_id).expr);
         let root = DeriveNode::equivalence(d.tree.root().item, ty);
+        reset_expr_for_subsumption(&mut d.tree.update_node_by_id(child_id).expr);
         let d = Self::rule_one_arg_inner(root, d);
         d
     }
@@ -739,7 +739,6 @@ impl Derivation {
             let op: Op = reduction.reduction_info.arg.clone().into();
             let eq_constr =
                 Atom::mk_constraint(Constraint::mk_eq(Op::mk_var(ri.old_id.clone()), op.clone()));
-            // todo: conjoin the context
             let pred_ty = Tau::mk_iarrow(ri.old_id, ret_ty.clone());
             let pred_ty = pred_ty.conjoin_constraint_to_rty(&eq_constr);
 
@@ -749,6 +748,7 @@ impl Derivation {
                 .ty = pred_ty;
 
             let app_deriv = Derivation::rule_iapp(reduction.app_expr.clone(), tmp_deriv, &op);
+            let app_deriv = Derivation::rule_equivalence(app_deriv, ret_ty.subst(&ri.old_id, &op));
             app_deriv.tree
         });
 
@@ -953,10 +953,14 @@ impl Derivation {
         fn go(d: &Derivation, node_id: ID, ints: &Stack<Ident>) -> bool {
             let n = d.get_node_by_id(node_id);
             let fvs = n.item.ty.fv();
-            assert!(fvs
+            if !fvs
                 .difference(&ints.iter().cloned().collect())
                 .next()
-                .is_none());
+                .is_none()
+            {
+                pdebug!("fail: ", n.item);
+                panic!("derivation is not well-formed");
+            };
             match n.item.rule {
                 Rule::Var | Rule::Atom => {
                     d.tree.get_no_child(n);
