@@ -30,6 +30,7 @@ pub enum Rule {
     IApp(Op),
     App,
     Subsumption,
+    Equivalence,
     Atom,
 }
 
@@ -45,6 +46,7 @@ impl std::fmt::Display for Rule {
             Rule::IApp(_) => "IApp",
             Rule::App => "App",
             Rule::Subsumption => "Sub",
+            Rule::Equivalence => "Weakening",
             Rule::Atom => "Atom",
         };
         write!(f, "{}", s)
@@ -139,6 +141,11 @@ impl DeriveNode {
         let mut expr = node.expr.clone();
         // reset the information
         reset_expr_for_subsumption(&mut expr);
+        DeriveNode { rule, expr, ty }
+    }
+    fn equivalence(node: &Self, ty: Ty) -> Self {
+        let rule = Rule::Equivalence;
+        let expr = node.expr.clone();
         DeriveNode { rule, expr, ty }
     }
     fn app(expr: G, pred_node: &Self) -> Self {
@@ -334,6 +341,13 @@ impl Derivation {
     pub fn rule_subsumption(d: Self, ty: Ty) -> Self {
         let child = d.tree.root();
         let root = DeriveNode::subsumption(child.item, ty);
+        let d = Self::rule_one_arg_inner(root, d);
+        d
+    }
+    pub fn rule_equivalence(mut d: Self, ty: Ty) -> Self {
+        let child_id = d.tree.root().id;
+        reset_expr_for_subsumption(&mut d.tree.update_node_by_id(child_id).expr);
+        let root = DeriveNode::equivalence(d.tree.root().item, ty);
         let d = Self::rule_one_arg_inner(root, d);
         d
     }
@@ -575,7 +589,7 @@ impl Derivation {
                                     panic!("program error")
                                 }
                             }
-                            Rule::Subsumption => {
+                            Rule::Equivalence | Rule::Subsumption => {
                                 let children: Vec<_> = t
                                     .get_children(t.get_node_by_id(cur))
                                     .map(|child| child.item)
@@ -669,6 +683,17 @@ impl Derivation {
                 reset_expr_for_subsumption(&mut expr);
                 self.tree.update_node_by_id(node_id).expr = expr.clone();
             }
+            Rule::Equivalence => {
+                assert_eq!(children.len(), 1);
+                self.update_expr_inner(children[0], &expr);
+
+                let mut expr = expr.clone();
+                reset_expr_for_subsumption(&mut expr);
+
+                // Unlike the case for subsumption, we replace the original one
+                // so that we can refer to the more general type afterwards.
+                self.tree.update_node_by_id(children[0]).expr = expr.clone();
+            }
         }
     }
     fn update_expr(&mut self, expr: &G) {
@@ -719,7 +744,7 @@ impl Derivation {
                 Atom::mk_constraint(Constraint::mk_eq(Op::mk_var(ri.old_id.clone()), op.clone()));
             // todo: conjoin the context
             let pred_ty = Tau::mk_iarrow(ri.old_id, ret_ty.clone());
-            let pred_ty = pred_ty.conjoin_constraint(&eq_constr);
+            let pred_ty = pred_ty.conjoin_constraint_to_rty(&eq_constr);
 
             tmp_deriv
                 .tree
@@ -903,8 +928,8 @@ impl Derivation {
                 let d3 = Self::rule_subsumption(d1, ty3);
                 Self::rule_app(expr, d3, std::iter::once(d2))
             }
-            // skip subsumption
-            Rule::Subsumption => {
+            // skip subsumption and equivalence
+            Rule::Equivalence | Rule::Subsumption => {
                 let child = self.tree.get_one_child(n);
                 let d = self.clone_with_template_inner(child.id, env, ints);
                 d
@@ -963,7 +988,7 @@ impl Derivation {
                     let child = d.tree.get_one_child(n);
                     go(d, child.id, &ints)
                 }
-                Rule::IApp(_) | Rule::Abs(_) | Rule::Subsumption => {
+                Rule::IApp(_) | Rule::Abs(_) | Rule::Subsumption | Rule::Equivalence => {
                     let child = d.tree.get_one_child(n);
                     go(d, child.id, ints)
                 }
