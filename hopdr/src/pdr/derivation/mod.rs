@@ -702,7 +702,7 @@ impl Context {
             pdebug!("derivation ", reduction.reduction_info.level);
             pdebug!(derivation);
         }
-        debug!("checking sanity... {}", derivation.check_sanity());
+        debug!("checking sanity... {}", derivation.check_sanity(false));
 
         // try to infer a type with shared type.
         let (m, clauses, derivation) = match self.infer_with_shared_type(&derivation) {
@@ -1176,8 +1176,13 @@ fn type_check(
         construct_derivation: false,
     };
     let pt = handle_abs(&config, tenv, ienv, &mut all_coefficients, c, &t.ty);
-    //pt.coarse_type(constraint, t);
-    pt.check_derivation().is_some()
+    match pt.check_derivation() {
+        Some(d) => {
+            debug_assert!(d.check_sanity(true));
+            true
+        }
+        None => false,
+    }
 }
 
 /// ε; true ; Γ ⊢ ψ : •<T>
@@ -1206,7 +1211,10 @@ fn type_check_top_with_derivation(psi: &G, tenv: &mut Env) -> Option<Derivation>
     let pt = pt.coarse_type(&Ty::mk_prop_ty(Atom::mk_true()));
 
     // check if there is an actually possible derivation
-    pt.check_derivation()
+    pt.check_derivation().map(|d| {
+        debug_assert!(d.check_sanity(true));
+        d
+    })
 }
 
 /// ε; true ; Γ ⊢ ψ : •<T>
@@ -1473,7 +1481,7 @@ pub fn search_for_type(
 
         pdebug!("[derivation]");
         pdebug!(derivation);
-        debug!("checking sanity... {}", derivation.check_sanity());
+        debug!("checking sanity... {}", derivation.check_sanity(false));
         //crate::util::wait_for_line();
         match ctx.infer_type(derivation) {
             Some(x) => {

@@ -948,15 +948,18 @@ impl Derivation {
     }
     #[allow(dead_code)]
     /// This function is used to check that the derivation is well-formed
-    pub fn check_sanity(&self) -> bool {
+    /// if strict flag is enabled, then check_sanity checks if the given derivation tree
+    /// is well-formed in the sense that all free variables of each type are bound.
+    pub fn check_sanity(&self, strict: bool) -> bool {
         // now only check if app is sane since others are probably fine
-        fn go(d: &Derivation, node_id: ID, ints: &Stack<Ident>) -> bool {
+        fn go(d: &Derivation, node_id: ID, ints: &Stack<Ident>, strict: bool) -> bool {
             let n = d.get_node_by_id(node_id);
             let fvs = n.item.ty.fv();
-            if !fvs
-                .difference(&ints.iter().cloned().collect())
-                .next()
-                .is_none()
+            if strict
+                && !fvs
+                    .difference(&ints.iter().cloned().collect())
+                    .next()
+                    .is_none()
             {
                 pdebug!("fail: ", n.item);
                 panic!("derivation is not well-formed");
@@ -968,25 +971,25 @@ impl Derivation {
                 }
                 Rule::Conjoin | Rule::Disjoin => {
                     let (child1, child2) = d.tree.get_two_children(n);
-                    go(d, child1.id, ints) && go(d, child2.id, ints)
+                    go(d, child1.id, ints, strict) && go(d, child2.id, ints, strict)
                 }
                 Rule::IAbs => {
                     let x = n.item.expr.abs().0;
                     assert!(x.ty.is_int());
                     let ints = ints.push(x.id);
                     let child = d.tree.get_one_child(n);
-                    go(d, child.id, &ints)
+                    go(d, child.id, &ints, strict)
                 }
                 Rule::Univ => {
                     let x = n.item.expr.univ().0;
                     assert!(x.ty.is_int());
                     let ints = ints.push(x.id);
                     let child = d.tree.get_one_child(n);
-                    go(d, child.id, &ints)
+                    go(d, child.id, &ints, strict)
                 }
                 Rule::IApp(_) | Rule::Abs(_) | Rule::Subsumption | Rule::Equivalence => {
                     let child = d.tree.get_one_child(n);
-                    go(d, child.id, ints)
+                    go(d, child.id, ints, strict)
                 }
                 Rule::App => {
                     let children: Vec<_> = d.tree.get_children(n).collect();
@@ -997,24 +1000,28 @@ impl Derivation {
                         .collect();
                     let body_tys = pred_ty.arrow().0;
                     // subsumption
-                    debug!("subsumption");
-                    for body_ty in body_tys.iter() {
-                        crate::pdebug!(body_ty);
-                    }
-                    debug!("<:");
-                    for body_ty in arg_tys.iter() {
-                        crate::pdebug!(body_ty);
-                    }
-                    assert!(body_tys
+                    if !body_tys
                         .iter()
                         .filter(|x| !x.is_bot())
                         .zip(arg_tys.iter().filter(|x| !x.is_bot()))
-                        .all(|(t1, t2)| t1 == t2));
+                        .all(|(t1, t2)| t1 == t2)
+                    {
+                        debug!("subsumption");
+                        for body_ty in body_tys.iter() {
+                            crate::pdebug!(body_ty);
+                        }
+                        debug!("<:");
+                        for body_ty in arg_tys.iter() {
+                            crate::pdebug!(body_ty);
+                        }
+                        debug!("is wrong");
+                        panic!();
+                    }
 
-                    children.iter().all(|c| go(d, c.id, ints))
+                    children.iter().all(|c| go(d, c.id, ints, strict))
                 }
             }
         }
-        go(self, self.tree.root().id, &Stack::new())
+        go(self, self.tree.root().id, &Stack::new(), strict)
     }
 }
