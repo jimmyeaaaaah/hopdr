@@ -896,6 +896,15 @@ fn handle_app(
                             vec![d]
                         }
                     };
+                    // we introduce context_ty's information to the predicate's type
+                    let c = cty.rty_no_exists();
+                    let types = types
+                        .into_iter()
+                        .map(|d| {
+                            let t = d.root_ty().conjoin_constraint(&c);
+                            Derivation::rule_subsumption(d, t)
+                        })
+                        .collect();
                     PossibleDerivation::new(types)
                 }
                 None => PossibleDerivation::empty(),
