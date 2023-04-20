@@ -764,7 +764,9 @@ impl Derivation {
                 // TODO: add updated variable
                 let id = n.expr.abs().0.id;
                 let mut ctx = ctx;
-                ctx.ident.push_mut(id);
+                if !ctx.subsumption_reached {
+                    ctx.ident.push_mut(id);
+                }
                 self.update_children(children[0], constraint, ctx);
             }
             Rule::IApp(_) => {
