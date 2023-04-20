@@ -375,11 +375,12 @@ impl<C: Refinement> Tau<C> {
         }
         go(self, constraint, Polarity::Positive)
     }
+
     /// conjoin c as the context
-    pub fn conjoin_constraint(&self, c: &C) -> Self {
+    pub fn conjoin_constraint_to_arg(&self, c: &C) -> Self {
         match self.kind() {
             TauKind::Proposition(c_old) => {
-                let c_new = C::mk_conj(c_old.clone(), c.clone());
+                let c_new = C::mk_disj(c.clone().negate().unwrap(), c_old.clone());
                 Self::mk_prop_ty(c_new)
             }
             TauKind::IArrow(i, t) => {
@@ -389,6 +390,25 @@ impl<C: Refinement> Tau<C> {
             TauKind::Arrow(ts, t) => {
                 let t = t.conjoin_constraint(c);
                 let ts = ts.iter().map(|t| t.conjoin_constraint(c)).collect();
+                Self::mk_arrow(ts, t)
+            }
+        }
+    }
+
+    /// conjoin c as the context
+    pub fn conjoin_constraint(&self, c: &C) -> Self {
+        match self.kind() {
+            TauKind::Proposition(c_old) => {
+                let c_new = C::mk_conj(c.clone(), c_old.clone());
+                Self::mk_prop_ty(c_new)
+            }
+            TauKind::IArrow(i, t) => {
+                let t = t.conjoin_constraint(c);
+                Self::mk_iarrow(*i, t)
+            }
+            TauKind::Arrow(ts, t) => {
+                let t = t.conjoin_constraint(c);
+                let ts = ts.iter().map(|t| t.conjoin_constraint_to_arg(c)).collect();
                 Self::mk_arrow(ts, t)
             }
         }

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use super::tree::*;
 use super::{Atom, Ty, G};
@@ -192,6 +192,14 @@ where
         }
     }
     s
+}
+
+// used in update_children
+#[derive(Clone)]
+struct UpdateChildrenContext {
+    arg: bool,
+    subsumption_reached: bool,
+    ident: Stack<Ident>,
 }
 
 impl Derivation {
@@ -701,10 +709,16 @@ impl Derivation {
         self.update_expr_inner(root_id, expr)
     }
 
-    fn update_children(&mut self, node_id: ID, constraint: &Atom) {
+    fn update_children(&mut self, node_id: ID, constraint: &Atom, ctx: UpdateChildrenContext) {
         let ty = &mut self.tree.update_node_by_id(node_id).ty;
         let original_ty = ty.clone();
-        *ty = ty.conjoin_constraint_to_rty(constraint);
+        if !ctx.subsumption_reached {
+            if ctx.arg {
+                *ty = ty.conjoin_constraint_to_arg(constraint);
+            } else {
+                *ty = ty.conjoin_constraint(constraint);
+            }
+        }
 
         let children: Vec<_> = self
             .tree
@@ -715,17 +729,21 @@ impl Derivation {
         match n.rule {
             Rule::Conjoin => {
                 assert_eq!(children.len(), 2);
-                self.update_children(children[0], constraint);
-                self.update_children(children[1], constraint);
+                self.update_children(children[0], constraint, ctx.clone());
+                self.update_children(children[1], constraint, ctx);
             }
             Rule::Disjoin => {
                 assert_eq!(children.len(), 2);
-                self.update_children(children[0], constraint);
-                self.update_children(children[1], constraint);
+                self.update_children(children[0], constraint, ctx.clone());
+                self.update_children(children[1], constraint, ctx);
             }
             Rule::Var | Rule::Atom => {
                 let mut n = n.clone();
-                n.ty = original_ty;
+                if matches!(n.rule, Rule::Var) && ctx.ident.iter().any(|x| x == n.expr.var()) {
+                    n.ty = original_ty.conjoin_constraint_to_arg(constraint);
+                } else {
+                    n.ty = original_ty;
+                }
                 let t = Tree::singleton(n);
                 self.tree.insert_children_at(node_id, 0, t);
                 self.tree.update_node_by_id(node_id).rule = Rule::Subsumption;
@@ -733,36 +751,45 @@ impl Derivation {
             }
             Rule::Univ => {
                 assert_eq!(children.len(), 1);
-                self.update_children(children[0], constraint);
+                self.update_children(children[0], constraint, ctx);
             }
             Rule::IAbs => {
                 assert_eq!(children.len(), 1);
-                self.update_children(children[0], constraint);
+                self.update_children(children[0], constraint, ctx);
             }
             Rule::Abs(_) => {
                 assert_eq!(children.len(), 1);
-                self.update_children(children[0], constraint);
+                // TODO: add updated variable
+                let id = n.expr.abs().0.id;
+                let mut ctx = ctx;
+                ctx.ident.push_mut(id);
+                self.update_children(children[0], constraint, ctx);
             }
             Rule::IApp(_) => {
                 assert_eq!(children.len(), 1);
-                self.update_children(children[0], constraint);
+                self.update_children(children[0], constraint, ctx.clone());
                 for i in 1..children.len() {
-                    self.update_children(children[i], constraint);
+                    self.update_children(children[i], constraint, ctx.clone());
                 }
             }
             Rule::App => {
                 assert!(children.len() >= 2);
-                self.update_children(children[0], constraint);
+                self.update_children(children[0], constraint, ctx.clone());
+                let mut ctx = ctx.clone();
+                ctx.arg = true;
                 for i in 1..children.len() {
-                    self.update_children(children[i], constraint);
+                    self.update_children(children[i], constraint, ctx.clone());
                 }
             }
             Rule::Subsumption => {
                 assert_eq!(children.len(), 1);
+                let mut ctx = ctx.clone();
+                ctx.subsumption_reached = true;
+                self.update_children(children[0], constraint, ctx);
             }
             Rule::Equivalence => {
                 assert_eq!(children.len(), 1);
-                self.update_children(children[0], constraint);
+                self.update_children(children[0], constraint, ctx.clone());
             }
         }
     }
@@ -789,9 +816,16 @@ impl Derivation {
                 let child = self.tree.get_one_child(child);
                 let node_id = self.tree.get_one_child(child).id;
 
+                let ctx = UpdateChildrenContext {
+                    subsumption_reached: false,
+                    arg: false,
+                    ident: Stack::new(),
+                };
+
                 self.update_children(
                     node_id,
                     &Atom::mk_constraint(Constraint::mk_eq(Op::mk_var(x), o)),
+                    ctx,
                 );
             }
             None => (),
@@ -969,9 +1003,10 @@ impl Derivation {
                 let ty = env
                     .get(v)
                     .map(|ty_map| {
-                        ty_map
-                            .get(&n.item.ty)
-                            .expect(&format!("failed to found {}", n.item.ty.pretty_display()))
+                        ty_map.get(&n.item.ty).expect(&format!(
+                            "failed to found {v} {}",
+                            n.item.ty.pretty_display()
+                        ))
                     })
                     .cloned()
                     .unwrap_or_else(|| n.item.ty.clone());
