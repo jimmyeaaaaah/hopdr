@@ -701,9 +701,9 @@ impl Derivation {
         self.update_expr_inner(root_id, expr)
     }
 
-    // subsumptionまで伝播させて、それを引き戻してくるような感じにしたほうがいい
     fn update_children(&mut self, node_id: ID, constraint: &Atom) {
         let ty = &mut self.tree.update_node_by_id(node_id).ty;
+        let original_ty = ty.clone();
         *ty = ty.conjoin_constraint_to_rty(constraint);
 
         let children: Vec<_> = self
@@ -723,7 +723,14 @@ impl Derivation {
                 self.update_children(children[0], constraint);
                 self.update_children(children[1], constraint);
             }
-            Rule::Var | Rule::Atom => (), // FIXME: these cases should not occur?
+            Rule::Var | Rule::Atom => {
+                let mut n = n.clone();
+                n.ty = original_ty;
+                let t = Tree::singleton(n);
+                self.tree.insert_children_at(node_id, 0, t);
+                self.tree.update_node_by_id(node_id).rule = Rule::Subsumption;
+                reset_expr_for_subsumption(&mut self.tree.update_node_by_id(node_id).expr);
+            }
             Rule::Univ => {
                 assert_eq!(children.len(), 1);
                 self.update_children(children[0], constraint);
