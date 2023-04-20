@@ -885,7 +885,7 @@ impl Derivation {
         for arg_d in arg_derivations {
             let mut should_append = true;
             for d2 in arg_derivations_new.iter() {
-                if arg_d.root_ty() == d2.root_ty() {
+                if arg_d.root_ty() == d2.root_ty() || d2.root_ty().is_bot() {
                     // already exists
                     highlight!("arg derivations already exists");
                     pdebug!(arg_d, " vs ", d2);
@@ -1003,10 +1003,15 @@ impl Derivation {
                 let ty = env
                     .get(v)
                     .map(|ty_map| {
-                        ty_map.get(&n.item.ty).expect(&format!(
-                            "failed to found {v} {}",
-                            n.item.ty.pretty_display()
-                        ))
+                        // if its bot type, we don't have to care about it
+                        if n.item.ty.is_bot() {
+                            ty_map.iter().next().unwrap().1
+                        } else {
+                            ty_map.get(&n.item.ty).expect(&format!(
+                                "failed to found {v} {}",
+                                n.item.ty.pretty_display()
+                            ))
+                        }
                     })
                     .cloned()
                     .unwrap_or_else(|| n.item.ty.clone());
