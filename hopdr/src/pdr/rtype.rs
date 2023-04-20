@@ -562,6 +562,25 @@ impl<C: Refinement> Tau<C> {
     pub fn mk_arrow(t: Vec<Tau<C>>, s: Tau<C>) -> Tau<C> {
         Tau::new(TauKind::Arrow(t, s))
     }
+    pub fn optimize_trivial_intersection(&self) -> Self {
+        match self.kind() {
+            TauKind::Proposition(c) => Self::mk_prop_ty(c.clone()),
+            TauKind::IArrow(x, t) => Self::mk_iarrow(*x, t.optimize_trivial_intersection()),
+            TauKind::Arrow(ts, t) => {
+                let t_fst = ts[0].clone();
+                let mut ts: Vec<_> = ts
+                    .iter()
+                    .map(|t| t.optimize_trivial_intersection())
+                    .filter(|t| !t.is_bot())
+                    .collect();
+                if ts.len() == 0 {
+                    // t_fst must be bot ty where all bot types are filtered out.
+                    ts.push(t_fst);
+                }
+                Tau::mk_arrow(ts, t.optimize_trivial_intersection())
+            }
+        }
+    }
     pub fn prop<'a>(&'a self) -> &'a C {
         match self.kind() {
             TauKind::Proposition(c) => c,
