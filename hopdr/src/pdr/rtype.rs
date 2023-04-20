@@ -145,6 +145,8 @@ impl<C: Refinement> PartialEq for Tau<C> {
     }
 }
 
+impl<C: Refinement> Eq for Tau<C> {}
+
 pub trait TTop {
     fn mk_top(st: &SType) -> Self;
     fn is_top(&self) -> bool;

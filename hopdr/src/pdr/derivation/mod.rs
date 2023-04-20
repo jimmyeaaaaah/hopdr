@@ -657,8 +657,7 @@ impl Context {
         &mut self,
         derivation: &Derivation,
     ) -> Option<(Model, Vec<chc::CHC<chc::Atom, Constraint>>, Derivation)> {
-        return None;
-        let d = derivation.clone_with_template();
+        let d = derivation.clone_with_template(true);
         let clauses: Vec<_> = d.collect_chcs().collect();
 
         crate::title!("infer_with_shared_type");
@@ -682,6 +681,7 @@ impl Context {
             pdebug!(c);
         }
         // TODO: insert template types for each use of lambda abstraction
+
         // 4. solve the constraints by using the interpolation solver
         match solver::chc::default_solver().solve(&clauses) {
             solver::chc::CHCResult::Sat(m) => Some((m, clauses, derivation)),
