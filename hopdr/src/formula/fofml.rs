@@ -8,7 +8,7 @@ use crate::solver;
 use crate::solver::smt;
 use crate::util::P;
 
-#[derive(Debug)]
+#[derive(Debug, Hash)]
 pub enum AtomKind {
     True, // equivalent to Constraint(True). just for optimization purpose
     Constraint(Constraint),

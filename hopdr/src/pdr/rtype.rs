@@ -1,6 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     fmt::{self, Display},
+    hash::Hash,
 };
 
 use crate::{formula, formula::hes::Goal, solver, solver::smt};
@@ -19,7 +20,7 @@ use crate::{
 
 use rpds::Stack;
 
-#[derive(Debug)]
+#[derive(Debug, Hash)]
 pub enum TauKind<C> {
     Proposition(C),
     IArrow(Ident, Tau<C>),
@@ -41,6 +42,7 @@ pub trait Refinement:
     + Rename
     + From<Goal<Self>>
     + DerefPtr
+    + Hash
     + fmt::Display
     + Pretty
     + Precedence
@@ -59,6 +61,7 @@ impl<T> Refinement for T where
         + Rename
         + From<Goal<Self>>
         + DerefPtr
+        + Hash
         + fmt::Display
         + Pretty
         + Precedence

@@ -681,6 +681,7 @@ impl Context {
         for c in clauses.iter() {
             pdebug!(c);
         }
+        // TODO: insert template types for each use of lambda abstraction
         // 4. solve the constraints by using the interpolation solver
         match solver::chc::default_solver().solve(&clauses) {
             solver::chc::CHCResult::Sat(m) => Some((m, clauses, derivation)),

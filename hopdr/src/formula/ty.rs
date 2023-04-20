@@ -5,7 +5,7 @@ use std::fmt;
 
 use super::{Ident, TeXFormat, TeXPrinter};
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum TypeKind {
     Proposition,
     Integer,

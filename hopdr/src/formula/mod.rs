@@ -16,7 +16,7 @@ use crate::util::global_counter;
 use crate::util::Pretty;
 pub use crate::util::P;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum PredKind {
     Eq,
     Neq,
@@ -44,7 +44,7 @@ impl PredKind {
         }
     }
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum OpKind {
     Add,
     Sub,
@@ -59,7 +59,7 @@ impl fmt::Display for OpKind {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum QuantifierKind {
     Universal,
     Existential,
@@ -92,7 +92,7 @@ impl QuantifierKind {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash)]
 pub enum OpExpr {
     Op(OpKind, Op, Op),
     Var(Ident),
@@ -698,7 +698,7 @@ pub trait AlphaEquivalence {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Hash)]
 pub enum ConstraintExpr {
     True,
     False,
@@ -1206,7 +1206,7 @@ impl From<u64> for Ident {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Hash)]
 pub struct VariableS {
     pub id: Ident,
     pub ty: Type,
