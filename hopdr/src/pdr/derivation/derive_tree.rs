@@ -886,19 +886,13 @@ impl Derivation {
         let mut arg_derivations_new: Vec<Derivation> = Vec::new();
         for arg_d in arg_derivations {
             let mut should_append = true;
-            if arg_d.root_ty().is_bot() {
-                highlight!("arg_d's root type is bot");
-                pdebug!(arg_d);
-                should_append = false;
-            } else {
-                for d2 in arg_derivations_new.iter() {
-                    if arg_d.root_ty() == d2.root_ty() {
-                        // already exists
-                        highlight!("arg derivations already exists");
-                        pdebug!(arg_d, " vs ", d2);
-                        should_append = false;
-                        break;
-                    }
+            for d2 in arg_derivations_new.iter() {
+                if arg_d.root_ty() == d2.root_ty() {
+                    // already exists
+                    highlight!("arg derivations already exists");
+                    pdebug!(arg_d, " vs ", d2);
+                    should_append = false;
+                    break;
                 }
             }
             if should_append {

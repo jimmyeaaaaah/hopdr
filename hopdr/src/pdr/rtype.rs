@@ -560,12 +560,6 @@ impl<C: Refinement> Tau<C> {
         }
     }
     pub fn mk_arrow(t: Vec<Tau<C>>, s: Tau<C>) -> Tau<C> {
-        let t_fst = t[0].clone();
-        let mut t: Vec<_> = t.into_iter().filter(|t| !t.is_bot()).collect();
-        if t.len() == 0 {
-            // t_fst must be bot ty where all bot types are filtered out.
-            t.push(t_fst);
-        }
         Tau::new(TauKind::Arrow(t, s))
     }
     pub fn prop<'a>(&'a self) -> &'a C {
