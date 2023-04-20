@@ -712,6 +712,7 @@ impl Derivation {
     fn update_children(&mut self, node_id: ID, constraint: &Atom, ctx: UpdateChildrenContext) {
         let ty = &mut self.tree.update_node_by_id(node_id).ty;
         let original_ty = ty.clone();
+        debug!("before: {}", ty.pretty_display());
         if !ctx.subsumption_reached {
             if ctx.arg {
                 *ty = ty.conjoin_constraint_to_arg(constraint);
@@ -719,6 +720,7 @@ impl Derivation {
                 *ty = ty.conjoin_constraint(constraint);
             }
         }
+        debug!("after (update_children): {}", ty.pretty_display());
 
         let children: Vec<_> = self
             .tree
@@ -884,18 +886,24 @@ impl Derivation {
         let mut arg_derivations_new: Vec<Derivation> = Vec::new();
         for arg_d in arg_derivations {
             let mut should_append = true;
-            for d2 in arg_derivations_new.iter() {
-                if arg_d.root_ty() == d2.root_ty() || d2.root_ty().is_bot() {
-                    // already exists
-                    highlight!("arg derivations already exists");
-                    pdebug!(arg_d, " vs ", d2);
-                    should_append = false;
-                    break;
+            if arg_d.root_ty().is_bot() {
+                highlight!("arg_d's root type is bot");
+                pdebug!(arg_d);
+                should_append = false;
+            } else {
+                for d2 in arg_derivations_new.iter() {
+                    if arg_d.root_ty() == d2.root_ty() {
+                        // already exists
+                        highlight!("arg derivations already exists");
+                        pdebug!(arg_d, " vs ", d2);
+                        should_append = false;
+                        break;
+                    }
                 }
             }
-            highlight!("expand node");
-            pdebug!(arg_d, should_append);
             if should_append {
+                highlight!("expand node");
+                pdebug!(arg_d, should_append);
                 arg_derivations_new.push(arg_d);
             }
         }

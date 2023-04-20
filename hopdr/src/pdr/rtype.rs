@@ -384,12 +384,12 @@ impl<C: Refinement> Tau<C> {
                 Self::mk_prop_ty(c_new)
             }
             TauKind::IArrow(i, t) => {
-                let t = t.conjoin_constraint(c);
+                let t = t.conjoin_constraint_to_arg(c);
                 Self::mk_iarrow(*i, t)
             }
             TauKind::Arrow(ts, t) => {
-                let t = t.conjoin_constraint(c);
-                let ts = ts.iter().map(|t| t.conjoin_constraint(c)).collect();
+                let t = t.conjoin_constraint_to_arg(c);
+                let ts = ts.iter().map(|t| t.conjoin_constraint_to_arg(c)).collect();
                 Self::mk_arrow(ts, t)
             }
         }
