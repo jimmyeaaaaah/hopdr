@@ -380,7 +380,8 @@ impl<C: Refinement> Tau<C> {
     pub fn conjoin_constraint_to_arg(&self, c: &C) -> Self {
         match self.kind() {
             TauKind::Proposition(c_old) => {
-                let c_new = C::mk_disj(c.clone().negate().unwrap(), c_old.clone());
+                //let c_new = C::mk_disj(c.clone().negate().unwrap(), c_old.clone());
+                let c_new = C::mk_conj(c.clone(), c_old.clone());
                 Self::mk_prop_ty(c_new)
             }
             TauKind::IArrow(i, t) => {

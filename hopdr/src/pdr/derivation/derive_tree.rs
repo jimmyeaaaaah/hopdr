@@ -972,7 +972,7 @@ impl Derivation {
     fn clone_with_template_inner(
         &self,
         node_id: ID,
-        env: &mut HashMap<Ident, HashMap<Ty, Ty>>,
+        env: &mut HashMap<Ident, Stack<(Ty, Ty)>>,
         // when mode_shared is enabled, we prepare only one template type for
         // each lambda abstraction's argument even the type was τ₁ ∧ ⋯ ∧ τₙ
         // otherwise, we prepare the template for each type
@@ -1009,12 +1009,15 @@ impl Derivation {
                     .map(|ty_map| {
                         // if its bot type, we don't have to care about it
                         if n.item.ty.is_bot() {
-                            ty_map.iter().next().unwrap().1
+                            &ty_map.iter().next().unwrap().1
                         } else {
-                            ty_map.get(&n.item.ty).expect(&format!(
-                                "failed to found {v} {}",
-                                n.item.ty.pretty_display()
-                            ))
+                            ty_map
+                                .iter()
+                                .find_map(|(t1, t2)| if &n.item.ty == t1 { Some(t2) } else { None })
+                                .expect(&format!(
+                                    "failed to found {v} {}",
+                                    n.item.ty.pretty_display()
+                                ))
                         }
                     })
                     .cloned()
@@ -1040,18 +1043,18 @@ impl Derivation {
 
                 let mut arg_template_tys = Vec::new();
                 let fvs = ints.iter().cloned().collect();
-                let mut ty_map = HashMap::new();
+                let mut ty_map = Stack::new();
                 if mode_shared {
                     let arg_temp_ty = Ty::from_sty(&x.ty, &fvs);
                     arg_template_tys.push(arg_temp_ty.clone());
                     for t in arg_ty.iter() {
-                        ty_map.insert(t.clone(), arg_temp_ty.clone());
+                        ty_map.push_mut((t.clone(), arg_temp_ty.clone()));
                     }
                 } else {
                     for t in arg_ty.iter() {
                         let arg_temp_ty = Ty::from_sty(&x.ty, &fvs);
                         arg_template_tys.push(arg_temp_ty.clone());
-                        ty_map.insert(t.clone(), arg_temp_ty.clone());
+                        ty_map.push_mut((t.clone(), arg_temp_ty.clone()));
                     }
                 };
                 let old = env.insert(x.id, ty_map);
