@@ -1193,7 +1193,7 @@ fn type_check(
     let pt = handle_abs(&config, tenv, ienv, &mut all_coefficients, c, &t.ty);
     match pt.check_derivation() {
         Some(d) => {
-            debug_assert!(d.check_sanity(true));
+            debug_assert!(d.check_sanity(false));
             true
         }
         None => false,
@@ -1227,7 +1227,7 @@ fn type_check_top_with_derivation(psi: &G, tenv: &mut Env) -> Option<Derivation>
 
     // check if there is an actually possible derivation
     pt.check_derivation().map(|d| {
-        debug_assert!(d.check_sanity(true));
+        debug_assert!(d.check_sanity(false));
         d
     })
 }

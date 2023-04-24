@@ -723,8 +723,8 @@ impl<C> Tau<C> {
             TauKind::Proposition(_) => 0,
             TauKind::IArrow(_, t) => std::cmp::max(1, t.order()),
             TauKind::Arrow(ts, y) => {
-                debug_assert!(!ts.is_empty());
-                let o1 = ts[0].order();
+                // FIXIME: this is wrong definition
+                let o1 = if ts.is_empty() { 0 } else { ts[0].order() };
                 let o2 = y.order();
                 std::cmp::max(o1 + 1, o2)
             }
