@@ -217,6 +217,7 @@ impl HoPDR {
         if self.config.dump_tex_progress {
             println!("{}", TeXPrinter(&tyenv_new));
         }
+        crate::util::wait_for_line();
         tyenv_new.optimize();
         debug!("optimized: {tyenv_new}");
         // refute the top model in self.models.

@@ -624,7 +624,7 @@ impl Derivation {
             })
             .unwrap();
     }
-    fn update_expr_inner(&mut self, node_id: ID, expr: &G) {
+    fn update_expr_inner(&mut self, node_id: ID, expr: &G) -> Ty {
         self.tree.update_node_by_id(node_id).expr = expr.clone();
         let children: Vec<_> = self
             .tree
@@ -634,65 +634,85 @@ impl Derivation {
         let n = self.get_node_by_id(node_id).item;
         // crate::title!("update_expr_inner");
         // crate::pdebug!(n);
-        match n.rule {
+        let ty = match n.rule {
             Rule::Conjoin => {
                 let (g1, g2) = expr.conj();
                 assert_eq!(children.len(), 2);
-                self.update_expr_inner(children[0], g1);
-                self.update_expr_inner(children[1], g2);
+                let ty1 = self.update_expr_inner(children[0], g1);
+                let ty2 = self.update_expr_inner(children[1], g2);
+                let c1 = ty1.prop();
+                let c2 = ty2.prop();
+                Ty::mk_prop_ty(Atom::mk_conj(c1.clone(), c2.clone()))
             }
             Rule::Disjoin => {
                 let (g1, g2) = expr.disj();
                 assert_eq!(children.len(), 2);
-                self.update_expr_inner(children[0], g1);
-                self.update_expr_inner(children[1], g2);
+                let ty1 = self.update_expr_inner(children[0], g1);
+                let ty2 = self.update_expr_inner(children[1], g2);
+                let c1 = ty1.prop();
+                let c2 = ty2.prop();
+                Ty::mk_prop_ty(Atom::mk_disj(c1.clone(), c2.clone()))
             }
             Rule::Var => {
                 debug_assert!(expr.is_var());
+                n.ty.clone()
             }
-            Rule::Atom => (),
+            Rule::Atom => {
+                let c = expr.atom();
+                Ty::mk_prop_ty(c.clone().into())
+            }
             Rule::Univ => {
                 let (y, g) = expr.univ();
                 assert_eq!(children.len(), 1);
-                self.update_expr_inner(children[0], g);
+                let ty = self.update_expr_inner(children[0], g);
+                let c = ty.prop();
+                Ty::mk_prop_ty(Atom::mk_univ_int(y.id, c.clone()))
             }
             Rule::IAbs => {
                 let (y, g) = expr.abs();
                 debug_assert!(y.ty.is_int());
                 assert_eq!(children.len(), 1);
-                self.update_expr_inner(children[0], g);
+                let ty = self.update_expr_inner(children[0], g);
+                Ty::mk_iarrow(y.id, ty)
             }
             Rule::Abs(_) => {
                 let (_, g) = expr.abs();
                 assert_eq!(children.len(), 1);
-                self.update_expr_inner(children[0], g);
+                let arg = n.ty.arrow().0.clone();
+                let ty = self.update_expr_inner(children[0], g);
+                Ty::mk_arrow(arg, ty)
             }
             Rule::IApp(_) => {
                 let (x, y) = expr.app();
                 assert_eq!(children.len(), 1);
-                self.update_expr_inner(children[0], x);
-                for i in 1..children.len() {
-                    self.update_expr_inner(children[i], y);
-                }
+                let ty = self.update_expr_inner(children[0], x);
+                let (x, t) = ty.iarrow();
+                let op: Op = y.clone().into();
+                t.subst(x, &op)
             }
             Rule::App => {
                 let (x, y) = expr.app();
                 assert!(children.len() >= 2);
-                self.update_expr_inner(children[0], x);
+                let ty = self.update_expr_inner(children[0], x);
                 for i in 1..children.len() {
                     self.update_expr_inner(children[i], y);
                 }
+                let (_, ret) = ty.arrow();
+                ret.clone()
             }
             Rule::Subsumption => {
                 assert_eq!(children.len(), 1);
+                let ty = n.ty.clone();
                 self.update_expr_inner(children[0], &expr);
 
                 let mut expr = expr.clone();
                 reset_expr_for_subsumption(&mut expr);
                 self.tree.update_node_by_id(node_id).expr = expr.clone();
+                ty
             }
             Rule::Equivalence => {
                 assert_eq!(children.len(), 1);
+                let ty = n.ty.clone();
                 self.update_expr_inner(children[0], &expr);
 
                 let mut expr = expr.clone();
@@ -701,12 +721,15 @@ impl Derivation {
                 // Unlike the case for subsumption, we replace the original one
                 // so that we can refer to the more general type afterwards.
                 self.tree.update_node_by_id(children[0]).expr = expr.clone();
+                ty
             }
-        }
+        };
+        self.tree.update_node_by_id(node_id).ty = ty.clone();
+        ty
     }
     fn update_expr(&mut self, expr: &G) {
         let root_id = self.tree.root().id;
-        self.update_expr_inner(root_id, expr)
+        self.update_expr_inner(root_id, expr);
     }
 
     fn update_children(&mut self, node_id: ID, constraint: &Atom, ctx: UpdateChildrenContext) {

@@ -308,6 +308,12 @@ impl<C, T> GoalBase<C, T> {
             _ => panic!("the given expr is not abs"),
         }
     }
+    pub fn atom<'a>(&'a self) -> &'a C {
+        match self.kind() {
+            GoalKind::Constr(c) => c,
+            _ => panic!("the given expr is not atom"),
+        }
+    }
 }
 impl<C, T> GoalBase<C, T> {
     pub fn is_conj(&self) -> bool {
