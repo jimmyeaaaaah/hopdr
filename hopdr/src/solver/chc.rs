@@ -108,19 +108,21 @@ fn chc_to_smt2(chc: &CHC, style: CHCStyle) -> String {
     };
     let body_smt2 = body_to_smt2(&chc.body);
 
+    let foralls = fvs
+        .iter()
+        .map(|x| format!("({} Int)", smt::ident_2_smt2(x)))
+        .collect::<Vec<_>>();
     match style {
-        CHCStyle::Hoice | CHCStyle::HoiceNoSimplify => {
-            let foralls = fvs
-                .iter()
-                .map(|x| format!("({} Int)", smt::ident_2_smt2(x)))
-                .collect::<Vec<_>>()
-                .join(" ");
+        CHCStyle::Spacer if foralls.len() == 0 => {
+            format!("(assert (=> {} {}))", body_smt2, head_smt2)
+        }
+        CHCStyle::Hoice | CHCStyle::HoiceNoSimplify | CHCStyle::Spacer => {
+            let foralls = foralls.join(" ");
             format!(
                 "(assert (forall ({}) (=> {} {})))",
                 foralls, body_smt2, head_smt2
             )
         }
-        CHCStyle::Spacer => format!("(assert (=> {} {}))", body_smt2, head_smt2),
     }
 }
 
@@ -170,11 +172,15 @@ struct HoiceSolver {
     style: CHCStyle,
 }
 
+struct SpacerSolver {
+    style: CHCStyle,
+}
+
 pub fn smt_solver(style: CHCStyle) -> Box<dyn CHCSolver> {
     match style {
         CHCStyle::Hoice => Box::new(HoiceSolver { style }),
         CHCStyle::HoiceNoSimplify => Box::new(HoiceSolver { style }),
-        CHCStyle::Spacer => todo!(),
+        CHCStyle::Spacer => Box::new(SpacerSolver { style }),
     }
 }
 
@@ -729,6 +735,17 @@ impl Model {
 
         Ok(Model { model })
     }
+    fn parse_spacer_model(model_str: &str) -> Result<Model, lexpr::parse::Error> {
+        debug!("{}", model_str);
+        let x = lexpr::from_str(model_str)?;
+        let model: HashMap<Ident, (Vec<Ident>, fofml::Atom)> = match x {
+            Value::Cons(x) => x.into_iter().map(|(v, _)| parse_define_fun(v)).collect(),
+            _ => panic!("parse error: smt2 model: {}", model_str),
+        };
+        let model = reduce_application(model);
+
+        Ok(Model { model })
+    }
 }
 #[test]
 fn test_parse_model() {
@@ -777,6 +794,21 @@ fn test_parse_model() {
     }
 }
 
+#[test]
+fn test_parse_spacer_model() {
+    let s = "(
+  (define-fun xx_2 ((x!0 Int)) Bool
+    (or (= x!0 (- 1)) (= x!0 0)))
+)";
+    match Model::parse_spacer_model(s) {
+        Ok(m) => {
+            println!("{m}");
+            assert!(m.model.len() == 1);
+        }
+        Err(_) => panic!("model is broken"),
+    }
+}
+
 pub fn is_solution_valid(clauses: &[CHC], model: &Model) -> bool {
     crate::title!("is_solution_valid");
     let mut c = Constraint::mk_true();
@@ -821,6 +853,32 @@ impl CHCSolver for HoiceSolver {
         debug!("smt_solve result: {:?}", &s);
         if s.starts_with("sat") {
             let m = Model::parse_hoice_model(&s[4..]).unwrap();
+            CHCResult::Sat(m)
+        } else if s.starts_with("unsat") {
+            CHCResult::Unsat
+        } else {
+            CHCResult::Unknown
+        }
+    }
+}
+
+fn spacer_solver(smt_string: String) -> String {
+    debug!("spacer_solver: {}", smt_string);
+    let f = smt::save_smt2(smt_string);
+    let args = vec!["fp.engine=spacer", f.path().to_str().unwrap()];
+    debug!("filename: {}", &args[1]);
+    let out = chc_execution!({ util::exec_with_timeout("spacer", &args, Duration::from_secs(1),) });
+    String::from_utf8(out).unwrap()
+}
+
+impl CHCSolver for SpacerSolver {
+    fn solve(&mut self, clauses: &[CHC]) -> CHCResult {
+        let smt2 = chcs_to_smt2(clauses, self.style);
+        debug!("smt2: {}", &smt2);
+        let s = spacer_solver(smt2);
+        debug!("smt_solve result: {:?}", &s);
+        if s.starts_with("sat") {
+            let m = Model::parse_spacer_model(&s[4..]).unwrap();
             CHCResult::Sat(m)
         } else if s.starts_with("unsat") {
             CHCResult::Unsat
