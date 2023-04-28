@@ -172,24 +172,38 @@ struct HoiceSolver {
     style: CHCStyle,
 }
 
-struct SpacerSolver {
+pub struct SpacerSolver {
     style: CHCStyle,
+    interpolation: bool,
 }
 
-pub fn smt_solver(style: CHCStyle) -> Box<dyn CHCSolver> {
+impl SpacerSolver {
+    pub fn new() -> SpacerSolver {
+        SpacerSolver {
+            style: CHCStyle::Spacer,
+            interpolation: false,
+        }
+    }
+    pub fn interpolation(mut self, flag: bool) -> SpacerSolver {
+        self.interpolation = flag;
+        self
+    }
+}
+
+pub fn chc_solver(style: CHCStyle) -> Box<dyn CHCSolver> {
     match style {
         CHCStyle::Hoice => Box::new(HoiceSolver { style }),
         CHCStyle::HoiceNoSimplify => Box::new(HoiceSolver { style }),
-        CHCStyle::Spacer => Box::new(SpacerSolver { style }),
+        CHCStyle::Spacer => Box::new(SpacerSolver::new()),
     }
 }
 
 pub fn default_solver() -> Box<dyn CHCSolver> {
-    smt_solver(CHCStyle::Hoice)
+    chc_solver(CHCStyle::Hoice)
 }
 
 pub fn interpolating_solver() -> Box<dyn CHCSolver> {
-    smt_solver(CHCStyle::HoiceNoSimplify)
+    chc_solver(CHCStyle::Spacer)
 }
 
 macro_rules! chc_execution {
@@ -867,7 +881,7 @@ fn spacer_solver(smt_string: String) -> String {
     let f = smt::save_smt2(smt_string);
     let args = vec!["fp.engine=spacer", f.path().to_str().unwrap()];
     debug!("filename: {}", &args[1]);
-    let out = chc_execution!({ util::exec_with_timeout("spacer", &args, Duration::from_secs(1),) });
+    let out = chc_execution!({ util::exec_with_timeout("z3", &args, Duration::from_secs(1),) });
     String::from_utf8(out).unwrap()
 }
 
