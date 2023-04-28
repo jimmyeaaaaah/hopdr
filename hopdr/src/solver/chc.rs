@@ -876,10 +876,16 @@ impl CHCSolver for HoiceSolver {
     }
 }
 
-fn spacer_solver(smt_string: String) -> String {
+fn spacer_solver(smt_string: String, interpolation: bool) -> String {
     debug!("spacer_solver: {}", smt_string);
     let f = smt::save_smt2(smt_string);
-    let args = vec!["fp.engine=spacer", f.path().to_str().unwrap()];
+    let mut args = vec!["fp.engine=spacer"];
+    if interpolation {
+        args.push("fp.xform.inline_eager=false");
+        args.push("fp.xform.inline_linear=false");
+        args.push("fp.xform.slice=false");
+    }
+    args.push(f.path().to_str().unwrap());
     debug!("filename: {}", &args[1]);
     let out = chc_execution!({ util::exec_with_timeout("z3", &args, Duration::from_secs(1),) });
     String::from_utf8(out).unwrap()
@@ -889,7 +895,7 @@ impl CHCSolver for SpacerSolver {
     fn solve(&mut self, clauses: &[CHC]) -> CHCResult {
         let smt2 = chcs_to_smt2(clauses, self.style);
         debug!("smt2: {}", &smt2);
-        let s = spacer_solver(smt2);
+        let s = spacer_solver(smt2, self.interpolation);
         debug!("smt_solve result: {:?}", &s);
         if s.starts_with("sat") {
             let m = Model::parse_spacer_model(&s[4..]).unwrap();
