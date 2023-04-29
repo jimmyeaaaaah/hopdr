@@ -8,7 +8,7 @@ use derive_tree::Derivation;
 
 use crate::formula::chc::Model;
 use crate::formula::hes::{Goal, GoalBase, GoalKind, Problem as ProblemBase};
-use crate::formula::{self};
+use crate::formula::{self, Op};
 use crate::formula::{
     chc, fofml, Constraint, Fv, Ident, Logic, Negation, Rename, Subst, Top, Variable,
 };
@@ -419,7 +419,19 @@ fn generate_reduction_sequence(goal: &G, optimizer: &mut dyn Optimizer) -> (Vec<
                             }
                         }
 
-                        let ret = new_g.subst(&new_var, &arg).update_ids();
+                        let ret = if new_var.ty.is_int() {
+                            let arg: Op = arg.clone().into();
+                            let body = G::mk_imply_t(
+                                Constraint::mk_eq(Op::mk_var(new_var.id), arg),
+                                new_g,
+                                TypeMemory::new(),
+                            )
+                            .unwrap();
+                            G::mk_univ_t(new_var.clone(), body, TypeMemory::new())
+                        } else {
+                            new_g.subst(&new_var, &arg)
+                        }
+                        .update_ids();
 
                         let reduction_info =
                             ReductionInfo::new(level, arg.clone(), new_var, old_id);

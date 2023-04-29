@@ -9,7 +9,7 @@ use std::collections::HashSet;
 
 use std::fmt;
 
-use super::{fofml, Subst, TeXFormat};
+use super::{fofml, Negation, Subst, TeXFormat};
 
 #[derive(Debug)]
 pub enum ConstKind {
@@ -348,6 +348,13 @@ impl<C: Bot + Top> Goal<C> {
             x = Goal::mk_abs(v.clone(), x);
         }
         x
+    }
+}
+
+impl<C: Negation, T: Default> GoalBase<C, T> {
+    pub fn mk_imply_t(lhs: C, rhs: GoalBase<C, T>, aux: T) -> Option<GoalBase<C, T>> {
+        lhs.negate()
+            .map(|lhs| Self::mk_disj_t(Self::mk_constr_t(lhs, T::default()), rhs, aux))
     }
 }
 
