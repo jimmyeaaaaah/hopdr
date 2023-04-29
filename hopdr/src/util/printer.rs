@@ -3,7 +3,7 @@ use std::fmt::Display;
 use crate::formula::*;
 use crate::pdr::derivation::tree;
 use crate::pdr::rtype;
-use crate::{formula::*, preprocess};
+use crate::preprocess;
 use pretty::termcolor::{Color, ColorSpec};
 use pretty::{BoxAllocator, BoxDoc, DocAllocator, DocBuilder};
 

@@ -14,7 +14,7 @@ use crate::formula::{
 };
 use crate::solver;
 use crate::util::Pretty;
-use crate::{highlight, pdebug, title};
+use crate::{pdebug, title};
 
 use rpds::Stack;
 
@@ -588,7 +588,6 @@ struct Context {
     normal_form: G,
     track_idents: HashMap<Ident, Vec<Ident>>,
     reduction_sequence: Vec<Reduction>,
-    infer_polymorphic_type: bool,
 }
 
 impl Context {
@@ -596,15 +595,12 @@ impl Context {
         normal_form: G,
         track_idents: HashMap<Ident, Vec<Ident>>,
         reduction_sequence: Vec<Reduction>,
-        config: InferenceConfig,
     ) -> Context {
         // default
-        let infer_polymorphic_type = config.infer_polymorphic_type;
         Context {
             normal_form,
             track_idents,
             reduction_sequence,
-            infer_polymorphic_type,
         }
     }
     fn retrieve_from_track_idents(&self, model: &chc::Model, derivation: &Derivation) -> TyEnv {
@@ -624,173 +620,15 @@ impl Context {
     }
 
     ///// aux functions end
-    fn expand_int_node(
-        &self,
-        node_id: tree::ID,
-        derivation: &mut Derivation,
-        reduction: &Reduction,
-        ri: &ReductionInfo,
-        is_shared_ty: bool,
-        tmp_ret_ty: &Ty,
-    ) {
-        // constructing body derivation
-        let arg_derivations =
-            derivation.replace_derivation_at_level_with_var(node_id, &ri.level, ri.arg_var.id);
-        assert_eq!(arg_derivations.len(), 0);
-
-        // all Ptr(id) in the constraints in ty should be dereferenced
-        derivation.traverse_and_recover_int_var(node_id, &ri.arg_var.id, &ri.old_id);
-
-        let pred_ty = if is_shared_ty {
-            match tmp_ret_ty.kind() {
-                TauKind::IArrow(x, t) => {
-                    let t = t.rename(x, &ri.old_id);
-                    Ty::mk_iarrow(ri.old_id, t)
-                }
-                TauKind::Proposition(_) | TauKind::Arrow(_, _) => panic!("program error"),
-            }
-        } else {
-            Tau::mk_iarrow(ri.old_id, tmp_ret_ty.clone())
-        };
-        // generate derivation and constraints
-        derivation.subject_expansion_int(node_id, reduction, &pred_ty);
-    }
-    fn expand_pred_node(
-        &self,
-        node_id: tree::ID,
-        derivation: &mut Derivation,
-        reduction: &Reduction,
-        ri: &ReductionInfo,
-        is_shared_ty: bool,
-        tmp_ret_ty: &Ty,
-    ) {
-        // TODO: we also have to replace the expr of each node in the derivation
-        let arg_derivations =
-            derivation.replace_derivation_at_level_with_var(node_id, &ri.level, ri.arg_var.id);
-
-        let mut arg_derivations_new: Vec<Derivation> = Vec::new();
-        for arg_d in arg_derivations {
-            let mut should_append = true;
-            for d2 in arg_derivations_new.iter() {
-                if arg_d.root_ty() == d2.root_ty() {
-                    // already exists
-                    highlight!("arg derivations already exists");
-                    pdebug!(arg_d, " vs ", d2);
-                    should_append = false;
-                    break;
-                }
-            }
-            highlight!("expand node");
-            pdebug!(arg_d, should_append);
-            if should_append {
-                arg_derivations_new.push(arg_d);
-            }
-        }
-        let arg_derivations = arg_derivations_new;
-
-        let (arg_ty, arg_derivations) = if arg_derivations.is_empty() {
-            (
-                vec![Ty::mk_bot(&ri.arg_var.ty)],
-                vec![Derivation::rule_atom(
-                    ri.arg.clone(),
-                    Ty::mk_bot(&ri.arg_var.ty),
-                )],
-            )
-        } else {
-            // if a shared_ty is attached with the predicate we are focusing on, we have to use it
-            match &ri.arg.aux.tys {
-                Some(tys) => (tys.clone(), arg_derivations),
-                None => (
-                    arg_derivations
-                        .iter()
-                        .map(|d| d.root_ty().clone())
-                        .collect(),
-                    arg_derivations,
-                    //vec![arg_derivations.pop().unwrap()],
-                ),
-            }
-        };
-
-        let pred_ty = if is_shared_ty {
-            match tmp_ret_ty.kind() {
-                TauKind::Arrow(ts, _) => tmp_ret_ty.clone(),
-                TauKind::IArrow(_, _) | TauKind::Proposition(_) => {
-                    panic!("program error")
-                }
-            }
-        } else {
-            Ty::mk_arrow(arg_ty.clone(), tmp_ret_ty.clone())
-        };
-        pdebug!("pred_ty", pred_ty);
-        // generate derivation and generate constraints
-        derivation.subject_expansion_pred(node_id, arg_derivations, reduction, &pred_ty);
-    }
     // (\x. g) g' -> [g'/x] g
     fn expand_node(&self, node_id: tree::ID, derivation: &mut Derivation, reduction: &Reduction) {
-        // if ret_ty_idx > 0, then we push calculated types to derivation without "already exists" check
-        let ret_ty = derivation.node_id_to_ty(&node_id).clone();
-        let ri = &reduction.reduction_info;
-
-        // prepare a template type for predicate g
-        // if a shared_ty is attached with the predicate we are focusing on, we have to use it
-        let (tmp_ret_ty, is_shared_ty) = match &reduction.predicate.aux.tys {
-            Some(tys) => (tys[0].clone(), true),
-            None => {
-                let mut integers = if self.infer_polymorphic_type {
-                    reduction
-                        .predicate
-                        .aux
-                        .ints
-                        .clone()
-                        .iter()
-                        .cloned()
-                        .collect()
-                } else {
-                    reduction.argints.clone()
-                };
-                if ri.arg_var.ty.is_int() {
-                    integers.insert(ri.old_id);
-                }
-                (
-                    ret_ty.clone_with_rty_template(Atom::mk_true(), &mut integers),
-                    false,
-                )
-            }
-        };
-        debug!(
-            "shared type is {}. Type: {}",
-            if is_shared_ty { "enabled" } else { "disabled" },
-            tmp_ret_ty
-        );
-
         // case where the argument is an integer
-        if ri.arg_var.ty.is_int() {
+        if reduction.reduction_info.arg_var.ty.is_int() {
             // case where the argument is a predicate
-            self.expand_int_node(
-                node_id,
-                derivation,
-                reduction,
-                ri,
-                is_shared_ty,
-                &tmp_ret_ty,
-            )
+            derivation.subject_expansion_int(node_id, reduction)
         } else {
-            self.expand_pred_node(
-                node_id,
-                derivation,
-                reduction,
-                ri,
-                is_shared_ty,
-                &tmp_ret_ty,
-            )
+            derivation.subject_expansion_pred(node_id, reduction);
         };
-
-        // pdebug!(
-        //     "app_expr(",
-        //     reduction.app_expr.aux.id,
-        //     "): ",
-        //     reduction.app_expr
-        // );
     }
     fn infer_type_inner(&self, derivation: &mut Derivation, reduction: &Reduction) {
         title!("Reduction");
@@ -819,7 +657,7 @@ impl Context {
         &mut self,
         derivation: &Derivation,
     ) -> Option<(Model, Vec<chc::CHC<chc::Atom, Constraint>>, Derivation)> {
-        let d = derivation.clone_with_template();
+        let d = derivation.clone_with_template(true);
         let clauses: Vec<_> = d.collect_chcs().collect();
 
         crate::title!("infer_with_shared_type");
@@ -842,6 +680,8 @@ impl Context {
         for c in clauses.iter() {
             pdebug!(c);
         }
+        // TODO: insert template types for each use of lambda abstraction
+
         // 4. solve the constraints by using the interpolation solver
         match solver::chc::default_solver().solve(&clauses) {
             solver::chc::CHCResult::Sat(m) => Some((m, clauses, derivation)),
@@ -863,7 +703,7 @@ impl Context {
             pdebug!("derivation ", reduction.reduction_info.level);
             pdebug!(derivation);
         }
-        debug!("checking sanity... {}", derivation.check_sanity());
+        debug!("checking sanity... {}", derivation.check_sanity(false));
 
         // try to infer a type with shared type.
         let (m, clauses, derivation) = match self.infer_with_shared_type(&derivation) {
@@ -1057,6 +897,15 @@ fn handle_app(
                             vec![d]
                         }
                     };
+                    // we introduce context_ty's information to the predicate's type
+                    let c = cty.rty_no_exists();
+                    let types = types
+                        .into_iter()
+                        .map(|d| {
+                            let t = d.root_ty().conjoin_constraint(&c);
+                            Derivation::rule_subsumption(d, t)
+                        })
+                        .collect();
                     PossibleDerivation::new(types)
                 }
                 None => PossibleDerivation::empty(),
@@ -1131,7 +980,12 @@ fn handle_app(
                         result_cts.push(Derivation::rule_app(
                             pred_expr.clone(),
                             pred_derivation.clone(),
-                            arg_derivation.iter().cloned(),
+                            arg_derivation
+                                .iter()
+                                .cloned()
+                                .collect::<Vec<_>>()
+                                .into_iter()
+                                .rev(),
                         ));
                     }
                 }
@@ -1337,8 +1191,13 @@ fn type_check(
         construct_derivation: false,
     };
     let pt = handle_abs(&config, tenv, ienv, &mut all_coefficients, c, &t.ty);
-    //pt.coarse_type(constraint, t);
-    pt.check_derivation().is_some()
+    match pt.check_derivation() {
+        Some(d) => {
+            debug_assert!(d.check_sanity(false));
+            true
+        }
+        None => false,
+    }
 }
 
 /// ε; true ; Γ ⊢ ψ : •<T>
@@ -1367,7 +1226,10 @@ fn type_check_top_with_derivation(psi: &G, tenv: &mut Env) -> Option<Derivation>
     let pt = pt.coarse_type(&Ty::mk_prop_ty(Atom::mk_true()));
 
     // check if there is an actually possible derivation
-    pt.check_derivation()
+    pt.check_derivation().map(|d| {
+        debug_assert!(d.check_sanity(false));
+        d
+    })
 }
 
 /// ε; true ; Γ ⊢ ψ : •<T>
@@ -1426,7 +1288,6 @@ pub fn type_check_top(candidate: &Candidate, tenv: &TyEnv) -> bool {
 fn reduce_until_normal_form(
     candidate: &Candidate,
     problem: &Problem,
-    config: InferenceConfig,
     optimizer: &mut dyn Optimizer,
 ) -> Context {
     let mut track_idents = HashMap::new();
@@ -1437,7 +1298,7 @@ fn reduce_until_normal_form(
     let goal = goal.calculate_free_variables();
     title!("generate_reduction_sequence");
     let (reduction_sequence, normal_form) = generate_reduction_sequence(&goal, optimizer);
-    Context::new(normal_form, track_idents, reduction_sequence, config)
+    Context::new(normal_form, track_idents, reduction_sequence)
 }
 
 /// Since type environment can contain multiple candidate types,
@@ -1621,7 +1482,7 @@ pub fn search_for_type(
     const SHARED: bool = false;
     let mut optimizer = optimizer::VoidOptimizer::new();
     while optimizer.continuable() {
-        let mut ctx = reduce_until_normal_form(candidate, problem, config, &mut optimizer);
+        let mut ctx = reduce_until_normal_form(candidate, problem, &mut optimizer);
         debug!("{}", ctx.normal_form);
         // If type_check_top_with_derivation fails, it's not related to
         // optimizers or shared_type issues. Instead, it indicates that
@@ -1635,7 +1496,7 @@ pub fn search_for_type(
 
         pdebug!("[derivation]");
         pdebug!(derivation);
-        debug!("checking sanity... {}", derivation.check_sanity());
+        debug!("checking sanity... {}", derivation.check_sanity(false));
         //crate::util::wait_for_line();
         match ctx.infer_type(derivation) {
             Some(x) => {

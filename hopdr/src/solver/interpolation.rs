@@ -16,6 +16,7 @@ use crate::formula::Op;
 use crate::formula::Subst;
 use crate::formula::{Bot, Constraint, FirstOrderLogic, Ident, Logic, Negation, Top};
 use crate::solver;
+use crate::solver::chc::CHCStyle;
 use crate::solver::interpolation::InterpolationSolver::SMTInterpol;
 use crate::solver::smt::ident_2_smt2;
 use crate::solver::util;
@@ -48,6 +49,7 @@ fn get_smt_interpol_path() -> String {
 pub enum InterpolationSolver {
     SMTInterpol,
     Csisat,
+    Spacer,
 }
 
 // topological sort
@@ -355,15 +357,17 @@ macro_rules! interp_execution {
 
 struct SMTInterpolSolver {}
 struct CsisatSolver {}
+struct SpacerSolver {}
 impl InterpolationSolver {
     pub fn get_solver(sol: InterpolationSolver) -> Box<dyn Interpolation> {
         match sol {
             InterpolationSolver::SMTInterpol => Box::new(SMTInterpolSolver {}),
             InterpolationSolver::Csisat => Box::new(CsisatSolver {}),
+            InterpolationSolver::Spacer => Box::new(SpacerSolver {}),
         }
     }
     pub fn default_solver() -> Box<dyn Interpolation> {
-        Self::get_solver(SMTInterpol)
+        Self::get_solver(InterpolationSolver::Spacer)
     }
 }
 
@@ -510,6 +514,43 @@ impl Interpolation for CsisatSolver {
         let s = self.execute_solver(left_s, right_s);
         debug!("result: {}", s);
         self.parse_result(s, fvs).unwrap()
+    }
+}
+
+impl Interpolation for SpacerSolver {
+    fn interpolate(&mut self, left: &Constraint, right: &Constraint) -> Constraint {
+        println!("{left} => {right}");
+        use crate::solver::chc::chc_solver;
+        let mut fvs = left.fv();
+        right.fv_with_vec(&mut fvs);
+        let p = Ident::fresh();
+        let args: Vec<_> = fvs.iter().map(|i| Op::mk_var(*i)).collect();
+        let a = chc::Atom::new(p, args.clone());
+        let h1 = chc::CHCHead::Predicate(a.clone());
+        let b1 = chc::CHCBody {
+            predicates: Vec::new(),
+            constraint: left.clone(),
+        };
+        let h2 = chc::CHCHead::Constraint(Constraint::mk_false());
+        let b2 = chc::CHCBody {
+            predicates: vec![a],
+            constraint: right.negate().unwrap(),
+        };
+        let c1 = chc::CHC { head: h1, body: b1 };
+        let c2 = chc::CHC { head: h2, body: b2 };
+        let clauses = vec![c1, c2];
+        let mut solver = chc_solver(CHCStyle::Spacer);
+        let (idents, mut c) = match solver.solve(&clauses) {
+            solver::chc::CHCResult::Sat(m) => m.model.get(&p).unwrap().clone(),
+            solver::chc::CHCResult::Unsat
+            | solver::chc::CHCResult::Unknown
+            | solver::chc::CHCResult::Timeout => panic!("interpolation failed"),
+        };
+        assert_eq!(idents.len(), args.len());
+        for (i, o) in idents.into_iter().zip(args.into_iter()) {
+            c = c.subst(&i, &o);
+        }
+        c
     }
 }
 
@@ -713,7 +754,30 @@ impl Default for InterpolationConfig {
 /// interpolate predicates under the given CHC constraints.
 ///
 /// Assumption: `chc' is satisfiable.
-pub fn solve(chc: &Vec<CHC>, config: &InterpolationConfig) -> Model {
+pub fn solve(chc: &Vec<CHC>, _config: &InterpolationConfig) -> Model {
+    use solver::chc::CHCSolver;
+    debug!("[interpolation::solve]");
+    for c in chc {
+        debug!("- {}", c);
+    }
+    let mut solver = solver::chc::SpacerSolver::new().interpolation(true);
+    let chc: Vec<_> = chc.iter().map(|c| c.fresh_variables()).collect();
+    match solver.solve(&chc) {
+        solver::chc::CHCResult::Sat(mut m) => {
+            let qe_solver = solver::qe::QESolver::default_solver();
+            qe_solver.model_quantifer_elimination(&mut m);
+            m
+        }
+        solver::chc::CHCResult::Unsat
+        | solver::chc::CHCResult::Unknown
+        | solver::chc::CHCResult::Timeout => panic!("program error"),
+    }
+}
+
+/// interpolate predicates under the given CHC constraints.
+///
+/// Assumption: `chc' is satisfiable.
+pub fn solve_old(chc: &Vec<CHC>, config: &InterpolationConfig) -> Model {
     debug!("[interpolation::solve]");
     for c in chc {
         debug!("- {}", c);

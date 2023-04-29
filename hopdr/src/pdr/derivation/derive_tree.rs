@@ -1,8 +1,9 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use super::tree::*;
 use super::{Atom, Ty, G};
-use crate::pdr::rtype::{TBot, TauKind};
+use crate::pdebug;
+use crate::pdr::rtype::{TBot, Tau, TauKind};
 use crate::solver;
 use crate::util::Pretty;
 use crate::{formula::*, highlight};
@@ -29,6 +30,7 @@ pub enum Rule {
     IApp(Op),
     App,
     Subsumption,
+    Equivalence,
     Atom,
 }
 
@@ -44,6 +46,7 @@ impl std::fmt::Display for Rule {
             Rule::IApp(_) => "IApp",
             Rule::App => "App",
             Rule::Subsumption => "Sub",
+            Rule::Equivalence => "Equi",
             Rule::Atom => "Atom",
         };
         write!(f, "{}", s)
@@ -140,6 +143,11 @@ impl DeriveNode {
         reset_expr_for_subsumption(&mut expr);
         DeriveNode { rule, expr, ty }
     }
+    fn equivalence(node: &Self, ty: Ty) -> Self {
+        let rule = Rule::Equivalence;
+        let expr = node.expr.clone();
+        DeriveNode { rule, expr, ty }
+    }
     fn app(expr: G, pred_node: &Self) -> Self {
         let rule = Rule::App;
         let ty = match pred_node.ty.kind() {
@@ -184,6 +192,14 @@ where
         }
     }
     s
+}
+
+// used in update_children
+#[derive(Clone)]
+struct UpdateChildrenContext {
+    arg: bool,
+    subsumption_reached: bool,
+    ident: Stack<Ident>,
 }
 
 impl Derivation {
@@ -336,6 +352,13 @@ impl Derivation {
         let d = Self::rule_one_arg_inner(root, d);
         d
     }
+    pub fn rule_equivalence(mut d: Self, ty: Ty) -> Self {
+        let child_id = d.tree.root().id;
+        let root = DeriveNode::equivalence(d.tree.root().item, ty);
+        reset_expr_for_subsumption(&mut d.tree.update_node_by_id(child_id).expr);
+        let d = Self::rule_one_arg_inner(root, d);
+        d
+    }
     pub fn rule_app<I>(expr: G, d1: Self, args: I) -> Self
     where
         I: Iterator<Item = Self>,
@@ -427,12 +450,9 @@ impl Derivation {
                 update_app_branchs(t, child, ident, op);
             }
         }
-        debug!("updating parents");
-        crate::pdebug!(self);
         self.tree
             .update_parent_until(target_id, |t, cur, prev| {
                 let n = t.get_node_by_id(cur).item;
-                debug!("update_parent: {}", n.pretty_display());
                 let ty = match prev {
                     None => n.ty.clone(),
                     Some(prev) => {
@@ -511,7 +531,7 @@ impl Derivation {
                                     .collect();
                                 //assert_eq!(children.len(), 2);
                                 // todo?
-                                assert!(children.len() >= 2);
+                                assert!(children.len() >= 1);
                                 let node = t.get_node_by_id(prev).item;
 
                                 // case1: the updated child was in pred
@@ -547,19 +567,22 @@ impl Derivation {
                                         }
                                     };
                                     // subsumption
-                                    debug!("subsumption");
-                                    for body_ty in body_tys.iter() {
-                                        crate::pdebug!(body_ty);
-                                    }
-                                    debug!("<:");
-                                    for body_ty in arg_ty.iter() {
-                                        crate::pdebug!(body_ty);
-                                    }
-                                    assert!(body_tys
+                                    if !body_tys
                                         .iter()
                                         .filter(|x| !x.is_bot())
                                         .zip(arg_ty.iter().filter(|x| !x.is_bot()))
-                                        .all(|(t1, t2)| t1 == t2));
+                                        .all(|(t1, t2)| t1 == t2)
+                                    {
+                                        debug!("subsumption");
+                                        for body_ty in body_tys.iter() {
+                                            crate::pdebug!(body_ty);
+                                        }
+                                        debug!("<:");
+                                        for body_ty in arg_ty.iter() {
+                                            crate::pdebug!(body_ty);
+                                        }
+                                        panic!("subsumption invalid")
+                                    }
                                     ret_ty.clone()
                                 }
                                 // case2: the updated child was in body
@@ -574,7 +597,7 @@ impl Derivation {
                                     panic!("program error")
                                 }
                             }
-                            Rule::Subsumption => {
+                            Rule::Equivalence | Rule::Subsumption => {
                                 let children: Vec<_> = t
                                     .get_children(t.get_node_by_id(cur))
                                     .map(|child| child.item)
@@ -601,7 +624,7 @@ impl Derivation {
             })
             .unwrap();
     }
-    fn update_expr_inner(&mut self, node_id: ID, expr: &G) {
+    fn update_expr_inner(&mut self, node_id: ID, expr: &G) -> Ty {
         self.tree.update_node_by_id(node_id).expr = expr.clone();
         let children: Vec<_> = self
             .tree
@@ -609,70 +632,191 @@ impl Derivation {
             .map(|child| child.id)
             .collect();
         let n = self.get_node_by_id(node_id).item;
-        // crate::title!("update_expr_inner");
-        // crate::pdebug!(n);
-        match n.rule {
+        crate::title!("update_expr_inner");
+        crate::pdebug!(n);
+        let ty = match n.rule {
             Rule::Conjoin => {
                 let (g1, g2) = expr.conj();
                 assert_eq!(children.len(), 2);
-                self.update_expr_inner(children[0], g1);
-                self.update_expr_inner(children[1], g2);
+                let ty1 = self.update_expr_inner(children[0], g1);
+                let ty2 = self.update_expr_inner(children[1], g2);
+                let c1 = ty1.prop();
+                let c2 = ty2.prop();
+                Ty::mk_prop_ty(Atom::mk_conj(c1.clone(), c2.clone()))
             }
             Rule::Disjoin => {
                 let (g1, g2) = expr.disj();
                 assert_eq!(children.len(), 2);
-                self.update_expr_inner(children[0], g1);
-                self.update_expr_inner(children[1], g2);
+                let ty1 = self.update_expr_inner(children[0], g1);
+                let ty2 = self.update_expr_inner(children[1], g2);
+                let c1 = ty1.prop();
+                let c2 = ty2.prop();
+                Ty::mk_prop_ty(Atom::mk_disj(c1.clone(), c2.clone()))
             }
             Rule::Var => {
                 debug_assert!(expr.is_var());
+                n.ty.clone()
             }
-            Rule::Atom => (),
+            Rule::Atom => {
+                let c = expr.atom();
+                Ty::mk_prop_ty(c.clone().into())
+            }
             Rule::Univ => {
                 let (y, g) = expr.univ();
                 assert_eq!(children.len(), 1);
-                self.update_expr_inner(children[0], g);
+                let ty = self.update_expr_inner(children[0], g);
+                let c = ty.prop();
+                Ty::mk_prop_ty(Atom::mk_univ_int(y.id, c.clone()))
             }
             Rule::IAbs => {
                 let (y, g) = expr.abs();
                 debug_assert!(y.ty.is_int());
                 assert_eq!(children.len(), 1);
-                self.update_expr_inner(children[0], g);
+                let ty = self.update_expr_inner(children[0], g);
+                Ty::mk_iarrow(y.id, ty)
             }
             Rule::Abs(_) => {
                 let (_, g) = expr.abs();
                 assert_eq!(children.len(), 1);
-                self.update_expr_inner(children[0], g);
+                let arg = n.ty.arrow().0.clone();
+                let ty = self.update_expr_inner(children[0], g);
+                Ty::mk_arrow(arg, ty)
             }
             Rule::IApp(_) => {
                 let (x, y) = expr.app();
                 assert_eq!(children.len(), 1);
-                self.update_expr_inner(children[0], x);
-                for i in 1..children.len() {
-                    self.update_expr_inner(children[i], y);
-                }
+                let ty = self.update_expr_inner(children[0], x);
+                let (x, t) = ty.iarrow();
+                let op: Op = y.clone().into();
+                t.subst(x, &op)
             }
             Rule::App => {
                 let (x, y) = expr.app();
-                assert!(children.len() >= 2);
-                self.update_expr_inner(children[0], x);
+                assert!(children.len() >= 1);
+                let ty = self.update_expr_inner(children[0], x);
                 for i in 1..children.len() {
                     self.update_expr_inner(children[i], y);
                 }
+                let (_, ret) = ty.arrow();
+                ret.clone()
             }
             Rule::Subsumption => {
                 assert_eq!(children.len(), 1);
+                let ty = n.ty.clone();
                 self.update_expr_inner(children[0], &expr);
 
                 let mut expr = expr.clone();
                 reset_expr_for_subsumption(&mut expr);
                 self.tree.update_node_by_id(node_id).expr = expr.clone();
+                ty
             }
-        }
+            Rule::Equivalence => {
+                assert_eq!(children.len(), 1);
+                let ty = n.ty.clone();
+                self.update_expr_inner(children[0], &expr);
+
+                let mut expr = expr.clone();
+                reset_expr_for_subsumption(&mut expr);
+
+                // Unlike the case for subsumption, we replace the original one
+                // so that we can refer to the more general type afterwards.
+                self.tree.update_node_by_id(children[0]).expr = expr.clone();
+                ty
+            }
+        };
+        self.tree.update_node_by_id(node_id).ty = ty.clone();
+        ty
     }
     fn update_expr(&mut self, expr: &G) {
         let root_id = self.tree.root().id;
-        self.update_expr_inner(root_id, expr)
+        self.update_expr_inner(root_id, expr);
+    }
+
+    fn update_children(&mut self, node_id: ID, constraint: &Atom, ctx: UpdateChildrenContext) {
+        let ty = &mut self.tree.update_node_by_id(node_id).ty;
+        let original_ty = ty.clone();
+        if !ctx.subsumption_reached {
+            if ctx.arg {
+                *ty = ty.conjoin_constraint_to_arg(constraint);
+            } else {
+                *ty = ty.conjoin_constraint(constraint);
+            }
+        }
+
+        let children: Vec<_> = self
+            .tree
+            .get_children(node_id.to_node(&self.tree))
+            .map(|child| child.id)
+            .collect();
+        let n = self.get_node_by_id(node_id).item;
+        match n.rule {
+            Rule::Conjoin => {
+                assert_eq!(children.len(), 2);
+                self.update_children(children[0], constraint, ctx.clone());
+                self.update_children(children[1], constraint, ctx);
+            }
+            Rule::Disjoin => {
+                assert_eq!(children.len(), 2);
+                self.update_children(children[0], constraint, ctx.clone());
+                self.update_children(children[1], constraint, ctx);
+            }
+            Rule::Var | Rule::Atom => {
+                let mut n = n.clone();
+                if matches!(n.rule, Rule::Var) && ctx.ident.iter().any(|x| x == n.expr.var()) {
+                    n.ty = original_ty.conjoin_constraint_to_arg(constraint);
+                } else {
+                    n.ty = original_ty;
+                }
+                let t = Tree::singleton(n);
+                self.tree.insert_children_at(node_id, 0, t);
+                self.tree.update_node_by_id(node_id).rule = Rule::Subsumption;
+                reset_expr_for_subsumption(&mut self.tree.update_node_by_id(node_id).expr);
+            }
+            Rule::Univ => {
+                assert_eq!(children.len(), 1);
+                self.update_children(children[0], constraint, ctx);
+            }
+            Rule::IAbs => {
+                assert_eq!(children.len(), 1);
+                self.update_children(children[0], constraint, ctx);
+            }
+            Rule::Abs(_) => {
+                assert_eq!(children.len(), 1);
+                // TODO: add updated variable
+                let id = n.expr.abs().0.id;
+                let mut ctx = ctx;
+                if !ctx.subsumption_reached {
+                    ctx.ident.push_mut(id);
+                }
+                self.update_children(children[0], constraint, ctx);
+            }
+            Rule::IApp(_) => {
+                assert_eq!(children.len(), 1);
+                self.update_children(children[0], constraint, ctx.clone());
+                for i in 1..children.len() {
+                    self.update_children(children[i], constraint, ctx.clone());
+                }
+            }
+            Rule::App => {
+                assert!(children.len() >= 1);
+                self.update_children(children[0], constraint, ctx.clone());
+                let mut ctx = ctx.clone();
+                ctx.arg = true;
+                for i in 1..children.len() {
+                    self.update_children(children[i], constraint, ctx.clone());
+                }
+            }
+            Rule::Subsumption => {
+                assert_eq!(children.len(), 1);
+                let mut ctx = ctx.clone();
+                ctx.subsumption_reached = true;
+                self.update_children(children[0], constraint, ctx);
+            }
+            Rule::Equivalence => {
+                assert_eq!(children.len(), 1);
+                self.update_children(children[0], constraint, ctx.clone());
+            }
+        }
     }
     fn finalize_subject_expansion(
         &mut self,
@@ -684,34 +828,70 @@ impl Derivation {
             .unwrap()
             .id;
 
-        self.update_parents(target_node, int_substitution);
+        // TODO: this can be removed
+        self.update_parents(target_node, int_substitution.clone());
+
+        match int_substitution {
+            Some((x, o)) => {
+                // get the body of the predicate
+                let child = self
+                    .tree
+                    .get_one_child(self.tree.get_node_by_id(target_node));
+                let child = self.tree.get_one_child(child);
+                let node_id = self.tree.get_one_child(child).id;
+
+                let ctx = UpdateChildrenContext {
+                    subsumption_reached: false,
+                    arg: false,
+                    ident: Stack::new(),
+                };
+
+                self.update_children(
+                    node_id,
+                    &Atom::mk_constraint(Constraint::mk_eq(Op::mk_var(x), o)),
+                    ctx,
+                );
+            }
+            None => (),
+        }
         // finally replace the expressions in the derivation with the expr before the reduction
         self.update_expr(&reduction.before_reduction)
     }
-    pub fn subject_expansion_int(
-        &mut self,
-        node_id: ID,
-        reduction: &super::Reduction,
-        pred_ty: &Ty,
-    ) {
-        let (pred_arg_ident, pred_body_ty) = match pred_ty.kind() {
-            TauKind::IArrow(x, t) => (*x, t.clone()),
-            TauKind::Proposition(_) | TauKind::Arrow(_, _) => panic!("fail"),
-        };
+    pub fn subject_expansion_int(&mut self, node_id: ID, reduction: &super::Reduction) {
+        let ri = &reduction.reduction_info;
+        let ret_ty = self.node_id_to_ty(&node_id).clone();
 
+        // constructing body derivation
+        let arg_derivations =
+            self.replace_derivation_at_level_with_var(node_id, &ri.level, ri.arg_var.id);
+        assert_eq!(arg_derivations.len(), 0);
+
+        // all Ptr(id) in the constraints in ty should be dereferenced
+        // derivation.traverse_and_recover_int_var(node_id, &ri.arg_var.id, &ri.old_id);
+
+        // TODO: update body's type derivation
+        // first insert abs derivation
         let (t, _node_id) = self.tree.insert_partial_tree(node_id, |body| {
             let body = Derivation {
                 tree: body,
                 coefficients: Stack::new(),
             };
-
-            let tmp_deriv = Derivation::rule_subsumption(body, pred_body_ty);
-
-            let tmp_deriv =
-                Derivation::rule_iarrow(reduction.predicate.clone(), tmp_deriv, &pred_arg_ident);
+            let mut tmp_deriv =
+                Derivation::rule_iarrow(reduction.predicate.clone(), body, &ri.old_id);
 
             let op: Op = reduction.reduction_info.arg.clone().into();
+            let eq_constr =
+                Atom::mk_constraint(Constraint::mk_eq(Op::mk_var(ri.old_id.clone()), op.clone()));
+            let pred_ty = Tau::mk_iarrow(ri.old_id, ret_ty.clone());
+            let pred_ty = pred_ty.conjoin_constraint_to_rty(&eq_constr);
+
+            tmp_deriv
+                .tree
+                .update_node_by_id(tmp_deriv.tree.root().id)
+                .ty = pred_ty;
+
             let app_deriv = Derivation::rule_iapp(reduction.app_expr.clone(), tmp_deriv, &op);
+            let app_deriv = Derivation::rule_equivalence(app_deriv, ret_ty.subst(&ri.old_id, &op));
             app_deriv.tree
         });
 
@@ -721,16 +901,40 @@ impl Derivation {
         self.tree = t;
         self.finalize_subject_expansion(reduction, Some((x, op)));
     }
-    pub fn subject_expansion_pred(
-        &mut self,
-        node_id: ID,
-        arg_derivations: Vec<Self>,
-        reduction: &super::Reduction,
-        pred_ty: &Ty,
-    ) {
-        let (arg_tys, pred_body_ty) = match pred_ty.kind() {
-            TauKind::Arrow(tys, t) => (tys, t.clone()),
-            TauKind::Proposition(_) | TauKind::IArrow(_, _) => panic!("fail"),
+
+    pub fn subject_expansion_pred(&mut self, node_id: ID, reduction: &super::Reduction) {
+        let ri = &reduction.reduction_info;
+        let arg_derivations =
+            self.replace_derivation_at_level_with_var(node_id, &ri.level, ri.arg_var.id);
+        let mut arg_derivations_new: Vec<Derivation> = Vec::new();
+        for arg_d in arg_derivations {
+            let mut should_append = true;
+            for d2 in arg_derivations_new.iter() {
+                if arg_d.root_ty() == d2.root_ty() {
+                    // already exists
+                    highlight!("arg derivations already exists");
+                    pdebug!(arg_d, " vs ", d2);
+                    should_append = false;
+                    break;
+                }
+            }
+            if should_append {
+                arg_derivations_new.push(arg_d);
+            }
+        }
+        let arg_derivations = arg_derivations_new;
+
+        let (arg_tys, arg_derivations) = if arg_derivations.is_empty() {
+            (vec![], vec![])
+        } else {
+            // if a shared_ty is attached with the predicate we are focusing on, we have to use it
+            (
+                arg_derivations
+                    .iter()
+                    .map(|d| d.root_ty().clone())
+                    .collect(),
+                arg_derivations,
+            )
         };
 
         let (t, _node_id) = self.tree.insert_partial_tree(node_id, |body| {
@@ -739,10 +943,8 @@ impl Derivation {
                 coefficients: Stack::new(),
             };
 
-            let tmp_deriv = Derivation::rule_subsumption(body, pred_body_ty);
-
             let tmp_deriv =
-                Derivation::rule_arrow(reduction.predicate.clone(), tmp_deriv, arg_tys.clone());
+                Derivation::rule_arrow(reduction.predicate.clone(), body, arg_tys.clone());
             let app_deriv = Derivation::rule_app(
                 reduction.app_expr.clone(),
                 tmp_deriv,
@@ -783,68 +985,125 @@ impl Derivation {
     fn clone_with_template_inner(
         &self,
         node_id: ID,
-        env: &mut HashMap<Ident, Ty>,
+        env: &mut HashMap<Ident, Stack<(Ty, Ty)>>,
+        // when mode_shared is enabled, we prepare only one template type for
+        // each lambda abstraction's argument even the type was τ₁ ∧ ⋯ ∧ τₙ
+        // otherwise, we prepare the template for each type
+        mode_shared: bool,
         ints: Stack<Ident>,
     ) -> Self {
         let n = self.get_node_by_id(node_id);
-        crate::pdebug!(n.item);
         let expr = n.item.expr.clone();
         let t = match n.item.rule {
             Rule::Conjoin => {
                 let (child1, child2) = self.tree.get_two_children(n);
-                let d1 = self.clone_with_template_inner(child1.id, env, ints.clone());
-                let d2 = self.clone_with_template_inner(child2.id, env, ints.clone());
+                let d1 = self.clone_with_template_inner(child1.id, env, mode_shared, ints.clone());
+                let d2 = self.clone_with_template_inner(child2.id, env, mode_shared, ints.clone());
                 Self::rule_conjoin(expr, d1, d2)
             }
             Rule::Disjoin => {
                 let (child1, child2) = self.tree.get_two_children(n);
-                let d1 = self.clone_with_template_inner(child1.id, env, ints.clone());
-                let d2 = self.clone_with_template_inner(child2.id, env, ints.clone());
+                let d1 = self.clone_with_template_inner(child1.id, env, mode_shared, ints.clone());
+                let d2 = self.clone_with_template_inner(child2.id, env, mode_shared, ints.clone());
                 Self::rule_disjoin(expr, d1, d2)
             }
             Rule::Var => {
                 let v = expr.var();
-                let ty = env.get(v).cloned().unwrap_or_else(|| n.item.ty.clone());
+                //debug!("searching for {v}");
+                for (v, ty_map) in env.iter() {
+                    // debug!("entry for {v}");
+                    // for (ty, ty2) in ty_map.iter() {
+                    //     pdebug!(" - ", ty, "==> ", ty2)
+                    // }
+                }
+                let ty = env
+                    .get(v)
+                    .map(|ty_map| {
+                        // if its bot type, we don't have to care about it
+                        if n.item.ty.is_bot() {
+                            &ty_map.iter().next().unwrap().1
+                        } else {
+                            ty_map
+                                .iter()
+                                .find_map(|(t1, t2)| if &n.item.ty == t1 { Some(t2) } else { None })
+                                .expect(&format!(
+                                    "failed to found {v} {}",
+                                    n.item.ty.pretty_display()
+                                ))
+                        }
+                    })
+                    .cloned()
+                    .unwrap_or_else(|| n.item.ty.clone());
                 self.tree.get_no_child(n);
                 Self::rule_var(expr, ty, Stack::new())
             }
             Rule::Univ => {
                 let x = expr.univ().0.id;
                 let child = self.tree.get_one_child(n);
-                let d = self.clone_with_template_inner(child.id, env, ints.push(x));
+                let d = self.clone_with_template_inner(child.id, env, mode_shared, ints.push(x));
                 Self::rule_quantifier(expr, d, &x)
             }
             Rule::IAbs => {
                 let x = expr.abs().0.id;
                 let child = self.tree.get_one_child(n);
-                let d = self.clone_with_template_inner(child.id, env, ints.push(x));
+                let d = self.clone_with_template_inner(child.id, env, mode_shared, ints.push(x));
                 Self::rule_iarrow(expr, d, &x)
             }
             Rule::Abs(_) => {
                 let x = expr.abs().0;
-                let ty = Ty::from_sty(&x.ty, &ints.iter().cloned().collect());
-                let old = env.insert(x.id, ty.clone());
+                let (arg_ty, _) = n.item.ty.arrow();
+
+                let mut arg_template_tys = Vec::new();
+                let fvs = ints.iter().cloned().collect();
+                let mut ty_map = Stack::new();
+                if mode_shared {
+                    let arg_temp_ty = Ty::from_sty(&x.ty, &fvs);
+                    arg_template_tys.push(arg_temp_ty.clone());
+                    for t in arg_ty.iter() {
+                        ty_map.push_mut((t.clone(), arg_temp_ty.clone()));
+                    }
+                } else {
+                    for t in arg_ty.iter() {
+                        let arg_temp_ty = Ty::from_sty(&x.ty, &fvs);
+                        arg_template_tys.push(arg_temp_ty.clone());
+                        ty_map.push_mut((t.clone(), arg_temp_ty.clone()));
+                    }
+                };
+                let old = env.insert(x.id, ty_map);
                 let child = self.tree.get_one_child(n);
-                let d = self.clone_with_template_inner(child.id, env, ints.clone());
+                let d = self.clone_with_template_inner(child.id, env, mode_shared, ints.clone());
                 if let Some(ty) = old {
                     env.insert(x.id, ty);
                 }
-                Self::rule_arrow(expr, d, vec![ty.clone()])
+
+                Self::rule_arrow(expr, d, arg_template_tys)
             }
             Rule::IApp(_) => {
                 let (_, e) = expr.app();
                 let o: Op = e.clone().into();
                 let child = self.tree.get_one_child(n);
-                let d = self.clone_with_template_inner(child.id, env, ints);
+                let d = self.clone_with_template_inner(child.id, env, mode_shared, ints);
                 Self::rule_iapp(expr, d, &o)
             }
-            Rule::App => {
+            Rule::App if mode_shared => {
                 let mut c = self.tree.get_children(n);
                 let c1 = c.next().unwrap();
-                let c2 = c.next().unwrap();
-                let d1 = self.clone_with_template_inner(c1.id, env, ints.clone());
-                let d2 = self.clone_with_template_inner(c2.id, env, ints.clone());
+                let d1 = self.clone_with_template_inner(c1.id, env, mode_shared, ints.clone());
                 let ty1 = d1.root_ty().clone();
+                let (d2, is_bot) = match c.next() {
+                    Some(c2) => {
+                        let d2 =
+                            self.clone_with_template_inner(c2.id, env, mode_shared, ints.clone());
+                        (d2, false)
+                    }
+                    None => (
+                        Derivation::rule_atom(
+                            expr.app().1.clone(),
+                            Ty::mk_bot(&ty1.arrow().0[0].to_sty()),
+                        ),
+                        true,
+                    ),
+                };
                 let ty2 = d2.root_ty().clone();
 
                 let (_, ret_ty) = ty1.arrow();
@@ -852,12 +1111,20 @@ impl Derivation {
                 let ty3 = Ty::mk_arrow(vec![ty2], ret_tmp_ty);
 
                 let d3 = Self::rule_subsumption(d1, ty3);
-                Self::rule_app(expr, d3, std::iter::once(d2))
+
+                if is_bot {
+                    Self::rule_app(expr, d3, std::iter::empty())
+                } else {
+                    Self::rule_app(expr, d3, std::iter::once(d2))
+                }
             }
-            // skip subsumption
-            Rule::Subsumption => {
+            Rule::App => {
+                unimplemented!()
+            }
+            // skip subsumption and equivalence
+            Rule::Equivalence | Rule::Subsumption => {
                 let child = self.tree.get_one_child(n);
-                let d = self.clone_with_template_inner(child.id, env, ints);
+                let d = self.clone_with_template_inner(child.id, env, mode_shared, ints);
                 d
             }
             Rule::Atom => Self::rule_atom(expr, n.item.ty.clone()),
@@ -867,11 +1134,13 @@ impl Derivation {
             coefficients: t.coefficients,
         }
     }
-    pub fn clone_with_template(&self) -> Self {
+    pub fn clone_with_template(&self, mode_shared: bool) -> Self {
+        highlight!("clone_with_template");
+        pdebug!(self);
         let root = self.tree.root().id;
         let mut env = HashMap::new();
         let ints = Stack::new();
-        let d = self.clone_with_template_inner(root, &mut env, ints);
+        let d = self.clone_with_template_inner(root, &mut env, mode_shared, ints);
         let n = self.get_node_by_id(root);
         match n.item.rule {
             Rule::Subsumption => (),
@@ -882,15 +1151,22 @@ impl Derivation {
     }
     #[allow(dead_code)]
     /// This function is used to check that the derivation is well-formed
-    pub fn check_sanity(&self) -> bool {
+    /// if strict flag is enabled, then check_sanity checks if the given derivation tree
+    /// is well-formed in the sense that all free variables of each type are bound.
+    pub fn check_sanity(&self, strict: bool) -> bool {
         // now only check if app is sane since others are probably fine
-        fn go(d: &Derivation, node_id: ID, ints: &Stack<Ident>) -> bool {
+        fn go(d: &Derivation, node_id: ID, ints: &Stack<Ident>, strict: bool) -> bool {
             let n = d.get_node_by_id(node_id);
             let fvs = n.item.ty.fv();
-            assert!(fvs
-                .difference(&ints.iter().cloned().collect())
-                .next()
-                .is_none());
+            if strict
+                && !fvs
+                    .difference(&ints.iter().cloned().collect())
+                    .next()
+                    .is_none()
+            {
+                pdebug!("fail: ", n.item);
+                panic!("derivation is not well-formed");
+            };
             match n.item.rule {
                 Rule::Var | Rule::Atom => {
                     d.tree.get_no_child(n);
@@ -898,25 +1174,25 @@ impl Derivation {
                 }
                 Rule::Conjoin | Rule::Disjoin => {
                     let (child1, child2) = d.tree.get_two_children(n);
-                    go(d, child1.id, ints) && go(d, child2.id, ints)
+                    go(d, child1.id, ints, strict) && go(d, child2.id, ints, strict)
                 }
                 Rule::IAbs => {
                     let x = n.item.expr.abs().0;
                     assert!(x.ty.is_int());
                     let ints = ints.push(x.id);
                     let child = d.tree.get_one_child(n);
-                    go(d, child.id, &ints)
+                    go(d, child.id, &ints, strict)
                 }
                 Rule::Univ => {
                     let x = n.item.expr.univ().0;
                     assert!(x.ty.is_int());
                     let ints = ints.push(x.id);
                     let child = d.tree.get_one_child(n);
-                    go(d, child.id, &ints)
+                    go(d, child.id, &ints, strict)
                 }
-                Rule::IApp(_) | Rule::Abs(_) | Rule::Subsumption => {
+                Rule::IApp(_) | Rule::Abs(_) | Rule::Subsumption | Rule::Equivalence => {
                     let child = d.tree.get_one_child(n);
-                    go(d, child.id, ints)
+                    go(d, child.id, ints, strict)
                 }
                 Rule::App => {
                     let children: Vec<_> = d.tree.get_children(n).collect();
@@ -927,24 +1203,28 @@ impl Derivation {
                         .collect();
                     let body_tys = pred_ty.arrow().0;
                     // subsumption
-                    debug!("subsumption");
-                    for body_ty in body_tys.iter() {
-                        crate::pdebug!(body_ty);
-                    }
-                    debug!("<:");
-                    for body_ty in arg_tys.iter() {
-                        crate::pdebug!(body_ty);
-                    }
-                    assert!(body_tys
+                    if !body_tys
                         .iter()
                         .filter(|x| !x.is_bot())
                         .zip(arg_tys.iter().filter(|x| !x.is_bot()))
-                        .all(|(t1, t2)| t1 == t2));
+                        .all(|(t1, t2)| t1 == t2)
+                    {
+                        debug!("subsumption");
+                        for body_ty in body_tys.iter() {
+                            crate::pdebug!(body_ty);
+                        }
+                        debug!("<:");
+                        for body_ty in arg_tys.iter() {
+                            crate::pdebug!(body_ty);
+                        }
+                        debug!("is wrong");
+                        panic!();
+                    }
 
-                    children.iter().all(|c| go(d, c.id, ints))
+                    children.iter().all(|c| go(d, c.id, ints, strict))
                 }
             }
         }
-        go(self, self.tree.root().id, &Stack::new())
+        go(self, self.tree.root().id, &Stack::new(), strict)
     }
 }

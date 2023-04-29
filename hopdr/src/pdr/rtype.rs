@@ -1,6 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     fmt::{self, Display},
+    hash::Hash,
 };
 
 use crate::{formula, formula::hes::Goal, solver, solver::smt};
@@ -19,7 +20,7 @@ use crate::{
 
 use rpds::Stack;
 
-#[derive(Debug)]
+#[derive(Debug, Hash)]
 pub enum TauKind<C> {
     Proposition(C),
     IArrow(Ident, Tau<C>),
@@ -41,6 +42,7 @@ pub trait Refinement:
     + Rename
     + From<Goal<Self>>
     + DerefPtr
+    + Hash
     + fmt::Display
     + Pretty
     + Precedence
@@ -59,6 +61,7 @@ impl<T> Refinement for T where
         + Rename
         + From<Goal<Self>>
         + DerefPtr
+        + Hash
         + fmt::Display
         + Pretty
         + Precedence
@@ -141,6 +144,8 @@ impl<C: Refinement> PartialEq for Tau<C> {
         r
     }
 }
+
+impl<C: Refinement> Eq for Tau<C> {}
 
 pub trait TTop {
     fn mk_top(st: &SType) -> Self;
@@ -370,8 +375,47 @@ impl<C: Refinement> Tau<C> {
         }
         go(self, constraint, Polarity::Positive)
     }
-    /// conjoin c to rty(self)
+
+    /// conjoin c as the context
+    pub fn conjoin_constraint_to_arg(&self, c: &C) -> Self {
+        match self.kind() {
+            TauKind::Proposition(c_old) => {
+                //let c_new = C::mk_disj(c.clone().negate().unwrap(), c_old.clone());
+                let c_new = C::mk_conj(c.clone(), c_old.clone());
+                Self::mk_prop_ty(c_new)
+            }
+            TauKind::IArrow(i, t) => {
+                let t = t.conjoin_constraint_to_arg(c);
+                Self::mk_iarrow(*i, t)
+            }
+            TauKind::Arrow(ts, t) => {
+                let t = t.conjoin_constraint_to_arg(c);
+                let ts = ts.iter().map(|t| t.conjoin_constraint_to_arg(c)).collect();
+                Self::mk_arrow(ts, t)
+            }
+        }
+    }
+
+    /// conjoin c as the context
     pub fn conjoin_constraint(&self, c: &C) -> Self {
+        match self.kind() {
+            TauKind::Proposition(c_old) => {
+                let c_new = C::mk_conj(c.clone(), c_old.clone());
+                Self::mk_prop_ty(c_new)
+            }
+            TauKind::IArrow(i, t) => {
+                let t = t.conjoin_constraint(c);
+                Self::mk_iarrow(*i, t)
+            }
+            TauKind::Arrow(ts, t) => {
+                let t = t.conjoin_constraint(c);
+                let ts = ts.iter().map(|t| t.conjoin_constraint_to_arg(c)).collect();
+                Self::mk_arrow(ts, t)
+            }
+        }
+    }
+    /// conjoin c to rty(self)
+    pub fn conjoin_constraint_to_rty(&self, c: &C) -> Self {
         match self.kind() {
             TauKind::Proposition(c_old) => {
                 let c_new = C::mk_conj(c_old.clone(), c.clone());
@@ -383,8 +427,7 @@ impl<C: Refinement> Tau<C> {
             }
             TauKind::Arrow(ts, t) => {
                 let t = t.conjoin_constraint(c);
-                let ts = ts.iter().map(|t| t.conjoin_constraint(c)).collect();
-                Self::mk_arrow(ts, t)
+                Self::mk_arrow(ts.clone(), t)
             }
         }
     }
@@ -518,13 +561,26 @@ impl<C: Refinement> Tau<C> {
         }
     }
     pub fn mk_arrow(t: Vec<Tau<C>>, s: Tau<C>) -> Tau<C> {
-        let t_fst = t[0].clone();
-        let mut t: Vec<_> = t.into_iter().filter(|t| !t.is_bot()).collect();
-        if t.len() == 0 {
-            // t_fst must be bot ty where all bot types are filtered out.
-            t.push(t_fst);
-        }
         Tau::new(TauKind::Arrow(t, s))
+    }
+    pub fn optimize_trivial_intersection(&self) -> Self {
+        match self.kind() {
+            TauKind::Proposition(c) => Self::mk_prop_ty(c.clone()),
+            TauKind::IArrow(x, t) => Self::mk_iarrow(*x, t.optimize_trivial_intersection()),
+            TauKind::Arrow(ts, t) => {
+                let t_fst = ts[0].clone();
+                let mut ts: Vec<_> = ts
+                    .iter()
+                    .map(|t| t.optimize_trivial_intersection())
+                    .filter(|t| !t.is_bot())
+                    .collect();
+                if ts.len() == 0 {
+                    // t_fst must be bot ty where all bot types are filtered out.
+                    ts.push(t_fst);
+                }
+                Tau::mk_arrow(ts, t.optimize_trivial_intersection())
+            }
+        }
     }
     pub fn prop<'a>(&'a self) -> &'a C {
         match self.kind() {
@@ -667,8 +723,8 @@ impl<C> Tau<C> {
             TauKind::Proposition(_) => 0,
             TauKind::IArrow(_, t) => std::cmp::max(1, t.order()),
             TauKind::Arrow(ts, y) => {
-                debug_assert!(!ts.is_empty());
-                let o1 = ts[0].order();
+                // FIXIME: this is wrong definition
+                let o1 = if ts.is_empty() { 0 } else { ts[0].order() };
                 let o2 = y.order();
                 std::cmp::max(o1 + 1, o2)
             }
