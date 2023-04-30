@@ -811,6 +811,37 @@ impl Derivation {
         // all Ptr(id) in the constraints in ty should be dereferenced
         // derivation.traverse_and_recover_int_var(node_id, &ri.arg_var.id, &ri.old_id);
 
+        //            D                      D
+        //          ------                ------
+        //  x ≠ e    ψ: t                 ψ: t
+        // ---------------         ---------------------  (IAbs)
+        //   x ≠ e \/ ψ:       --->     λx.ψ: x: int -> t
+        // ---------------          --------------------  (IApp)
+        //  ∀ x. x ≠ e ∨ ψ           (λx.ψ) e: [e/x]t
+        // ----------------         ------------------
+        //        ⋮                      ⋮
+        let op = reduction.reduction_info.arg.clone().into();
+
+        let child = self.tree.get_one_child(node_id.to_node(&self.tree));
+        debug_assert!(matches!(child.item.rule, Rule::Disjoin));
+        let child_id = child.id;
+        let to_be_removed = self
+            .tree
+            .get_two_children(child_id.to_node(&self.tree))
+            .0
+            .id;
+        self.tree = self.tree.drop_subtree(to_be_removed.to_node(&self.tree));
+
+        self.tree.update_node_by_id(node_id).rule = Rule::IApp(op);
+        self.tree.update_node_by_id(child_id).rule = Rule::IAbs;
+
+        let children: Vec<_> = self
+            .tree
+            .get_children(node_id.to_node(&self.tree))
+            .into_iter()
+            .collect();
+        assert_eq!(children.len(), 2);
+
         // TODO: update body's type derivation
         // first insert abs derivation
         let (t, _node_id) = self.tree.insert_partial_tree(node_id, |body| {

@@ -420,6 +420,8 @@ fn generate_reduction_sequence(goal: &G, optimizer: &mut dyn Optimizer) -> (Vec<
                         }
 
                         let ret = if new_var.ty.is_int() {
+                            // Reduction for integer
+                            // (λx. ψ) e ⟶ ∀ x. (x = e ⇒ ψ)
                             let arg: Op = arg.clone().into();
                             let body = G::mk_imply_t(
                                 Constraint::mk_eq(Op::mk_var(new_var.id), arg),
