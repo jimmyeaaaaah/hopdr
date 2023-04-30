@@ -438,7 +438,7 @@ impl Derivation {
         });
     }
 
-    fn update_parents(&mut self, target_id: ID, int_substitution: Option<(Ident, Op)>) {
+    fn update_parents(&mut self, target_id: ID) {
         fn update_app_branchs(t: &mut Tree<DeriveNode>, target_id: ID, ident: &Ident, op: &Op) {
             t.update_node_by_id(target_id).ty =
                 t.get_node_by_id(target_id).item.ty.subst(ident, op);
@@ -537,18 +537,18 @@ impl Derivation {
                                 // case1: the updated child was in pred
                                 if node.expr.aux.id == children[0].item.expr.aux.id {
                                     // first we update other children
-                                    match &int_substitution {
-                                        Some((x, o)) => {
-                                            for child_id in children[1..]
-                                                .into_iter()
-                                                .map(|child| child.id)
-                                                .collect::<Vec<_>>()
-                                            {
-                                                update_app_branchs(t, child_id, &x, &o);
-                                            }
-                                        }
-                                        None => (),
-                                    }
+                                    // match &int_substitution {
+                                    //     Some((x, o)) => {
+                                    //         for child_id in children[1..]
+                                    //             .into_iter()
+                                    //             .map(|child| child.id)
+                                    //             .collect::<Vec<_>>()
+                                    //         {
+                                    //             update_app_branchs(t, child_id, &x, &o);
+                                    //         }
+                                    //     }
+                                    //     None => (),
+                                    // }
 
                                     // then we retrieve the updated children
                                     let children: Vec<_> = t
@@ -609,11 +609,6 @@ impl Derivation {
                         }
                     }
                 };
-                debug!("subst {ty} with {int_substitution:?}");
-                let ty = int_substitution
-                    .as_ref()
-                    .map(|(id, op)| ty.subst(id, op))
-                    .unwrap_or(ty);
                 let n = t.get_node_by_id(cur).item;
                 let n = DeriveNode {
                     ty,
@@ -624,7 +619,7 @@ impl Derivation {
             })
             .unwrap();
     }
-    fn update_expr_inner(&mut self, node_id: ID, expr: &G) -> Ty {
+    fn update_expr_inner(&mut self, node_id: ID, expr: &G) {
         self.tree.update_node_by_id(node_id).expr = expr.clone();
         let children: Vec<_> = self
             .tree
@@ -634,85 +629,62 @@ impl Derivation {
         let n = self.get_node_by_id(node_id).item;
         crate::title!("update_expr_inner");
         crate::pdebug!(n);
-        let ty = match n.rule {
+        match n.rule {
             Rule::Conjoin => {
                 let (g1, g2) = expr.conj();
                 assert_eq!(children.len(), 2);
-                let ty1 = self.update_expr_inner(children[0], g1);
-                let ty2 = self.update_expr_inner(children[1], g2);
-                let c1 = ty1.prop();
-                let c2 = ty2.prop();
-                Ty::mk_prop_ty(Atom::mk_conj(c1.clone(), c2.clone()))
+                self.update_expr_inner(children[0], g1);
+                self.update_expr_inner(children[1], g2);
             }
             Rule::Disjoin => {
                 let (g1, g2) = expr.disj();
                 assert_eq!(children.len(), 2);
-                let ty1 = self.update_expr_inner(children[0], g1);
-                let ty2 = self.update_expr_inner(children[1], g2);
-                let c1 = ty1.prop();
-                let c2 = ty2.prop();
-                Ty::mk_prop_ty(Atom::mk_disj(c1.clone(), c2.clone()))
+                self.update_expr_inner(children[0], g1);
+                self.update_expr_inner(children[1], g2);
             }
             Rule::Var => {
                 debug_assert!(expr.is_var());
-                n.ty.clone()
             }
-            Rule::Atom => {
-                let c = expr.atom();
-                Ty::mk_prop_ty(c.clone().into())
-            }
+            Rule::Atom => (),
             Rule::Univ => {
                 let (y, g) = expr.univ();
                 assert_eq!(children.len(), 1);
-                let ty = self.update_expr_inner(children[0], g);
-                let c = ty.prop();
-                Ty::mk_prop_ty(Atom::mk_univ_int(y.id, c.clone()))
+                self.update_expr_inner(children[0], g);
             }
             Rule::IAbs => {
                 let (y, g) = expr.abs();
                 debug_assert!(y.ty.is_int());
                 assert_eq!(children.len(), 1);
-                let ty = self.update_expr_inner(children[0], g);
-                Ty::mk_iarrow(y.id, ty)
+                self.update_expr_inner(children[0], g);
             }
             Rule::Abs(_) => {
                 let (_, g) = expr.abs();
                 assert_eq!(children.len(), 1);
-                let arg = n.ty.arrow().0.clone();
-                let ty = self.update_expr_inner(children[0], g);
-                Ty::mk_arrow(arg, ty)
+                self.update_expr_inner(children[0], g);
             }
             Rule::IApp(_) => {
                 let (x, y) = expr.app();
                 assert_eq!(children.len(), 1);
-                let ty = self.update_expr_inner(children[0], x);
-                let (x, t) = ty.iarrow();
-                let op: Op = y.clone().into();
-                t.subst(x, &op)
+                self.update_expr_inner(children[0], x);
             }
             Rule::App => {
                 let (x, y) = expr.app();
                 assert!(children.len() >= 1);
-                let ty = self.update_expr_inner(children[0], x);
+                self.update_expr_inner(children[0], x);
                 for i in 1..children.len() {
                     self.update_expr_inner(children[i], y);
                 }
-                let (_, ret) = ty.arrow();
-                ret.clone()
             }
             Rule::Subsumption => {
                 assert_eq!(children.len(), 1);
-                let ty = n.ty.clone();
                 self.update_expr_inner(children[0], &expr);
 
                 let mut expr = expr.clone();
                 reset_expr_for_subsumption(&mut expr);
                 self.tree.update_node_by_id(node_id).expr = expr.clone();
-                ty
             }
             Rule::Equivalence => {
                 assert_eq!(children.len(), 1);
-                let ty = n.ty.clone();
                 self.update_expr_inner(children[0], &expr);
 
                 let mut expr = expr.clone();
@@ -721,11 +693,8 @@ impl Derivation {
                 // Unlike the case for subsumption, we replace the original one
                 // so that we can refer to the more general type afterwards.
                 self.tree.update_node_by_id(children[0]).expr = expr.clone();
-                ty
             }
         };
-        self.tree.update_node_by_id(node_id).ty = ty.clone();
-        ty
     }
     fn update_expr(&mut self, expr: &G) {
         let root_id = self.tree.root().id;
@@ -818,42 +787,15 @@ impl Derivation {
             }
         }
     }
-    fn finalize_subject_expansion(
-        &mut self,
-        reduction: &super::Reduction,
-        int_substitution: Option<(Ident, Op)>,
-    ) {
+    fn finalize_subject_expansion(&mut self, reduction: &super::Reduction) {
         let target_node = self
             .get_node_closest_to_root_by_goal_id(&reduction.app_expr.aux.id)
             .unwrap()
             .id;
 
         // TODO: this can be removed
-        self.update_parents(target_node, int_substitution.clone());
+        self.update_parents(target_node);
 
-        match int_substitution {
-            Some((x, o)) => {
-                // get the body of the predicate
-                let child = self
-                    .tree
-                    .get_one_child(self.tree.get_node_by_id(target_node));
-                let child = self.tree.get_one_child(child);
-                let node_id = self.tree.get_one_child(child).id;
-
-                let ctx = UpdateChildrenContext {
-                    subsumption_reached: false,
-                    arg: false,
-                    ident: Stack::new(),
-                };
-
-                self.update_children(
-                    node_id,
-                    &Atom::mk_constraint(Constraint::mk_eq(Op::mk_var(x), o)),
-                    ctx,
-                );
-            }
-            None => (),
-        }
         // finally replace the expressions in the derivation with the expr before the reduction
         self.update_expr(&reduction.before_reduction)
     }
@@ -896,10 +838,8 @@ impl Derivation {
         });
 
         let x = reduction.predicate.abs().0.id;
-        let op = reduction.reduction_info.arg.clone().into();
-
         self.tree = t;
-        self.finalize_subject_expansion(reduction, Some((x, op)));
+        self.finalize_subject_expansion(reduction);
     }
 
     pub fn subject_expansion_pred(&mut self, node_id: ID, reduction: &super::Reduction) {
@@ -955,7 +895,7 @@ impl Derivation {
         });
 
         self.tree = t;
-        self.finalize_subject_expansion(reduction, None);
+        self.finalize_subject_expansion(reduction);
     }
 
     pub fn collect_constraints<'a>(&'a self) -> impl Iterator<Item = Atom> + 'a {
