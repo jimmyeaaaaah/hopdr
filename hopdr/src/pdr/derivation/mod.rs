@@ -8,7 +8,7 @@ use derive_tree::Derivation;
 
 use crate::formula::chc::Model;
 use crate::formula::hes::{Goal, GoalBase, GoalKind, Problem as ProblemBase};
-use crate::formula::{self, Op};
+use crate::formula::{self, Op, Type as STy};
 use crate::formula::{
     chc, fofml, Constraint, Fv, Ident, Logic, Negation, Rename, Subst, Top, Variable,
 };
@@ -16,7 +16,7 @@ use crate::solver;
 use crate::util::Pretty;
 use crate::{pdebug, title};
 
-use rpds::Stack;
+use rpds::{HashTrieMap, Stack};
 
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -213,6 +213,7 @@ struct TypeMemory {
     tys: Option<Vec<Ty>>,
     // idents that are free variables at this position
     ints: Stack<Ident>,
+    sty: Option<STy>,
 }
 impl TypeMemory {
     fn new() -> TypeMemory {
@@ -222,6 +223,7 @@ impl TypeMemory {
             old_ids: Stack::new(),
             tys: None,
             ints: Stack::new(),
+            sty: None,
         }
     }
     fn add_arg_level(&mut self, level: usize) {
@@ -372,7 +374,69 @@ impl GoalBase<Constraint, TypeMemory> {
         }
         go(&self, Stack::new())
     }
+    fn calculate_sty(self) -> G {
+        fn go(g: &G, env: HashTrieMap<Ident, STy>) -> (G, STy) {
+            let (mut g, sty) = match g.kind() {
+                GoalKind::Constr(_) => (g.clone(), STy::mk_type_prop()),
+                GoalKind::Op(_) => (g.clone(), STy::mk_type_int()),
+                GoalKind::Var(x) => {
+                    let g = g.clone();
+                    let sty = env.get(x).unwrap().clone();
+                    (g, sty)
+                }
+                GoalKind::Abs(x, g2) => {
+                    let x = x.clone();
+                    let env = env.insert(x.id, x.ty.clone());
+                    let (g2, ty) = go(g2, env);
+                    let g = G::mk_abs_t(x.clone(), g2, g.aux.clone());
+                    (g, STy::mk_type_arrow(x.ty.clone(), ty))
+                }
+                GoalKind::Univ(x, g2) => {
+                    let x = x.clone();
+                    let env = env.insert(x.id, x.ty.clone());
+                    let (g2, _) = go(g2, env);
+                    let g = G::mk_univ_t(x, g2, g.aux.clone());
+                    (g, STy::mk_type_prop())
+                }
+                GoalKind::App(g1, g2) => {
+                    let (g1, t1) = go(g1, env.clone());
+                    let (g2, t2) = go(g2, env.clone());
+                    let (t, s) = t1.arrow();
+                    assert_eq!(t, &t2);
+                    let app = G::mk_app_t(g1, g2, g.aux.clone());
+                    (app, s.clone())
+                }
+                GoalKind::Conj(g1, g2) => {
+                    let (g1, _) = go(g1, env.clone());
+                    let (g2, _) = go(g2, env.clone());
+                    let g = G::mk_conj_t(g1, g2, g.aux.clone());
+                    (g, STy::mk_type_prop())
+                }
+                GoalKind::Disj(g1, g2) => {
+                    let (g1, _) = go(g1, env.clone());
+                    let (g2, _) = go(g2, env.clone());
+                    let g = G::mk_disj_t(g1, g2, g.aux.clone());
+                    (g, STy::mk_type_prop())
+                }
+            };
+            g.aux.sty = Some(sty.clone());
+            (g, sty)
+        }
+        let (g, _) = go(&self, HashTrieMap::new());
+        g
+    }
 }
+
+// fn int_reduce_inner(expr: &G, x: Ident, arg: &G) {
+//     let arg: Op = arg.clone().into();
+//     let body = G::mk_imply_t(
+//         Constraint::mk_eq(Op::mk_var(new_var.id), arg),
+//         new_g,
+//         TypeMemory::new(),
+//     )
+//     .unwrap();
+//     G::mk_univ_t(new_var.clone(), body, TypeMemory::new())
+// }
 
 fn generate_reduction_sequence(goal: &G, optimizer: &mut dyn Optimizer) -> (Vec<Reduction>, G) {
     /// returns
@@ -1310,6 +1374,7 @@ fn reduce_until_normal_form(
     let goal = goal.alpha_renaming();
     // calculate free variables for each term
     let goal = goal.calculate_free_variables();
+    let goal = goal.calculate_sty();
     title!("generate_reduction_sequence");
     let (reduction_sequence, normal_form) = generate_reduction_sequence(&goal, optimizer);
     Context::new(normal_form, track_idents, reduction_sequence)
