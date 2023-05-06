@@ -374,7 +374,7 @@ impl GoalBase<Constraint, TypeMemory> {
         }
         go(&self, Stack::new())
     }
-    fn calculate_sty(self) -> G {
+    fn calculate_sty(self, problem: &Problem) -> G {
         fn go(g: &G, env: HashTrieMap<Ident, STy>) -> (G, STy) {
             let (mut g, sty) = match g.kind() {
                 GoalKind::Constr(_) => (g.clone(), STy::mk_type_prop()),
@@ -422,7 +422,11 @@ impl GoalBase<Constraint, TypeMemory> {
             g.aux.sty = Some(sty.clone());
             (g, sty)
         }
-        let (g, _) = go(&self, HashTrieMap::new());
+        let mut env = HashTrieMap::new();
+        for c in problem.clauses.iter() {
+            env.insert_mut(c.head.id, c.head.ty.clone());
+        }
+        let (g, _) = go(&self, env);
         g
     }
 }
@@ -1374,7 +1378,7 @@ fn reduce_until_normal_form(
     let goal = goal.alpha_renaming();
     // calculate free variables for each term
     let goal = goal.calculate_free_variables();
-    let goal = goal.calculate_sty();
+    let goal = goal.calculate_sty(problem);
     title!("generate_reduction_sequence");
     let (reduction_sequence, normal_form) = generate_reduction_sequence(&goal, optimizer);
     Context::new(normal_form, track_idents, reduction_sequence)
