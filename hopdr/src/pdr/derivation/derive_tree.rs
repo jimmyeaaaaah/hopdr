@@ -812,7 +812,7 @@ impl Derivation {
         pdebug!(self.tree);
 
         // all Ptr(id) in the constraints in ty should be dereferenced
-        // derivation.traverse_and_recover_int_var(node_id, &ri.arg_var.id, &ri.old_id);
+        self.traverse_and_recover_int_var(node_id, &ri.arg_var.id, &ri.old_id);
 
         //            D                      D
         //          ------                ------
@@ -838,7 +838,7 @@ impl Derivation {
         debug_assert!(matches!(child.item.rule, Rule::Disjoin));
 
         // remove app
-        let mut body = self.tree.get_two_children(child).0;
+        let mut body = self.tree.get_two_children(child).1;
 
         for _ in 0..abs_cnt {
             body = self.tree.get_two_children(body).0;
@@ -851,6 +851,7 @@ impl Derivation {
 
         self.tree.update_node_by_id(node_id).rule = Rule::IApp(op);
         self.tree.update_node_by_id(child_id).rule = Rule::IAbs;
+        self.tree.update_node_by_id(child_id).ty = Ty::mk_iarrow(ri.old_id, ret_ty.clone());
 
         let children: Vec<_> = self
             .tree
@@ -978,13 +979,6 @@ impl Derivation {
             }
             Rule::Var => {
                 let v = expr.var();
-                //debug!("searching for {v}");
-                for (v, ty_map) in env.iter() {
-                    // debug!("entry for {v}");
-                    // for (ty, ty2) in ty_map.iter() {
-                    //     pdebug!(" - ", ty, "==> ", ty2)
-                    // }
-                }
                 let ty = env
                     .get(v)
                     .map(|ty_map| {

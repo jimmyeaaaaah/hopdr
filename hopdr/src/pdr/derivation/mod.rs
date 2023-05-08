@@ -487,8 +487,9 @@ fn generate_reduction_sequence(goal: &G, optimizer: &mut dyn Optimizer) -> (Vec<
                         // track the type of argument
                         arg.aux.add_arg_level(level);
 
-                        let new_var = Variable::fresh(x.ty.clone());
-                        let new_g = g.rename(&x.id, &new_var.id);
+                        let new_var = x.clone();
+                        let new_g = g.clone();
+                        //let new_g = g.rename(&x.id, &new_var.id);
                         let old_id = x.id;
 
                         // [feature shared_ty]
