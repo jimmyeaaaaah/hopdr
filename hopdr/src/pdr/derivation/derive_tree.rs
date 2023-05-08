@@ -788,13 +788,13 @@ impl Derivation {
         }
     }
     fn finalize_subject_expansion(&mut self, reduction: &super::Reduction) {
-        let target_node = self
-            .get_node_closest_to_root_by_goal_id(&reduction.app_expr.aux.id)
-            .unwrap()
-            .id;
+        //let target_node = self
+        //    .get_node_closest_to_root_by_goal_id(&reduction.app_expr.aux.id)
+        //    .unwrap()
+        //    .id;
 
         // TODO: this can be removed
-        self.update_parents(target_node);
+        //self.update_parents(target_node);
 
         // finally replace the expressions in the derivation with the expr before the reduction
         self.update_expr(&reduction.before_reduction)
@@ -808,6 +808,9 @@ impl Derivation {
             self.replace_derivation_at_level_with_var(node_id, &ri.level, ri.arg_var.id);
         assert_eq!(arg_derivations.len(), 0);
 
+        pdebug!("subject_expansion_int");
+        pdebug!(self.tree);
+
         // all Ptr(id) in the constraints in ty should be dereferenced
         // derivation.traverse_and_recover_int_var(node_id, &ri.arg_var.id, &ri.old_id);
 
@@ -820,56 +823,51 @@ impl Derivation {
         //  ∀ x. x ≠ e ∨ ψ           (λx.ψ) e: [e/x]t
         // ----------------         ------------------
         //        ⋮                      ⋮
+        // but, actually, we have to omit all the expressions introduced for eta expansion
         let op = reduction.reduction_info.arg.clone().into();
 
-        let child = self.tree.get_one_child(node_id.to_node(&self.tree));
+        let mut node = node_id.to_node(&self.tree);
+        let child_id = self.tree.get_one_child(node_id.to_node(&self.tree)).id;
+        let mut abs_cnt = 0;
+        while !matches!(node.item.rule, Rule::Univ) {
+            abs_cnt += 1;
+            node = self.tree.get_one_child(node_id.to_node(&self.tree));
+        }
+
+        let child = self.tree.get_one_child(node);
         debug_assert!(matches!(child.item.rule, Rule::Disjoin));
-        let child_id = child.id;
-        let to_be_removed = self
-            .tree
-            .get_two_children(child_id.to_node(&self.tree))
-            .0
-            .id;
-        self.tree = self.tree.drop_subtree(to_be_removed.to_node(&self.tree));
+
+        // remove app
+        let mut body = self.tree.get_two_children(child).0;
+
+        for _ in 0..abs_cnt {
+            body = self.tree.get_two_children(body).0;
+            match body.item.rule {
+                Rule::App | Rule::IApp(_) => (),
+                _ => panic!("program error"),
+            }
+        }
+        let subtree = self.tree.subtree(body);
 
         self.tree.update_node_by_id(node_id).rule = Rule::IApp(op);
         self.tree.update_node_by_id(child_id).rule = Rule::IAbs;
 
         let children: Vec<_> = self
             .tree
-            .get_children(node_id.to_node(&self.tree))
+            .get_children(child_id.to_node(&self.tree))
             .into_iter()
             .collect();
-        assert_eq!(children.len(), 2);
+        let mut t = self.tree.clone();
+        for child in children {
+            t = t.drop_subtree(child);
+        }
 
-        // TODO: update body's type derivation
-        // first insert abs derivation
-        let (t, _node_id) = self.tree.insert_partial_tree(node_id, |body| {
-            let body = Derivation {
-                tree: body,
-                coefficients: Stack::new(),
-            };
-            let mut tmp_deriv =
-                Derivation::rule_iarrow(reduction.predicate.clone(), body, &ri.old_id);
+        t.insert_children_at(child_id, 0, subtree);
 
-            let op: Op = reduction.reduction_info.arg.clone().into();
-            let eq_constr =
-                Atom::mk_constraint(Constraint::mk_eq(Op::mk_var(ri.old_id.clone()), op.clone()));
-            let pred_ty = Tau::mk_iarrow(ri.old_id, ret_ty.clone());
-            let pred_ty = pred_ty.conjoin_constraint_to_rty(&eq_constr);
-
-            tmp_deriv
-                .tree
-                .update_node_by_id(tmp_deriv.tree.root().id)
-                .ty = pred_ty;
-
-            let app_deriv = Derivation::rule_iapp(reduction.app_expr.clone(), tmp_deriv, &op);
-            let app_deriv = Derivation::rule_equivalence(app_deriv, ret_ty.subst(&ri.old_id, &op));
-            app_deriv.tree
-        });
-
-        let x = reduction.predicate.abs().0.id;
         self.tree = t;
+        pdebug!("before finalize_subject expansion:");
+        pdebug!(self.tree);
+
         self.finalize_subject_expansion(reduction);
     }
 
