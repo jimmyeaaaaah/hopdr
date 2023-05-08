@@ -431,16 +431,32 @@ impl GoalBase<Constraint, TypeMemory> {
     }
 }
 
-// fn int_reduce_inner(expr: &G, x: Ident, arg: &G) {
-//     let arg: Op = arg.clone().into();
-//     let body = G::mk_imply_t(
-//         Constraint::mk_eq(Op::mk_var(new_var.id), arg),
-//         new_g,
-//         TypeMemory::new(),
-//     )
-//     .unwrap();
-//     G::mk_univ_t(new_var.clone(), body, TypeMemory::new())
-// }
+fn int_reduce_inner(expr: &G, id: Ident, op: Op) -> G {
+    match expr.aux.sty.as_ref().unwrap().kind() {
+        formula::TypeKind::Proposition => {
+            let mut tm = TypeMemory::new();
+            tm.sty = Some(STy::mk_type_prop());
+            let guard = Constraint::mk_eq(Op::mk_var(id), op);
+            let imply = G::mk_imply_t(guard, expr.clone(), tm).unwrap();
+
+            let var = Variable::mk(id, STy::mk_type_int());
+            let mut tm = TypeMemory::new();
+            tm.sty = Some(STy::mk_type_prop());
+            G::mk_univ_t(var, imply, tm)
+        }
+        formula::TypeKind::Arrow(arg, ty) => {
+            let v = Variable::fresh(arg.clone());
+            let mut tm = TypeMemory::new();
+            tm.sty = Some(arg.clone());
+            let mut tm_for_app = TypeMemory::new();
+            tm_for_app.sty = Some(ty.clone());
+            let app = G::mk_app_t(expr.clone(), G::mk_var_t(v.id, tm), tm_for_app);
+            let app = int_reduce_inner(&app, id, op);
+            G::mk_abs_t(v, app, expr.aux.clone())
+        }
+        formula::TypeKind::Integer => panic!("program error"),
+    }
+}
 
 fn generate_reduction_sequence(goal: &G, optimizer: &mut dyn Optimizer) -> (Vec<Reduction>, G) {
     /// returns
@@ -489,15 +505,8 @@ fn generate_reduction_sequence(goal: &G, optimizer: &mut dyn Optimizer) -> (Vec<
 
                         let ret = if new_var.ty.is_int() {
                             // Reduction for integer
-                            // (λx. ψ) e ⟶ ∀ x. (x = e ⇒ ψ)
-                            let arg: Op = arg.clone().into();
-                            let body = G::mk_imply_t(
-                                Constraint::mk_eq(Op::mk_var(new_var.id), arg),
-                                new_g,
-                                TypeMemory::new(),
-                            )
-                            .unwrap();
-                            G::mk_univ_t(new_var.clone(), body, TypeMemory::new())
+                            // (λx. λf. λg. ψ) e ⟶ λf. λg. ∀x.(x = e ⇒ (λf. λg. ψ) f g)
+                            int_reduce_inner(&new_g, new_var.id, arg.clone().into())
                         } else {
                             new_g.subst(&new_var, &arg)
                         }
