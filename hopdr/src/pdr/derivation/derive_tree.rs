@@ -787,14 +787,8 @@ impl Derivation {
             }
         }
     }
-    fn finalize_subject_expansion(&mut self, reduction: &super::Reduction) {
-        //let target_node = self
-        //    .get_node_closest_to_root_by_goal_id(&reduction.app_expr.aux.id)
-        //    .unwrap()
-        //    .id;
-
-        // TODO: this can be removed
-        //self.update_parents(target_node);
+    fn finalize_subject_expansion(&mut self, reduction: &super::Reduction, target_node: ID) {
+        self.update_parents(target_node);
 
         // finally replace the expressions in the derivation with the expr before the reduction
         self.update_expr(&reduction.before_reduction)
@@ -806,9 +800,6 @@ impl Derivation {
         let arg_derivations =
             self.replace_derivation_at_level_with_var(node_id, &ri.level, ri.arg_var.id);
         assert_eq!(arg_derivations.len(), 0);
-
-        pdebug!("subject_expansion_int");
-        pdebug!(self.tree);
 
         // all Ptr(id) in the constraints in ty should be dereferenced
         self.traverse_and_recover_int_var(node_id, &ri.arg_var.id, &ri.old_id);
@@ -867,10 +858,8 @@ impl Derivation {
         t.insert_children_at(child_id, 0, subtree);
 
         self.tree = t;
-        pdebug!("before finalize_subject expansion:");
-        pdebug!(self.tree);
 
-        self.finalize_subject_expansion(reduction);
+        self.finalize_subject_expansion(reduction, node_id);
     }
 
     pub fn subject_expansion_pred(&mut self, node_id: ID, reduction: &super::Reduction) {
@@ -926,7 +915,12 @@ impl Derivation {
         });
 
         self.tree = t;
-        self.finalize_subject_expansion(reduction);
+        let target_node = self
+            .get_node_closest_to_root_by_goal_id(&reduction.app_expr.aux.id)
+            .unwrap()
+            .id;
+
+        self.finalize_subject_expansion(reduction, target_node);
     }
 
     pub fn collect_constraints<'a>(&'a self) -> impl Iterator<Item = Atom> + 'a {
