@@ -821,7 +821,7 @@ impl Derivation {
         let mut abs_cnt = 0;
         while !matches!(node.item.rule, Rule::Univ) {
             abs_cnt += 1;
-            node = self.tree.get_one_child(node_id.to_node(&self.tree));
+            node = self.tree.get_one_child(node);
         }
 
         let child = self.tree.get_one_child(node);
