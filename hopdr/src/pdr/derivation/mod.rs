@@ -796,6 +796,7 @@ impl Context {
             pdebug!(derivation);
         }
         debug!("checking sanity... {}", derivation.check_sanity(false));
+        crate::util::wait_for_line();
 
         // try to infer a type with shared type.
         let (m, clauses, derivation) = match self.infer_with_shared_type(&derivation) {

@@ -801,7 +801,6 @@ impl Derivation {
     }
     pub fn subject_expansion_int(&mut self, node_id: ID, reduction: &super::Reduction) {
         let ri = &reduction.reduction_info;
-        let ret_ty = self.node_id_to_ty(&node_id).clone();
 
         // constructing body derivation
         let arg_derivations =
@@ -824,7 +823,7 @@ impl Derivation {
         // ----------------         ------------------
         //        ⋮                      ⋮
         // but, actually, we have to omit all the expressions introduced for eta expansion
-        let op = reduction.reduction_info.arg.clone().into();
+        let op: Op = reduction.reduction_info.arg.clone().into();
 
         let mut node = node_id.to_node(&self.tree);
         let child_id = self.tree.get_one_child(node_id.to_node(&self.tree)).id;
@@ -847,9 +846,11 @@ impl Derivation {
                 _ => panic!("program error"),
             }
         }
+        let ret_ty = body.item.ty.clone();
         let subtree = self.tree.subtree(body);
 
-        self.tree.update_node_by_id(node_id).rule = Rule::IApp(op);
+        self.tree.update_node_by_id(node_id).rule = Rule::IApp(op.clone());
+        self.tree.update_node_by_id(node_id).ty = ret_ty.subst(&ri.old_id, &op);
         self.tree.update_node_by_id(child_id).rule = Rule::IAbs;
         self.tree.update_node_by_id(child_id).ty = Ty::mk_iarrow(ri.old_id, ret_ty.clone());
 
