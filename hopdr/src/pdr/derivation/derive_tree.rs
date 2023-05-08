@@ -840,7 +840,7 @@ impl Derivation {
                     panic!("program error")
                 }
             }
-            body = self.tree.get_two_children(body).0;
+            body = self.tree.get_children(body).next().unwrap();
         }
         let ret_ty = body.item.ty.clone();
         let subtree = self.tree.subtree(body);
