@@ -627,8 +627,8 @@ impl Derivation {
             .map(|child| child.id)
             .collect();
         let n = self.get_node_by_id(node_id).item;
-        crate::title!("update_expr_inner");
-        crate::pdebug!(n);
+        // crate::title!("update_expr_inner");
+        // crate::pdebug!(n);
         match n.rule {
             Rule::Conjoin => {
                 let (g1, g2) = expr.conj();
@@ -831,11 +831,16 @@ impl Derivation {
         let mut body = self.tree.get_two_children(child).1;
 
         for _ in 0..abs_cnt {
-            body = self.tree.get_two_children(body).0;
             match body.item.rule {
                 Rule::App | Rule::IApp(_) => (),
-                _ => panic!("program error"),
+                _ => {
+                    pdebug!("not app");
+                    debug!("abs count: {abs_cnt}");
+                    pdebug!(body.item);
+                    panic!("program error")
+                }
             }
+            body = self.tree.get_two_children(body).0;
         }
         let ret_ty = body.item.ty.clone();
         let subtree = self.tree.subtree(body);
