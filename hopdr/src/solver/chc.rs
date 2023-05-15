@@ -753,7 +753,11 @@ impl Model {
         debug!("{}", model_str);
         let x = lexpr::from_str(model_str)?;
         let model: HashMap<Ident, (Vec<Ident>, fofml::Atom)> = match x {
-            Value::Cons(x) => x.into_iter().map(|(v, _)| parse_define_fun(v)).collect(),
+            Value::Cons(x) => x
+                .into_iter()
+                .filter(|(x, _)| !x.is_symbol())
+                .map(|(v, _)| parse_define_fun(v))
+                .collect(),
             _ => panic!("parse error: smt2 model: {}", model_str),
         };
         let model = reduce_application(model);
@@ -818,6 +822,21 @@ fn test_parse_spacer_model() {
         Ok(m) => {
             println!("{m}");
             assert!(m.model.len() == 1);
+        }
+        Err(_) => panic!("model is broken"),
+    }
+    let s = "(model
+  (define-fun xx_341 ((x!0 Int) (x!1 Int)) Bool
+    (>= (+ x!0 (* (- 1) x!1)) 0))
+  (define-fun xx_324 ((x!0 Int) (x!1 Int)) Bool
+    (<= (+ x!0 (* (- 1) x!1)) 0))
+  (define-fun xx_327 ((x!0 Int) (x!1 Int) (x!2 Int)) Bool
+    true)
+)";
+    match Model::parse_spacer_model(s) {
+        Ok(m) => {
+            println!("{m}");
+            assert!(m.model.len() == 3);
         }
         Err(_) => panic!("model is broken"),
     }
