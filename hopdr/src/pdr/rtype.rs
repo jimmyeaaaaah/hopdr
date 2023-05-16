@@ -25,12 +25,12 @@ pub enum TauKind<C> {
     Proposition(C),
     IArrow(Ident, Tau<C>),
     Arrow(Vec<Tau<C>>, Tau<C>),
+    PTy(Ident, Tau<C>),
 }
 
 pub type Tau<C> = P<TauKind<C>>;
 pub type TyKind<C> = TauKind<C>;
 pub type Ty = Tau<Constraint>;
-pub type PTy = PolymorphicType<Ty>;
 
 pub trait Refinement:
     Clone
@@ -124,6 +124,12 @@ impl<C: TeXFormat> TeXFormat for Tau<C> {
                 }
                 write!(f, r"\to {})", TeXPrinter(t2))
             }
+
+            TauKind::PTy(arg, ty) => {
+                write!(f, r"\forall")?;
+                write!(f, r" {}", TeXPrinter(arg))?;
+                write!(f, ". {}", TeXPrinter(ty))
+            }
         }
     }
 }
@@ -167,6 +173,7 @@ impl<C: Refinement> TTop for Tau<C> {
             TauKind::IArrow(_, t) => t.is_top(),
             TauKind::Arrow(s, t) if s.len() == 1 => s[0].is_bot() && t.is_top(),
             TauKind::Arrow(_, _) => false,
+            TauKind::PTy(_, t) => t.is_top(),
         }
     }
 }
@@ -184,6 +191,7 @@ impl<C: Refinement> TBot for Tau<C> {
             TauKind::IArrow(_, t) => t.is_bot(),
             TauKind::Arrow(s, t) if s.len() == 1 => s[0].is_top() && t.is_bot(),
             TauKind::Arrow(_, _) => false,
+            TauKind::PTy(_, t) => t.is_bot(),
         }
     }
 }
@@ -222,7 +230,7 @@ impl<C: Refinement> Rename for Tau<C> {
     fn rename(&self, x: &Ident, y: &Ident) -> Self {
         match self.kind() {
             TauKind::Proposition(c) => Self::mk_prop_ty(c.rename(x, y)),
-            TauKind::IArrow(z, _) if x == z => self.clone(),
+            TauKind::IArrow(z, _) | TauKind::PTy(z, _) if x == z => self.clone(),
             TauKind::IArrow(z, t) if y == z => {
                 let z2 = Ident::fresh();
                 let t = t.rename(z, &z2);
@@ -233,6 +241,12 @@ impl<C: Refinement> Rename for Tau<C> {
                 let ts = ts.iter().map(|t| t.rename(x, y)).collect();
                 Self::mk_arrow(ts, t.rename(x, y))
             }
+            TauKind::PTy(z, t) if y == z => {
+                let z2 = Ident::fresh();
+                let t = t.rename(z, &z2);
+                Self::mk_poly_ty(z2, t.rename(x, y))
+            }
+            TauKind::PTy(z, t) => Self::mk_poly_ty(*z, t.rename(x, y)),
         }
     }
 }
@@ -244,13 +258,14 @@ impl<C: Refinement> Subst for Tau<C> {
     fn subst(&self, x: &Self::Id, v: &Self::Item) -> Self {
         match self.kind() {
             TauKind::Proposition(c) => Self::mk_prop_ty(c.subst(x, v)),
-            TauKind::IArrow(y, _) if y == x => self.clone(),
+            TauKind::IArrow(y, _) | TauKind::PTy(y, _) if y == x => self.clone(),
             TauKind::IArrow(y, t) => Self::mk_iarrow(*y, t.subst(x, v)),
             TauKind::Arrow(ts, t) => {
                 let ts = ts.iter().map(|t| t.subst(x, v)).collect();
                 let t = t.subst(x, v);
                 Self::mk_arrow(ts, t)
             }
+            TauKind::PTy(y, t) => Self::mk_poly_ty(*y, t.subst(x, v)),
         }
     }
 }
@@ -264,6 +279,7 @@ impl<C: Refinement> DerefPtr for Tau<C> {
                 let ts = ts.iter().map(|t| t.deref_ptr(id)).collect();
                 Tau::mk_arrow(ts, s.deref_ptr(id))
             }
+            TauKind::PTy(x, t) => Tau::mk_poly_ty(*x, t.deref_ptr(id)),
         }
     }
 }
@@ -335,12 +351,14 @@ impl<C: Refinement> Tau<C> {
             TauKind::Proposition(c) => c.clone(),
             TauKind::IArrow(x, t) => C::mk_exists_int(*x, t.rty()),
             TauKind::Arrow(_, t) => t.rty(),
+            TauKind::PTy(x, t) => C::mk_exists_int(*x, t.rty()),
         }
     }
     pub fn rty_no_exists(&self) -> C {
         match self.kind() {
             TauKind::Proposition(c) => c.clone(),
             TauKind::IArrow(_, t) => t.rty_no_exists(),
+            TauKind::PTy(_, t) => t.rty_no_exists(),
             TauKind::Arrow(_, t) => t.rty_no_exists(),
         }
     }
@@ -388,6 +406,10 @@ impl<C: Refinement> Tau<C> {
                 let t = t.conjoin_constraint_to_arg(c);
                 Self::mk_iarrow(*i, t)
             }
+            TauKind::PTy(i, t) => {
+                let t = t.conjoin_constraint_to_arg(c);
+                Self::mk_poly_ty(*i, t)
+            }
             TauKind::Arrow(ts, t) => {
                 let t = t.conjoin_constraint_to_arg(c);
                 let ts = ts.iter().map(|t| t.conjoin_constraint_to_arg(c)).collect();
@@ -407,6 +429,10 @@ impl<C: Refinement> Tau<C> {
                 let t = t.conjoin_constraint(c);
                 Self::mk_iarrow(*i, t)
             }
+            TauKind::PTy(i, t) => {
+                let t = t.conjoin_constraint(c);
+                Self::mk_poly_ty(*i, t)
+            }
             TauKind::Arrow(ts, t) => {
                 let t = t.conjoin_constraint(c);
                 let ts = ts.iter().map(|t| t.conjoin_constraint_to_arg(c)).collect();
@@ -424,6 +450,10 @@ impl<C: Refinement> Tau<C> {
             TauKind::IArrow(i, t) => {
                 let t = t.conjoin_constraint(c);
                 Self::mk_iarrow(*i, t)
+            }
+            TauKind::PTy(i, t) => {
+                let t = t.conjoin_constraint(c);
+                Self::mk_poly_ty(*i, t)
             }
             TauKind::Arrow(ts, t) => {
                 let t = t.conjoin_constraint(c);
@@ -502,6 +532,7 @@ impl<C: Refinement> Tau<C> {
             (_, _) => panic!("fatal"),
         }
     }
+    /// Create template without any polymorphic types
     pub fn clone_with_template(&self, fvs: &mut HashSet<Ident>) -> Tau<fofml::Atom> {
         match self.kind() {
             TauKind::Proposition(_) => {
@@ -515,6 +546,7 @@ impl<C: Refinement> Tau<C> {
                 fvs.remove(x);
                 Tau::mk_iarrow(*x, t_temp)
             }
+            TauKind::PTy(x, t) => t.clone_with_template(fvs),
             TauKind::Arrow(ts, t) => {
                 let ts = ts.iter().map(|s| s.clone_with_template(fvs)).collect();
                 let t = t.clone_with_template(fvs);
@@ -553,6 +585,12 @@ impl<C: Refinement> Tau<C> {
                 let t = t.alpha_renaming();
                 Tau::mk_iarrow(new_x, t)
             }
+            TauKind::PTy(x, t) => {
+                let new_x = Ident::fresh();
+                let t = t.rename(x, &new_x);
+                let t = t.alpha_renaming();
+                Tau::mk_poly_ty(new_x, t)
+            }
             TauKind::Arrow(ts, t) => {
                 let ts = ts.iter().map(|t| t.alpha_renaming()).collect();
                 let t = t.alpha_renaming();
@@ -567,6 +605,7 @@ impl<C: Refinement> Tau<C> {
         match self.kind() {
             TauKind::Proposition(c) => Self::mk_prop_ty(c.clone()),
             TauKind::IArrow(x, t) => Self::mk_iarrow(*x, t.optimize_trivial_intersection()),
+            TauKind::PTy(x, t) => Self::mk_poly_ty(*x, t.optimize_trivial_intersection()),
             TauKind::Arrow(ts, t) => {
                 let t_fst = ts[0].clone();
                 let mut ts: Vec<_> = ts
@@ -648,6 +687,7 @@ impl From<Tau<Constraint>> for Tau<fofml::Atom> {
         match t.kind() {
             TauKind::Proposition(c) => Tau::mk_prop_ty(c.clone().into()),
             TauKind::IArrow(x, t) => Tau::mk_iarrow(*x, t.clone().into()),
+            TauKind::PTy(x, t) => Tau::mk_poly_ty(*x, t.clone().into()),
             TauKind::Arrow(ts, t2) => {
                 let ts = ts.iter().map(|t| t.clone().into()).collect();
                 Tau::mk_arrow(ts, t2.clone().into())
@@ -661,6 +701,7 @@ impl Tau<fofml::Atom> {
         match self.kind() {
             TauKind::Proposition(p) => Tau::mk_prop_ty(p.assign(model)),
             TauKind::IArrow(v, x) => Tau::mk_iarrow(*v, x.assign(model)),
+            TauKind::PTy(v, x) => Tau::mk_poly_ty(*v, x.assign(model)),
             TauKind::Arrow(x, y) => {
                 let ts = x.iter().map(|t| t.assign(model)).collect();
                 Tau::mk_arrow(ts, y.assign(model))
@@ -685,6 +726,7 @@ impl Tau<fofml::Atom> {
                 fvs.remove(x);
                 Tau::mk_iarrow(*x, t_temp)
             }
+            TauKind::PTy(x, t) => t.clone_with_rty_template(constraint, fvs),
             TauKind::Arrow(ts, t) => {
                 let t = t.clone_with_rty_template(constraint, fvs);
                 Tau::mk_arrow(ts.clone(), t)
@@ -698,6 +740,7 @@ impl<C> Tau<C> {
         match self.kind() {
             TauKind::Proposition(_) => SType::mk_type_prop(),
             TauKind::IArrow(_, t) => SType::mk_type_arrow(SType::mk_type_int(), t.to_sty()),
+            TauKind::PTy(_, t) => t.to_sty(),
             TauKind::Arrow(t1, t2) => SType::mk_type_arrow(t1[0].to_sty(), t2.to_sty()),
         }
     }
@@ -712,16 +755,22 @@ impl<C> Tau<C> {
     pub fn mk_arrow_single(t: Tau<C>, s: Tau<C>) -> Tau<C> {
         Tau::new(TauKind::Arrow(vec![t], s))
     }
+    pub fn mk_poly_ty(arg: Ident, t: Tau<C>) -> Tau<C> {
+        Tau::new(TauKind::PTy(arg, t))
+    }
     pub fn is_proposition(&self) -> bool {
         matches!(self.kind(), TauKind::Proposition(_))
     }
     pub fn is_arrow(&self) -> bool {
         matches!(self.kind(), TauKind::Arrow(_, _))
     }
+    pub fn is_poly_ty(&self) -> bool {
+        matches!(self.kind(), TauKind::PTy(_, _))
+    }
     pub fn order(&self) -> usize {
         match self.kind() {
             TauKind::Proposition(_) => 0,
-            TauKind::IArrow(_, t) => std::cmp::max(1, t.order()),
+            TauKind::IArrow(_, t) | TauKind::PTy(_, t) => std::cmp::max(1, t.order()),
             TauKind::Arrow(ts, y) => {
                 // FIXIME: this is wrong definition
                 let o1 = if ts.is_empty() { 0 } else { ts[0].order() };
