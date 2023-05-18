@@ -946,7 +946,13 @@ impl Derivation {
                 assert_eq!(children.len(), 1);
                 let child = &children[0];
                 Ty::check_subtype_result(&child.item.ty, &ty).unwrap_or_else(|| {
-                    panic!("failed to check subtype: {} <: {}", child.item.ty, ty)
+                    let mut coefficients = Stack::new();
+                    let c =
+                        Ty::check_subtype(&Atom::mk_true(), &child.item.ty, &ty, &mut coefficients);
+                    if coefficients.iter().next().is_some() {
+                        panic!("failed to check subtype: {} <: {}", child.item.ty, ty)
+                    }
+                    c
                 })
             })
     }
