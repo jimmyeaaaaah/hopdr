@@ -114,7 +114,7 @@ impl DeriveNode {
                 *ident,
                 c1.clone(),
             )),
-            TauKind::IArrow(_, _) | TauKind::Arrow(_, _) => panic!("fatal"),
+            TauKind::PTy(_, _) | TauKind::IArrow(_, _) | TauKind::Arrow(_, _) => panic!("fatal"),
         };
         DeriveNode { rule, expr, ty }
     }
@@ -152,7 +152,7 @@ impl DeriveNode {
         let rule = Rule::App;
         let ty = match pred_node.ty.kind() {
             TauKind::Arrow(_, rt) => rt.clone(),
-            TauKind::Proposition(_) | TauKind::IArrow(_, _) => {
+            TauKind::PTy(_, _) | TauKind::Proposition(_) | TauKind::IArrow(_, _) => {
                 panic!("app rule is used for a wrong derivation")
             }
         };
@@ -462,7 +462,9 @@ impl Derivation {
                                     .get_children(t.get_node_by_id(cur))
                                     .map(|child| match child.item.ty.kind() {
                                         TauKind::Proposition(c) => c.clone(),
-                                        TauKind::IArrow(_, _) | TauKind::Arrow(_, _) => {
+                                        TauKind::PTy(_, _)
+                                        | TauKind::IArrow(_, _)
+                                        | TauKind::Arrow(_, _) => {
                                             panic!("not conjoin")
                                         }
                                     })
@@ -474,8 +476,10 @@ impl Derivation {
                                     .get_children(t.get_node_by_id(cur))
                                     .map(|child| match child.item.ty.kind() {
                                         TauKind::Proposition(c) => c.clone(),
-                                        TauKind::IArrow(_, _) | TauKind::Arrow(_, _) => {
-                                            panic!("not conjoin")
+                                        TauKind::PTy(_, _)
+                                        | TauKind::IArrow(_, _)
+                                        | TauKind::Arrow(_, _) => {
+                                            panic!("not disjoin")
                                         }
                                     })
                                     .fold(Atom::mk_false(), Atom::mk_disj);
@@ -489,7 +493,9 @@ impl Derivation {
                                 assert_eq!(children.len(), 1);
                                 let cnstr = match children[0].ty.kind() {
                                     TauKind::Proposition(c) => c.clone(),
-                                    TauKind::IArrow(_, _) | TauKind::Arrow(_, _) => {
+                                    TauKind::PTy(_, _)
+                                    | TauKind::IArrow(_, _)
+                                    | TauKind::Arrow(_, _) => {
                                         panic!("not conjoin")
                                     }
                                 };
@@ -562,7 +568,9 @@ impl Derivation {
                                         .collect();
                                     let (arg_ty, ret_ty) = match pred.kind() {
                                         TauKind::Arrow(arg, t) => (arg.clone(), t.clone()),
-                                        TauKind::Proposition(_) | TauKind::IArrow(_, _) => {
+                                        TauKind::PTy(_, _)
+                                        | TauKind::Proposition(_)
+                                        | TauKind::IArrow(_, _) => {
                                             panic!("program error")
                                         }
                                     };
@@ -937,8 +945,15 @@ impl Derivation {
                 let children: Vec<_> = self.tree.get_children(n).collect();
                 assert_eq!(children.len(), 1);
                 let child = &children[0];
-                Ty::check_subtype_result(&child.item.ty, &ty)
-                    .unwrap_or_else(|| Ty::check_subtype(&Atom::mk_true(), &child.item.ty, &ty))
+                Ty::check_subtype_result(&child.item.ty, &ty).unwrap_or_else(|| {
+                    let mut coefficients = Stack::new();
+                    let c =
+                        Ty::check_subtype(&Atom::mk_true(), &child.item.ty, &ty, &mut coefficients);
+                    if coefficients.iter().next().is_some() {
+                        panic!("failed to check subtype: {} <: {}", child.item.ty, ty)
+                    }
+                    c
+                })
             })
     }
     pub fn collect_chcs<'a>(
