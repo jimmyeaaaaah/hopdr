@@ -1,4 +1,4 @@
-use super::rtype::{PolymorphicType, Refinement, Tau, TyEnv, TypeEnvironment};
+use super::rtype::{Refinement, Tau, TyEnv, TypeEnvironment};
 use super::{PDRConfig, ValidCertificate, VerificationResult};
 use crate::formula::hes::Problem;
 use crate::formula::{hes, Constraint, TeXPrinter};
@@ -37,8 +37,8 @@ pub struct HoPDR {
     config: PDRConfig,
 }
 
-impl<C: Refinement> TypeEnvironment<PolymorphicType<Tau<C>>> {
-    fn new_top_env(problem: &Problem<C>) -> TypeEnvironment<PolymorphicType<Tau<C>>> {
+impl<C: Refinement> TypeEnvironment<Tau<C>> {
+    fn new_top_env(problem: &Problem<C>) -> TypeEnvironment<Tau<C>> {
         let mut new_env = TypeEnvironment::new();
         for c in problem.clauses.iter() {
             new_env.add_top(c.head.id, &c.head.ty)
@@ -46,7 +46,7 @@ impl<C: Refinement> TypeEnvironment<PolymorphicType<Tau<C>>> {
         new_env
     }
 
-    fn new_bot_env(problem: &Problem<C>) -> TypeEnvironment<PolymorphicType<Tau<C>>> {
+    fn new_bot_env(problem: &Problem<C>) -> TypeEnvironment<Tau<C>> {
         let mut new_env = TypeEnvironment::new();
         for c in problem.clauses.iter() {
             new_env.add_bot(c.head.id, &c.head.ty)

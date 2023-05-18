@@ -462,28 +462,59 @@ impl<C: Refinement> Tau<C> {
         }
     }
     /// returns the constraint that is equivalent to hold constraint |- t <= s
-    pub fn check_subtype(constraint: &C, t: &Tau<C>, s: &Tau<C>) -> C {
+    /// and coefficient variables of the constraints that were introduced for
+    /// checking polymorphic type substyping
+    pub fn check_subtype(
+        constraint: &C,
+        t: &Tau<C>,
+        s: &Tau<C>,
+        coefficients: &mut Stack<Ident>,
+    ) -> C {
+        // V; θ ▹ [e/x]τ₁ ≤ τ₂     x ∉ Fv(θ)   {y: int | y ∈ V } ⊢ e : int
+        // ------------------------------------------------------------ [AllL]
+        //                          ∀x.τ₁ ≤ τ₂
+        //
+        // V ∪ {x}; θ ▹ τ₁ ≤ τ₂    x ∉ Fv(θ) ∪ FIV(τ₁)
+        // ----------------------------------------- [AllR]
+        //             V; θ ▹ τ₁ ≤  ∀x. τ₂
         match (t.kind(), s.kind()) {
             (TauKind::Proposition(c1), TauKind::Proposition(c2)) => {
                 C::mk_implies_opt(C::mk_conj(constraint.clone(), c2.clone()), c1.clone()).unwrap()
             }
             (TauKind::IArrow(x1, t1), TauKind::IArrow(x2, t2)) => {
                 let t2 = t2.rename(x2, x1);
-                Tau::check_subtype(constraint, t1, &t2)
+                Tau::check_subtype(constraint, t1, &t2, coefficients)
             }
             (TauKind::Arrow(ts1, t1), TauKind::Arrow(ts2, t2)) => {
                 // check ts2 <: ts1
-                let mut result_constraint = Tau::check_subtype(constraint, t1, t2);
+                let mut result_constraint = Tau::check_subtype(constraint, t1, t2, coefficients);
                 // ⋀ᵢ tᵢ ≺ ⋀ⱼt'ⱼ ⇔∀ t'ⱼ. ∃ tᵢ. tᵢ ≺ t'ⱼ
                 let arg_constraint = C::mk_conj(constraint.clone(), t2.rty());
                 for tj in ts1 {
                     let mut tmpc = C::mk_false();
                     for ti in ts2 {
-                        tmpc = C::mk_disj(tmpc, Tau::check_subtype(&arg_constraint, ti, tj));
+                        tmpc = C::mk_disj(
+                            tmpc,
+                            Tau::check_subtype(&arg_constraint, ti, tj, coefficients),
+                        );
                     }
                     result_constraint = C::mk_conj(result_constraint, tmpc);
                 }
                 result_constraint
+            }
+            // the order [AllR] -> [AllL] is important
+            // since we instantiate the type by using s's free variables
+            // [AllR]
+            (_, TauKind::PTy(x, s)) => {
+                let fresh = Ident::fresh();
+                let sprime = s.rename(x, &fresh);
+                Self::check_subtype(constraint, t, &sprime, coefficients)
+            }
+            // [AllL]
+            (TauKind::PTy(x, t), _) => {
+                let vars = s.fv();
+                let t = t.instantiate(&vars, coefficients);
+                Self::check_subtype(constraint, &t, s, coefficients)
             }
             (_, _) => panic!("fatal"),
         }
@@ -504,30 +535,6 @@ impl<C: Refinement> Tau<C> {
                 } else {
                     None
                 }
-            }
-            (_, _) => panic!("fatal"),
-        }
-    }
-    /// this subtyping is different in that for the argument of τ₁ ∧ τ₂ → τ₃ < τ₁' ∧ τ₂' → τ₃'
-    /// we do τ₁ < τ₁' and τ₂ < τ₂'
-    pub fn check_subtype_structural(constraint: &C, t: &Tau<C>, s: &Tau<C>) -> C {
-        match (t.kind(), s.kind()) {
-            (TauKind::Proposition(c1), TauKind::Proposition(c2)) => {
-                C::mk_implies_opt(C::mk_conj(constraint.clone(), c2.clone()), c1.clone()).unwrap()
-            }
-            (TauKind::IArrow(x1, t1), TauKind::IArrow(x2, t2)) => {
-                let t2 = t2.rename(x2, x1);
-                Tau::check_subtype_structural(constraint, t1, &t2)
-            }
-            (TauKind::Arrow(ts1, t1), TauKind::Arrow(ts2, t2)) => {
-                assert!(ts1.len() == ts2.len());
-                let mut result_constraint = Tau::check_subtype_structural(constraint, t1, t2);
-                let arg_constraint = C::mk_conj(constraint.clone(), t2.rty());
-                for (tx, ty) in ts1.iter().zip(ts2.iter()) {
-                    let tmpc = Tau::check_subtype_structural(&arg_constraint, ty, tx);
-                    result_constraint = C::mk_conj(result_constraint, tmpc);
-                }
-                result_constraint
             }
             (_, _) => panic!("fatal"),
         }
@@ -656,11 +663,7 @@ fn test_check_subtype() {
         Op::mk_var(x)
     }
     fn check(t1: &T, t2: &T) -> bool {
-        let c = Tau::check_subtype(&Constraint::mk_true(), t1, t2);
-
-        let mut sol = solver::smt::smt_solver(solver::SMTSolverType::Auto);
-        let m = sol.solve_with_model(&c, &c.fv(), &HashSet::new());
-        m.is_ok()
+        Tau::check_subtype_polymorphic(t1, t2)
     }
 
     let t1 = {
@@ -779,6 +782,35 @@ impl<C> Tau<C> {
             }
         }
     }
+    /// returns the set of polymorphic variables at the top of the type
+    // FIXME: implement Ident iterator
+    pub fn vars(&self) -> HashSet<Ident> {
+        let mut vars = HashSet::new();
+        let mut ty = self;
+        loop {
+            match ty.kind() {
+                TauKind::PTy(x, t) => {
+                    vars.insert(*x);
+                    ty = t;
+                }
+                _ => break vars,
+            }
+        }
+    }
+    /// returns the body of the type.
+    /// body means the type without polymorphic variables at the top of the type.
+    // FIXME: implement Ident iterator
+    pub fn ty(&self) -> Self {
+        let mut ty = self;
+        loop {
+            match ty.kind() {
+                TauKind::PTy(x, t) => {
+                    ty = t;
+                }
+                _ => break ty.clone(),
+            }
+        }
+    }
 }
 impl<C: Refinement> Tau<C> {
     pub fn poly(mut ty: Self) -> Self {
@@ -866,11 +898,20 @@ impl Tau<Constraint> {
             let t = &ts[0].clone_with_template(env);
             let constraint = constraint.clone().into();
             let mut clauses = Vec::new();
+            let mut coefficients = Stack::new();
             for s in ts.iter().cloned() {
                 let c = match polarity {
-                    Polarity::Positive => Tau::check_subtype(&constraint, t, &s.into()),
-                    Polarity::Negative => Tau::check_subtype(&constraint, &s.into(), t),
+                    Polarity::Positive => {
+                        Tau::check_subtype(&constraint, t, &s.into(), &mut coefficients)
+                    }
+                    Polarity::Negative => {
+                        Tau::check_subtype(&constraint, &s.into(), t, &mut coefficients)
+                    }
                 };
+                // cannot handle polymorphic types
+                if coefficients.iter().next().is_some() {
+                    return ts.to_owned();
+                }
                 match c.to_chcs_or_pcsps() {
                     either::Either::Left(chcs) => {
                         for chc in chcs {
@@ -930,7 +971,7 @@ impl Tau<Constraint> {
         )
     }
 
-    pub fn optimize(&self) -> Self {
+    pub fn optimize_non_poly(&self) -> Self {
         // Pass
         //  - optimize_constraint_reduction
         //  - optimize_intersection_trivial
@@ -1073,16 +1114,11 @@ fn generate_t_and_its_subtype_for_test2() -> (Ty, Ty) {
 }
 
 // template for polymorphic types
-pub fn generate_arithmetic_template(
-    ints: &HashSet<Ident>,
-    coefficients: &mut Stack<Ident>,
-    all_coefficients: &mut HashSet<Ident>,
-) -> Op {
+pub fn generate_arithmetic_template(ints: &HashSet<Ident>, coefficients: &mut Stack<Ident>) -> Op {
     // linear template
     let c_id = Ident::fresh();
     let mut o = Op::mk_var(c_id);
     coefficients.push_mut(c_id);
-    all_coefficients.insert(c_id);
     // linear expr
     for int in ints {
         let tmp = Ident::fresh();
@@ -1090,7 +1126,6 @@ pub fn generate_arithmetic_template(
         let t = Op::mk_bin_op(formula::OpKind::Mul, Op::mk_var(tmp), Op::mk_var(*int));
         o = Op::mk_add(o, t);
         coefficients.push_mut(tmp);
-        all_coefficients.insert(tmp);
     }
     o
 }
@@ -1103,7 +1138,7 @@ fn test_generate_arithmetic_template() {
     ints.insert(x);
     ints.insert(y);
     let mut coefs = Stack::new();
-    let o = generate_arithmetic_template(&ints, &mut coefs, &mut HashSet::new());
+    let o = generate_arithmetic_template(&ints, &mut coefs);
     // expected: o = (ax + by) + c
     println!("{o}");
     use crate::formula::{OpExpr, OpKind};
@@ -1239,48 +1274,17 @@ fn test_preprocess_eq() {
     assert_eq!(o.eval(&Env::new()), Some(1))
 }
 
-impl PTy {
+impl Ty {
     pub fn check_subtype_polymorphic(t: &Self, s: &Self) -> bool {
-        // Assumption: polymorphic type appears only at the top level of types.
-        // Subtyping rule for polymorphic type
-        // V; θ ▹ [e/x]τ₁ ≤ τ₂     x ∉ Fv(θ)   {y: int | y ∈ V } ⊢ e : int
-        // ------------------------------------------------------------ [AllL]
-        //                          ∀x.τ₁ ≤ τ₂
-        //
-        // V ∪ {x}; θ ▹ τ₁ ≤ τ₂    x ∉ Fv(θ) ∪ FIV(τ₁)
-        // ----------------------------------------- [AllR]
-        //             V; θ ▹ τ₁ ≤  ∀x. τ₂
-        //
-        // 1. Rename s's free variables with fresh ones (let them V'): s'.
-        // 2. Instantiate t by substituting free variables with linear templates: t'.
-        // 3. Generate constraint by `check_subtype(constraint, t', s')`
-        // 4. Bind all the varaibles in V' by universal quantifiers
-        // 5. Bind all the variables used for the linear templates by existential quantifiers
-        // 6. Solve the generated constraint by some SMT solver.
-
-        crate::title!("check_subtype_polymorphic");
-
-        debug!("t: {t}");
-        debug!("s: {s}");
-
-        // 1. rename
-        // not requried?
-        // 2. instantiate t
-        // for ∀x. t  ≤  ∀y. s
-        // by using y's variables, first, t is instantiated.
+        // . constraint
         let mut coefficients = Stack::new();
-        let mut all_coefficients = HashSet::new();
-        let tprime = t.instantiate(&s.vars, &mut coefficients, &mut all_coefficients);
-        debug!("tprime: {tprime}");
-
-        // 3. constraint
-        debug!("check |- {tprime} <= {}", s.ty);
-        let constraint = Tau::check_subtype(&Constraint::mk_true(), &tprime, &s.ty);
+        debug!("check |- {t} <= {s}");
+        let constraint = Tau::check_subtype(&Constraint::mk_true(), t, s, &mut coefficients);
         debug!("constraint: {constraint}");
         // 4. univ 5.existential quantifier 6. smt solver
         let mut sol = solver::smt::smt_solver(solver::SMTSolverType::Auto);
-        let mut vprime = s.vars.clone();
         let coefficients: HashSet<Ident> = coefficients.iter().cloned().collect();
+        let mut vprime = HashSet::new();
         for fv in constraint.fv() {
             if !coefficients.contains(&fv) {
                 vprime.insert(fv);
@@ -1294,7 +1298,6 @@ impl PTy {
         }
         m.is_ok()
     }
-
     /// This optimization tries to remove polymorphic variable by using equational constraints
     ///
     /// ## Example
@@ -1359,7 +1362,6 @@ impl PTy {
                 }
             }
         }
-
         fn eq(
             c: &Constraint,
             mut s: Stack<(Ident, Op)>,
@@ -1370,12 +1372,12 @@ impl PTy {
         }
 
         let mut args = HashSet::new();
-        let vars = &self.vars;
-        let ty = &self.ty;
+        let vars: HashSet<Ident> = self.vars().into_iter().collect();
+        let ty = &self.ty();
         // Make sure there is no variable name collison such as
         // // ∀z. (x: int → *[x = z]) → x: int → *[x = z]
         let ty = ty.alpha_renaming();
-        let eqs = eq(&ty.rty_no_exists(), Stack::new(), vars);
+        let eqs = eq(&ty.rty_no_exists(), Stack::new(), &vars);
 
         title!("optimize_trivial_ty::tr");
         debug!("eqs");
@@ -1383,7 +1385,7 @@ impl PTy {
             debug!("- {x} = {o}");
         }
 
-        let mut new_ty = tr(&ty, &mut args, eqs.clone(), vars, true);
+        let mut new_ty = tr(&ty, &mut args, eqs.clone(), &vars, true);
 
         fn check_if_removable(ty: &Ty, x: Ident, toplevel: bool) -> bool {
             match ty.kind() {
@@ -1439,18 +1441,18 @@ impl PTy {
                 }
             }
         }
-        if self.vars.len() != 1 {
+        if self.vars().len() != 1 {
             return Vec::new();
         }
         let mut eqs = Stack::new();
-        get_eqs_from_ty(&self.ty, &mut eqs, &self.vars);
+        get_eqs_from_ty(&self.ty(), &mut eqs, &self.vars());
 
         let mut result = Vec::new();
         for (v, eq) in eqs.iter() {
-            if !self.vars.contains(v) {
+            if !self.vars().contains(v) {
                 continue;
             }
-            let t = self.ty.subst(v, eq);
+            let t = self.ty().subst(v, eq);
             let pty = Ty::poly(t);
             result.push(pty);
         }
@@ -1554,9 +1556,9 @@ impl PTy {
                 }
             }
         }
-        let mut ty = self.ty.clone();
+        let mut ty = self.ty().clone();
         let mut replaced = false;
-        for v in self.vars.iter() {
+        for v in self.vars().iter() {
             if !check(&ty, v, true) && ty.rty().fv().contains(v) {
                 // Should check everytime ty is generated?
                 ty = replace(&ty, v, true);
@@ -1565,18 +1567,15 @@ impl PTy {
         }
         debug!("replaced: {replaced}, ty: {ty}");
         let new_pty = Ty::poly(ty);
-        if replaced && PTy::check_subtype_polymorphic(&new_pty, self) {
+        if replaced && Ty::check_subtype_polymorphic(&new_pty, self) {
             new_pty
         } else {
             self.clone()
         }
     }
     fn optimize_ty(&self) -> Self {
-        let ty = self.ty.optimize();
-        Self {
-            ty,
-            vars: self.vars.clone(),
-        }
+        let ty = self.ty().optimize_non_poly();
+        Ty::poly(ty)
     }
     pub fn optimize(&self) -> Self {
         debug!("PTy optimize before: {self}");
@@ -1594,17 +1593,17 @@ impl PTy {
 fn test_subtype_polymorphic() {
     let (t1, t2) = generate_t_and_its_subtype_for_test();
     println!("{t1} <= {t2}");
-    assert!(PTy::check_subtype_polymorphic(&t1, &t2));
-    assert!(PTy::check_subtype_polymorphic(&t2, &t1));
+    assert!(Ty::check_subtype_polymorphic(&t1, &t2));
+    assert!(Ty::check_subtype_polymorphic(&t2, &t1));
 }
 
 #[test]
 fn test_subtype_polymorphic2() {
     let (t1, t2) = generate_t_and_its_subtype_for_test2();
     println!("{t1} <= {t2}");
-    assert!(PTy::check_subtype_polymorphic(&t1, &t2));
+    assert!(Ty::check_subtype_polymorphic(&t1, &t2));
     println!("ok");
-    assert!(!PTy::check_subtype_polymorphic(&t2, &t1));
+    assert!(!Ty::check_subtype_polymorphic(&t2, &t1));
 }
 
 #[test]
@@ -1640,7 +1639,7 @@ fn test_subtype_polymorphic_negative2() {
     let s = Ty::mk_arrow_single(t4, t3);
     let s = Ty::poly(s);
 
-    assert!(!PTy::check_subtype_polymorphic(&t, &s));
+    assert!(!Ty::check_subtype_polymorphic(&t, &s));
 }
 
 #[test]
@@ -1660,7 +1659,7 @@ fn test_optimize_polymorphic_ty() {
     println!("before: {pty}");
     let pty2 = pty.optimize_trivial_ty();
     println!("after: {pty2}");
-    assert_eq!(pty2.vars.len(), 0);
+    assert_eq!(pty2.vars().len(), 0);
 
     let c5 = Constraint::mk_eq(
         Op::mk_add(Op::mk_var(x_150), Op::one()),
@@ -1673,7 +1672,7 @@ fn test_optimize_polymorphic_ty() {
     println!("before: {pty}");
     let pty2 = pty.optimize_trivial_ty();
     println!("after: {pty2}");
-    assert_eq!(pty2.vars.len(), 0);
+    assert_eq!(pty2.vars().len(), 0);
 }
 
 #[test]
@@ -1690,7 +1689,7 @@ fn test_optimize_polymorphic_ty_negative() {
     let p2 = p.optimize_trivial_ty();
     println!("before: {p}");
     println!("after: {p2}");
-    assert_eq!(p2.vars.len(), p.vars.len());
+    assert_eq!(p2.vars().len(), p.vars().len());
 }
 
 #[test]
@@ -1710,7 +1709,7 @@ fn test_optimize_replace_top() {
     let p2 = p.optimize_replace_top();
     println!("before: {p}");
     println!("after: {p2}");
-    assert!(p2.ty.rty_no_exists().eval_with_empty_env().unwrap());
+    assert!(p2.ty().rty_no_exists().eval_with_empty_env().unwrap());
 
     // ∀z. (x: int → *[x = 0]) → x: int → *[z = 0 /\ z != 0]
     let zneq = Constraint::mk_neq(Op::mk_var(z), Op::mk_const(0));
@@ -1724,7 +1723,7 @@ fn test_optimize_replace_top() {
     let p2 = p.optimize_replace_top();
     println!("before: {p}");
     println!("after: {p2}");
-    assert_eq!(p2.ty.rty_no_exists(), p.ty.rty_no_exists());
+    assert_eq!(p2.ty().rty_no_exists(), p.ty().rty_no_exists());
 
     // ∀z. (x: int → *[x = 0]) → x: int → *[x = 0 \/ (z = 0 /\ x = 1)]
     let xeq01 = Constraint::mk_conj(
@@ -1742,7 +1741,7 @@ fn test_optimize_replace_top() {
     println!("after: {p2}");
     let mut e = formula::Env::new();
     e.add(x, 1);
-    assert!(p2.ty.rty_no_exists().eval(&e).unwrap());
+    assert!(p2.ty().rty_no_exists().eval(&e).unwrap());
 }
 
 /// Using equalities that appear in the argument position of the given type,
@@ -1770,22 +1769,24 @@ fn test_generate_trivial_types_by_eq() {
     println!("after: {pty}");
 }
 
-impl<C: Refinement> PolymorphicType<Tau<C>> {
+impl<C: Refinement> Tau<C> {
     pub fn instantiate(
         &self,
         ints: &HashSet<Ident>,
         coefficients: &mut Stack<Ident>,
-        all_coefficients: &mut HashSet<Ident>,
+        //all_coefficients: &mut HashSet<Ident>,
     ) -> Tau<C> {
+        let (x, ty) = match self.kind() {
+            TauKind::PTy(x, t) => (x, t),
+            _ => return self.clone(),
+        };
         crate::title!("instatiate_type");
         debug!("type={}", self);
-        debug!("ints: {:?}", ints);
-        let mut ts = self.ty.alpha_renaming();
-        for fv in self.vars.iter() {
-            let o = generate_arithmetic_template(ints, coefficients, all_coefficients);
-            debug!("template: {}", o);
-            ts = ts.subst(fv, &o);
-        }
+        debug!("ints: {:?}", x);
+        let ts = ty.alpha_renaming();
+        let o = generate_arithmetic_template(ints, coefficients);
+        debug!("template: {}", o);
+        let ts = ts.subst(x, &o);
         debug!("instantiated: {}", ts);
         ts
     }
@@ -1904,8 +1905,8 @@ impl<T: PartialEq + Display> TypeEnvironment<T> {
     }
 }
 
-impl<C: Refinement> TypeEnvironment<PolymorphicType<Tau<C>>> {
-    pub fn append(&mut self, x: &TypeEnvironment<PolymorphicType<Tau<C>>>) {
+impl<C: Refinement> TypeEnvironment<Tau<C>> {
+    pub fn append(&mut self, x: &TypeEnvironment<Tau<C>>) {
         for (k, v) in x.map.iter() {
             match self.map.get_mut(k) {
                 Some(w) => {
@@ -1947,11 +1948,11 @@ impl<C: Refinement> TypeEnvironment<PolymorphicType<Tau<C>>> {
         TypeEnvironment { map }
     }
     pub fn add_top(&mut self, v: Ident, st: &SType) {
-        self.add(v, Ty::mk_top(st));
+        self.add(v, Tau::mk_top(st));
     }
 
     pub fn add_bot(&mut self, v: Ident, st: &SType) {
-        self.add(v, Ty::mk_bot(st));
+        self.add(v, Tau::mk_bot(st));
     }
 }
 
@@ -1963,7 +1964,7 @@ impl TyEnv {
             for (i, t) in ts.iter().enumerate() {
                 let mut required = true;
                 for s in new_ts.iter().chain(ts[i + 1..].iter()) {
-                    if PTy::check_subtype_polymorphic(s, t) {
+                    if Ty::check_subtype_polymorphic(s, t) {
                         // s can become t by using the subsumption rule, so t is no longer required in the environment.
                         required = false;
                         break;
@@ -1988,7 +1989,7 @@ impl TyEnv {
                         .generate_trivial_types_by_eq()
                         .into_iter()
                         // filter out non-polymophic type
-                        .filter(|t| t.vars.is_empty())
+                        .filter(|t| t.vars().is_empty())
                         .collect();
                     ts.push(t);
                     ts.into_iter()

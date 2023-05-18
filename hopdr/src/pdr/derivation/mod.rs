@@ -3,7 +3,7 @@ pub mod tree;
 
 use super::optimizer;
 use super::optimizer::{variable_info, InferenceResult, Optimizer};
-use super::rtype::{PolymorphicType, TBot, Tau, TauKind, TyEnv, TypeEnvironment};
+use super::rtype::{TBot, Tau, TauKind, TyEnv, TypeEnvironment};
 use derive_tree::Derivation;
 
 use crate::formula::chc::Model;
@@ -24,8 +24,7 @@ use std::fmt;
 type Atom = fofml::Atom;
 type Candidate = Goal<Constraint>;
 pub(crate) type Ty = Tau<Atom>;
-type PTy = PolymorphicType<Tau<Atom>>;
-type Env = TypeEnvironment<PTy>;
+type Env = TypeEnvironment<Ty>;
 type Problem = ProblemBase<Constraint>;
 
 /// track_idents maps predicate in Problem to the idents of lambda abstraction exprs
@@ -703,7 +702,7 @@ impl Context {
                 for ty in derivation.get_types_by_id(id) {
                     debug!("{}({}): {}", pred_name, id, ty);
                     let ty = ty.assign(&model);
-                    let pty = PolymorphicType::poly(ty);
+                    let pty = Tau::poly(ty);
                     result_env.add(*pred_name, pty);
                 }
             }
@@ -866,7 +865,7 @@ fn handle_abs(
                     let mut tenv = tenv.clone();
                     for t in ts {
                         debug!("adding type {t} to tenv");
-                        tenv.add(v.id, PolymorphicType::mono(t.clone()));
+                        tenv.add(v.id, t.clone());
                     }
                     let pt = handle_abs_inner(config, &mut tenv, ienv, all_coefficients, g, t);
                     pt.arrow(arg_expr.clone(), ts)
@@ -883,16 +882,16 @@ fn handle_abs(
         pdebug!("handle_abs: |- ", arg_expr, " :",  pt ; bold ; white, " ",);
         pt
     }
-    // [feature shared_ty]
-    match (&config.tc_mode, &arg_expr.aux.tys) {
-        (TCFlag::Normal, _) | (_, None) => {
-            handle_abs_inner(config, tenv, ienv, all_coefficients, arg_expr, t)
+    match t.kind() {
+        TauKind::PTy(x, t) => {
+            let flag = ienv.insert(*x);
+            let pt = handle_abs(config, tenv, ienv, all_coefficients, arg_expr, t);
+            if flag {
+                ienv.remove(x);
+            }
+            pt
         }
-        (TCFlag::Shared(_), Some(tys)) if tys.len() == 1 => {
-            let pt = handle_abs_inner(config, tenv, ienv, all_coefficients, arg_expr, &tys[0]);
-            pt.coarse_type(t)
-        }
-        (_, _) => panic!("program error"),
+        _ => handle_abs_inner(config, tenv, ienv, all_coefficients, arg_expr, t),
     }
 }
 
@@ -958,13 +957,15 @@ fn handle_app(
                             let types = ts
                                 .iter()
                                 .map(|t| {
-                                    let t =
-                                        t.instantiate(ienv, &mut coefficients, all_coefficients);
+                                    let t = t.instantiate(ienv, &mut coefficients);
                                     debug!("instantiate_type ienv: {:?}", ienv);
                                     debug!("instantiated: {t}");
                                     Derivation::rule_var(pred_expr.clone(), t, coefficients.clone())
                                 })
                                 .collect();
+                            coefficients.into_iter().for_each(|c| {
+                                all_coefficients.insert(*c);
+                            });
                             types
                         }
                         // replay the previous instantiation here
@@ -1144,12 +1145,15 @@ fn type_check_inner(
                             let mut tys = Vec::new();
                             for ty in ts {
                                 let mut coefficients = Stack::new();
-                                let ty = ty.instantiate(ienv, &mut coefficients, all_coefficients);
+                                let ty = ty.instantiate(ienv, &mut coefficients);
                                 debug!("instantiate_type ienv: {:?}", ienv);
                                 debug!("instantiated: {ty}");
 
                                 let cd = Derivation::rule_var(expr.clone(), ty, coefficients);
                                 tys.push(cd);
+                                coefficients.iter().for_each(|c| {
+                                    all_coefficients.insert(*c);
+                                });
                             }
                             tys
                         }
@@ -1271,18 +1275,14 @@ fn type_check(
     tenv: &mut Env,
     ienv: &mut HashSet<Ident>, // V
     c: &G,
-    t: &PTy,
+    t: &Ty,
 ) -> bool {
-    for fv in t.vars.iter() {
-        ienv.insert(*fv);
-        debug!("type_check ienv: {ienv:?}");
-    }
     let mut all_coefficients = HashSet::new();
     let config = TCConfig {
         tc_mode: TCFlag::Normal,
         construct_derivation: false,
     };
-    let pt = handle_abs(&config, tenv, ienv, &mut all_coefficients, c, &t.ty);
+    let pt = handle_abs(&config, tenv, ienv, &mut all_coefficients, c, &t);
     match pt.check_derivation() {
         Some(d) => {
             debug_assert!(d.check_sanity(false));

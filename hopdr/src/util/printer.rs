@@ -782,6 +782,7 @@ impl<C: Pretty> Pretty for rtype::Tau<C> {
             rtype::TauKind::IArrow(i, t) => (i.pretty(al, config)
                 + (al.text(":int") + al.line() + al.text("-> ") + t.pretty(al, config)).hang(2))
             .group(),
+            rtype::TauKind::PTy(x, t) => al.text("∀") + x.pretty(al, config) + "." + al.line(),
             rtype::TauKind::Arrow(ts, t) => {
                 let docs = ts.iter().map(|t| {
                     let tdoc = t.pretty(al, config);
@@ -800,23 +801,6 @@ impl<C: Pretty> Pretty for rtype::Tau<C> {
         }
     }
 }
-impl<T: Pretty> Pretty for rtype::PolymorphicType<T> {
-    fn pretty<'b, D, A>(&'b self, al: &'b D, config: &mut Config) -> DocBuilder<'b, D, A>
-    where
-        D: DocAllocator<'b, A>,
-        D::Doc: Clone,
-        A: Clone,
-    {
-        self.vars
-            .iter()
-            .fold(al.nil(), |cur, var| {
-                cur + "∀" + var.pretty(al, config) + "." + al.line()
-            })
-            .append(self.ty.pretty(al, config))
-            .group()
-    }
-}
-
 impl<T: Pretty> Pretty for rtype::TypeEnvironment<T> {
     fn pretty<'b, D, A>(&'b self, al: &'b D, config: &mut Config) -> DocBuilder<'b, D, A>
     where

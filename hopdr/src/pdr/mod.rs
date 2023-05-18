@@ -17,10 +17,10 @@ pub enum VerificationResult {
 
 #[derive(Debug)]
 pub struct ValidCertificate {
-    pub certificate: rtype::TypeEnvironment<rtype::PolymorphicType<rtype::Ty>>,
+    pub certificate: rtype::TypeEnvironment<rtype::Ty>,
 }
 impl ValidCertificate {
-    fn new(certificate: rtype::TypeEnvironment<rtype::PolymorphicType<rtype::Ty>>) -> Self {
+    fn new(certificate: rtype::TypeEnvironment<rtype::Ty>) -> Self {
         Self { certificate }
     }
 }
