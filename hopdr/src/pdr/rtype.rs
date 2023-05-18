@@ -480,7 +480,7 @@ impl<C: Refinement> Tau<C> {
                 Self::check_subtype(constraint, t, &sprime, coefficients)
             }
             // [AllL]
-            (TauKind::PTy(x, t), _) => {
+            (TauKind::PTy(_, _), _) => {
                 let vars = s.fv();
                 let t = t.instantiate(&vars, coefficients);
                 Self::check_subtype(constraint, &t, s, coefficients)

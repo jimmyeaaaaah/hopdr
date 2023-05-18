@@ -782,7 +782,12 @@ impl<C: Pretty> Pretty for rtype::Tau<C> {
             rtype::TauKind::IArrow(i, t) => (i.pretty(al, config)
                 + (al.text(":int") + al.line() + al.text("-> ") + t.pretty(al, config)).hang(2))
             .group(),
-            rtype::TauKind::PTy(x, t) => al.text("∀") + x.pretty(al, config) + "." + al.line(),
+            rtype::TauKind::PTy(x, t) => (al.text("∀")
+                + x.pretty(al, config)
+                + "."
+                + al.line()
+                + t.pretty(al, config).hang(2))
+            .group(),
             rtype::TauKind::Arrow(ts, t) => {
                 let docs = ts.iter().map(|t| {
                     let tdoc = t.pretty(al, config);
