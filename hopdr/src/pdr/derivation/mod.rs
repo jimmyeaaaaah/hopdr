@@ -1042,7 +1042,9 @@ fn handle_app(
                 for pred_derivation in pred_pt.types {
                     let (arg_t, result_t) = match pred_derivation.root_ty().kind() {
                         TauKind::Arrow(arg, result) => (arg, result),
-                        TauKind::Proposition(_) | TauKind::IArrow(_, _) => panic!("fatal"),
+                        TauKind::PTy(_, _) | TauKind::Proposition(_) | TauKind::IArrow(_, _) => {
+                            panic!("fatal")
+                        }
                     };
                     let mut arg_derivations = vec![Stack::new()];
                     // check if there exists a derivation for all types in the intersection type.
@@ -1148,12 +1150,12 @@ fn type_check_inner(
                                 let ty = ty.instantiate(ienv, &mut coefficients);
                                 debug!("instantiate_type ienv: {:?}", ienv);
                                 debug!("instantiated: {ty}");
-
-                                let cd = Derivation::rule_var(expr.clone(), ty, coefficients);
-                                tys.push(cd);
                                 coefficients.iter().for_each(|c| {
                                     all_coefficients.insert(*c);
                                 });
+
+                                let cd = Derivation::rule_var(expr.clone(), ty, coefficients);
+                                tys.push(cd);
                             }
                             tys
                         }

@@ -321,7 +321,7 @@ impl<C: Refinement> Fv for Tau<C> {
                 TauKind::Proposition(c) => {
                     c.fv_with_vec(fvs);
                 }
-                TauKind::IArrow(i, t) => {
+                TauKind::IArrow(i, t) | TauKind::PTy(i, t) => {
                     t.fv_with_vec(fvs);
                     fvs.remove(i);
                 }
@@ -361,37 +361,6 @@ impl<C: Refinement> Tau<C> {
             TauKind::PTy(_, t) => t.rty_no_exists(),
             TauKind::Arrow(_, t) => t.rty_no_exists(),
         }
-    }
-    /// coarse the rty(self) to be `constraint`
-    pub fn add_context(&self, constraint: &C) -> Tau<C> {
-        crate::title!("add_context");
-        debug!("constraint = {}", constraint);
-        fn go<C: Refinement>(t: &Tau<C>, constraint: &C, polarity: Polarity) -> Tau<C> {
-            match t.kind() {
-                // *[c] <: *[?] under constraint <=> constraint /\ ? => c. so ? = constraint => c
-                TauKind::Proposition(c) if polarity == Polarity::Positive => {
-                    Tau::mk_prop_ty(C::mk_implies_opt(constraint.clone(), c.clone()).unwrap())
-                }
-                // *[?] <: *[c] under constraint <=> constraint /\ c => ?. so ? = constraint /\ c
-                TauKind::Proposition(c) => {
-                    Tau::mk_prop_ty(C::mk_conj(constraint.clone(), c.clone()))
-                }
-                TauKind::IArrow(x, t) => {
-                    let t = go(t, constraint, polarity);
-                    Tau::mk_iarrow(*x, t)
-                }
-                TauKind::Arrow(ts, t) => {
-                    let t = go(t, constraint, polarity);
-                    //let constraint = C::mk_conj(constraint.clone(), t.rty());
-                    let ts = ts
-                        .iter()
-                        .map(|s| go(s, constraint, polarity.rev()))
-                        .collect();
-                    Tau::mk_arrow(ts, t)
-                }
-            }
-        }
-        go(self, constraint, Polarity::Positive)
     }
 
     /// conjoin c as the context
@@ -945,6 +914,10 @@ impl Tau<Constraint> {
                     let t = go(polarity, env, constraint, t);
                     Ty::mk_iarrow(*x, t)
                 }
+                TauKind::PTy(x, t) => {
+                    let t = go(polarity, env, constraint, t);
+                    Ty::mk_poly_ty(*x, t)
+                }
                 TauKind::Arrow(ts, t) => {
                     let t = go(polarity, env, constraint, t);
                     let constraint = Constraint::mk_conj(constraint.clone(), t.rty());
@@ -1352,6 +1325,14 @@ impl Ty {
                     }
                     Ty::mk_iarrow(*x, t)
                 }
+                TauKind::PTy(x, t) => {
+                    let should_remove = args.insert(*x);
+                    let t = tr(t, args, eqs, vars, toplevel);
+                    if should_remove {
+                        args.remove(x);
+                    }
+                    Ty::mk_poly_ty(*x, t)
+                }
                 TauKind::Arrow(ts, t) => {
                     let t = tr(t, args, eqs.clone(), vars, toplevel);
                     let ts = ts
@@ -1391,7 +1372,7 @@ impl Ty {
             match ty.kind() {
                 TauKind::Proposition(_) if toplevel => true,
                 TauKind::Proposition(c) => !c.fv().contains(&x),
-                TauKind::IArrow(_, r) => check_if_removable(r, x, toplevel),
+                TauKind::IArrow(_, r) | TauKind::PTy(_, r) => check_if_removable(r, x, toplevel),
                 TauKind::Arrow(ts, t) => {
                     for t in ts.iter() {
                         if !check_if_removable(t, x, false) {
@@ -1430,7 +1411,7 @@ impl Ty {
                 TauKind::Proposition(c) => {
                     search_eqs_from_constraint(c, eqs, vars);
                 }
-                TauKind::IArrow(_, t) => {
+                TauKind::IArrow(_, t) | TauKind::PTy(_, t) => {
                     get_eqs_from_ty(t, eqs, vars);
                 }
                 TauKind::Arrow(ts, t) => {
@@ -1474,8 +1455,8 @@ impl Ty {
             match t.kind() {
                 TauKind::Proposition(_) if toplevel => false,
                 TauKind::Proposition(c) => c.fv().contains(var),
-                TauKind::IArrow(x, _) if x == var => false,
-                TauKind::IArrow(_, t) => check(t, var, toplevel),
+                TauKind::IArrow(x, _) | TauKind::PTy(x, _) if x == var => false,
+                TauKind::IArrow(_, t) | TauKind::PTy(_, t) => check(t, var, toplevel),
                 TauKind::Arrow(ts, t) => {
                     check(t, var, toplevel) || ts.iter().map(|t| check(t, var, false)).any(|y| y)
                 }
@@ -1548,6 +1529,10 @@ impl Ty {
                 TauKind::IArrow(x, t) => {
                     let t = replace(t, var, toplevel);
                     Ty::mk_iarrow(*x, t)
+                }
+                TauKind::PTy(x, t) => {
+                    let t = replace(t, var, toplevel);
+                    Ty::mk_poly_ty(*x, t)
                 }
                 TauKind::Arrow(ts, t) => {
                     let ts = ts.iter().map(|t| replace(t, var, false)).collect();

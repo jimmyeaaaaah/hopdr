@@ -114,7 +114,7 @@ impl DeriveNode {
                 *ident,
                 c1.clone(),
             )),
-            TauKind::IArrow(_, _) | TauKind::Arrow(_, _) => panic!("fatal"),
+            TauKind::PTy(_, _) | TauKind::IArrow(_, _) | TauKind::Arrow(_, _) => panic!("fatal"),
         };
         DeriveNode { rule, expr, ty }
     }
@@ -152,7 +152,7 @@ impl DeriveNode {
         let rule = Rule::App;
         let ty = match pred_node.ty.kind() {
             TauKind::Arrow(_, rt) => rt.clone(),
-            TauKind::Proposition(_) | TauKind::IArrow(_, _) => {
+            TauKind::PTy(_, _) | TauKind::Proposition(_) | TauKind::IArrow(_, _) => {
                 panic!("app rule is used for a wrong derivation")
             }
         };

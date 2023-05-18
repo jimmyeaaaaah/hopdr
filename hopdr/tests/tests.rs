@@ -92,7 +92,7 @@ fn type_check_1() {
     let mut env = TyEnv::new();
 
     for (fml, ty) in vc.clauses.iter().zip(types.iter()) {
-        env.add(fml.head.id, PolymorphicType::poly(ty.clone()));
+        env.add(fml.head.id, Tau::poly(ty.clone()));
     }
 
     let vc = vc.into();
@@ -179,7 +179,7 @@ fn gen_tyenv_for_test(
 
     for (fml, ty) in clauses.iter().zip(types.iter()) {
         println!("{}: {}", fml.head.id, ty.clone());
-        env.add(fml.head.id, PolymorphicType::poly(ty.clone()));
+        env.add(fml.head.id, Tau::poly(ty.clone()));
     }
     env
 }
@@ -268,7 +268,7 @@ fn type_check_poly() {
 
     for (fml, ty) in vc.clauses.iter().zip(types.iter()) {
         println!("{}: {}", fml.head.id, ty.clone());
-        env.add(fml.head.id, PolymorphicType::poly(ty.clone()));
+        env.add(fml.head.id, Tau::poly(ty.clone()));
     }
 
     let vc = vc.into();
