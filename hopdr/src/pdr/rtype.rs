@@ -155,6 +155,19 @@ impl<C: Refinement> PartialEq for Tau<C> {
 
 impl<C: Refinement> Eq for Tau<C> {}
 
+#[test]
+fn test_eq_for_rtype() {
+    let x = Ident::fresh();
+    let c = Constraint::mk_eq(Op::mk_var(x), Op::mk_const(0));
+    let y = Ident::fresh();
+    let c2 = Constraint::mk_eq(Op::mk_var(y), Op::mk_const(0));
+    let t = Ty::mk_prop_ty(c);
+    let t2 = Ty::mk_prop_ty(c2);
+    let t = Ty::mk_iarrow(x, t);
+    let t2 = Ty::mk_iarrow(y, t2);
+    assert_eq!(t, t2)
+}
+
 pub trait TTop {
     fn mk_top(st: &SType) -> Self;
     fn is_top(&self) -> bool;
