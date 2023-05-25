@@ -574,7 +574,7 @@ impl Derivation {
                                         .iter()
                                         .map(|child| child.item.ty.clone())
                                         .collect();
-                                    let (_arg_ty, ret_ty) = match pred.kind() {
+                                    let (arg_ty, ret_ty) = match pred.kind() {
                                         TauKind::Arrow(arg, t) => (arg.clone(), t.clone()),
                                         TauKind::PTy(_, _)
                                         | TauKind::Proposition(_)
@@ -583,8 +583,8 @@ impl Derivation {
                                         }
                                     };
                                     // subsumption
-                                    t.update_node_by_id(children[0].id).ty =
-                                        Ty::mk_arrow(body_tys, ret_ty.clone());
+                                    //t.update_node_by_id(children[0].id).ty =
+                                    //    Ty::mk_arrow(body_tys, ret_ty.clone());
                                     // for (body_ty, arg_ty) in body_tys
                                     //     .iter()
                                     //     .filter(|x| !x.is_bot())
@@ -592,22 +592,22 @@ impl Derivation {
                                     //
                                     //     }
 
-                                    // if !body_tys
-                                    //     .iter()
-                                    //     .filter(|x| !x.is_bot())
-                                    //     .zip(arg_ty.iter().filter(|x| !x.is_bot()))
-                                    //     .all(|(t1, t2)| t1 == t2)
-                                    // {
-                                    //     debug!("subsumption");
-                                    //     for body_ty in body_tys.iter() {
-                                    //         crate::pdebug!(body_ty);
-                                    //     }
-                                    //     debug!("<:");
-                                    //     for body_ty in arg_ty.iter() {
-                                    //         crate::pdebug!(body_ty);
-                                    //     }
-                                    //     panic!("subsumption invalid")
-                                    // }
+                                    if !body_tys
+                                        .iter()
+                                        .filter(|x| !x.is_bot())
+                                        .zip(arg_ty.iter().filter(|x| !x.is_bot()))
+                                        .all(|(t1, t2)| t1 == t2)
+                                    {
+                                        debug!("subsumption");
+                                        for body_ty in body_tys.iter() {
+                                            crate::pdebug!(body_ty);
+                                        }
+                                        debug!("<:");
+                                        for body_ty in arg_ty.iter() {
+                                            crate::pdebug!(body_ty);
+                                        }
+                                        panic!("subsumption invalid")
+                                    }
                                     ret_ty.clone()
                                 }
                                 // case2: the updated child was in body
