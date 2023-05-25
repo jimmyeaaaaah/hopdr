@@ -30,6 +30,7 @@ pub enum TauKind<C> {
 
 pub type Tau<C> = P<TauKind<C>>;
 pub type TyKind<C> = TauKind<C>;
+
 pub type Ty = Tau<Constraint>;
 
 pub trait Refinement:
@@ -138,7 +139,8 @@ impl<C: Refinement> PartialEq for Tau<C> {
     fn eq(&self, other: &Self) -> bool {
         let r = match (self.kind(), other.kind()) {
             (TauKind::Proposition(c), TauKind::Proposition(c2)) => c == c2,
-            (TauKind::IArrow(x1, t1), TauKind::IArrow(x2, t2)) => {
+            (TauKind::PTy(x1, t1), TauKind::PTy(x2, t2))
+            | (TauKind::IArrow(x1, t1), TauKind::IArrow(x2, t2)) => {
                 let y = Ident::fresh();
                 let t1 = t1.rename(x1, &y);
                 let t2 = t2.rename(x2, &y);

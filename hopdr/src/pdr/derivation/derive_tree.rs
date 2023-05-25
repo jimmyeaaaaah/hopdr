@@ -150,6 +150,12 @@ impl DeriveNode {
         let expr = node.expr.clone();
         DeriveNode { rule, expr, ty }
     }
+    fn poly(node: &Self, x: Ident) -> Self {
+        let rule = Rule::Poly(x);
+        let expr = node.expr.clone();
+        let ty = Ty::mk_poly_ty(x, node.ty.clone());
+        DeriveNode { rule, expr, ty }
+    }
     fn app(expr: G, pred_node: &Self) -> Self {
         let rule = Rule::App;
         let ty = match pred_node.ty.kind() {
@@ -360,6 +366,11 @@ impl Derivation {
         let root = DeriveNode::app(expr, &d1.tree.root().item);
         Self::rule_multiples(root, std::iter::once(d1).chain(args))
     }
+    pub fn rule_polymorphic_type(d: Self, x: Ident) -> Self {
+        let item = d.tree.root().item;
+        let root = DeriveNode::poly(item, x);
+        Self::rule_one_arg_inner(root, d)
+    }
     pub fn update_with_model(&mut self, m: &solver::Model) {
         self.tree.iter_mut(|item| {
             let mut ty = item.ty.clone();
@@ -436,9 +447,12 @@ impl Derivation {
                 update_app_branchs(t, child, ident, op);
             }
         }
+        pdebug!("update parents");
+        pdebug!(self.tree);
         self.tree
             .update_parent_until(target_id, |t, cur, prev| {
                 let n = t.get_node_by_id(cur).item;
+                pdebug!("update_parent_until", n);
                 let ty = match prev {
                     None => n.ty.clone(),
                     Some(prev) => {
@@ -553,14 +567,14 @@ impl Derivation {
                                     // then we retrieve the updated children
                                     let children: Vec<_> = t
                                         .get_children(t.get_node_by_id(cur))
-                                        .map(|child| child.item)
+                                        .map(|child| child)
                                         .collect();
-                                    let pred = children[0].ty.clone();
+                                    let pred = children[0].item.ty.clone();
                                     let body_tys: Vec<_> = children[1..]
                                         .iter()
-                                        .map(|child| child.ty.clone())
+                                        .map(|child| child.item.ty.clone())
                                         .collect();
-                                    let (arg_ty, ret_ty) = match pred.kind() {
+                                    let (_arg_ty, ret_ty) = match pred.kind() {
                                         TauKind::Arrow(arg, t) => (arg.clone(), t.clone()),
                                         TauKind::PTy(_, _)
                                         | TauKind::Proposition(_)
@@ -569,22 +583,31 @@ impl Derivation {
                                         }
                                     };
                                     // subsumption
-                                    if !body_tys
-                                        .iter()
-                                        .filter(|x| !x.is_bot())
-                                        .zip(arg_ty.iter().filter(|x| !x.is_bot()))
-                                        .all(|(t1, t2)| t1 == t2)
-                                    {
-                                        debug!("subsumption");
-                                        for body_ty in body_tys.iter() {
-                                            crate::pdebug!(body_ty);
-                                        }
-                                        debug!("<:");
-                                        for body_ty in arg_ty.iter() {
-                                            crate::pdebug!(body_ty);
-                                        }
-                                        panic!("subsumption invalid")
-                                    }
+                                    t.update_node_by_id(children[0].id).ty =
+                                        Ty::mk_arrow(body_tys, ret_ty.clone());
+                                    // for (body_ty, arg_ty) in body_tys
+                                    //     .iter()
+                                    //     .filter(|x| !x.is_bot())
+                                    //     .zip(arg_ty.iter().filter(|x| !x.is_bot())) {
+                                    //
+                                    //     }
+
+                                    // if !body_tys
+                                    //     .iter()
+                                    //     .filter(|x| !x.is_bot())
+                                    //     .zip(arg_ty.iter().filter(|x| !x.is_bot()))
+                                    //     .all(|(t1, t2)| t1 == t2)
+                                    // {
+                                    //     debug!("subsumption");
+                                    //     for body_ty in body_tys.iter() {
+                                    //         crate::pdebug!(body_ty);
+                                    //     }
+                                    //     debug!("<:");
+                                    //     for body_ty in arg_ty.iter() {
+                                    //         crate::pdebug!(body_ty);
+                                    //     }
+                                    //     panic!("subsumption invalid")
+                                    // }
                                     ret_ty.clone()
                                 }
                                 // case2: the updated child was in body
@@ -804,6 +827,19 @@ impl Derivation {
             }
         }
         let arg_derivations = arg_derivations_new;
+
+        let arg_derivations: Vec<_> = arg_derivations
+            .into_iter()
+            .map(|d| {
+                let mut d = d;
+                let ty = d.root_ty().clone();
+                let fvs = ty.fv();
+                for id in fvs.difference(&reduction.fvints) {
+                    d = Self::rule_polymorphic_type(d, *id);
+                }
+                d
+            })
+            .collect();
 
         let (arg_tys, arg_derivations) = if arg_derivations.is_empty() {
             (vec![], vec![])
