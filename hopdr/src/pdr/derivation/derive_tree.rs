@@ -842,6 +842,7 @@ impl Derivation {
         debug!("generated subtree:");
         pdebug!(subtree);
 
+        // replace_subtree is buggy, so currently, some hacking here....
         // remove (λx. Ψ) x's children first.
         let children: Vec<_> = self
             .tree
@@ -849,13 +850,15 @@ impl Derivation {
             .into_iter()
             .collect();
         let mut t = self.tree.clone();
-        //for child in children {
-        //    t = t.drop_subtree(child);
-        //}
+        for child in children {
+            t = t.drop_subtree(child);
+        }
 
         // insert Ψ's derivation to (λx. Ψ)'s children.
-        let t = t.replace_subtree(t.get_node_by_id(node_id), subtree);
-        //t.insert_children_at(node_id, 0, subtree);
+        *t.update_node_by_id(node_id) = subtree.root().item.clone();
+        for (i, child) in subtree.get_children(subtree.root()).enumerate() {
+            t.insert_children_at(node_id, i, subtree.subtree(child));
+        }
 
         self.tree = t;
 
