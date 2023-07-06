@@ -860,8 +860,9 @@ impl Context {
             self.infer_type_inner(&mut derivation, reduction);
             pdebug!("derivation ", reduction.reduction_info.level);
             pdebug!(derivation);
+            debug!("checking sanity... {}", derivation.check_sanity(false));
         }
-        debug!("checking sanity... {}", derivation.check_sanity(false));
+        //debug!("checking sanity... {}", derivation.check_sanity(false));
 
         // try to infer a type with shared type.
         let (m, clauses, derivation) = match self.infer_with_shared_type(&derivation) {

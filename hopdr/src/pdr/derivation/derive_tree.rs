@@ -447,12 +447,12 @@ impl Derivation {
                 update_app_branchs(t, child, ident, op);
             }
         }
-        pdebug!("update parents");
-        pdebug!(self.tree);
+        //pdebug!("update parents");
+        //pdebug!(self.tree);
         self.tree
             .update_parent_until(target_id, |t, cur, prev| {
                 let n = t.get_node_by_id(cur).item;
-                pdebug!("update_parent_until", n);
+                //pdebug!("update_parent_until", n);
                 let ty = match prev {
                     None => n.ty.clone(),
                     Some(prev) => {
@@ -652,9 +652,9 @@ impl Derivation {
             .map(|child| child.id)
             .collect();
         let n = self.get_node_by_id(node_id).item;
-        crate::title!("update_expr_inner");
-        crate::pdebug!(n);
-        crate::pdebug!(expr);
+        //crate::title!("update_expr_inner");
+        //crate::pdebug!(n);
+        //crate::pdebug!(expr);
         match n.rule {
             Rule::Conjoin => {
                 let (g1, g2) = expr.conj();
@@ -723,8 +723,8 @@ impl Derivation {
         };
     }
     fn update_expr(&mut self, expr: &G) {
-        pdebug!("update_expr");
-        pdebug!(self.tree);
+        //pdebug!("update_expr");
+        //pdebug!(self.tree);
         let root_id = self.tree.root().id;
         self.update_expr_inner(root_id, expr);
     }
@@ -840,7 +840,11 @@ impl Derivation {
         for (deriv, n) in outer_app_derivations.into_iter().rev() {
             subtree = match deriv {
                 // Some: case where the app's arg is pred
-                Some(deriv) => Tree::tree_with_two_children(n, subtree, deriv),
+                Some(mut deriv) => {
+                    // replace all the types by (&ri.old_id, &op) ?
+                    deriv.iter_mut(|d| d.ty = d.ty.subst(&ri.old_id, &op));
+                    Tree::tree_with_two_children(n, subtree, deriv)
+                }
                 // None: it's iapp
                 None => Tree::tree_with_child(n, subtree),
             };
