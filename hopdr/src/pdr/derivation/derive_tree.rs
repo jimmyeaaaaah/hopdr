@@ -766,7 +766,6 @@ impl Derivation {
         let mut node = node_id.to_node(&self.tree);
         pdebug!("subject expansion int");
         pdebug!(node.item);
-        let child_id = self.tree.get_one_child(node_id.to_node(&self.tree)).id;
         let mut remaining_abs_count = 0;
         while !matches!(node.item.rule, Rule::Univ) {
             node = self.tree.get_one_child(node);
@@ -809,9 +808,11 @@ impl Derivation {
                 }
             }
             let item = body.item.clone();
-            let (pred, arg) = self.tree.get_two_children(body);
+            let mut children = self.tree.get_children(body);
+            let pred = children.next().unwrap();
+            let arg = children.next().map(|arg| self.tree.subtree(arg));
             body = pred;
-            outer_app_derivations.push((self.tree.subtree(arg), item));
+            outer_app_derivations.push((arg, item));
         }
         let ret_ty = body.item.ty.clone();
         let subtree = self.tree.subtree(body);
@@ -837,7 +838,12 @@ impl Derivation {
         let mut subtree = Tree::tree_with_child(node, subtree);
 
         for (deriv, n) in outer_app_derivations.into_iter().rev() {
-            subtree = Tree::tree_with_two_children(n, subtree, deriv);
+            subtree = match deriv {
+                // Some: case where the app's arg is pred
+                Some(deriv) => Tree::tree_with_two_children(n, subtree, deriv),
+                // None: it's iapp
+                None => Tree::tree_with_child(n, subtree),
+            };
         }
         debug!("generated subtree:");
         pdebug!(subtree);
