@@ -90,19 +90,51 @@ fn subst_predicate(
     }
 }
 type Level = usize;
+
+struct IntReduction {
+    abs_introduced: usize,
+}
+
+struct PredReduction {}
+
+enum ReductionType {
+    Int(IntReduction),
+    Pred(PredReduction),
+}
+
+impl ReductionType {
+    fn pred() -> ReductionType {
+        ReductionType::Pred(PredReduction {})
+    }
+    fn int(abs_introduced: usize) -> ReductionType {
+        ReductionType::Int(IntReduction { abs_introduced })
+    }
+    fn is_int(&self) -> bool {
+        matches!(self, ReductionType::Int(_))
+    }
+}
+
 struct ReductionInfo {
     level: Level,
     arg: G,
     arg_var: Variable,
     old_id: Ident,
+    reduction_type: ReductionType,
 }
 impl ReductionInfo {
-    fn new(level: Level, arg: G, arg_var: Variable, old_id: Ident) -> ReductionInfo {
+    fn new(
+        level: Level,
+        arg: G,
+        arg_var: Variable,
+        old_id: Ident,
+        reduction_type: ReductionType,
+    ) -> ReductionInfo {
         ReductionInfo {
             level,
             arg,
             arg_var,
             old_id,
+            reduction_type,
         }
     }
 }
@@ -430,7 +462,7 @@ impl GoalBase<Constraint, TypeMemory> {
     }
 }
 
-fn int_reduce_inner(expr: &G, id: Ident, op: Op) -> G {
+fn int_reduce_inner(expr: &G, id: Ident, op: Op) -> (G, usize) {
     match expr.aux.sty.as_ref().unwrap().kind() {
         formula::TypeKind::Proposition => {
             let mut tm = TypeMemory::new();
@@ -441,7 +473,7 @@ fn int_reduce_inner(expr: &G, id: Ident, op: Op) -> G {
             let var = Variable::mk(id, STy::mk_type_int());
             let mut tm = TypeMemory::new();
             tm.sty = Some(STy::mk_type_prop());
-            G::mk_univ_t(var, imply, tm)
+            (G::mk_univ_t(var, imply, tm), 0)
         }
         formula::TypeKind::Arrow(arg, ty) => {
             let v = Variable::fresh(arg.clone());
@@ -450,18 +482,12 @@ fn int_reduce_inner(expr: &G, id: Ident, op: Op) -> G {
             let mut tm_for_app = TypeMemory::new();
             tm_for_app.sty = Some(ty.clone());
             let app = G::mk_app_t(expr.clone(), G::mk_var_t(v.id, tm), tm_for_app);
-            let app = int_reduce_inner(&app, id, op);
-            G::mk_abs_t(v, app, expr.aux.clone())
+            let (app, n_abs_introduced) = int_reduce_inner(&app, id, op);
+            (G::mk_abs_t(v, app, expr.aux.clone()), n_abs_introduced + 1)
         }
         formula::TypeKind::Integer => panic!("program error"),
     }
 }
-
-// // (\x. Ψ x) e Ψ'
-// // (-> (\g. \forall x. x = e => Ψ x g) Ψ')   <-- to omit this part, use this func
-// // -> \forall x. x = e => Ψ x Ψ'
-// fn reduce_unnecessary_part(expr: &G) -> G {
-// }
 
 fn generate_reduction_sequence(goal: &G, optimizer: &mut dyn Optimizer) -> (Vec<Reduction>, G) {
     /// returns
@@ -478,6 +504,7 @@ fn generate_reduction_sequence(goal: &G, optimizer: &mut dyn Optimizer) -> (Vec<
             fvints: &mut HashSet<Ident>,
             argints: &mut HashSet<Ident>,
             constraint: Constraint,
+            // third elem is true if it is just reduced
         ) -> Option<(G, Reduction, bool)> {
             fn generate_reduction_info(
                 optimizer: &mut dyn Optimizer,
@@ -485,7 +512,7 @@ fn generate_reduction_sequence(goal: &G, optimizer: &mut dyn Optimizer) -> (Vec<
                 predicate: &G,
                 arg: &G,
                 idents: &HashSet<Ident>, // idents passed to optimizer when generating a shared type template
-            ) -> Option<(G, ReductionInfo, bool)> {
+            ) -> Option<(G, ReductionInfo)> {
                 match predicate.kind() {
                     GoalKind::Abs(x, g) => {
                         let mut arg = arg.clone();
@@ -509,22 +536,20 @@ fn generate_reduction_sequence(goal: &G, optimizer: &mut dyn Optimizer) -> (Vec<
                             }
                         }
 
-                        // int_reduction is necessary for removing redundant reductions due to the eta expansion
-                        let (ret, int_reduction) = if new_var.ty.is_int() {
+                        let (ret, reduction_type) = if new_var.ty.is_int() {
                             // Reduction for integer
                             // (λx. λf. λg. ψ) e ⟶ λf. λg. ∀x.(x = e ⇒ (λf. λg. ψ) f g)
-                            (
-                                int_reduce_inner(&new_g, new_var.id, arg.clone().into()),
-                                true,
-                            )
+                            let (r, abs_count) =
+                                int_reduce_inner(&new_g, new_var.id, arg.clone().into());
+                            (r, ReductionType::int(abs_count))
                         } else {
-                            (new_g.subst(&new_var, &arg), false)
+                            (new_g.subst(&new_var, &arg), ReductionType::pred())
                         };
                         let ret = ret.update_ids();
 
                         let reduction_info =
-                            ReductionInfo::new(level, arg.clone(), new_var, old_id);
-                        Some((ret.clone(), reduction_info, int_reduction))
+                            ReductionInfo::new(level, arg.clone(), new_var, old_id, reduction_type);
+                        Some((ret.clone(), reduction_info))
                     }
                     _ => None,
                 }
@@ -534,7 +559,7 @@ fn generate_reduction_sequence(goal: &G, optimizer: &mut dyn Optimizer) -> (Vec<
                     // TODO: fvints & argints <- polymorphic_type config should be used to determine which to use
                     match generate_reduction_info(optimizer, level, predicate, arg, fvints) {
                         // App(App(...(Abs(...) arg1) .. argn)
-                        Some((ret, reduction_info, int_reduction)) => {
+                        Some((ret, reduction_info)) => {
                             let reduction = Reduction::new(
                                 goal.clone(),
                                 predicate.clone(),
@@ -545,7 +570,7 @@ fn generate_reduction_sequence(goal: &G, optimizer: &mut dyn Optimizer) -> (Vec<
                                 constraint.clone(),
                             );
 
-                            return Some((ret.clone(), reduction, int_reduction));
+                            return Some((ret.clone(), reduction, true));
                         }
                         None => (),
                     };
@@ -559,22 +584,22 @@ fn generate_reduction_sequence(goal: &G, optimizer: &mut dyn Optimizer) -> (Vec<
                         argints,
                         constraint.clone(),
                     )
-                    .map(|(ret, mut reduction, int_reduction)| {
+                    .map(|(ret, mut reduction, just_reduced)| {
                         // case for skipping the redundant reduction
                         // (\f. f Ψ') ((\x. Ψ x) e)
                         // -> (\x. Ψ x) e Ψ'
                         // (-> (\g. \forall x. x = e => Ψ x g) Ψ') <- like this
                         // -> \forall x. x = e => Ψ x Ψ'
-                        if int_reduction {
+                        if just_reduced && reduction.reduction_info.reduction_type.is_int() {
                             let (x, g) = ret.abs();
                             let ret = g.subst(&x, &arg);
                             reduction.result = ret.clone();
-                            (ret.clone(), reduction, int_reduction)
+                            (ret.clone(), reduction, just_reduced)
                         } else {
                             (
                                 G::mk_app_t(ret, arg.clone(), goal.aux.clone()),
                                 reduction,
-                                int_reduction,
+                                just_reduced,
                             )
                         }
                     })
