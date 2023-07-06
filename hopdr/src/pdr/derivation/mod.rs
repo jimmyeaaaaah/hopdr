@@ -559,14 +559,17 @@ fn generate_reduction_sequence(goal: &G, optimizer: &mut dyn Optimizer) -> (Vec<
                         argints,
                         constraint.clone(),
                     )
-                    .map(|(ret, reduction, int_reduction)| {
+                    .map(|(ret, mut reduction, int_reduction)| {
                         // case for skipping the redundant reduction
                         // (\f. f Ψ') ((\x. Ψ x) e)
                         // -> (\x. Ψ x) e Ψ'
                         // (-> (\g. \forall x. x = e => Ψ x g) Ψ') <- like this
                         // -> \forall x. x = e => Ψ x Ψ'
                         if int_reduction {
-                            unimplemented!()
+                            let (x, g) = ret.abs();
+                            let ret = g.subst(&x, &arg);
+                            reduction.result = ret.clone();
+                            (ret.clone(), reduction, int_reduction)
                         } else {
                             (
                                 G::mk_app_t(ret, arg.clone(), goal.aux.clone()),
@@ -577,7 +580,7 @@ fn generate_reduction_sequence(goal: &G, optimizer: &mut dyn Optimizer) -> (Vec<
                     })
                     .or_else(|| {
                         go_(optimizer, arg, level, fvints, argints, constraint.clone()).map(
-                            |(arg, pred, int_reduction)| {
+                            |(arg, pred, _)| {
                                 (
                                     G::mk_app_t(predicate.clone(), arg, goal.aux.clone()),
                                     pred,

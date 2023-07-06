@@ -652,8 +652,9 @@ impl Derivation {
             .map(|child| child.id)
             .collect();
         let n = self.get_node_by_id(node_id).item;
-        // crate::title!("update_expr_inner");
-        // crate::pdebug!(n);
+        crate::title!("update_expr_inner");
+        crate::pdebug!(n);
+        crate::pdebug!(expr);
         match n.rule {
             Rule::Conjoin => {
                 let (g1, g2) = expr.conj();
@@ -755,18 +756,27 @@ impl Derivation {
         // but, actually, we have to omit all the expressions introduced for eta expansion
         let op: Op = reduction.reduction_info.arg.clone().into();
 
+        // node (obtained from node_id) is λf. λg. λh. ∀ x. x ≠ e ∨ ψ f g h
+        // we remove the redundant abstractions, and count the number of removed abs so that
+        // we can remove applications as many as the number of removed abs below
         let mut node = node_id.to_node(&self.tree);
+        pdebug!("subject expansion int");
+        pdebug!(node.item);
         let child_id = self.tree.get_one_child(node_id.to_node(&self.tree)).id;
         let mut abs_cnt = 0;
         while !matches!(node.item.rule, Rule::Univ) {
             abs_cnt += 1;
             node = self.tree.get_one_child(node);
         }
+        debug!("abs count: {abs_cnt}");
 
+        // node: ∀ x. x ≠ e ∨ ψ f g h
+        // child: x ≠ e ∨ ψ f g h
         let child = self.tree.get_one_child(node);
         debug_assert!(matches!(child.item.rule, Rule::Disjoin));
 
-        // remove app
+        // remove apps for eta expansion
+        // body is the subformula that starts from  ∀ x. x ≠ e ∨ ψ f g h, and obtain ψ
         let mut body = self.tree.get_two_children(child).1;
 
         for _ in 0..abs_cnt {
@@ -784,11 +794,14 @@ impl Derivation {
         let ret_ty = body.item.ty.clone();
         let subtree = self.tree.subtree(body);
 
+        // now the node's expr must be (λx. Ψ) op
+        // and the child's expr must be λx. Ψ,
         self.tree.update_node_by_id(node_id).rule = Rule::IApp(op.clone());
         self.tree.update_node_by_id(node_id).ty = ret_ty.subst(&ri.old_id, &op);
         self.tree.update_node_by_id(child_id).rule = Rule::IAbs;
         self.tree.update_node_by_id(child_id).ty = Ty::mk_iarrow(ri.old_id, ret_ty.clone());
 
+        // remove (λx. Ψ)'s children first.
         let children: Vec<_> = self
             .tree
             .get_children(child_id.to_node(&self.tree))
@@ -799,6 +812,7 @@ impl Derivation {
             t = t.drop_subtree(child);
         }
 
+        // insert Ψ's derivation to (λx. Ψ)'s children.
         t.insert_children_at(child_id, 0, subtree);
 
         self.tree = t;
