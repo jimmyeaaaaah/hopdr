@@ -804,6 +804,12 @@ impl<C: Refinement> Tau<C> {
         }
         ty
     }
+    pub fn body_ty(&self) -> Self {
+        match self.kind() {
+            TauKind::Proposition(_) | TauKind::IArrow(_, _) | TauKind::Arrow(_, _) => self.clone(),
+            TauKind::PTy(_, t) => t.body_ty(),
+        }
+    }
 }
 
 // optimization methods of Ty

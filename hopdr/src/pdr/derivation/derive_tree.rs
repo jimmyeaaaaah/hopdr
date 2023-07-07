@@ -1017,10 +1017,7 @@ impl Derivation {
                             ty_map
                                 .iter()
                                 .find_map(|(t1, t2)| if &n.item.ty == t1 { Some(t2) } else { None })
-                                .expect(&format!(
-                                    "failed to found {v} {}",
-                                    n.item.ty.pretty_display()
-                                ))
+                                .expect(&format!("failed to find {v}: {}", n.item.pretty_display()))
                         }
                     })
                     .cloned()
@@ -1051,7 +1048,8 @@ impl Derivation {
                     let arg_temp_ty = Ty::from_sty(&x.ty, &fvs);
                     arg_template_tys.push(arg_temp_ty.clone());
                     for t in arg_ty.iter() {
-                        ty_map.push_mut((t.clone(), arg_temp_ty.clone()));
+                        // TODO! fix body_ty!
+                        ty_map.push_mut((t.body_ty(), arg_temp_ty.clone()));
                     }
                 } else {
                     for t in arg_ty.iter() {
