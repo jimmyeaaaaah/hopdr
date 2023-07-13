@@ -33,6 +33,12 @@ pub type TyKind<C> = TauKind<C>;
 
 pub type Ty = Tau<Constraint>;
 
+#[derive(Clone, Debug)]
+pub struct Instantiation {
+    pub ident: Ident,
+    pub op: Op,
+}
+
 pub trait Refinement:
     Clone
     + Negation
@@ -497,7 +503,7 @@ impl<C: Refinement> Tau<C> {
             // [AllL]
             (TauKind::PTy(_, _), _) => {
                 let vars = s.fv();
-                let t = t.instantiate(&vars, coefficients);
+                let (t, _) = t.instantiate_with_linear_template(&vars, coefficients);
                 Self::check_subtype(constraint, &t, s, coefficients)
             }
             (_, _) => panic!("fatal"),
@@ -1775,16 +1781,24 @@ fn test_generate_trivial_types_by_eq() {
     println!("after: {pty}");
 }
 
+// instantiation
+
+impl Instantiation {
+    fn new(ident: Ident, op: Op) -> Self {
+        Self { ident, op }
+    }
+}
+
 impl<C: Refinement> Tau<C> {
-    pub fn instantiate(
+    pub fn instantiate_with_linear_template(
         &self,
         ints: &HashSet<Ident>,
         coefficients: &mut Stack<Ident>,
         //all_coefficients: &mut HashSet<Ident>,
-    ) -> Tau<C> {
-        let (x, ty) = match self.kind() {
-            TauKind::PTy(x, t) => (x, t),
-            _ => return self.clone(),
+    ) -> (Tau<C>, Stack<Instantiation>) {
+        let (x, (ty, instantiations)) = match self.kind() {
+            TauKind::PTy(x, t) => (x, t.instantiate_with_linear_template(ints, coefficients)),
+            _ => return (self.clone(), Stack::new()),
         };
         crate::title!("instatiate_type");
         debug!("type={}", self);
@@ -1794,7 +1808,8 @@ impl<C: Refinement> Tau<C> {
         debug!("template: {}", o);
         let ts = ts.subst(x, &o);
         debug!("instantiated: {}", ts);
-        ts
+        let instantiation = Instantiation::new(*x, o);
+        (ts, instantiations.push(instantiation))
     }
 }
 

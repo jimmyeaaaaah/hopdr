@@ -1024,11 +1024,18 @@ fn handle_app(
                             let mut coefficients = Stack::new();
                             let types = ts
                                 .iter()
-                                .map(|t| {
-                                    let t = t.instantiate(ienv, &mut coefficients);
+                                .map(|original_ty| {
+                                    let (t_instantiated, instantiations) = original_ty
+                                        .instantiate_with_linear_template(ienv, &mut coefficients);
                                     debug!("instantiate_type ienv: {:?}", ienv);
-                                    debug!("instantiated: {t}");
-                                    Derivation::rule_var(pred_expr.clone(), t, coefficients.clone())
+                                    debug!("instantiated: {t_instantiated}");
+                                    Derivation::rule_var(
+                                        pred_expr.clone(),
+                                        t_instantiated.clone(),
+                                        original_ty.clone(),
+                                        coefficients.clone(),
+                                        instantiations,
+                                    )
                                 })
                                 .collect();
                             coefficients.into_iter().for_each(|c| {
@@ -1053,7 +1060,9 @@ fn handle_app(
                             let d = Derivation::rule_var(
                                 pred_expr.clone(),
                                 ct[0].clone(),
+                                unimplemented!(),
                                 Stack::new(),
+                                unimplemented!(),
                             );
                             vec![d]
                         }
@@ -1213,16 +1222,23 @@ fn type_check_inner(
                     let tys = match &config.tc_mode {
                         TCFlag::Normal => {
                             let mut tys = Vec::new();
-                            for ty in ts {
+                            for original_ty in ts {
                                 let mut coefficients = Stack::new();
-                                let ty = ty.instantiate(ienv, &mut coefficients);
+                                let (ty, instantiations) = original_ty
+                                    .instantiate_with_linear_template(ienv, &mut coefficients);
                                 debug!("instantiate_type ienv: {:?}", ienv);
                                 debug!("instantiated: {ty}");
                                 coefficients.iter().for_each(|c| {
                                     all_coefficients.insert(*c);
                                 });
 
-                                let cd = Derivation::rule_var(expr.clone(), ty, coefficients);
+                                let cd = Derivation::rule_var(
+                                    expr.clone(),
+                                    ty,
+                                    original_ty.clone(),
+                                    coefficients,
+                                    instantiations,
+                                );
                                 tys.push(cd);
                             }
                             tys

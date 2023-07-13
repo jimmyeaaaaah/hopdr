@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use super::tree::*;
 use super::{Atom, Ty, G};
 use crate::pdebug;
-use crate::pdr::rtype::{TBot, Tau, TauKind};
+use crate::pdr::rtype::{Instantiation, TBot, Tau, TauKind};
 use crate::solver;
 use crate::util::Pretty;
 use crate::{formula::*, highlight};
@@ -23,7 +23,11 @@ pub(super) struct DeriveNode {
 pub enum Rule {
     Conjoin,
     Disjoin,
-    Var,
+    // Ty: original ty
+    // Stack<Instantiation>: seq of instantiations
+    // the ty in the derivation is expected to be the instantiated type
+    // of ty with the instantiations
+    Var(Stack<Instantiation>, Ty),
     Univ,
     IAbs,
     Abs(Vec<Ty>),
@@ -40,7 +44,7 @@ impl std::fmt::Display for Rule {
         let s = match self {
             Rule::Conjoin => "Conj",
             Rule::Disjoin => "Disj",
-            Rule::Var => "Var",
+            Rule::Var(_) => "Var",
             Rule::Univ => "Univ",
             Rule::IAbs => "IAbs",
             Rule::Abs(_) => "Abs",
@@ -287,13 +291,23 @@ impl Derivation {
         }
     }
 
-    pub fn rule_var(expr: G, ty: Ty, coefficients: Stack<Ident>) -> Self {
-        let rule = Rule::Var;
+    pub fn rule_var(
+        expr: G,
+        ty: Ty,
+        original_ty: Ty,
+        coefficients: Stack<Ident>,
+        instantiations: Stack<Instantiation>,
+    ) -> Self {
+        let rule = Rule::Var(instantiations, original_ty);
         let node = DeriveNode { rule, expr, ty };
         Self {
             tree: Tree::singleton(node),
             coefficients,
         }
+    }
+
+    pub fn rule_instantiate(expr: G, ty: Ty, instantiations: Stack<Instantiation>) -> Self {
+        unimplemented!()
     }
 
     fn rule_one_arg_inner(node: DeriveNode, d: Self) -> Self {
@@ -416,6 +430,7 @@ impl Derivation {
         node_id: ID,
         level: &usize,
         var: Ident,
+        instantiations: Stack<Instantiation>,
     ) -> Vec<Self> {
         let var_expr = G::mk_var(var);
         let mut tree = self.tree.clone();
@@ -426,7 +441,12 @@ impl Derivation {
                 n.expr.aux.level_arg.iter().any(|arg| arg == level)
             })
         {
-            let d = Self::rule_var(var_expr.clone(), node.item.ty.clone(), Stack::new());
+            let d = Self::rule_var(
+                var_expr.clone(),
+                node.item.ty.clone(),
+                Stack::new(),
+                instantiations,
+            );
             let sub_derivation = self.sub_derivation(&node.id);
             derivations.push(sub_derivation);
             tree = tree.replace_subtree(node, d.tree);
@@ -630,7 +650,7 @@ impl Derivation {
                                 assert_eq!(children.len(), 1);
                                 return (true, n.clone());
                             }
-                            Rule::Var | Rule::Atom => panic!("program error"),
+                            Rule::Var(_, _) | Rule::Atom => panic!("program error"),
                         }
                     }
                 };
@@ -668,7 +688,7 @@ impl Derivation {
                 self.update_expr_inner(children[0], g1);
                 self.update_expr_inner(children[1], g2);
             }
-            Rule::Var => {
+            Rule::Var(_, _) => {
                 debug_assert!(expr.is_var());
             }
             Rule::Atom => (),
@@ -742,8 +762,15 @@ impl Derivation {
         };
 
         // constructing body derivation
-        let arg_derivations =
-            self.replace_derivation_at_level_with_var(node_id, &ri.level, ri.arg_var.id);
+        // There must be no modification, and we can remove this.
+        // For now, to make sure there is no bug in the implementation,
+        // we leave this code here.
+        let arg_derivations = self.replace_derivation_at_level_with_var(
+            node_id,
+            &ri.level,
+            ri.arg_var.id,
+            Stack::new(),
+        );
         assert_eq!(arg_derivations.len(), 0);
 
         // all Ptr(id) in the constraints in ty should be dereferenced
@@ -877,8 +904,13 @@ impl Derivation {
 
     pub fn subject_expansion_pred(&mut self, node_id: ID, reduction: &super::Reduction) {
         let ri = &reduction.reduction_info;
-        let arg_derivations =
-            self.replace_derivation_at_level_with_var(node_id, &ri.level, ri.arg_var.id);
+        let instantiations = todo!();
+        let arg_derivations = self.replace_derivation_at_level_with_var(
+            node_id,
+            &ri.level,
+            ri.arg_var.id,
+            instantiations,
+        );
         let mut arg_derivations_new: Vec<Derivation> = Vec::new();
         for arg_d in arg_derivations {
             let mut should_append = true;
@@ -992,7 +1024,7 @@ impl Derivation {
     ) -> Self {
         let n = self.get_node_by_id(node_id);
         let expr = n.item.expr.clone();
-        let t = match n.item.rule {
+        let t = match &n.item.rule {
             Rule::Conjoin => {
                 let (child1, child2) = self.tree.get_two_children(n);
                 let d1 = self.clone_with_template_inner(child1.id, env, mode_shared, ints.clone());
@@ -1005,9 +1037,9 @@ impl Derivation {
                 let d2 = self.clone_with_template_inner(child2.id, env, mode_shared, ints.clone());
                 Self::rule_disjoin(expr, d1, d2)
             }
-            Rule::Var => {
+            Rule::Var(instantiations, original_ty) => {
                 let v = expr.var();
-                let ty = env
+                let (ty, instantiations, original_ty) = env
                     .get(v)
                     .map(|ty_map| {
                         // if its bot type, we don't have to care about it
@@ -1021,9 +1053,16 @@ impl Derivation {
                         }
                     })
                     .cloned()
-                    .unwrap_or_else(|| n.item.ty.clone());
+                    .map(|x| (x.clone(), Stack::new(), x.clone()))
+                    .unwrap_or_else(|| {
+                        (
+                            n.item.ty.clone(),
+                            instantiations.clone(),
+                            original_ty.clone(),
+                        )
+                    });
                 self.tree.get_no_child(n);
-                Self::rule_var(expr, ty, Stack::new())
+                Self::rule_var(expr, ty, original_ty, Stack::new(), instantiations)
             }
             Rule::Univ => {
                 let x = expr.univ().0.id;
@@ -1048,8 +1087,7 @@ impl Derivation {
                     let arg_temp_ty = Ty::from_sty(&x.ty, &fvs);
                     arg_template_tys.push(arg_temp_ty.clone());
                     for t in arg_ty.iter() {
-                        // TODO! fix body_ty!
-                        ty_map.push_mut((t.body_ty(), arg_temp_ty.clone()));
+                        ty_map.push_mut((t.clone().body_ty(), arg_temp_ty.clone()));
                     }
                 } else {
                     for t in arg_ty.iter() {
@@ -1162,7 +1200,7 @@ impl Derivation {
                 panic!("derivation is not well-formed");
             };
             match n.item.rule {
-                Rule::Var | Rule::Atom => {
+                Rule::Var(_, _) | Rule::Atom => {
                     d.tree.get_no_child(n);
                     true
                 }
