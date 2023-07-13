@@ -784,159 +784,15 @@ impl Derivation {
         self.update_expr(&reduction.before_reduction);
         self.update_parents(target_node);
     }
-    pub fn subject_expansion_int(&mut self, node_id: ID, reduction: &super::Reduction) {
+
+    pub fn subject_expansion_pred(
+        &mut self,
+        node_id: ID,
+        reduction: &super::Reduction,
+        reduction_idx: usize,
+    ) -> Vec<Derivation> {
         //let ri = &reduction.reduction_info;
-        let ri: super::ReductionInfo = unimplemented!();
-        let abs_cnt = match &ri.reduction_type {
-            super::ReductionType::Int(_) => unimplemented!(),
-            super::ReductionType::Pred(_) => panic!("program error: int reduction is assumed"),
-        };
-
-        // constructing body derivation
-        // There must be no modification, and we can remove this.
-        // For now, to make sure there is no bug in the implementation,
-        // we leave this code here.
-        let arg_derivations = self.replace_derivation_at_level_with_var(
-            node_id,
-            &ri.level,
-            ri.arg_var.id,
-            &reduction.fvints,
-        );
-        assert_eq!(arg_derivations.len(), 0);
-
-        // all Ptr(id) in the constraints in ty should be dereferenced
-        //self.traverse_and_recover_int_var(node_id, &ri.arg_var.id, &ri.old_id);
-
-        //            D                      D
-        //          ------                ------
-        //  x ≠ e    ψ: t                 ψ: t
-        // ---------------         ---------------------  (IAbs)
-        //   x ≠ e \/ ψ:       --->     λx.ψ: x: int -> t
-        // ---------------          --------------------  (IApp)
-        //  ∀ x. x ≠ e ∨ ψ           (λx.ψ) e: [e/x]t
-        // ----------------         ------------------
-        //        ⋮                      ⋮
-        // but, actually, we have to omit all the expressions introduced for eta expansion
-        //let op: Op = reduction.reduction_info.arg.clone().into();
-        let op: Op = unimplemented!();
-
-        // node (obtained from node_id) is λf. λg. λh. ∀ x. x ≠ e ∨ ψ f g h
-        // we remove the redundant abstractions introduced by eta expansion
-        let mut node = node_id.to_node(&self.tree);
-        pdebug!("subject expansion int");
-        pdebug!(node.item);
-        let mut remaining_abs_count = 0;
-        while !matches!(node.item.rule, Rule::Univ) {
-            node = self.tree.get_one_child(node);
-            remaining_abs_count += 1;
-        }
-
-        debug!("abs_count: {abs_cnt}, remaining_abs_count: {remaining_abs_count}");
-
-        // node: ∀ x. x ≠ e ∨ ψ f g h
-        // child: x ≠ e ∨ ψ f g h
-        let child = self.tree.get_one_child(node);
-        debug_assert!(matches!(child.item.rule, Rule::Disjoin));
-
-        // remove apps for eta expansion
-        // body is the subformula that starts from  ∀ x. x ≠ e ∨ ψ f g h, and obtain ψ
-        let mut body = self.tree.get_two_children(child).1;
-
-        // skip for the redundant ones
-        for _ in 0..remaining_abs_count {
-            match body.item.rule {
-                Rule::App | Rule::IApp(_) => (),
-                _ => {
-                    pdebug!("not app");
-                    debug!("abs count: {abs_cnt}");
-                    pdebug!(body.item);
-                    panic!("program error")
-                }
-            }
-            body = self.tree.get_children(body).next().unwrap();
-        }
-        let mut outer_app_derivations = Vec::new();
-        for _ in remaining_abs_count..abs_cnt {
-            match body.item.rule {
-                Rule::App | Rule::IApp(_) => (),
-                _ => {
-                    pdebug!("not app");
-                    debug!("abs count: {abs_cnt}");
-                    pdebug!(body.item);
-                    panic!("program error")
-                }
-            }
-            let item = body.item.clone();
-            let mut children = self.tree.get_children(body);
-            let pred = children.next().unwrap();
-            let arg = children.next().map(|arg| self.tree.subtree(arg));
-            body = pred;
-            outer_app_derivations.push((arg, item));
-        }
-        let ret_ty = body.item.ty.clone();
-        let subtree = self.tree.subtree(body);
-
-        debug!("before generated subtree:");
-        pdebug!(subtree);
-
-        // now the node's expr must be (λx. Ψ) op
-        // and the child's expr must be λx. Ψ,
-        // dummy is expected to be replaced later in `update_expr`
-        let dummy = G::mk_true();
-        let node = DeriveNode {
-            rule: Rule::IAbs,
-            expr: dummy.clone(),
-            ty: Ty::mk_iarrow(ri.old_id, ret_ty.clone()),
-        };
-        let subtree = Tree::tree_with_child(node, subtree);
-        let node = DeriveNode {
-            rule: Rule::IApp(op.clone()),
-            expr: dummy,
-            ty: ret_ty.subst(&ri.old_id, &op),
-        };
-        let mut subtree = Tree::tree_with_child(node, subtree);
-
-        for (deriv, n) in outer_app_derivations.into_iter().rev() {
-            subtree = match deriv {
-                // Some: case where the app's arg is pred
-                Some(mut deriv) => {
-                    // replace all the types by (&ri.old_id, &op) ?
-                    deriv.iter_mut(|d| d.ty = d.ty.subst(&ri.old_id, &op));
-                    Tree::tree_with_two_children(n, subtree, deriv)
-                }
-                // None: it's iapp
-                None => Tree::tree_with_child(n, subtree),
-            };
-        }
-        debug!("generated subtree:");
-        pdebug!(subtree);
-
-        // replace_subtree is buggy, so currently, some hacking here....
-        // remove (λx. Ψ) x's children first.
-        let children: Vec<_> = self
-            .tree
-            .get_children(node_id.to_node(&self.tree))
-            .into_iter()
-            .collect();
-        let mut t = self.tree.clone();
-        for child in children {
-            t = t.drop_subtree(child);
-        }
-
-        // insert Ψ's derivation to (λx. Ψ)'s children.
-        *t.update_node_by_id(node_id) = subtree.root().item.clone();
-        for (i, child) in subtree.get_children(subtree.root()).enumerate() {
-            t.insert_children_at(node_id, i, subtree.subtree(child));
-        }
-
-        self.tree = t;
-
-        self.finalize_subject_expansion(reduction, node_id);
-    }
-
-    pub fn subject_expansion_pred(&mut self, node_id: ID, reduction: &super::Reduction) {
-        //let ri = &reduction.reduction_info;
-        let ri: super::ReductionInfo = unimplemented!();
+        let ri = &reduction.reduction_infos[reduction_idx];
         let arg_derivations = self.replace_derivation_at_level_with_var(
             node_id,
             &ri.level,
@@ -959,57 +815,147 @@ impl Derivation {
                 arg_derivations_new.push(arg_d);
             }
         }
-        let arg_derivations = arg_derivations_new;
+        arg_derivations_new
+    }
 
-        let arg_derivations: Vec<_> = arg_derivations
-            .into_iter()
-            .map(|d| {
-                let mut d = d;
-                let ty = d.root_ty().clone();
-                let fvs = ty.fv();
-                for id in fvs.difference(&reduction.fvints) {
-                    d = Self::rule_polymorphic_type(d, *id);
-                }
-                d
-            })
-            .collect();
+    fn extract_body_derivation(&self, target_node: ID, int_arg_count: usize) -> Tree<DeriveNode> {
+        let mut cur = target_node.to_node(&self.tree);
+        for _ in 0..int_arg_count {
+            debug_assert!(matches!(cur.item.rule, Rule::Univ));
+            let n = self.tree.get_one_child(cur);
+            debug_assert!(matches!(n.item.rule, Rule::Disjoin));
+            cur = self.tree.get_two_children(n).1;
+        }
+        self.tree.subtree(cur)
+    }
 
-        let (arg_tys, arg_derivations) = if arg_derivations.is_empty() {
-            (vec![], vec![])
-        } else {
-            // if a shared_ty is attached with the predicate we are focusing on, we have to use it
-            (
-                arg_derivations
-                    .iter()
-                    .map(|d| d.root_ty().clone())
-                    .collect(),
-                arg_derivations,
-            )
+    fn append_int_abs(
+        &self,
+        tree: Tree<DeriveNode>,
+        ri: &super::ReductionInfo,
+    ) -> Tree<DeriveNode> {
+        let dummy = G::mk_true();
+        let n = DeriveNode {
+            rule: Rule::IAbs,
+            expr: dummy.clone(),
+            ty: Tau::mk_iarrow(ri.old_id, tree.root().item.ty.clone()),
         };
+        Tree::tree_with_child(n, tree)
+    }
 
-        let (t, _node_id) = self.tree.insert_partial_tree(node_id, |body| {
-            let body = Derivation {
-                tree: body,
-                coefficients: Stack::new(),
-            };
+    fn append_int_app(
+        &self,
+        tree: Tree<DeriveNode>,
+        ri: &super::ReductionInfo,
+    ) -> Tree<DeriveNode> {
+        let dummy = G::mk_true();
+        let op: Op = ri.arg.clone().into();
+        let n = DeriveNode {
+            rule: Rule::IApp(op.clone()),
+            expr: dummy.clone(),
+            ty: tree.root().item.ty.subst(&ri.old_id, &op),
+        };
+        Tree::tree_with_child(n, tree)
+    }
 
-            let tmp_deriv =
-                Derivation::rule_arrow(reduction.predicate.clone(), body, arg_tys.clone());
-            let app_deriv = Derivation::rule_app(
-                reduction.app_expr.clone(),
-                tmp_deriv,
-                arg_derivations.into_iter(),
-            );
+    fn append_pred_abs(
+        &self,
+        tree: Tree<DeriveNode>,
+        arg_derivations: &Vec<Derivation>,
+    ) -> Tree<DeriveNode> {
+        let arg_tys: Vec<_> = arg_derivations
+            .iter()
+            .map(|d| d.root_ty().clone())
+            .collect();
+        let dummy = G::mk_true();
+        let n = DeriveNode {
+            rule: Rule::Abs(arg_tys.clone()),
+            expr: dummy.clone(),
+            ty: Tau::mk_arrow(arg_tys.clone(), tree.root().item.ty.clone()),
+        };
+        Tree::tree_with_child(n, tree)
+    }
 
-            app_deriv.tree
-        });
+    fn append_pred_app(
+        &self,
+        tree: Tree<DeriveNode>,
+        arg_derivations: Vec<Derivation>,
+    ) -> Tree<DeriveNode> {
+        let pred_derivation = Derivation {
+            coefficients: Stack::new(),
+            tree: tree,
+        };
+        let dummy = G::mk_true();
+        Derivation::rule_app(dummy, pred_derivation, arg_derivations.into_iter()).tree
+    }
 
-        self.tree = t;
+    pub fn append_abs(
+        &self,
+        t: Tree<DeriveNode>,
+        reduction: &super::Reduction,
+        derivation_map: &HashMap<usize, Vec<Derivation>>,
+    ) -> Tree<DeriveNode> {
+        let mut subtree = t;
+        for (idx, ri) in reduction.reduction_infos.iter().enumerate() {
+            match ri.reduction_type {
+                super::ReductionType::Int(_) => {
+                    subtree = self.append_int_abs(subtree, ri);
+                }
+                super::ReductionType::Pred(_) => {
+                    let derivations = derivation_map.get(&idx).unwrap();
+                    subtree = self.append_pred_abs(subtree, derivations);
+                }
+            }
+        }
+        subtree
+    }
+    pub fn append_app(
+        &self,
+        t: Tree<DeriveNode>,
+        reduction: &super::Reduction,
+        mut derivation_map: HashMap<usize, Vec<Derivation>>,
+    ) -> Tree<DeriveNode> {
+        let mut subtree = t;
+        for (idx, ri) in reduction.reduction_infos.iter().enumerate() {
+            match ri.reduction_type {
+                super::ReductionType::Int(_) => {
+                    subtree = self.append_int_app(subtree, ri);
+                }
+                super::ReductionType::Pred(_) => {
+                    let derivations = derivation_map.remove(&idx).unwrap();
+                    subtree = self.append_pred_app(subtree, derivations);
+                }
+            }
+        }
+        subtree
+    }
+
+    pub fn expand_node(&mut self, target_node: ID, reduction: &super::Reduction) {
+        let mut derivation_map = HashMap::new();
+        let mut int_arg_count = 0;
+        for (idx, ri) in reduction.reduction_infos.iter().enumerate() {
+            match ri.reduction_type {
+                super::ReductionType::Int(_) => {
+                    //self.subject_expansion_int(target_node, reduction, idx);
+                    int_arg_count += 1;
+                }
+                super::ReductionType::Pred(_) => {
+                    let arg_derivation = self.subject_expansion_pred(target_node, reduction, idx);
+                    derivation_map.insert(idx, arg_derivation);
+                }
+            }
+        }
+        let subtree = self.extract_body_derivation(target_node, int_arg_count);
+        let subtree = self.append_abs(subtree, reduction, &derivation_map);
+        let subtree = self.append_app(subtree, reduction, derivation_map);
+        // top_id must be a fresh id assigned by the dummy expr
+        let top_id = subtree.root().item.expr.aux.id;
+        self.tree = self.tree.insert_partial_tree(target_node, |_| subtree).0;
+
         let target_node = self
-            .get_node_closest_to_root_by_goal_id(&reduction.app_expr.aux.id)
+            .get_node_closest_to_root_by_goal_id(&top_id)
             .unwrap()
             .id;
-
         self.finalize_subject_expansion(reduction, target_node);
     }
 

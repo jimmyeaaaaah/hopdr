@@ -527,33 +527,6 @@ impl GoalBase<Constraint, TypeMemory> {
     }
 }
 
-// fn int_reduce_inner(expr: &G, id: Ident, op: Op) -> (G, usize) {
-//     match expr.aux.sty.as_ref().unwrap().kind() {
-//         formula::TypeKind::Proposition => {
-//             let mut tm = TypeMemory::new();
-//             tm.sty = Some(STy::mk_type_prop());
-//             let guard = Constraint::mk_eq(Op::mk_var(id), op);
-//             let imply = G::mk_imply_t(guard, expr.clone(), tm).unwrap();
-//
-//             let var = Variable::mk(id, STy::mk_type_int());
-//             let mut tm = TypeMemory::new();
-//             tm.sty = Some(STy::mk_type_prop());
-//             (G::mk_univ_t(var, imply, tm), 0)
-//         }
-//         formula::TypeKind::Arrow(arg, ty) => {
-//             let v = Variable::fresh(arg.clone());
-//             let mut tm = TypeMemory::new();
-//             tm.sty = Some(arg.clone());
-//             let mut tm_for_app = TypeMemory::new();
-//             tm_for_app.sty = Some(ty.clone());
-//             let app = G::mk_app_t(expr.clone(), G::mk_var_t(v.id, tm), tm_for_app);
-//             let (app, n_abs_introduced) = int_reduce_inner(&app, id, op);
-//             (G::mk_abs_t(v, app, expr.aux.clone()), n_abs_introduced + 1)
-//         }
-//         formula::TypeKind::Integer => panic!("program error"),
-//     }
-// }
-
 fn generate_reduction_sequence(goal: &G, optimizer: &mut dyn Optimizer) -> (Vec<Reduction>, G) {
     /// returns
     /// 1. Some(Candidate): substituted an app
@@ -917,19 +890,7 @@ impl Context {
         }
         result_env
     }
-
     ///// aux functions end
-    // (\x. g) g' -> [g'/x] g
-    fn expand_node(&self, node_id: tree::ID, derivation: &mut Derivation, reduction: &Reduction) {
-        // case where the argument is an integer
-        //if reduction.reduction_infos.arg_var.ty.is_int() {
-        if unimplemented!() {
-            // case where the argument is a predicate
-            derivation.subject_expansion_int(node_id, reduction)
-        } else {
-            derivation.subject_expansion_pred(node_id, reduction);
-        };
-    }
     fn infer_type_inner(&self, derivation: &mut Derivation, reduction: &Reduction) {
         title!("Reduction");
         pdebug!(reduction);
@@ -950,7 +911,7 @@ impl Context {
         }
 
         for node_id in node_ids.iter() {
-            self.expand_node(*node_id, derivation, reduction);
+            derivation.expand_node(*node_id, reduction);
         }
     }
     fn infer_with_shared_type(
