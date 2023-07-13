@@ -44,7 +44,7 @@ impl std::fmt::Display for Rule {
         let s = match self {
             Rule::Conjoin => "Conj",
             Rule::Disjoin => "Disj",
-            Rule::Var(_) => "Var",
+            Rule::Var(_, _) => "Var",
             Rule::Univ => "Univ",
             Rule::IAbs => "IAbs",
             Rule::Abs(_) => "Abs",
@@ -70,19 +70,33 @@ impl crate::util::printer::Pretty for DeriveNode {
         D::Doc: Clone,
         A: Clone,
     {
+        let body = match &self.rule {
+            Rule::Var(_, original_ty) => self
+                .expr
+                .pretty(al, config)
+                .append(al.line())
+                .append(":")
+                .append(al.line())
+                .append(self.ty.pretty(al, config))
+                .append("(")
+                .append(original_ty.pretty(al, config))
+                .append(")")
+                .hang(2)
+                .group(),
+            _ => self
+                .expr
+                .pretty(al, config)
+                .append(al.line())
+                .append(":")
+                .append(al.line())
+                .append(self.ty.pretty(al, config))
+                .hang(2)
+                .group(),
+        };
         al.text("(")
             .append(self.rule.to_string())
             .append(") |- ")
-            .append(
-                self.expr
-                    .pretty(al, config)
-                    .append(al.line())
-                    .append(":")
-                    .append(al.line())
-                    .append(self.ty.pretty(al, config))
-                    .hang(2)
-                    .group(),
-            )
+            .append(body)
     }
 }
 
@@ -430,7 +444,7 @@ impl Derivation {
         node_id: ID,
         level: &usize,
         var: Ident,
-        instantiations: Stack<Instantiation>,
+        fvints: &HashSet<Ident>,
     ) -> Vec<Self> {
         let var_expr = G::mk_var(var);
         let mut tree = self.tree.clone();
@@ -441,13 +455,28 @@ impl Derivation {
                 n.expr.aux.level_arg.iter().any(|arg| arg == level)
             })
         {
+            let mut sub_derivation = self.sub_derivation(&node.id);
+
+            let instantiated_ty = node.item.ty.clone();
+            let fvs = instantiated_ty.fv();
+            let mut instantiations = Stack::new();
+
+            for id in fvs.difference(fvints) {
+                sub_derivation = Self::rule_polymorphic_type(sub_derivation, *id);
+                instantiations.push_mut(Instantiation {
+                    ident: *id,
+                    op: Op::mk_var(*id),
+                });
+            }
+
             let d = Self::rule_var(
                 var_expr.clone(),
-                node.item.ty.clone(),
+                instantiated_ty,
+                sub_derivation.root_ty().clone(),
                 Stack::new(),
                 instantiations,
             );
-            let sub_derivation = self.sub_derivation(&node.id);
+
             derivations.push(sub_derivation);
             tree = tree.replace_subtree(node, d.tree);
         }
@@ -769,7 +798,7 @@ impl Derivation {
             node_id,
             &ri.level,
             ri.arg_var.id,
-            Stack::new(),
+            &reduction.fvints,
         );
         assert_eq!(arg_derivations.len(), 0);
 
@@ -904,12 +933,11 @@ impl Derivation {
 
     pub fn subject_expansion_pred(&mut self, node_id: ID, reduction: &super::Reduction) {
         let ri = &reduction.reduction_info;
-        let instantiations = todo!();
         let arg_derivations = self.replace_derivation_at_level_with_var(
             node_id,
             &ri.level,
             ri.arg_var.id,
-            instantiations,
+            &reduction.fvints,
         );
         let mut arg_derivations_new: Vec<Derivation> = Vec::new();
         for arg_d in arg_derivations {
