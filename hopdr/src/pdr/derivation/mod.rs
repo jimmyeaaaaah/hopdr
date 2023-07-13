@@ -460,6 +460,66 @@ impl GoalBase<Constraint, TypeMemory> {
         let (g, _) = go(&self, env);
         g
     }
+    /// eta expand the goal so that all the occurrences of App(App(...)) has type *
+    // assumption: aux.sty is filled
+    fn eta_expand(&self) -> Self {
+        fn handle_app(g: &G) -> G {
+            match g.kind() {
+                GoalKind::App(g1, g2) => {
+                    let g1 = handle_app(g1);
+                    let g2 = g2.eta_expand();
+                    G::mk_app_t(g1, g2, g.aux.clone())
+                }
+                _ => g.eta_expand(),
+            }
+        }
+        fn eta_expand_inner(g: G, ty: &STy) -> G {
+            match ty.kind() {
+                formula::TypeKind::Proposition => g,
+                formula::TypeKind::Integer => panic!("program error"),
+                formula::TypeKind::Arrow(arg, rty) => {
+                    let g = eta_expand_inner(g, rty);
+                    let id = Ident::fresh();
+                    let arg_v = Variable::mk(id, arg.clone());
+                    let mut aux = TypeMemory::new();
+                    aux.sty = Some(rty.clone());
+                    G::mk_abs_t(arg_v, g, aux)
+                }
+            }
+        }
+        match self.kind() {
+            GoalKind::Constr(_) | GoalKind::Op(_) | GoalKind::Var(_) => self.clone(),
+            GoalKind::Abs(x, g) => {
+                let g = g.eta_expand();
+                G::mk_abs_t(x.clone(), g, self.aux.clone())
+            }
+            GoalKind::App(g1, g2) => {
+                let g2 = g2.eta_expand();
+                let g1 = handle_app(g1);
+                let g = G::mk_app_t(g1, g2, self.aux.clone());
+                if g.aux.sty.clone().unwrap().is_prop() {
+                    g
+                } else {
+                    let sty = g.aux.sty.clone().unwrap();
+                    eta_expand_inner(g, &sty)
+                }
+            }
+            GoalKind::Conj(g1, g2) => {
+                let g1 = g1.eta_expand();
+                let g2 = g2.eta_expand();
+                G::mk_conj_t(g1, g2, self.aux.clone())
+            }
+            GoalKind::Disj(g1, g2) => {
+                let g1 = g1.eta_expand();
+                let g2 = g2.eta_expand();
+                G::mk_disj_t(g1, g2, self.aux.clone())
+            }
+            GoalKind::Univ(x, g) => {
+                let g = g.eta_expand();
+                G::mk_univ_t(x.clone(), g, self.aux.clone())
+            }
+        }
+    }
 }
 
 fn int_reduce_inner(expr: &G, id: Ident, op: Op) -> (G, usize) {
@@ -1473,8 +1533,12 @@ fn reduce_until_normal_form(
     let goal = subst_predicate(&candidate, problem, &mut track_idents);
     let goal = goal.alpha_renaming();
     // calculate free variables for each term
-    let goal = goal.calculate_free_variables();
+    // aux.sty is filled
     let goal = goal.calculate_sty(problem);
+    // eta_expansion requires sty info
+    let goal = goal.eta_expand();
+    // aux.ints is filled
+    let goal = goal.calculate_free_variables();
     title!("generate_reduction_sequence");
     let (reduction_sequence, normal_form) = generate_reduction_sequence(&goal, optimizer);
     Context::new(normal_form, track_idents, reduction_sequence)
@@ -1659,6 +1723,7 @@ pub fn search_for_type(
     let infer_polymorphic_type = config.infer_polymorphic_type;
     // TODO: expand candidate once based on problem.
     const SHARED: bool = false;
+    // transform candidate so that App(App(_)) always has *
     let mut optimizer = optimizer::VoidOptimizer::new();
     while optimizer.continuable() {
         let mut ctx = reduce_until_normal_form(candidate, problem, &mut optimizer);
