@@ -151,7 +151,7 @@ struct Reduction {
     // for each reduction. That is, when we have reduction
     //    expr1 expr2 -> expr3
     // this id is memorized in expr2's memory (as the argument) and expr3's memory (as the return value)
-    reduction_info: ReductionInfo,
+    reduction_infos: Vec<ReductionInfo>,
     // the result of beta reduction; predicate expr -> result
     result: G,
     // predicate's free variables of type int
@@ -166,7 +166,7 @@ struct Reduction {
 
 impl fmt::Display for Reduction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "[Reduction {}]", self.reduction_info.level)?;
+        write!(f, "[Reduction {}]", self.reduction_infos[0].level)?;
         write!(f, "] fvints: {:?}", self.fvints)?;
         writeln!(f, " constraint: {}", self.constraint)?;
         writeln!(f, "{} ", self.predicate)?;
@@ -189,7 +189,7 @@ impl Pretty for Reduction {
         A: Clone,
     {
         al.text("[Reduction ")
-            .append(self.reduction_info.level.to_string())
+            .append(self.reduction_infos[0].level.to_string())
             .append(al.text(format!(
                 "] fvints: {:?} constraint: {}",
                 self.fvints, self.constraint
@@ -199,7 +199,14 @@ impl Pretty for Reduction {
                 self.predicate
                     .pretty(al, config)
                     .append(al.hardline())
-                    .append(self.reduction_info.arg.pretty(al, config))
+                    .append(
+                        al.intersperse(
+                            self.reduction_infos
+                                .iter()
+                                .map(|x| x.arg.pretty(al, config)),
+                            " ",
+                        ),
+                    )
                     .append(" ==> ")
                     .append(self.result.pretty(al, config))
                     .hang(2),
@@ -212,7 +219,7 @@ impl Reduction {
         app_expr: G,
         predicate: G,
         result: G,
-        arg: ReductionInfo,
+        reduction_infos: Vec<ReductionInfo>,
         fvints: HashSet<Ident>,
         argints: HashSet<Ident>,
         constraint: Constraint,
@@ -220,7 +227,7 @@ impl Reduction {
         Reduction {
             app_expr,
             predicate,
-            reduction_info: arg,
+            reduction_infos,
             result,
             fvints,
             argints,
@@ -232,7 +239,7 @@ impl Reduction {
         }
     }
     fn level(&self) -> usize {
-        self.reduction_info.level
+        self.reduction_infos[self.reduction_infos.len() - 1].level
     }
 }
 
@@ -624,7 +631,7 @@ fn generate_reduction_sequence(goal: &G, optimizer: &mut dyn Optimizer) -> (Vec<
                                 goal.clone(),
                                 predicate.clone(),
                                 ret.clone(),
-                                reduction_info,
+                                vec![reduction_info],
                                 fvints.clone(),
                                 argints.clone(),
                                 constraint.clone(),
@@ -645,16 +652,19 @@ fn generate_reduction_sequence(goal: &G, optimizer: &mut dyn Optimizer) -> (Vec<
                         constraint.clone(),
                     )
                     .map(|(ret, mut reduction, just_reduced)| {
-                        // case for skipping the redundant reduction
-                        // (\f. f Ψ') ((\x. Ψ x) e)
-                        // -> (\x. Ψ x) e Ψ'
-                        // (-> (\g. \forall x. x = e => Ψ x g) Ψ') <- like this
-                        // -> \forall x. x = e => Ψ x Ψ'
-                        if just_reduced && reduction.reduction_info.reduction_type.is_int() {
-                            let (x, g) = ret.abs();
-                            let ret = g.subst(&x, &arg);
-                            reduction.result = ret.clone();
-                            (ret.clone(), reduction, just_reduced)
+                        if just_reduced {
+                            let (g, info) = generate_reduction_info(
+                                optimizer,
+                                reduction.level() + 1,
+                                &ret,
+                                arg,
+                                fvints,
+                            )
+                            .expect("program error");
+                            reduction.app_expr = goal.clone();
+                            reduction.result = g.clone();
+                            reduction.reduction_infos.push(info);
+                            (g, reduction, true)
                         } else {
                             (
                                 G::mk_app_t(ret, arg.clone(), goal.aux.clone()),
@@ -841,7 +851,8 @@ impl Context {
     // (\x. g) g' -> [g'/x] g
     fn expand_node(&self, node_id: tree::ID, derivation: &mut Derivation, reduction: &Reduction) {
         // case where the argument is an integer
-        if reduction.reduction_info.arg_var.ty.is_int() {
+        //if reduction.reduction_infos.arg_var.ty.is_int() {
+        if unimplemented!() {
             // case where the argument is a predicate
             derivation.subject_expansion_int(node_id, reduction)
         } else {
@@ -917,8 +928,9 @@ impl Context {
     fn infer_type(&mut self, mut derivation: Derivation) -> Option<TyEnv> {
         title!("infer_type");
         for reduction in self.reduction_sequence.iter().rev() {
+            let level = reduction.level();
+            pdebug!("derivation ", level);
             self.infer_type_inner(&mut derivation, reduction);
-            pdebug!("derivation ", reduction.reduction_info.level);
             pdebug!(derivation);
             debug!("checking sanity... {}", derivation.check_sanity(false));
         }

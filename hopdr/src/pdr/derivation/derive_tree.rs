@@ -785,7 +785,8 @@ impl Derivation {
         self.update_parents(target_node);
     }
     pub fn subject_expansion_int(&mut self, node_id: ID, reduction: &super::Reduction) {
-        let ri = &reduction.reduction_info;
+        //let ri = &reduction.reduction_info;
+        let ri: super::ReductionInfo = unimplemented!();
         let abs_cnt = match &ri.reduction_type {
             super::ReductionType::Int(i) => i.abs_introduced,
             super::ReductionType::Pred(_) => panic!("program error: int reduction is assumed"),
@@ -816,7 +817,8 @@ impl Derivation {
         // ----------------         ------------------
         //        ⋮                      ⋮
         // but, actually, we have to omit all the expressions introduced for eta expansion
-        let op: Op = reduction.reduction_info.arg.clone().into();
+        //let op: Op = reduction.reduction_info.arg.clone().into();
+        let op: Op = unimplemented!();
 
         // node (obtained from node_id) is λf. λg. λh. ∀ x. x ≠ e ∨ ψ f g h
         // we remove the redundant abstractions introduced by eta expansion
@@ -933,7 +935,8 @@ impl Derivation {
     }
 
     pub fn subject_expansion_pred(&mut self, node_id: ID, reduction: &super::Reduction) {
-        let ri = &reduction.reduction_info;
+        //let ri = &reduction.reduction_info;
+        let ri: super::ReductionInfo = unimplemented!();
         let arg_derivations = self.replace_derivation_at_level_with_var(
             node_id,
             &ri.level,
