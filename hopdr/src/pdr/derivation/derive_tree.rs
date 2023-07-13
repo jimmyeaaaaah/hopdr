@@ -788,7 +788,7 @@ impl Derivation {
         //let ri = &reduction.reduction_info;
         let ri: super::ReductionInfo = unimplemented!();
         let abs_cnt = match &ri.reduction_type {
-            super::ReductionType::Int(i) => i.abs_introduced,
+            super::ReductionType::Int(_) => unimplemented!(),
             super::ReductionType::Pred(_) => panic!("program error: int reduction is assumed"),
         };
 
