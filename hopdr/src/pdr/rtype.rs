@@ -810,6 +810,7 @@ impl<C: Refinement> Tau<C> {
         }
         ty
     }
+    /// returns the type without `PTy`s at the top of the type.
     pub fn body_ty(&self) -> Self {
         match self.kind() {
             TauKind::Proposition(_) | TauKind::IArrow(_, _) | TauKind::Arrow(_, _) => self.clone(),

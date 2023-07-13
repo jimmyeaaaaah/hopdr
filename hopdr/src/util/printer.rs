@@ -797,8 +797,11 @@ impl<C: Pretty> Pretty for rtype::Tau<C> {
                         tdoc.parens()
                     }
                 });
-                (al.intersperse(docs, "/\\")
-                    + al.nil()
+                (if docs.len() == 0 {
+                    al.text("T")
+                } else {
+                    al.intersperse(docs, "/\\")
+                } + al.nil()
                     + al.line()
                     + (al.text("-> ") + t.pretty(al, config)).hang(2))
                 .group()
