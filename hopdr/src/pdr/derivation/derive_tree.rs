@@ -497,8 +497,8 @@ impl Derivation {
                 update_app_branchs(t, child, ident, op);
             }
         }
-        //pdebug!("update parents");
-        //pdebug!(self.tree);
+        pdebug!("update parents");
+        pdebug!(self.tree);
         self.tree
             .update_parent_until(target_id, |t, cur, prev| {
                 let n = t.get_node_by_id(cur).item;
@@ -850,10 +850,11 @@ impl Derivation {
     ) -> Tree<DeriveNode> {
         let dummy = G::mk_true();
         let op: Op = ri.arg.clone().into();
+        let (x, ty) = tree.root().item.ty.iarrow();
         let n = DeriveNode {
             rule: Rule::IApp(op.clone()),
             expr: dummy.clone(),
-            ty: tree.root().item.ty.subst(&ri.old_id, &op),
+            ty: ty.subst(x, &op),
         };
         Tree::tree_with_child(n, tree)
     }
