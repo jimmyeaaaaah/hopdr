@@ -882,6 +882,8 @@ impl Derivation {
         tree: Tree<DeriveNode>,
         arg_derivations: Vec<Derivation>,
     ) -> Tree<DeriveNode> {
+        debug!("append_pred_app");
+        pdebug!(tree);
         let pred_derivation = Derivation {
             coefficients: Stack::new(),
             tree: tree,
@@ -897,7 +899,7 @@ impl Derivation {
         derivation_map: &HashMap<usize, Vec<Derivation>>,
     ) -> Tree<DeriveNode> {
         let mut subtree = t;
-        for (idx, ri) in reduction.reduction_infos.iter().enumerate() {
+        for (idx, ri) in reduction.reduction_infos.iter().enumerate().rev() {
             match ri.reduction_type {
                 super::ReductionType::Int(_) => {
                     subtree = self.append_int_abs(subtree, ri);
