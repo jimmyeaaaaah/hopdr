@@ -758,7 +758,8 @@ impl Model {
                 .filter(|(x, _)| !x.is_symbol())
                 .map(|(v, _)| parse_define_fun(v))
                 .collect(),
-            _ => panic!("parse error: smt2 model: {}", model_str),
+            Value::Null => HashMap::new(),
+            _ => panic!("parse error: smt2 model: {} {:?}", model_str, x),
         };
         let model = reduce_application(model);
 
