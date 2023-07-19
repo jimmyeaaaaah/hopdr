@@ -1025,7 +1025,7 @@ fn handle_abs(
                     let t = t.rename(id, &v.id);
                     let b = ienv.insert(v.id);
                     let pt = handle_abs_inner(config, tenv, ienv, all_coefficients, g, &t);
-                    if !b {
+                    if b {
                         ienv.remove(&v.id);
                     }
                     pt.iarrow(arg_expr.clone(), &v.id)

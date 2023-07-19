@@ -1803,7 +1803,8 @@ impl<C: Refinement> Tau<C> {
         };
         crate::title!("instatiate_type");
         debug!("type={}", self);
-        debug!("ints: {:?}", x);
+        debug!("variable to be instantiated: {:?}", x);
+        debug!("ints: {:?}", ints);
         let ts = ty.alpha_renaming();
         let o = generate_arithmetic_template(ints, coefficients);
         debug!("template: {}", o);
