@@ -423,7 +423,10 @@ impl<C: Subst<Item = Op, Id = Ident> + Rename + Fv<Id = Ident> + Precedence + Pr
     // we assume formula has already been alpha-renamed
     // TODO: where? We will not assume alpha-renamed
     fn subst(&self, x: &Variable, v: &GoalBase<C, T>) -> Self {
-        fn subst_inner<C: Subst<Item = Op, Id = Ident> + Rename + Pretty + Precedence, T: Clone>(
+        fn subst_inner<
+            C: Subst<Item = Op, Id = Ident> + Rename + Pretty + Precedence + Fv<Id = Ident>,
+            T: Clone,
+        >(
             target: &GoalBase<C, T>,
             x: &Variable,
             v: &GoalBase<C, T>,
@@ -434,7 +437,7 @@ impl<C: Subst<Item = Op, Id = Ident> + Rename + Fv<Id = Ident> + Precedence + Pr
             match target.kind() {
                 GoalKind::Var(y) => {
                     if x.id == *y {
-                        v.clone()
+                        v.alpha_renaming()
                     } else {
                         target.clone()
                     }
