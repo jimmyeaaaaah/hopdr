@@ -47,7 +47,7 @@ fn subst_predicate(
         formula::hes::GoalKind::Constr(_) | formula::hes::GoalKind::Op(_) => candidate.clone(),
         formula::hes::GoalKind::Var(x) => match problem.get_clause(x) {
             Some(clause) => {
-                let body: G = clause.body.clone().into(); // assign a fresh id translating Candidate -> G
+                let body: G = clause.body.alpha_renaming().into(); // assign a fresh id translating Candidate -> G
                 track_idents
                     .entry(*x)
                     .or_insert_with(|| Vec::new())

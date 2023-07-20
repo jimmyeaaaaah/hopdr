@@ -515,55 +515,42 @@ impl<C: Subst<Item = Op, Id = Ident> + Rename + Fv<Id = Ident> + Precedence + Pr
 
 impl<C: Rename + Fv<Id = Ident>, T: Clone> GoalBase<C, T> {
     pub fn alpha_renaming(&self) -> GoalBase<C, T> {
-        pub fn go<C: Rename, T: Clone>(
-            goal: &GoalBase<C, T>,
-            vars: &mut HashSet<Ident>,
-        ) -> GoalBase<C, T> {
-            // aux function for checking the uniqueness of v.id;
-            // if v.id has already appeared previously (meaning v.id in vars),
-            // first it generates a fresh identifier and rename v.id with the new one.
-            let aux = |v: &Variable, g: &GoalBase<C, T>, vars: &HashSet<Ident>| {
-                if vars.contains(&v.id) {
-                    let id = Ident::fresh();
-                    let g = g.rename(&v.id, &id);
-                    (Variable::mk(id, v.ty.clone()), g)
-                } else {
-                    (v.clone(), g.clone())
-                }
-            };
-            match goal.kind() {
-                GoalKind::Constr(_) | GoalKind::Op(_) | GoalKind::Var(_) => goal.clone(),
-                GoalKind::Abs(v, g) => {
-                    let (v, g) = aux(v, g, vars);
-                    vars.insert(v.id);
-                    let g = go(&g, vars);
-                    GoalBase::mk_abs_t(v, g, goal.aux.clone())
-                }
-                GoalKind::Univ(v, g) => {
-                    let (v, g) = aux(v, g, vars);
-                    vars.insert(v.id);
-                    let g = go(&g, vars);
-                    GoalBase::mk_univ_t(v, g, goal.aux.clone())
-                }
-                GoalKind::App(g1, g2) => {
-                    let g1 = go(g1, vars);
-                    let g2 = go(g2, vars);
-                    GoalBase::mk_app_t(g1, g2, goal.aux.clone())
-                }
-                GoalKind::Conj(g1, g2) => {
-                    let g1 = go(g1, vars);
-                    let g2 = go(g2, vars);
-                    GoalBase::mk_conj_t(g1, g2, goal.aux.clone())
-                }
-                GoalKind::Disj(g1, g2) => {
-                    let g1 = go(g1, vars);
-                    let g2 = go(g2, vars);
-                    GoalBase::mk_disj_t(g1, g2, goal.aux.clone())
-                }
+        fn aux<C: Rename, T: Clone>(
+            v: &Variable,
+            g: &GoalBase<C, T>,
+        ) -> (Variable, GoalBase<C, T>) {
+            let id = Ident::fresh();
+            let g = g.rename(&v.id, &id);
+            (Variable::mk(id, v.ty.clone()), g)
+        }
+        match self.kind() {
+            GoalKind::Constr(_) | GoalKind::Op(_) | GoalKind::Var(_) => self.clone(),
+            GoalKind::Abs(v, g) => {
+                let (v, g) = aux(v, g);
+                let g = g.alpha_renaming();
+                GoalBase::mk_abs_t(v, g, self.aux.clone())
+            }
+            GoalKind::Univ(v, g) => {
+                let (v, g) = aux(v, g);
+                let g = g.alpha_renaming();
+                GoalBase::mk_univ_t(v, g, self.aux.clone())
+            }
+            GoalKind::App(g1, g2) => {
+                let g1 = g1.alpha_renaming();
+                let g2 = g2.alpha_renaming();
+                GoalBase::mk_app_t(g1, g2, self.aux.clone())
+            }
+            GoalKind::Conj(g1, g2) => {
+                let g1 = g1.alpha_renaming();
+                let g2 = g2.alpha_renaming();
+                GoalBase::mk_conj_t(g1, g2, self.aux.clone())
+            }
+            GoalKind::Disj(g1, g2) => {
+                let g1 = g1.alpha_renaming();
+                let g2 = g2.alpha_renaming();
+                GoalBase::mk_disj_t(g1, g2, self.aux.clone())
             }
         }
-        let mut fvs = self.fv();
-        go(self, &mut fvs)
     }
 }
 
