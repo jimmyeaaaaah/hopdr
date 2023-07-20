@@ -929,7 +929,10 @@ impl Context {
 
         match solver::chc::default_solver().solve(&clauses) {
             solver::chc::CHCResult::Sat(m) => Some((m, clauses, d)),
-            _ => None,
+            _ => {
+                debug!("infer_with_shared_type: unsat");
+                panic!("unimplmeneted")
+            }
         }
     }
     fn infer_type_with_subject_expansion(
