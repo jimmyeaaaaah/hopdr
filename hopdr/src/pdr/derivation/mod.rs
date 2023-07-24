@@ -335,6 +335,54 @@ impl TypeMemory {
 }
 
 impl GoalBase<Constraint, TypeMemory> {
+    // returns the pair of alpha-renamed expr and the map used for renaming.
+    // map is a map from the id of the expr that introduces a new variable
+    // to the pair of the old id and the new id.
+    pub fn alpha_renaming_with_map(&self, map: &mut HashMap<Ident, (Ident, Ident)>) -> Self {
+        fn aux(
+            v: &Variable,
+            g: &G,
+            map: &mut HashMap<Ident, (Ident, Ident)>,
+            expr_id: Ident,
+        ) -> (Variable, G) {
+            let id = Ident::fresh();
+            map.insert(expr_id, (v.id, id));
+            let g = g.rename(&v.id, &id);
+            (Variable::mk(id, v.ty.clone()), g)
+        }
+        fn go(expr: &G, map: &mut HashMap<Ident, (Ident, Ident)>) -> G {
+            match expr.kind() {
+                GoalKind::Constr(_) | GoalKind::Op(_) | GoalKind::Var(_) => expr.clone(),
+                GoalKind::Abs(v, g) => {
+                    let (v, g) = aux(v, g, map, expr.aux.id);
+                    let g = go(&g, map);
+                    GoalBase::mk_abs_t(v, g, expr.aux.clone())
+                }
+                GoalKind::Univ(v, g) => {
+                    let (v, g) = aux(v, g, map, expr.aux.id);
+                    let g = go(&g, map);
+                    GoalBase::mk_univ_t(v, g, expr.aux.clone())
+                }
+                GoalKind::App(g1, g2) => {
+                    let g1 = go(g1, map);
+                    let g2 = go(g2, map);
+                    GoalBase::mk_app_t(g1, g2, expr.aux.clone())
+                }
+                GoalKind::Conj(g1, g2) => {
+                    let g1 = go(g1, map);
+                    let g2 = go(g2, map);
+                    GoalBase::mk_conj_t(g1, g2, expr.aux.clone())
+                }
+                GoalKind::Disj(g1, g2) => {
+                    let g1 = go(g1, map);
+                    let g2 = go(g2, map);
+                    GoalBase::mk_disj_t(g1, g2, expr.aux.clone())
+                }
+            }
+        }
+        go(self, map)
+    }
+
     fn update_ids(&self) -> Self {
         let mut expr = match self.kind() {
             GoalKind::Constr(_) | GoalKind::Op(_) | GoalKind::Var(_) => self.clone(),
