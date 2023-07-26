@@ -437,11 +437,8 @@ impl<C: Subst<Item = Op, Id = Ident> + Rename + Fv<Id = Ident> + Precedence + Pr
             match target.kind() {
                 GoalKind::Var(y) => {
                     if x.id == *y {
-                        // if we do alpha rename this,
-                        // subject expansion will be difficult because we have to make the
-                        // changed variable name match the variables in the types
-                        // v.alpha_renaming()
-                        v.clone()
+                        v.alpha_renaming()
+                        //v.clone()
                     } else {
                         target.clone()
                     }

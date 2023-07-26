@@ -694,8 +694,32 @@ impl Derivation {
             })
             .unwrap();
     }
-    fn update_expr_inner(&mut self, node_id: ID, expr: &G) {
+    fn update_expr_inner(
+        &mut self,
+        node_id: ID,
+        expr: &G,
+        mut alpha_renaming_map: Stack<(Ident, Ident)>,
+    ) {
+        fn retrieve_ty_alpha_renaming(t: &Ty, map: Stack<(Ident, Ident)>) -> Ty {
+            let mut ty = t.clone();
+            for (x, y) in map.iter() {
+                ty = ty.rename(y, x);
+            }
+            ty
+        }
+        let old_expr = self.tree.get_node_by_id(node_id).item.expr.clone();
+        match (old_expr.kind(), expr.kind()) {
+            (hes::GoalKind::Abs(v, _), hes::GoalKind::Abs(w, _)) if v.ty.is_int() => {
+                alpha_renaming_map.push_mut((v.id, w.id));
+            }
+            (hes::GoalKind::Univ(v, _), hes::GoalKind::Univ(w, _)) if v.ty.is_int() => {
+                alpha_renaming_map.push_mut((v.id, w.id));
+            }
+            _ => (),
+        }
+
         self.tree.update_node_by_id(node_id).expr = expr.clone();
+
         let children: Vec<_> = self
             .tree
             .get_children(node_id.to_node(&self.tree))
@@ -709,14 +733,14 @@ impl Derivation {
             Rule::Conjoin => {
                 let (g1, g2) = expr.conj();
                 assert_eq!(children.len(), 2);
-                self.update_expr_inner(children[0], g1);
-                self.update_expr_inner(children[1], g2);
+                self.update_expr_inner(children[0], g1, alpha_renaming_map.clone());
+                self.update_expr_inner(children[1], g2, alpha_renaming_map.clone());
             }
             Rule::Disjoin => {
                 let (g1, g2) = expr.disj();
                 assert_eq!(children.len(), 2);
-                self.update_expr_inner(children[0], g1);
-                self.update_expr_inner(children[1], g2);
+                self.update_expr_inner(children[0], g1, alpha_renaming_map.clone());
+                self.update_expr_inner(children[1], g2, alpha_renaming_map.clone());
             }
             Rule::Var(_, _) => {
                 debug_assert!(expr.is_var());
@@ -725,35 +749,35 @@ impl Derivation {
             Rule::Univ => {
                 let (y, g) = expr.univ();
                 assert_eq!(children.len(), 1);
-                self.update_expr_inner(children[0], g);
+                self.update_expr_inner(children[0], g, alpha_renaming_map.clone());
             }
             Rule::IAbs => {
                 let (y, g) = expr.abs();
                 debug_assert!(y.ty.is_int());
                 assert_eq!(children.len(), 1);
-                self.update_expr_inner(children[0], g);
+                self.update_expr_inner(children[0], g, alpha_renaming_map.clone());
             }
             Rule::Abs(_) => {
                 let (_, g) = expr.abs();
                 assert_eq!(children.len(), 1);
-                self.update_expr_inner(children[0], g);
+                self.update_expr_inner(children[0], g, alpha_renaming_map.clone());
             }
             Rule::IApp(_) => {
                 let (x, y) = expr.app();
                 assert_eq!(children.len(), 1);
-                self.update_expr_inner(children[0], x);
+                self.update_expr_inner(children[0], x, alpha_renaming_map.clone());
             }
             Rule::App => {
                 let (x, y) = expr.app();
                 assert!(children.len() >= 1);
-                self.update_expr_inner(children[0], x);
+                self.update_expr_inner(children[0], x, alpha_renaming_map.clone());
                 for i in 1..children.len() {
-                    self.update_expr_inner(children[i], y);
+                    self.update_expr_inner(children[i], y, alpha_renaming_map.clone());
                 }
             }
             Rule::Subsumption | Rule::Poly(_) => {
                 assert_eq!(children.len(), 1);
-                self.update_expr_inner(children[0], &expr);
+                self.update_expr_inner(children[0], &expr, alpha_renaming_map.clone());
 
                 let mut expr = expr.clone();
                 reset_expr_for_subsumption(&mut expr);
@@ -761,7 +785,7 @@ impl Derivation {
             }
             Rule::Equivalence => {
                 assert_eq!(children.len(), 1);
-                self.update_expr_inner(children[0], &expr);
+                self.update_expr_inner(children[0], &expr, alpha_renaming_map.clone());
 
                 let mut expr = expr.clone();
                 reset_expr_for_subsumption(&mut expr);
@@ -776,7 +800,7 @@ impl Derivation {
         //pdebug!("update_expr");
         //pdebug!(self.tree);
         let root_id = self.tree.root().id;
-        self.update_expr_inner(root_id, expr);
+        self.update_expr_inner(root_id, expr, Stack::new());
     }
 
     fn finalize_subject_expansion(&mut self, reduction: &super::Reduction, target_node: ID) {
