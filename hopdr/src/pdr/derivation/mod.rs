@@ -1330,7 +1330,7 @@ fn handle_app(
 
     let pt = coarse_expr_for_type_sharing(config, pt, &app_expr);
 
-    pdebug!("handle_abs: |- ", app_expr, " : ", pt ; bold ; white, " ",);
+    pdebug!("handle_app: |- ", app_expr, " : ", pt ; bold ; white, " ",);
     pt
 }
 
@@ -1356,10 +1356,10 @@ fn type_check_inner(
         context_ty: Ty,
     ) -> (PossibleDerivation, bool) {
         // [pruning]: since we can always derive ψ: ⊥, we do not have to care about this part
-        if !config.construct_derivation && context_ty.is_bot() {
-            let cd = Derivation::rule_atom(expr.clone(), context_ty.clone());
-            return (PossibleDerivation::singleton(cd), false);
-        }
+        //if !config.construct_derivation && context_ty.is_bot() {
+        //    let cd = Derivation::rule_atom(expr.clone(), context_ty.clone());
+        //    return (PossibleDerivation::singleton(cd), false);
+        //}
         // for App, we delegate the procedure to `handle_app`
         // and in that procedure, it saves the types
         let mut already_registered = false;
@@ -1399,7 +1399,7 @@ fn type_check_inner(
                             tys
                         }
                         TCFlag::Shared(d) => {
-                            let ct: Vec<_> = d.derivation.get_types_by_id(&expr.aux.id).collect();
+                            //let ct: Vec<_> = d.derivation.get_types_by_id(&expr.aux.id).collect();
                             // TODO: actually we have to consider the case where multiple types are assigned to one expr
                             // This happens when intersection types are inferred; however, in the current setting,
                             // if shared type is enabled, there is no intersection types.
@@ -1409,9 +1409,10 @@ fn type_check_inner(
                             //   2. track the current node of the previous derivation in d, so that corresponding node of d can easily be
                             //      retrieved
                             //   3. ?
-                            assert!(ct.len() == 1);
-                            let d = Derivation::rule_atom(expr.clone(), ct[0].clone());
-                            vec![d]
+                            let nodes: Vec<_> =
+                                d.derivation.get_nodes_by_goal_id(&expr.aux.id).collect();
+                            assert!(nodes.len() == 1);
+                            vec![Derivation::single_node(nodes[0].item.clone())]
                         }
                     };
                     PossibleDerivation::new(tys)

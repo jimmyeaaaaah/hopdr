@@ -297,6 +297,13 @@ impl Derivation {
             .map(move |n| self.sub_derivation(&n.id))
     }
 
+    pub fn single_node(n: DeriveNode) -> Self {
+        Self {
+            tree: Tree::singleton(n),
+            coefficients: Stack::new(),
+        }
+    }
+
     pub fn rule_atom(expr: G, ty: Ty) -> Self {
         let rule = Rule::Atom;
         let node = DeriveNode { rule, expr, ty };
@@ -1259,6 +1266,8 @@ impl Derivation {
                     true
                 }
                 Rule::Atom => {
+                    println!("expr: {}", n.item.expr.pretty_display());
+                    println!("expr2: {}", n.item.ty.prop().pretty_display());
                     let expr: Constraint = n.item.expr.clone().into();
                     let expr2 = n.item.ty.prop().clone().into();
                     assert_eq!(expr, expr2);
