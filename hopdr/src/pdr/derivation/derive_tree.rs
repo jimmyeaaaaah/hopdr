@@ -723,25 +723,27 @@ impl Derivation {
         //crate::title!("update_expr_inner");
         //crate::pdebug!(n);
         //crate::pdebug!(expr);
-        match &n.rule {
+        self.tree.update_node_by_id(node_id).rule = match &n.rule {
             Rule::Conjoin => {
                 let (g1, g2) = expr.conj();
                 assert_eq!(children.len(), 2);
                 self.update_expr_inner(children[0], g1, alpha_renaming_map.clone());
                 self.update_expr_inner(children[1], g2, alpha_renaming_map.clone());
+                Rule::Conjoin
             }
             Rule::Disjoin => {
                 let (g1, g2) = expr.disj();
                 assert_eq!(children.len(), 2);
                 self.update_expr_inner(children[0], g1, alpha_renaming_map.clone());
                 self.update_expr_inner(children[1], g2, alpha_renaming_map.clone());
+                Rule::Disjoin
             }
             Rule::Var(i, ty) => {
                 debug_assert!(expr.is_var());
                 let ty = retrieve_ty_alpha_renaming(&ty, alpha_renaming_map.clone());
-                self.tree.update_node_by_id(node_id).rule = Rule::Var(i.clone(), ty);
+                Rule::Var(i.clone(), ty)
             }
-            Rule::Atom => (),
+            Rule::Atom => Rule::Atom,
             Rule::Univ => {
                 let (v, _) = old_expr.univ();
                 let (w, g) = expr.univ();
@@ -751,6 +753,7 @@ impl Derivation {
 
                 assert_eq!(children.len(), 1);
                 self.update_expr_inner(children[0], g, alpha_renaming_map.clone());
+                Rule::Univ
             }
             Rule::IAbs => {
                 let (w, g) = expr.abs();
@@ -773,16 +776,28 @@ impl Derivation {
                 }
                 assert_eq!(children.len(), 1);
                 self.update_expr_inner(children[0], g, alpha_renaming_map.clone());
+                Rule::IAbs
             }
-            Rule::Abs(_) => {
+            Rule::Abs(tys) => {
                 let (_, g) = expr.abs();
+                let tys = tys
+                    .into_iter()
+                    .map(|t| retrieve_ty_alpha_renaming(&t, alpha_renaming_map.clone()))
+                    .collect();
                 assert_eq!(children.len(), 1);
                 self.update_expr_inner(children[0], g, alpha_renaming_map.clone());
+                Rule::Abs(tys)
             }
-            Rule::IApp(_) => {
+            Rule::IApp(op) => {
                 let (x, y) = expr.app();
+                let mut op = op.clone();
                 assert_eq!(children.len(), 1);
                 self.update_expr_inner(children[0], x, alpha_renaming_map.clone());
+
+                for (x, y) in alpha_renaming_map.iter() {
+                    op = op.rename(x, y)
+                }
+                Rule::IApp(op)
             }
             Rule::App => {
                 let (x, y) = expr.app();
@@ -791,14 +806,17 @@ impl Derivation {
                 for i in 1..children.len() {
                     self.update_expr_inner(children[i], y, alpha_renaming_map.clone());
                 }
+                Rule::App
             }
             Rule::Subsumption | Rule::Poly(_) => {
+                let rule = n.rule.clone();
                 assert_eq!(children.len(), 1);
                 self.update_expr_inner(children[0], &expr, alpha_renaming_map.clone());
 
                 let mut expr = expr.clone();
                 reset_expr_for_subsumption(&mut expr);
                 self.tree.update_node_by_id(node_id).expr = expr.clone();
+                rule
             }
             Rule::Equivalence => {
                 assert_eq!(children.len(), 1);
@@ -810,6 +828,7 @@ impl Derivation {
                 // Unlike the case for subsumption, we replace the original one
                 // so that we can refer to the more general type afterwards.
                 self.tree.update_node_by_id(children[0]).expr = expr.clone();
+                Rule::Equivalence
             }
         };
     }
