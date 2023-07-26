@@ -723,7 +723,7 @@ impl Derivation {
         //crate::title!("update_expr_inner");
         //crate::pdebug!(n);
         //crate::pdebug!(expr);
-        match n.rule {
+        match &n.rule {
             Rule::Conjoin => {
                 let (g1, g2) = expr.conj();
                 assert_eq!(children.len(), 2);
@@ -736,8 +736,10 @@ impl Derivation {
                 self.update_expr_inner(children[0], g1, alpha_renaming_map.clone());
                 self.update_expr_inner(children[1], g2, alpha_renaming_map.clone());
             }
-            Rule::Var(_, _) => {
+            Rule::Var(i, ty) => {
                 debug_assert!(expr.is_var());
+                let ty = retrieve_ty_alpha_renaming(&ty, alpha_renaming_map.clone());
+                self.tree.update_node_by_id(node_id).rule = Rule::Var(i.clone(), ty);
             }
             Rule::Atom => (),
             Rule::Univ => {
