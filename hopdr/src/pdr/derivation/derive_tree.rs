@@ -8,7 +8,7 @@ use crate::solver;
 use crate::util::Pretty;
 use crate::{formula::*, highlight};
 
-use rpds::Stack;
+use rpds::{HashTrieMap, Stack};
 
 #[derive(Clone, Debug)]
 pub(super) struct DeriveNode {
@@ -1230,7 +1230,13 @@ impl Derivation {
     /// is well-formed in the sense that all free variables of each type are bound.
     pub fn check_sanity(&self, strict: bool) -> bool {
         // now only check if app is sane since others are probably fine
-        fn go(d: &Derivation, node_id: ID, ints: &Stack<Ident>, strict: bool) -> bool {
+        fn go(
+            d: &Derivation,
+            node_id: ID,
+            ints: &Stack<Ident>,
+            strict: bool,
+            env: &HashTrieMap<Ident, Vec<Ty>>,
+        ) -> bool {
             let n = d.get_node_by_id(node_id);
             let fvs = n.item.ty.fv();
             if strict
@@ -1242,37 +1248,55 @@ impl Derivation {
                 pdebug!("fail: ", n.item);
                 panic!("derivation is not well-formed");
             };
-            match n.item.rule {
-                Rule::Var(_, _) | Rule::Atom => {
+            match &n.item.rule {
+                Rule::Var(_, ty) => {
+                    let x = n.item.expr.var();
                     d.tree.get_no_child(n);
+                    //if !ints.iter().any(|y| x == y) {
+                    //    let ty2 = env.get(&x).unwrap();
+                    //    assert!(ty2.iter().any(|t| t == ty));
+                    //}
+                    true
+                }
+                Rule::Atom => {
+                    let expr: Constraint = n.item.expr.clone().into();
+                    let expr2 = n.item.ty.prop().clone().into();
+                    assert_eq!(expr, expr2);
                     true
                 }
                 Rule::Conjoin | Rule::Disjoin => {
                     let (child1, child2) = d.tree.get_two_children(n);
-                    go(d, child1.id, ints, strict) && go(d, child2.id, ints, strict)
+                    go(d, child1.id, ints, strict, env) && go(d, child2.id, ints, strict, env)
                 }
                 Rule::IAbs => {
                     let x = n.item.expr.abs().0;
                     assert!(x.ty.is_int());
                     let ints = ints.push(x.id);
                     let child = d.tree.get_one_child(n);
-                    go(d, child.id, &ints, strict)
+                    go(d, child.id, &ints, strict, env)
                 }
                 Rule::Univ => {
                     let x = n.item.expr.univ().0;
                     assert!(x.ty.is_int());
                     let ints = ints.push(x.id);
                     let child = d.tree.get_one_child(n);
-                    go(d, child.id, &ints, strict)
+                    go(d, child.id, &ints, strict, env)
                 }
                 Rule::Poly(x) => {
-                    let ints = ints.push(x);
+                    let ints = ints.push(*x);
                     let child = d.tree.get_one_child(n);
-                    go(d, child.id, &ints, strict)
+                    go(d, child.id, &ints, strict, env)
                 }
-                Rule::IApp(_) | Rule::Abs(_) | Rule::Subsumption | Rule::Equivalence => {
+                Rule::IApp(_) | Rule::Subsumption | Rule::Equivalence => {
                     let child = d.tree.get_one_child(n);
-                    go(d, child.id, ints, strict)
+                    go(d, child.id, ints, strict, env)
+                }
+                Rule::Abs(_) => {
+                    let (arg_ty, _) = n.item.ty.arrow();
+                    let (x, _) = n.item.expr.abs();
+                    let child = d.tree.get_one_child(n);
+                    let env = env.insert(x.id, arg_ty.clone());
+                    go(d, child.id, ints, strict, &env)
                 }
                 Rule::App => {
                     let children: Vec<_> = d.tree.get_children(n).collect();
@@ -1301,10 +1325,16 @@ impl Derivation {
                         panic!();
                     }
 
-                    children.iter().all(|c| go(d, c.id, ints, strict))
+                    children.iter().all(|c| go(d, c.id, ints, strict, env))
                 }
             }
         }
-        go(self, self.tree.root().id, &Stack::new(), strict)
+        go(
+            self,
+            self.tree.root().id,
+            &Stack::new(),
+            strict,
+            &HashTrieMap::new(),
+        )
     }
 }
