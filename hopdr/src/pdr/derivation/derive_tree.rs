@@ -703,22 +703,16 @@ impl Derivation {
         fn retrieve_ty_alpha_renaming(t: &Ty, map: Stack<(Ident, Ident)>) -> Ty {
             let mut ty = t.clone();
             for (x, y) in map.iter() {
-                ty = ty.rename(y, x);
+                ty = ty.rename(x, y);
             }
             ty
         }
         let old_expr = self.tree.get_node_by_id(node_id).item.expr.clone();
-        match (old_expr.kind(), expr.kind()) {
-            (hes::GoalKind::Abs(v, _), hes::GoalKind::Abs(w, _)) if v.ty.is_int() => {
-                alpha_renaming_map.push_mut((v.id, w.id));
-            }
-            (hes::GoalKind::Univ(v, _), hes::GoalKind::Univ(w, _)) if v.ty.is_int() => {
-                alpha_renaming_map.push_mut((v.id, w.id));
-            }
-            _ => (),
-        }
+        let old_ty = self.tree.get_node_by_id(node_id).item.ty.clone();
 
-        self.tree.update_node_by_id(node_id).expr = expr.clone();
+        let node = self.tree.update_node_by_id(node_id);
+        node.expr = expr.clone();
+        node.ty = retrieve_ty_alpha_renaming(&old_ty, alpha_renaming_map.clone());
 
         let children: Vec<_> = self
             .tree
@@ -747,13 +741,34 @@ impl Derivation {
             }
             Rule::Atom => (),
             Rule::Univ => {
-                let (y, g) = expr.univ();
+                let (v, _) = old_expr.univ();
+                let (w, g) = expr.univ();
+                if v.ty.is_int() && v.id != w.id {
+                    alpha_renaming_map.push_mut((v.id, w.id));
+                }
+
                 assert_eq!(children.len(), 1);
                 self.update_expr_inner(children[0], g, alpha_renaming_map.clone());
             }
             Rule::IAbs => {
-                let (y, g) = expr.abs();
-                debug_assert!(y.ty.is_int());
+                let (w, g) = expr.abs();
+                debug_assert!(w.ty.is_int());
+
+                // After the subject expansion, some of the expr are placed as "true"
+                // as a placeholder, which can be ignored here.
+                match old_expr.kind() {
+                    hes::GoalKind::Abs(_, _) => {
+                        let (v, _) = old_expr.abs();
+                        if v.ty.is_int() && v.id != w.id {
+                            alpha_renaming_map.push_mut((v.id, w.id));
+                            let (x, t) = old_ty.iarrow();
+                            let ty = Ty::mk_iarrow(v.id, t.rename(x, &v.id));
+                            self.tree.update_node_by_id(node_id).ty =
+                                retrieve_ty_alpha_renaming(&ty, alpha_renaming_map.clone());
+                        }
+                    }
+                    _ => (),
+                }
                 assert_eq!(children.len(), 1);
                 self.update_expr_inner(children[0], g, alpha_renaming_map.clone());
             }
@@ -804,9 +819,9 @@ impl Derivation {
     }
 
     fn finalize_subject_expansion(&mut self, reduction: &super::Reduction, target_node: ID) {
+        self.update_parents(target_node);
         // finally replace the expressions in the derivation with the expr before the reduction
         self.update_expr(&reduction.before_reduction);
-        self.update_parents(target_node);
     }
 
     pub fn subject_expansion_pred(

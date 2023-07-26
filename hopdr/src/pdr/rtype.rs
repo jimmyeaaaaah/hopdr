@@ -627,13 +627,13 @@ impl<C: Refinement> Tau<C> {
     pub fn iarrow<'a>(&'a self) -> (&'a Ident, &'a Self) {
         match self.kind() {
             TauKind::IArrow(x, t) => (x, t),
-            _ => panic!("program error"),
+            _ => panic!("not iarrow: {}", self.pretty_display()),
         }
     }
     pub fn arrow<'a>(&'a self) -> (&'a Vec<Self>, &'a Self) {
         match self.kind() {
             TauKind::Arrow(ts, t) => (ts, t),
-            _ => panic!("program error"),
+            _ => panic!("not arrow: {}", self.pretty_display()),
         }
     }
 }
