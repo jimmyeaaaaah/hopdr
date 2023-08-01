@@ -1061,6 +1061,7 @@ fn handle_abs(
     all_coefficients: &mut HashSet<Ident>,
     arg_expr: &G,
     t: &Ty,
+    context: &Atom,
 ) -> PossibleDerivation {
     fn handle_abs_inner(
         config: &TCConfig,
@@ -1069,13 +1070,14 @@ fn handle_abs(
         all_coefficients: &mut HashSet<Ident>,
         arg_expr: &G,
         t: &Ty,
+        context: &Atom,
     ) -> PossibleDerivation {
         let pt = match arg_expr.kind() {
             GoalKind::Abs(v, g) if v.ty.is_int() => match t.kind() {
                 TauKind::IArrow(id, t) if v.ty.is_int() => {
                     let t = t.rename(id, &v.id);
                     let b = ienv.insert(v.id);
-                    let pt = handle_abs_inner(config, tenv, ienv, all_coefficients, g, &t);
+                    let pt = handle_abs_inner(config, tenv, ienv, all_coefficients, g, &t, context);
                     if b {
                         ienv.remove(&v.id);
                     }
@@ -1088,18 +1090,18 @@ fn handle_abs(
                     let mut tenv = tenv.clone();
                     for t in ts {
                         debug!("adding type {t} to tenv");
-                        tenv.add(v.id, t.clone());
+                        tenv.add(v.id, t.clone())
                     }
-                    let pt = handle_abs_inner(config, &mut tenv, ienv, all_coefficients, g, t);
+                    let pt =
+                        handle_abs_inner(config, &mut tenv, ienv, all_coefficients, g, t, context);
                     pt.arrow(arg_expr.clone(), ts)
                 }
                 _ => panic!("fatal"),
             },
             _ => {
-                let pt =
-                    type_check_inner(config, tenv, ienv, all_coefficients, arg_expr, t.clone());
+                let pt = type_check_inner(config, tenv, ienv, all_coefficients, arg_expr, context);
                 // skip the continuation of this inner function
-                return pt.coarse_type(t);
+                return pt.coarse_type(context.clone(), t);
             }
         };
         pdebug!("handle_abs: |- ", arg_expr, " :",  pt ; bold ; white, " ",);
@@ -1108,13 +1110,13 @@ fn handle_abs(
     match t.kind() {
         TauKind::PTy(x, t) => {
             let flag = ienv.insert(*x);
-            let pt = handle_abs(config, tenv, ienv, all_coefficients, arg_expr, t);
+            let pt = handle_abs(config, tenv, ienv, all_coefficients, arg_expr, t, context);
             if flag {
                 ienv.remove(x);
             }
             pt
         }
-        _ => handle_abs_inner(config, tenv, ienv, all_coefficients, arg_expr, t),
+        _ => handle_abs_inner(config, tenv, ienv, all_coefficients, arg_expr, t, context),
     }
 }
 
@@ -1144,7 +1146,12 @@ fn coarse_expr_for_type_sharing(
     // [feature shared_ty] template type sharing
     // if there is a shared type registered, coarse pt to obey the type.
     match (&config.tc_mode, &expr.aux.tys) {
-        (TCFlag::Shared(_), Some(tys)) if tys.len() == 1 => pt.coarse_type(&tys[0]),
+        (TCFlag::Shared(_), Some(tys)) if tys.len() == 1 =>
+        /*
+        pt.coarse_type(cty, &tys[0])*/
+        {
+            unimplemented!()
+        }
         (TCFlag::Normal, _) | (_, None) => pt,
         (_, _) => unimplemented!(),
     }
@@ -1158,7 +1165,7 @@ fn handle_app(
     ienv: &mut HashSet<Ident>,
     all_coefficients: &mut HashSet<Ident>,
     app_expr: &G,
-    cty: Ty,
+    cty: &Atom,
 ) -> PossibleDerivation {
     fn handle_inner(
         config: &TCConfig,
@@ -1166,7 +1173,7 @@ fn handle_app(
         ienv: &mut HashSet<Ident>,
         all_coefficients: &mut HashSet<Ident>,
         pred_expr: &G,
-        cty: Ty, // context ty
+        cty: &Atom, // context
     ) -> PossibleDerivation {
         match pred_expr.kind() {
             formula::hes::GoalKind::Var(x) => match tenv.get(x) {
@@ -1223,21 +1230,20 @@ fn handle_app(
                         }
                     };
                     // we introduce context_ty's information to the predicate's type
-                    let c = cty.rty_no_exists();
-                    let types = types
-                        .into_iter()
-                        .map(|d| {
-                            let t = d.root_ty().conjoin_constraint(&c);
-                            Derivation::rule_subsumption(d, t)
-                        })
-                        .collect();
+                    // let c = cty.rty_no_exists();
+                    // let types = types
+                    //     .into_iter()
+                    //     .map(|d| {
+                    //         let t = d.root_ty().conjoin_constraint(&c);
+                    //         Derivation::rule_subsumption(d, t)
+                    //     })
+                    //     .collect();
                     PossibleDerivation::new(types)
                 }
                 None => PossibleDerivation::empty(),
             },
             formula::hes::GoalKind::App(predg, argg) => {
-                let mut pred_pt =
-                    handle_app(config, tenv, ienv, all_coefficients, predg, cty.clone());
+                let mut pred_pt = handle_app(config, tenv, ienv, all_coefficients, predg, cty);
                 // Case: the argument is integer
                 match argg.check_int_expr(ienv) {
                     // Case: the type of argument is int
@@ -1257,20 +1263,6 @@ fn handle_app(
                 let mut result_cts = Vec::new();
                 // we calculate the argument's type. we have to enumerate all the possible type of pt1.
 
-                // first introduce weakening if the argument is higher-order
-                if pred_pt.types.len() > 0 && pred_pt.types[0].root_ty().is_arrow() {
-                    pred_pt.types = pred_pt
-                        .types
-                        .into_iter()
-                        .map(|d| {
-                            let root_ty = d.root_ty();
-                            let rty = cty.rty_no_exists();
-                            let root_ty = root_ty.conjoin_constraint(&rty);
-                            Derivation::rule_subsumption(d, root_ty)
-                        })
-                        .collect();
-                }
-
                 for pred_derivation in pred_pt.types {
                     let (arg_t, result_t) = match pred_derivation.root_ty().kind() {
                         TauKind::Arrow(arg, result) => (arg, result),
@@ -1283,7 +1275,7 @@ fn handle_app(
                     let arg_pts = arg_t.iter().map(|t| {
                         // check if arg_constraint |- argg: arg_t
                         debug!("arg_t: {t}");
-                        handle_abs(config, tenv, ienv, all_coefficients, argg, t)
+                        handle_abs(config, tenv, ienv, all_coefficients, argg, t, cty)
                     });
                     // Assume pred_pt = t1 /\ t2 -> t
                     // then, we have to derive arg_t: t1 and arg_t: t2
@@ -1326,7 +1318,7 @@ fn handle_app(
             | formula::hes::GoalKind::Univ(_, _) => panic!("fatal: {}", pred_expr),
         }
     }
-    let pt = handle_inner(config, tenv, ienv, all_coefficients, app_expr, cty.clone());
+    let pt = handle_inner(config, tenv, ienv, all_coefficients, app_expr, cty);
 
     let pt = coarse_expr_for_type_sharing(config, pt, &app_expr);
 
@@ -1342,7 +1334,7 @@ fn type_check_inner(
     ienv: &mut HashSet<Ident>, // V
     all_coefficients: &mut HashSet<Ident>,
     c: &G,
-    context_ty: Ty,
+    context_ty: &Atom,
 ) -> PossibleDerivation {
     // the second element of the returned value is whether the expr was app.
     // since app is delegated to `handle_app`, after go_inner, you don't have to register the result
@@ -1353,7 +1345,7 @@ fn type_check_inner(
         ienv: &mut HashSet<Ident>,
         all_coefficients: &mut HashSet<Ident>,
         expr: &G,
-        context_ty: Ty,
+        context_ty: &Atom,
     ) -> (PossibleDerivation, bool) {
         // [pruning]: since we can always derive ψ: ⊥, we do not have to care about this part
         //if !config.construct_derivation && context_ty.is_bot() {
@@ -1420,10 +1412,8 @@ fn type_check_inner(
                 None => PossibleDerivation::empty(),
             },
             formula::hes::GoalKind::Conj(g1, g2) => {
-                let t1 =
-                    type_check_inner(config, tenv, ienv, all_coefficients, g1, context_ty.clone());
-                let t2 =
-                    type_check_inner(config, tenv, ienv, all_coefficients, g2, context_ty.clone());
+                let t1 = type_check_inner(config, tenv, ienv, all_coefficients, g1, context_ty);
+                let t2 = type_check_inner(config, tenv, ienv, all_coefficients, g2, context_ty);
                 PossibleDerivation::conjoin(expr.clone(), t1, t2)
             }
             formula::hes::GoalKind::Disj(g1, g2) => {
@@ -1437,7 +1427,7 @@ fn type_check_inner(
                             ienv,
                             all_coefficients,
                             g1,
-                            context_ty.conjoin_constraint(&c1.clone().into()),
+                            &Atom::mk_conj(context_ty.clone(), c1.into()),
                         );
                         let t2 = type_check_inner(
                             config,
@@ -1445,7 +1435,7 @@ fn type_check_inner(
                             ienv,
                             all_coefficients,
                             g2,
-                            context_ty.conjoin_constraint(&c1.negate().unwrap().into()),
+                            &Atom::mk_conj(context_ty.clone(), c1.negate().unwrap().into()),
                         );
                         PossibleDerivation::disjoin(expr.clone(), t1, t2)
                     }
@@ -1456,7 +1446,7 @@ fn type_check_inner(
                             ienv,
                             all_coefficients,
                             g1,
-                            context_ty.conjoin_constraint(&c2.negate().unwrap().into()),
+                            &Atom::mk_conj(context_ty.clone(), c2.negate().unwrap().into()),
                         );
                         let t2 = type_check_inner(
                             config,
@@ -1464,7 +1454,7 @@ fn type_check_inner(
                             ienv,
                             all_coefficients,
                             g2,
-                            context_ty.conjoin_constraint(&c2.into()),
+                            &Atom::mk_conj(context_ty.clone(), c2.into()),
                         );
                         PossibleDerivation::disjoin(expr.clone(), t1, t2)
                     }
@@ -1475,8 +1465,7 @@ fn type_check_inner(
             }
             formula::hes::GoalKind::Univ(x, g) => {
                 let b = ienv.insert(x.id);
-                let mut pt =
-                    type_check_inner(config, tenv, ienv, all_coefficients, &g, context_ty.clone());
+                let mut pt = type_check_inner(config, tenv, ienv, all_coefficients, &g, context_ty);
                 if b {
                     ienv.remove(&x.id);
                 }
@@ -1486,14 +1475,7 @@ fn type_check_inner(
             }
             formula::hes::GoalKind::App(_, _) => {
                 already_registered = true;
-                handle_app(
-                    config,
-                    tenv,
-                    ienv,
-                    all_coefficients,
-                    expr,
-                    context_ty.clone(),
-                )
+                handle_app(config, tenv, ienv, all_coefficients, expr, context_ty)
             }
             formula::hes::GoalKind::Abs(_v, _g) => {
                 panic!("fatal error")
@@ -1503,7 +1485,7 @@ fn type_check_inner(
         };
         (result_pt, already_registered)
     }
-    let (pt, _) = go_inner(config, tenv, ienv, all_coefficients, c, context_ty.clone());
+    let (pt, _) = go_inner(config, tenv, ienv, all_coefficients, c, context_ty);
 
     pdebug!("type_check_go(", c.aux.id, ") |- ", c, " : ", pt ; bold);
     pt
@@ -1524,7 +1506,15 @@ fn type_check(
         tc_mode: TCFlag::Normal,
         construct_derivation: false,
     };
-    let pt = handle_abs(&config, tenv, ienv, &mut all_coefficients, c, &t);
+    let pt = handle_abs(
+        &config,
+        tenv,
+        ienv,
+        &mut all_coefficients,
+        c,
+        &t,
+        &Atom::mk_true(),
+    );
     match pt.check_derivation() {
         Some(d) => {
             debug_assert!(d.check_sanity(false));
@@ -1555,9 +1545,9 @@ fn type_check_top_with_derivation(psi: &G, tenv: &mut Env) -> Option<Derivation>
         &mut ienv,
         &mut all_coefficients,
         &psi,
-        Ty::mk_prop_ty(Atom::mk_true()),
+        &Atom::mk_true(),
     );
-    let pt = pt.coarse_type(&Ty::mk_prop_ty(Atom::mk_true()));
+    let pt = pt.coarse_type(Atom::mk_true(), &Ty::mk_prop_ty(Atom::mk_true()));
 
     // check if there is an actually possible derivation
     pt.check_derivation().map(|d| {
@@ -1594,9 +1584,9 @@ fn type_check_top_with_derivation_and_constraints(
         &mut ienv,
         &mut all_coefficients,
         &psi,
-        Ty::mk_prop_ty(Atom::mk_true()),
+        &Atom::mk_true(),
     );
-    let mut pt = pt.coarse_type(&Ty::mk_prop_ty(Atom::mk_true()));
+    let mut pt = pt.coarse_type(Atom::mk_true(), &Ty::mk_prop_ty(Atom::mk_true()));
 
     // check if there is an actually possible derivation
     // since the derivation has the same shape as `previous_derivation`,
@@ -1736,11 +1726,11 @@ impl PossibleDerivation {
     }
 }
 impl PossibleDerivation {
-    fn coarse_type(mut self, t: &Ty) -> Self {
+    fn coarse_type(mut self, rty: Atom, t: &Ty) -> Self {
         self.types = self
             .types
             .into_iter()
-            .map(|d| Derivation::rule_subsumption(d, t.clone()))
+            .map(|d| Derivation::rule_subsumption(d, rty, t.clone()))
             .collect();
         self
     }

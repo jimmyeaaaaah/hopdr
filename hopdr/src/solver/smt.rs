@@ -398,6 +398,7 @@ impl SMTSolver for AutoSolver {
         fvs: &HashSet<Ident>,
     ) -> Result<Model, SolverResult> {
         debug!("smt::auto_solver: {c}");
+        debug!("fvs len: {}", fvs.len());
         if c.fv().difference(vars).next().is_none() {
             let mut smt_solver = smt_solver(SMTSolverType::Z3);
             smt_solver.solve_with_model(c, vars, fvs)
