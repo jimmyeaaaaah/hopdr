@@ -10,7 +10,7 @@ use crate::{formula::*, highlight};
 
 use rpds::{HashTrieMap, Stack};
 
-const PRINT_ASSUMPTION: bool = true;
+const PRINT_ASSUMPTION: bool = false;
 
 #[derive(Clone, Debug)]
 pub(super) struct DeriveNode {
@@ -59,6 +59,33 @@ impl std::fmt::Display for Rule {
             Rule::Poly(x) => "Poly",
         };
         write!(f, "{}", s)
+    }
+}
+
+impl Subst for Rule {
+    type Item = Op;
+    type Id = Ident;
+    fn subst(&self, x: &Self::Id, v: &Self::Item) -> Self {
+        match self {
+            Rule::Conjoin
+            | Rule::Disjoin
+            | Rule::Univ
+            | Rule::IAbs
+            | Rule::Subsumption
+            | Rule::Equivalence
+            | Rule::App
+            | Rule::IApp(_)
+            | Rule::Poly(_)
+            | Rule::Atom => self.clone(),
+            Rule::Var(instantiation, ty) => {
+                let ty = ty.subst(x, v);
+                Rule::Var(instantiation.clone(), ty)
+            }
+            Rule::Abs(tys) => {
+                let tys = tys.iter().map(|ty| ty.subst(x, v)).collect();
+                Rule::Abs(tys)
+            }
+        }
     }
 }
 
@@ -487,10 +514,18 @@ impl Derivation {
     pub fn update_with_model(&mut self, m: &solver::Model) {
         self.tree.iter_mut(|item| {
             let mut ty = item.ty.clone();
+            let mut rule = item.rule.clone();
             for (var, val) in m.model.iter() {
                 ty = ty.subst(var, &Op::mk_const(*val));
+                rule = rule.subst(var, &Op::mk_const(*val));
             }
+            // in rule, there are types that should be updated with the model.
+            // For example, ∀x. (y: int -> *[x = y]) -> *[true], and it's instantiated
+            // to (y: int -> [a = y]) -> *[true]. Then Var in the derivation for the argument
+            // of this type, there is a template variable that should be updated
+            // after they are solved.
             item.ty = ty;
+            item.rule = rule;
         });
     }
     pub fn root_ty(&self) -> &Ty {
@@ -557,9 +592,11 @@ impl Derivation {
                     constraint = Atom::mk_conj(constraint, cnstr.clone());
                 }
             }
-            let new_ty = instantiated_ty.conjoin_constraint_to_rty(&constraint);
-            sub_derivation =
-                Self::rule_equivalence(context.clone(), sub_derivation, new_ty.clone());
+            if !constraint.is_true() {
+                let new_ty = instantiated_ty.conjoin_constraint_to_rty(&constraint);
+                sub_derivation =
+                    Self::rule_equivalence(context.clone(), sub_derivation, new_ty.clone());
+            }
 
             for id in fvs.difference(fvints) {
                 sub_derivation = Self::rule_polymorphic_type(context.clone(), sub_derivation, *id);
