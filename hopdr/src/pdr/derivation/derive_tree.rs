@@ -16,7 +16,7 @@ const PRINT_ASSUMPTION: bool = true;
 pub(super) struct DeriveNode {
     // Γ; C ⊢ ψ : τ
     // Γ is omitted
-    pub context: Atom,
+    pub context: Stack<Atom>, // C equals the conjoin of them
     pub rule: Rule,
     pub expr: G,
     pub ty: Ty,
@@ -100,7 +100,7 @@ impl crate::util::printer::Pretty for DeriveNode {
         let doc = al.text("(").append(self.rule.to_string()).append(")");
         if PRINT_ASSUMPTION {
             doc.append(al.line())
-                .append(self.context.pretty(al, config))
+                .append(al.intersperse(self.context.iter().map(|x| x.pretty(al, config)), " ∧ "))
         } else {
             doc
         }
@@ -118,7 +118,7 @@ fn reset_expr_for_subsumption(expr: &mut G) {
 }
 
 impl DeriveNode {
-    fn conjoin(context: Atom, expr: G, left: &Self, right: &Self) -> Self {
+    fn conjoin(context: Stack<Atom>, expr: G, left: &Self, right: &Self) -> Self {
         let rule = Rule::Conjoin;
         let ty = match (left.ty.kind(), right.ty.kind()) {
             (TauKind::Proposition(c1), TauKind::Proposition(c2)) => {
@@ -133,7 +133,7 @@ impl DeriveNode {
             ty,
         }
     }
-    fn disjoin(context: Atom, expr: G, left: &Self, right: &Self) -> Self {
+    fn disjoin(context: Stack<Atom>, expr: G, left: &Self, right: &Self) -> Self {
         let rule = Rule::Disjoin;
         let ty = match (left.ty.kind(), right.ty.kind()) {
             (TauKind::Proposition(c1), TauKind::Proposition(c2)) => {
@@ -148,7 +148,7 @@ impl DeriveNode {
             ty,
         }
     }
-    fn quantify(context: Atom, expr: G, node: &Self, ident: &Ident) -> Self {
+    fn quantify(context: Stack<Atom>, expr: G, node: &Self, ident: &Ident) -> Self {
         let rule = Rule::Univ;
         let ty = match node.ty.kind() {
             TauKind::Proposition(c1) => Ty::mk_prop_ty(Atom::mk_quantifier_int(
@@ -165,7 +165,7 @@ impl DeriveNode {
             ty,
         }
     }
-    fn iarrow(context: Atom, expr: G, node: &Self, ident: &Ident) -> Self {
+    fn iarrow(context: Stack<Atom>, expr: G, node: &Self, ident: &Ident) -> Self {
         let rule = Rule::IAbs;
         let ty = Ty::mk_iarrow(*ident, node.ty.clone());
         DeriveNode {
@@ -175,7 +175,7 @@ impl DeriveNode {
             ty,
         }
     }
-    fn arrow(context: Atom, expr: G, node: &Self, ts: Vec<Ty>) -> Self {
+    fn arrow(context: Stack<Atom>, expr: G, node: &Self, ts: Vec<Ty>) -> Self {
         let rule = Rule::Abs(ts.clone());
         let ty = Ty::mk_arrow(ts, node.ty.clone());
         DeriveNode {
@@ -185,7 +185,7 @@ impl DeriveNode {
             ty,
         }
     }
-    fn iapp(context: Atom, expr: G, node: &Self, op: &Op) -> Self {
+    fn iapp(context: Stack<Atom>, expr: G, node: &Self, op: &Op) -> Self {
         let rule = Rule::IApp(op.clone());
         let ty = match node.ty.kind() {
             TauKind::IArrow(x, t2) => t2.subst(x, op),
@@ -198,7 +198,7 @@ impl DeriveNode {
             ty,
         }
     }
-    fn subsumption(context: Atom, node: &Self, ty: Ty) -> Self {
+    fn subsumption(context: Stack<Atom>, node: &Self, ty: Ty) -> Self {
         let rule = Rule::Subsumption;
         let mut expr = node.expr.clone();
         // reset the information
@@ -210,7 +210,7 @@ impl DeriveNode {
             ty,
         }
     }
-    fn equivalence(context: Atom, node: &Self, ty: Ty) -> Self {
+    fn equivalence(context: Stack<Atom>, node: &Self, ty: Ty) -> Self {
         let rule = Rule::Equivalence;
         let expr = node.expr.clone();
         DeriveNode {
@@ -220,7 +220,7 @@ impl DeriveNode {
             ty,
         }
     }
-    fn poly(context: Atom, node: &Self, x: Ident) -> Self {
+    fn poly(context: Stack<Atom>, node: &Self, x: Ident) -> Self {
         let rule = Rule::Poly(x);
         let expr = node.expr.clone();
         let ty = Ty::mk_poly_ty(x, node.ty.clone());
@@ -231,7 +231,7 @@ impl DeriveNode {
             ty,
         }
     }
-    fn app(context: Atom, expr: G, pred_node: &Self) -> Self {
+    fn app(context: Stack<Atom>, expr: G, pred_node: &Self) -> Self {
         let rule = Rule::App;
         let ty = match pred_node.ty.kind() {
             TauKind::Arrow(_, rt) => rt.clone(),
@@ -365,7 +365,7 @@ impl Derivation {
         }
     }
 
-    pub fn rule_atom(context: Atom, expr: G, ty: Ty) -> Self {
+    pub fn rule_atom(context: Stack<Atom>, expr: G, ty: Ty) -> Self {
         let rule = Rule::Atom;
         let node = DeriveNode {
             context,
@@ -380,7 +380,7 @@ impl Derivation {
     }
 
     pub fn rule_var(
-        context: Atom,
+        context: Stack<Atom>,
         expr: G,
         ty: Ty,
         original_ty: Ty,
@@ -430,51 +430,51 @@ impl Derivation {
         });
         Self { tree, coefficients }
     }
-    pub fn rule_conjoin(context: Atom, expr: G, d1: Self, d2: Self) -> Self {
+    pub fn rule_conjoin(context: Stack<Atom>, expr: G, d1: Self, d2: Self) -> Self {
         let root = DeriveNode::conjoin(context, expr, d1.tree.root().item, d2.tree.root().item);
         Self::rule_two_arg_inner(root, d1, d2)
     }
-    pub fn rule_disjoin(context: Atom, expr: G, d1: Self, d2: Self) -> Self {
+    pub fn rule_disjoin(context: Stack<Atom>, expr: G, d1: Self, d2: Self) -> Self {
         let root = DeriveNode::disjoin(context, expr, d1.tree.root().item, d2.tree.root().item);
         Self::rule_two_arg_inner(root, d1, d2)
     }
-    pub fn rule_quantifier(context: Atom, expr: G, d: Self, x: &Ident) -> Self {
+    pub fn rule_quantifier(context: Stack<Atom>, expr: G, d: Self, x: &Ident) -> Self {
         let root = DeriveNode::quantify(context, expr, d.tree.root().item, x);
         Self::rule_one_arg_inner(root, d)
     }
-    pub fn rule_iarrow(context: Atom, expr: G, d: Self, x: &Ident) -> Self {
+    pub fn rule_iarrow(context: Stack<Atom>, expr: G, d: Self, x: &Ident) -> Self {
         let root = DeriveNode::iarrow(context, expr, d.tree.root().item, x);
         Self::rule_one_arg_inner(root, d)
     }
-    pub fn rule_arrow(context: Atom, expr: G, d: Self, tys: Vec<Ty>) -> Self {
+    pub fn rule_arrow(context: Stack<Atom>, expr: G, d: Self, tys: Vec<Ty>) -> Self {
         let root = DeriveNode::arrow(context, expr, d.tree.root().item, tys);
         Self::rule_one_arg_inner(root, d)
     }
-    pub fn rule_iapp(context: Atom, expr: G, d: Self, o: &Op) -> Self {
+    pub fn rule_iapp(context: Stack<Atom>, expr: G, d: Self, o: &Op) -> Self {
         let root = DeriveNode::iapp(context, expr, d.tree.root().item, o);
         Self::rule_one_arg_inner(root, d)
     }
-    pub fn rule_subsumption(context: Atom, d: Self, ty: Ty) -> Self {
+    pub fn rule_subsumption(context: Stack<Atom>, d: Self, ty: Ty) -> Self {
         let child = d.tree.root();
         let root = DeriveNode::subsumption(context, child.item, ty);
         let d = Self::rule_one_arg_inner(root, d);
         d
     }
-    pub fn rule_equivalence(context: Atom, mut d: Self, ty: Ty) -> Self {
+    pub fn rule_equivalence(context: Stack<Atom>, mut d: Self, ty: Ty) -> Self {
         let child_id = d.tree.root().id;
         let root = DeriveNode::equivalence(context, d.tree.root().item, ty);
         reset_expr_for_subsumption(&mut d.tree.update_node_by_id(child_id).expr);
         let d = Self::rule_one_arg_inner(root, d);
         d
     }
-    pub fn rule_app<I>(context: Atom, expr: G, d1: Self, args: I) -> Self
+    pub fn rule_app<I>(context: Stack<Atom>, expr: G, d1: Self, args: I) -> Self
     where
         I: Iterator<Item = Self>,
     {
         let root = DeriveNode::app(context, expr, &d1.tree.root().item);
         Self::rule_multiples(root, std::iter::once(d1).chain(args))
     }
-    pub fn rule_polymorphic_type(context: Atom, d: Self, x: Ident) -> Self {
+    pub fn rule_polymorphic_type(context: Stack<Atom>, d: Self, x: Ident) -> Self {
         let item = d.tree.root().item;
         let root = DeriveNode::poly(context, item, x);
         Self::rule_one_arg_inner(root, d)
@@ -529,6 +529,7 @@ impl Derivation {
         let var_expr = G::mk_var(var);
         let mut tree = self.tree.clone();
         let mut derivations = vec![];
+        let contexts = self.get_node_by_id(node_id).item.context.clone();
         for node in self
             .tree
             .filter_descendants(self.tree.get_node_by_id(node_id), move |n| {
@@ -541,6 +542,19 @@ impl Derivation {
             let instantiated_ty = node.item.ty.clone();
             let fvs = instantiated_ty.fv();
             let mut instantiations = Stack::new();
+
+            // introduce the difference of the context to the result type
+            let context_original = sub_derivation.tree.root().item.context.clone();
+
+            let mut constraint = Atom::mk_true();
+            for cnstr in context_original.iter() {
+                if !context.iter().any(|c| c == cnstr) {
+                    constraint = Atom::mk_conj(constraint, cnstr.clone());
+                }
+            }
+            let new_ty = instantiated_ty.conjoin_constraint_to_rty(&constraint);
+            sub_derivation =
+                Self::rule_equivalence(context.clone(), sub_derivation, new_ty.clone());
 
             for id in fvs.difference(fvints) {
                 sub_derivation = Self::rule_polymorphic_type(context.clone(), sub_derivation, *id);
@@ -799,7 +813,7 @@ impl Derivation {
         // update context
         let mut context = node.context.clone();
         for (x, y) in alpha_renaming_map.iter() {
-            context = context.rename(x, y)
+            context = context.iter().map(|a| a.rename(x, y)).collect();
         }
         node.context = context;
 
@@ -1121,14 +1135,18 @@ impl Derivation {
             .filter(|n| matches!(n.rule, Rule::Subsumption))
             .map(move |n| {
                 let ty = n.item.ty.clone();
-                let context = n.item.context.clone();
+                let constraints = n
+                    .item
+                    .context
+                    .iter()
+                    .fold(Atom::mk_true(), |acc, c| Atom::mk_conj(acc, c.clone()));
                 let children: Vec<_> = self.tree.get_children(n).collect();
                 assert_eq!(children.len(), 1);
                 let child = &children[0];
                 // conjoin constraint of the rule
                 Ty::check_subtype_result(&child.item.ty, &ty).unwrap_or_else(|| {
                     let mut coefficients = Stack::new();
-                    let c = Ty::check_subtype(&context, &child.item.ty, &ty, &mut coefficients);
+                    let c = Ty::check_subtype(&constraints, &child.item.ty, &ty, &mut coefficients);
                     if coefficients.iter().next().is_some() {
                         panic!("failed to check subtype: {} <: {}", child.item.ty, ty)
                     }
@@ -1318,7 +1336,7 @@ impl Derivation {
             _ => panic!("program error"),
         }
         let ty = n.item.ty.clone();
-        Self::rule_subsumption(Atom::mk_true(), d, ty)
+        Self::rule_subsumption(Stack::new(), d, ty)
     }
     #[allow(dead_code)]
     /// This function is used to check that the derivation is well-formed

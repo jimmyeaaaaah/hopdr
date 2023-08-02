@@ -1061,7 +1061,7 @@ fn handle_abs(
     all_coefficients: &mut HashSet<Ident>,
     arg_expr: &G,
     t: &Ty,
-    context: &Atom,
+    context: &Stack<Atom>,
 ) -> PossibleDerivation {
     fn handle_abs_inner(
         config: &TCConfig,
@@ -1070,7 +1070,7 @@ fn handle_abs(
         all_coefficients: &mut HashSet<Ident>,
         arg_expr: &G,
         t: &Ty,
-        context: &Atom,
+        context: &Stack<Atom>,
     ) -> PossibleDerivation {
         let pt = match arg_expr.kind() {
             GoalKind::Abs(v, g) if v.ty.is_int() => match t.kind() {
@@ -1165,7 +1165,7 @@ fn handle_app(
     ienv: &mut HashSet<Ident>,
     all_coefficients: &mut HashSet<Ident>,
     app_expr: &G,
-    cty: &Atom,
+    cty: &Stack<Atom>,
 ) -> PossibleDerivation {
     fn handle_inner(
         config: &TCConfig,
@@ -1173,7 +1173,7 @@ fn handle_app(
         ienv: &mut HashSet<Ident>,
         all_coefficients: &mut HashSet<Ident>,
         pred_expr: &G,
-        cty: &Atom, // context
+        cty: &Stack<Atom>, // context
     ) -> PossibleDerivation {
         match pred_expr.kind() {
             formula::hes::GoalKind::Var(x) => match tenv.get(x) {
@@ -1337,7 +1337,7 @@ fn type_check_inner(
     ienv: &mut HashSet<Ident>, // V
     all_coefficients: &mut HashSet<Ident>,
     c: &G,
-    context_ty: &Atom,
+    context_ty: &Stack<Atom>,
 ) -> PossibleDerivation {
     // the second element of the returned value is whether the expr was app.
     // since app is delegated to `handle_app`, after go_inner, you don't have to register the result
@@ -1348,7 +1348,7 @@ fn type_check_inner(
         ienv: &mut HashSet<Ident>,
         all_coefficients: &mut HashSet<Ident>,
         expr: &G,
-        context_ty: &Atom,
+        context_ty: &Stack<Atom>,
     ) -> (PossibleDerivation, bool) {
         // [pruning]: since we can always derive ψ: ⊥, we do not have to care about this part
         //if !config.construct_derivation && context_ty.is_bot() {
@@ -1431,7 +1431,7 @@ fn type_check_inner(
                             ienv,
                             all_coefficients,
                             g1,
-                            &Atom::mk_conj(context_ty.clone(), c1.clone().into()),
+                            &context_ty.push(c1.clone().into()),
                         );
                         let t2 = type_check_inner(
                             config,
@@ -1439,7 +1439,7 @@ fn type_check_inner(
                             ienv,
                             all_coefficients,
                             g2,
-                            &Atom::mk_conj(context_ty.clone(), c1.negate().unwrap().into()),
+                            &context_ty.push(c1.negate().unwrap().into()),
                         );
                         PossibleDerivation::disjoin(context_ty.clone(), expr.clone(), t1, t2)
                     }
@@ -1450,7 +1450,7 @@ fn type_check_inner(
                             ienv,
                             all_coefficients,
                             g1,
-                            &Atom::mk_conj(context_ty.clone(), c2.negate().unwrap().into()),
+                            &context_ty.push(c2.negate().unwrap().into()),
                         );
                         let t2 = type_check_inner(
                             config,
@@ -1458,7 +1458,7 @@ fn type_check_inner(
                             ienv,
                             all_coefficients,
                             g2,
-                            &Atom::mk_conj(context_ty.clone(), c2.into()),
+                            &context_ty.push(c2.into()),
                         );
                         PossibleDerivation::disjoin(context_ty.clone(), expr.clone(), t1, t2)
                     }
@@ -1517,7 +1517,7 @@ fn type_check(
         &mut all_coefficients,
         c,
         &t,
-        &Atom::mk_true(),
+        &Stack::new(),
     );
     match pt.check_derivation() {
         Some(d) => {
@@ -1549,9 +1549,9 @@ fn type_check_top_with_derivation(psi: &G, tenv: &mut Env) -> Option<Derivation>
         &mut ienv,
         &mut all_coefficients,
         &psi,
-        &Atom::mk_true(),
+        &Stack::new(),
     );
-    let pt = pt.coarse_type(Atom::mk_true(), &Ty::mk_prop_ty(Atom::mk_true()));
+    let pt = pt.coarse_type(Stack::new(), &Ty::mk_prop_ty(Atom::mk_true()));
 
     // check if there is an actually possible derivation
     pt.check_derivation().map(|d| {
@@ -1588,9 +1588,9 @@ fn type_check_top_with_derivation_and_constraints(
         &mut ienv,
         &mut all_coefficients,
         &psi,
-        &Atom::mk_true(),
+        &Stack::new(),
     );
-    let mut pt = pt.coarse_type(Atom::mk_true(), &Ty::mk_prop_ty(Atom::mk_true()));
+    let mut pt = pt.coarse_type(Stack::new(), &Ty::mk_prop_ty(Atom::mk_true()));
 
     // check if there is an actually possible derivation
     // since the derivation has the same shape as `previous_derivation`,
@@ -1682,7 +1682,7 @@ impl PossibleDerivation {
         Self::new(vec![cd])
     }
 
-    fn conjoin(context: Atom, expr: G, pt1: Self, pt2: Self) -> Self {
+    fn conjoin(context: Stack<Atom>, expr: G, pt1: Self, pt2: Self) -> Self {
         let mut ts = Vec::new();
         for d1 in pt1.types.iter() {
             for d2 in pt2.types.iter() {
@@ -1698,7 +1698,7 @@ impl PossibleDerivation {
         }
         PossibleDerivation::new(ts)
     }
-    fn disjoin(context: Atom, expr: G, pt1: Self, pt2: Self) -> Self {
+    fn disjoin(context: Stack<Atom>, expr: G, pt1: Self, pt2: Self) -> Self {
         let mut ts = Vec::new();
         for d1 in pt1.types.iter() {
             for d2 in pt2.types.iter() {
@@ -1714,7 +1714,7 @@ impl PossibleDerivation {
         }
         PossibleDerivation::new(ts)
     }
-    fn quantify(&mut self, context: Atom, expr: G, x: &Ident) {
+    fn quantify(&mut self, context: Stack<Atom>, expr: G, x: &Ident) {
         self.types = self
             .types
             .iter()
@@ -1722,7 +1722,7 @@ impl PossibleDerivation {
             .map(|d| Derivation::rule_quantifier(context.clone(), expr.clone(), d, x))
             .collect();
     }
-    fn iarrow(self, context: Atom, expr: G, x: &Ident) -> Self {
+    fn iarrow(self, context: Stack<Atom>, expr: G, x: &Ident) -> Self {
         let types = self
             .types
             .into_iter()
@@ -1730,7 +1730,7 @@ impl PossibleDerivation {
             .collect();
         PossibleDerivation { types }
     }
-    fn arrow(self, context: Atom, expr: G, ts: &Vec<Ty>) -> Self {
+    fn arrow(self, context: Stack<Atom>, expr: G, ts: &Vec<Ty>) -> Self {
         let types = self
             .types
             .into_iter()
@@ -1740,7 +1740,7 @@ impl PossibleDerivation {
     }
 }
 impl PossibleDerivation {
-    fn coarse_type(mut self, context: Atom, t: &Ty) -> Self {
+    fn coarse_type(mut self, context: Stack<Atom>, t: &Ty) -> Self {
         self.types = self
             .types
             .into_iter()
