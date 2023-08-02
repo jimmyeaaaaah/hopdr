@@ -533,7 +533,7 @@ impl Derivation {
             let mut instantiations = Stack::new();
 
             for id in fvs.difference(fvints) {
-                sub_derivation = Self::rule_polymorphic_type(context, sub_derivation, *id);
+                sub_derivation = Self::rule_polymorphic_type(context.clone(), sub_derivation, *id);
                 instantiations.push_mut(Instantiation {
                     ident: *id,
                     op: Op::mk_var(*id),
@@ -757,6 +757,7 @@ impl Derivation {
                 };
                 let n = t.get_node_by_id(cur).item;
                 let n = DeriveNode {
+                    context: n.context.clone(),
                     ty,
                     rule: n.rule.clone(),
                     expr: n.expr.clone(),
@@ -784,6 +785,13 @@ impl Derivation {
         let node = self.tree.update_node_by_id(node_id);
         node.expr = expr.clone();
         node.ty = retrieve_ty_alpha_renaming(&old_ty, alpha_renaming_map.clone());
+
+        // update context
+        let mut context = node.context.clone();
+        for (x, y) in alpha_renaming_map.iter() {
+            context = context.rename(x, y)
+        }
+        node.context = context;
 
         let children: Vec<_> = self
             .tree
@@ -879,7 +887,7 @@ impl Derivation {
                 }
                 Rule::App
             }
-            Rule::Subsumption(_) | Rule::Poly(_) => {
+            Rule::Subsumption | Rule::Poly(_) => {
                 let rule = n.rule.clone();
                 assert_eq!(children.len(), 1);
                 self.update_expr_inner(children[0], &expr, alpha_renaming_map.clone());
@@ -887,17 +895,7 @@ impl Derivation {
                 let mut expr = expr.clone();
                 reset_expr_for_subsumption(&mut expr);
                 self.tree.update_node_by_id(node_id).expr = expr.clone();
-                match rule {
-                    Rule::Subsumption(cty) => {
-                        let mut cty = cty.clone();
-                        for (x, y) in alpha_renaming_map.iter() {
-                            cty = cty.rename(x, y)
-                        }
-                        Rule::Subsumption(cty)
-                    }
-                    Rule::Poly(x) => Rule::Poly(x),
-                    _ => unreachable!(),
-                }
+                rule
             }
             Rule::Equivalence => {
                 assert_eq!(children.len(), 1);
@@ -1028,12 +1026,12 @@ impl Derivation {
     ) -> Tree<DeriveNode> {
         debug!("append_pred_app");
         pdebug!(tree);
+        let context = tree.root().item.context.clone();
         let pred_derivation = Derivation {
             coefficients: Stack::new(),
             tree: tree,
         };
         let dummy = G::mk_true();
-        let context = tree.root().item.context.clone();
         Derivation::rule_app(context, dummy, pred_derivation, arg_derivations.into_iter()).tree
     }
 
@@ -1261,7 +1259,7 @@ impl Derivation {
                     }
                     None => (
                         Derivation::rule_atom(
-                            context,
+                            context.clone(),
                             expr.app().1.clone(),
                             Ty::mk_bot(&ty1.arrow().0[0].to_sty()),
                         ),
@@ -1274,7 +1272,7 @@ impl Derivation {
                 let ret_tmp_ty = ret_ty.clone_with_template(&mut ints.iter().cloned().collect());
                 let ty3 = Ty::mk_arrow(vec![ty2], ret_tmp_ty);
 
-                let d3 = Self::rule_subsumption(context, d1, ty3);
+                let d3 = Self::rule_subsumption(context.clone(), d1, ty3);
 
                 if is_bot {
                     Self::rule_app(context, expr, d3, std::iter::empty())

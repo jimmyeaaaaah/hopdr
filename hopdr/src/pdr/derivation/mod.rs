@@ -1431,7 +1431,7 @@ fn type_check_inner(
                             ienv,
                             all_coefficients,
                             g1,
-                            &Atom::mk_conj(context_ty.clone(), c1.into()),
+                            &Atom::mk_conj(context_ty.clone(), c1.clone().into()),
                         );
                         let t2 = type_check_inner(
                             config,
@@ -1688,7 +1688,12 @@ impl PossibleDerivation {
             for d2 in pt2.types.iter() {
                 let d1 = d1.clone();
                 let d2 = d2.clone();
-                ts.push(Derivation::rule_conjoin(context, expr.clone(), d1, d2));
+                ts.push(Derivation::rule_conjoin(
+                    context.clone(),
+                    expr.clone(),
+                    d1,
+                    d2,
+                ));
             }
         }
         PossibleDerivation::new(ts)
@@ -1699,7 +1704,12 @@ impl PossibleDerivation {
             for d2 in pt2.types.iter() {
                 let d1 = d1.clone();
                 let d2 = d2.clone();
-                ts.push(Derivation::rule_disjoin(context, expr.clone(), d1, d2));
+                ts.push(Derivation::rule_disjoin(
+                    context.clone(),
+                    expr.clone(),
+                    d1,
+                    d2,
+                ));
             }
         }
         PossibleDerivation::new(ts)
@@ -1709,14 +1719,14 @@ impl PossibleDerivation {
             .types
             .iter()
             .cloned()
-            .map(|d| Derivation::rule_quantifier(context, expr.clone(), d, x))
+            .map(|d| Derivation::rule_quantifier(context.clone(), expr.clone(), d, x))
             .collect();
     }
     fn iarrow(self, context: Atom, expr: G, x: &Ident) -> Self {
         let types = self
             .types
             .into_iter()
-            .map(|ct| Derivation::rule_iarrow(context, expr.clone(), ct, x))
+            .map(|ct| Derivation::rule_iarrow(context.clone(), expr.clone(), ct, x))
             .collect();
         PossibleDerivation { types }
     }
@@ -1724,7 +1734,7 @@ impl PossibleDerivation {
         let types = self
             .types
             .into_iter()
-            .map(|d| Derivation::rule_arrow(context, expr.clone(), d, ts.to_vec()))
+            .map(|d| Derivation::rule_arrow(context.clone(), expr.clone(), d, ts.to_vec()))
             .collect();
         PossibleDerivation { types }
     }
