@@ -1149,14 +1149,17 @@ impl Derivation {
                 assert_eq!(children.len(), 1);
                 let child = &children[0];
                 // conjoin constraint of the rule
-                Ty::check_subtype_result(&child.item.ty, &ty).unwrap_or_else(|| {
-                    let mut coefficients = Stack::new();
-                    let c = Ty::check_subtype(&constraints, &child.item.ty, &ty, &mut coefficients);
-                    if coefficients.iter().next().is_some() {
-                        panic!("failed to check subtype: {} <: {}", child.item.ty, ty)
-                    }
-                    c
-                })
+                Ty::check_subtype_result(constraints.clone(), &child.item.ty, &ty).unwrap_or_else(
+                    || {
+                        let mut coefficients = Stack::new();
+                        let c =
+                            Ty::check_subtype(&constraints, &child.item.ty, &ty, &mut coefficients);
+                        if coefficients.iter().next().is_some() {
+                            panic!("failed to check subtype: {} <: {}", child.item.ty, ty)
+                        }
+                        c
+                    },
+                )
             })
     }
     pub fn collect_chcs<'a>(

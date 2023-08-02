@@ -1761,7 +1761,9 @@ impl PossibleDerivation {
             debug!("derivation");
             pdebug!(ct);
             let mut constraint = Constraint::mk_true();
+            pdebug!("derivation constraints:");
             for c in ct.collect_constraints() {
+                pdebug!(c);
                 constraint = Constraint::mk_conj(constraint, c.clone().into());
             }
             debug!("check_derivation constraint: {constraint}");
