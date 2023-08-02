@@ -928,8 +928,11 @@ impl Context {
         let mut result_env = TypeEnvironment::new();
         for (pred_name, ids) in self.track_idents.iter() {
             for id in ids {
-                for ty in derivation.get_types_by_id(id) {
-                    debug!("{}({}): {}", pred_name, id, ty);
+                for node in derivation.get_nodes_by_goal_id(id) {
+                    let ty = &node.item.ty;
+                    let constraint = node.item.constraint();
+                    debug!("{} {}({}): {}", constraint, pred_name, id, ty);
+                    let ty = ty.conjoin_constraint_to_rty(&constraint);
                     let ty = ty.assign(&model);
                     let pty = Tau::poly(ty);
                     result_env.add(*pred_name, pty);
@@ -1208,8 +1211,10 @@ fn handle_app(
                         }
                         // replay the previous instantiation here
                         TCFlag::Shared(d) => {
-                            let ct: Vec<_> =
-                                d.derivation.get_types_by_id(&pred_expr.aux.id).collect();
+                            let ct: Vec<_> = d
+                                .derivation
+                                .get_types_by_goal_id(&pred_expr.aux.id)
+                                .collect();
                             // TODO: actually we have to consider the case where multiple types are assigned to one expr
                             // This happens when intersection types are inferred; however, in the current setting,
                             // if shared type is enabled, there is no intersection types.

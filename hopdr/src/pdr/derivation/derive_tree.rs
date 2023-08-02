@@ -246,6 +246,11 @@ impl DeriveNode {
             ty,
         }
     }
+    pub fn constraint(&self) -> Atom {
+        self.context
+            .iter()
+            .fold(Atom::mk_true(), |acc, c| Atom::mk_conj(acc, c.clone()))
+    }
 }
 
 #[derive(Clone)]
@@ -319,7 +324,7 @@ impl Derivation {
         }
         inner(self, id, self.tree.root().id, 0).map(|(n, _)| n)
     }
-    pub fn get_types_by_id<'a>(&'a self, id: &'a Ident) -> impl Iterator<Item = Ty> + 'a {
+    pub fn get_types_by_goal_id<'a>(&'a self, id: &'a Ident) -> impl Iterator<Item = Ty> + 'a {
         self.tree
             .filter(move |n| n.expr.aux.id == *id)
             .map(|n| n.item.ty.clone())
