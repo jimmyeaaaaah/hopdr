@@ -10,6 +10,8 @@ use crate::{formula::*, highlight};
 
 use rpds::{HashTrieMap, Stack};
 
+const PRINT_ASSUMPTION: bool = true;
+
 #[derive(Clone, Debug)]
 pub(super) struct DeriveNode {
     // Γ; C ⊢ ψ : τ
@@ -95,10 +97,18 @@ impl crate::util::printer::Pretty for DeriveNode {
                 .hang(2)
                 .group(),
         };
-        al.text("(")
-            .append(self.rule.to_string())
-            .append(") |- ")
-            .append(body)
+        let doc = al.text("(").append(self.rule.to_string()).append(")");
+        if PRINT_ASSUMPTION {
+            doc.append(al.line())
+                .append(self.context.pretty(al, config))
+        } else {
+            doc
+        }
+        .append(al.line())
+        .append("|-")
+        .append(al.line())
+        .append(body)
+        .group()
     }
 }
 
@@ -1111,15 +1121,14 @@ impl Derivation {
             .filter(|n| matches!(n.rule, Rule::Subsumption))
             .map(move |n| {
                 let ty = n.item.ty.clone();
+                let context = n.item.context.clone();
                 let children: Vec<_> = self.tree.get_children(n).collect();
                 assert_eq!(children.len(), 1);
                 let child = &children[0];
                 // conjoin constraint of the rule
-                todo!();
                 Ty::check_subtype_result(&child.item.ty, &ty).unwrap_or_else(|| {
                     let mut coefficients = Stack::new();
-                    let c =
-                        Ty::check_subtype(&Atom::mk_true(), &child.item.ty, &ty, &mut coefficients);
+                    let c = Ty::check_subtype(&context, &child.item.ty, &ty, &mut coefficients);
                     if coefficients.iter().next().is_some() {
                         panic!("failed to check subtype: {} <: {}", child.item.ty, ty)
                     }
