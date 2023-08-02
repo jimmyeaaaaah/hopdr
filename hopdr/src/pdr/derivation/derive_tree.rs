@@ -1316,7 +1316,18 @@ impl Derivation {
                 unimplemented!()
             }
             // skip subsumption and equivalence
-            Rule::Equivalence | Rule::Subsumption => {
+            Rule::Equivalence => {
+                let ty = n.item.ty.clone();
+                let child = self.tree.get_one_child(n);
+                let before_ty = child.item.ty.clone();
+                let d = self.clone_with_template_inner(child.id, env, mode_shared, ints);
+                if d.root_ty() != &before_ty {
+                    Self::rule_subsumption(context, d, ty)
+                } else {
+                    Self::rule_equivalence(context, d, ty)
+                }
+            }
+            Rule::Subsumption => {
                 let child = self.tree.get_one_child(n);
                 let d = self.clone_with_template_inner(child.id, env, mode_shared, ints);
                 d
