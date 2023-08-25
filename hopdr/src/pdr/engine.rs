@@ -172,6 +172,7 @@ impl HoPDR {
     fn check_feasible(&mut self) -> Result<bool, Error> {
         debug!("[PDR]check feasible");
         loop {
+            crate::util::wait_for_line();
             debug!("model size: {}", self.models.len());
             debug!("env size: {}", self.envs.len());
             if self.models.len() == self.envs.len() {

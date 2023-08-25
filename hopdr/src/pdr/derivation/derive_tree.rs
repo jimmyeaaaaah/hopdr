@@ -1222,7 +1222,7 @@ impl Derivation {
     ) -> Self {
         let n = self.get_node_by_id(node_id);
         let expr = n.item.expr.clone();
-        let context = n.item.context.clone();
+        let context = Stack::new();
         let t = match &n.item.rule {
             Rule::Conjoin => {
                 let (child1, child2) = self.tree.get_two_children(n);
@@ -1361,11 +1361,13 @@ impl Derivation {
                 let child = self.tree.get_one_child(n);
                 let before_ty = child.item.ty.clone();
                 let d = self.clone_with_template_inner(child.id, env, mode_shared, ints);
-                if d.root_ty() != &before_ty {
-                    Self::rule_subsumption(context, d, ty)
-                } else {
-                    Self::rule_equivalence(context, d, ty)
-                }
+                d
+                //if d.root_ty() != &before_ty {
+                //    //Self::rule_subsumption(context, d, ty)
+                //    panic!()
+                //} else {
+                //    Self::rule_equivalence(context, d, ty)
+                //}
             }
             Rule::Subsumption => {
                 let child = self.tree.get_one_child(n);
