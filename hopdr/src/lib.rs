@@ -24,6 +24,7 @@ fn init() {
 pub struct Configuration {
     pub inlining: bool,
     pub remove_disjunction: bool,
+    pub wait_every_step: bool,
 }
 
 impl Default for Configuration {
@@ -31,6 +32,7 @@ impl Default for Configuration {
         Configuration {
             inlining: true,
             remove_disjunction: false,
+            wait_every_step: false,
         }
     }
 }
@@ -49,6 +51,12 @@ impl Configuration {
     /// set remove_disjunction
     pub fn remove_disjunction(mut self, remove_disjunction: bool) -> Self {
         self.remove_disjunction = remove_disjunction;
+        self
+    }
+
+    /// set wait_every_step
+    pub fn wait_every_step(mut self, wait_every_step: bool) -> Self {
+        self.wait_every_step = wait_every_step;
         self
     }
 }

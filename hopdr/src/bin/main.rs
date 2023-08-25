@@ -43,6 +43,8 @@ struct Args {
     smt_interpol: Option<String>,
     #[clap(long)]
     detailed_results: bool,
+    #[clap(long)]
+    debug_wait_every_step: bool,
 }
 
 fn report_result(args: &Args, r: VerificationResult, ctx: &Context) {
@@ -90,6 +92,7 @@ fn gen_configuration_from_args(args: &Args) -> hopdr::Configuration {
     hopdr::Configuration::new()
         .inlining(!args.no_inlining)
         .remove_disjunction(args.remove_disjunction)
+        .wait_every_step(args.debug_wait_every_step)
 }
 
 fn main() {
@@ -128,7 +131,7 @@ fn main() {
         preprocess::hfl_preprocessor::open_file_with_preprocess(&args.input, &config).unwrap()
     };
 
-    let config = pdr::PDRConfig::new().dump_tex_progress(args.dump_tex_progress);
+    let pdr_config = pdr::PDRConfig::new(config).dump_tex_progress(args.dump_tex_progress);
 
     // RUST_LOG=info (trace, debug, etc..)
 
@@ -136,11 +139,14 @@ fn main() {
     // following https://gist.github.com/junha1/8ebaf53f46ea6fc14ab6797b9939b0f8
     let args_cloned = args.clone(); // FIXME
     let r = if args.timeout == 0 {
-        util::executes_with_timeout_and_ctrlc(move || pdr_main(args_cloned, contents, config), None)
+        util::executes_with_timeout_and_ctrlc(
+            move || pdr_main(args_cloned, contents, pdr_config),
+            None,
+        )
     } else {
         let timeout = time::Duration::from_secs(args.timeout);
         util::executes_with_timeout_and_ctrlc(
-            move || pdr_main(args_cloned, contents, config),
+            move || pdr_main(args_cloned, contents, pdr_config),
             Some(timeout),
         )
     };

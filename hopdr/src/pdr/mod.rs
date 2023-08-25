@@ -40,14 +40,17 @@ impl fmt::Display for VerificationResult {
     }
 }
 
-#[derive(Default)]
 pub struct PDRConfig {
     dump_tex_progress: bool,
+    config: crate::Configuration,
 }
 
 impl PDRConfig {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(config: crate::Configuration) -> Self {
+        PDRConfig {
+            dump_tex_progress: false,
+            config: config,
+        }
     }
     pub fn dump_tex_progress(mut self, dump_tex_progress: bool) -> Self {
         self.dump_tex_progress = dump_tex_progress;
