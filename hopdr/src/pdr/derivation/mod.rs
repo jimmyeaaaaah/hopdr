@@ -982,7 +982,7 @@ impl Context {
             solver::chc::CHCResult::Sat(m) => Some((m, clauses, d)),
             _ => {
                 debug!("infer_with_shared_type: unsat");
-                panic!("unimplmeneted")
+                None
             }
         }
     }
@@ -990,8 +990,9 @@ impl Context {
         &mut self,
         derivation: Derivation,
     ) -> Option<(Model, Vec<chc::CHC<chc::Atom, Constraint>>, Derivation)> {
+        let d = derivation.clone_with_template(false);
         title!("interpolation");
-        let clauses: Vec<_> = derivation.collect_chcs().collect();
+        let clauses: Vec<_> = d.collect_chcs().collect();
         for c in clauses.iter() {
             pdebug!(c);
         }

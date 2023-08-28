@@ -1318,42 +1318,42 @@ impl Derivation {
                 let child = self.tree.get_one_child(n);
                 self.clone_with_template_inner(child.id, env, mode_shared, ints)
             }
-            Rule::App if mode_shared => {
+            Rule::App => {
                 let mut c = self.tree.get_children(n);
                 let c1 = c.next().unwrap();
                 let d1 = self.clone_with_template_inner(c1.id, env, mode_shared, ints.clone());
                 let ty1 = d1.root_ty().clone();
-                let (d2, is_bot) = match c.next() {
-                    Some(c2) => {
-                        let d2 =
-                            self.clone_with_template_inner(c2.id, env, mode_shared, ints.clone());
-                        (d2, false)
-                    }
-                    None => (
-                        Derivation::rule_atom(
-                            context.clone(),
-                            expr.app().1.clone(),
-                            Ty::mk_bot(&ty1.arrow().0[0].to_sty()),
-                        ),
-                        true,
-                    ),
-                };
-                let ty2 = d2.root_ty().clone();
+                let mut derivations: Vec<_> = c
+                    .map(|c2| self.clone_with_template_inner(c2.id, env, mode_shared, ints.clone()))
+                    .collect();
+                //let (d2, is_bot) = match c.next() {
+                //    Some(c2) => {
+                //    }
+                //    None => (
+                //        Derivation::rule_atom(
+                //            context.clone(),
+                //            expr.app().1.clone(),
+                //            Ty::mk_bot(&ty1.arrow().0[0].to_sty()),
+                //        ),
+                //        true,
+                //    ),
+                //};
 
-                let (_, ret_ty) = ty1.arrow();
+                let (arg_tys, ret_ty) = ty1.arrow();
+                if mode_shared {
+                    derivations = vec![derivations.remove(0)];
+                } else {
+                    panic!("unimplmented")
+                }
+                assert_eq!(derivations.len(), arg_tys.len());
+                let new_arg_tys = derivations.iter().map(|d| d.root_ty().clone()).collect();
+
                 let ret_tmp_ty = ret_ty.clone_with_template(&mut ints.iter().cloned().collect());
-                let ty3 = Ty::mk_arrow(vec![ty2], ret_tmp_ty);
+                let ty3 = Ty::mk_arrow(new_arg_tys, ret_tmp_ty);
 
                 let d3 = Self::rule_subsumption(context.clone(), d1, ty3);
 
-                if is_bot {
-                    Self::rule_app(context, expr, d3, std::iter::empty())
-                } else {
-                    Self::rule_app(context, expr, d3, std::iter::once(d2))
-                }
-            }
-            Rule::App => {
-                unimplemented!()
+                Self::rule_app(context, expr, d3, derivations.into_iter())
             }
             // skip subsumption and equivalence
             Rule::Equivalence => {
