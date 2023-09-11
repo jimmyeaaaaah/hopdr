@@ -314,6 +314,30 @@ where
     s
 }
 
+/// clone_config: used for inference configuration
+#[derive(Clone, Copy)]
+pub struct CloneConfiguration {
+    mode_shared: bool,
+    polymorphic: bool,
+}
+
+impl CloneConfiguration {
+    pub fn new() -> Self {
+        Self {
+            mode_shared: false,
+            polymorphic: false,
+        }
+    }
+    pub fn mode_shared(mut self, value: bool) -> Self {
+        self.mode_shared = value;
+        self
+    }
+    pub fn polymorphic(mut self, value: bool) -> Self {
+        self.polymorphic = value;
+        self
+    }
+}
+
 impl Derivation {
     pub fn get_node_by_id<'a>(&'a self, node_id: ID) -> Node<'a, DeriveNode> {
         self.tree.get_node_by_id(node_id)
@@ -545,6 +569,7 @@ impl Derivation {
             coefficients: Stack::new(),
         }
     }
+
     // Assume a derivation tree like
     //        π          ⋮
     //   ----------  ---------
@@ -1217,8 +1242,9 @@ impl Derivation {
         // when mode_shared is enabled, we prepare only one template type for
         // each lambda abstraction's argument even the type was τ₁ ∧ ⋯ ∧ τₙ
         // otherwise, we prepare the template for each type
-        mode_shared: bool,
+        configuration: CloneConfiguration,
         ints: Stack<Ident>,
+        univ_ints: Stack<Ident>,
     ) -> Self {
         let n = self.get_node_by_id(node_id);
         let expr = n.item.expr.clone();
@@ -1226,14 +1252,38 @@ impl Derivation {
         let t = match &n.item.rule {
             Rule::Conjoin => {
                 let (child1, child2) = self.tree.get_two_children(n);
-                let d1 = self.clone_with_template_inner(child1.id, env, mode_shared, ints.clone());
-                let d2 = self.clone_with_template_inner(child2.id, env, mode_shared, ints.clone());
+                let d1 = self.clone_with_template_inner(
+                    child1.id,
+                    env,
+                    configuration,
+                    ints.clone(),
+                    univ_ints.clone(),
+                );
+                let d2 = self.clone_with_template_inner(
+                    child2.id,
+                    env,
+                    configuration,
+                    ints.clone(),
+                    univ_ints.clone(),
+                );
                 Self::rule_conjoin(context, expr, d1, d2)
             }
             Rule::Disjoin => {
                 let (child1, child2) = self.tree.get_two_children(n);
-                let d1 = self.clone_with_template_inner(child1.id, env, mode_shared, ints.clone());
-                let d2 = self.clone_with_template_inner(child2.id, env, mode_shared, ints.clone());
+                let d1 = self.clone_with_template_inner(
+                    child1.id,
+                    env,
+                    configuration,
+                    ints.clone(),
+                    univ_ints.clone(),
+                );
+                let d2 = self.clone_with_template_inner(
+                    child2.id,
+                    env,
+                    configuration,
+                    ints.clone(),
+                    univ_ints.clone(),
+                );
                 Self::rule_disjoin(context, expr, d1, d2)
             }
             Rule::Var(instantiations, original_ty) => {
@@ -1266,15 +1316,33 @@ impl Derivation {
                 Self::rule_var(context, expr, ty, original_ty, Stack::new(), instantiations)
             }
             Rule::Univ => {
+                let v = expr.univ().0;
+                let univ_ints = if v.ty.is_int() {
+                    univ_ints.push(v.id)
+                } else {
+                    univ_ints
+                };
                 let x = expr.univ().0.id;
                 let child = self.tree.get_one_child(n);
-                let d = self.clone_with_template_inner(child.id, env, mode_shared, ints.push(x));
+                let d = self.clone_with_template_inner(
+                    child.id,
+                    env,
+                    configuration,
+                    ints.clone(),
+                    univ_ints.clone(),
+                );
                 Self::rule_quantifier(context, expr, d, &x)
             }
             Rule::IAbs => {
                 let x = expr.abs().0.id;
                 let child = self.tree.get_one_child(n);
-                let d = self.clone_with_template_inner(child.id, env, mode_shared, ints.push(x));
+                let d = self.clone_with_template_inner(
+                    child.id,
+                    env,
+                    configuration,
+                    ints.push(x),
+                    univ_ints.clone(),
+                );
                 Self::rule_iarrow(context, expr, d, &x)
             }
             Rule::Abs(_) => {
@@ -1282,9 +1350,18 @@ impl Derivation {
                 let (arg_ty, _) = n.item.ty.arrow();
 
                 let mut arg_template_tys = Vec::new();
-                let fvs = ints.iter().cloned().collect();
+                let mut fvs: HashSet<_> = ints.iter().cloned().collect();
+
+                let expr_fvs = expr.fv();
+                // if polymorphic type is enabled, insert all the variables in univ_ints to fvs
+                // otherwise we only insert the variables that expr depend on explicitly in their body
+                for x in univ_ints.iter() {
+                    if configuration.polymorphic || expr_fvs.contains(x) {
+                        fvs.insert(*x);
+                    }
+                }
                 let mut ty_map = Stack::new();
-                if mode_shared {
+                if configuration.mode_shared {
                     let arg_temp_ty = Ty::from_sty(&x.ty, &fvs);
                     arg_template_tys.push(arg_temp_ty.clone());
                     for t in arg_ty.iter() {
@@ -1299,7 +1376,13 @@ impl Derivation {
                 };
                 let old = env.insert(x.id, ty_map);
                 let child = self.tree.get_one_child(n);
-                let d = self.clone_with_template_inner(child.id, env, mode_shared, ints.clone());
+                let d = self.clone_with_template_inner(
+                    child.id,
+                    env,
+                    configuration,
+                    ints.clone(),
+                    univ_ints.clone(),
+                );
                 if let Some(ty) = old {
                     env.insert(x.id, ty);
                 }
@@ -1310,23 +1393,46 @@ impl Derivation {
                 let (_, e) = expr.app();
                 let o: Op = e.clone().into();
                 let child = self.tree.get_one_child(n);
-                let d = self.clone_with_template_inner(child.id, env, mode_shared, ints);
+                let d = self.clone_with_template_inner(
+                    child.id,
+                    env,
+                    configuration,
+                    ints,
+                    univ_ints.clone(),
+                );
                 Self::rule_iapp(context, expr, d, &o)
             }
             Rule::Poly(_) => {
                 // skip poly
                 let child = self.tree.get_one_child(n);
-                self.clone_with_template_inner(child.id, env, mode_shared, ints)
+                self.clone_with_template_inner(
+                    child.id,
+                    env,
+                    configuration,
+                    ints,
+                    univ_ints.clone(),
+                )
             }
-            Rule::App if mode_shared => {
+            Rule::App if configuration.mode_shared => {
                 let mut c = self.tree.get_children(n);
                 let c1 = c.next().unwrap();
-                let d1 = self.clone_with_template_inner(c1.id, env, mode_shared, ints.clone());
+                let d1 = self.clone_with_template_inner(
+                    c1.id,
+                    env,
+                    configuration,
+                    ints.clone(),
+                    univ_ints.clone(),
+                );
                 let ty1 = d1.root_ty().clone();
                 let (d2, is_bot) = match c.next() {
                     Some(c2) => {
-                        let d2 =
-                            self.clone_with_template_inner(c2.id, env, mode_shared, ints.clone());
+                        let d2 = self.clone_with_template_inner(
+                            c2.id,
+                            env,
+                            configuration,
+                            ints.clone(),
+                            univ_ints.clone(),
+                        );
                         (d2, false)
                     }
                     None => (
@@ -1360,7 +1466,13 @@ impl Derivation {
                 let ty = n.item.ty.clone();
                 let child = self.tree.get_one_child(n);
                 let before_ty = child.item.ty.clone();
-                let d = self.clone_with_template_inner(child.id, env, mode_shared, ints);
+                let d = self.clone_with_template_inner(
+                    child.id,
+                    env,
+                    configuration,
+                    ints,
+                    univ_ints.clone(),
+                );
                 d
                 //if d.root_ty() != &before_ty {
                 //    //Self::rule_subsumption(context, d, ty)
@@ -1371,7 +1483,13 @@ impl Derivation {
             }
             Rule::Subsumption => {
                 let child = self.tree.get_one_child(n);
-                let d = self.clone_with_template_inner(child.id, env, mode_shared, ints);
+                let d = self.clone_with_template_inner(
+                    child.id,
+                    env,
+                    configuration,
+                    ints,
+                    univ_ints.clone(),
+                );
                 d
             }
             Rule::Atom => Self::rule_atom(context, expr, n.item.ty.clone()),
@@ -1381,13 +1499,14 @@ impl Derivation {
             coefficients: t.coefficients,
         }
     }
-    pub fn clone_with_template(&self, mode_shared: bool) -> Self {
+    pub fn clone_with_template(&self, configuration: CloneConfiguration) -> Self {
         highlight!("clone_with_template");
         pdebug!(self);
         let root = self.tree.root().id;
         let mut env = HashMap::new();
         let ints = Stack::new();
-        let d = self.clone_with_template_inner(root, &mut env, mode_shared, ints);
+        let univ_ints = Stack::new();
+        let d = self.clone_with_template_inner(root, &mut env, configuration, ints, univ_ints);
         let n = self.get_node_by_id(root);
         match n.item.rule {
             Rule::Subsumption => (),

@@ -969,22 +969,31 @@ impl Context {
         &mut self,
         derivation: &Derivation,
     ) -> Option<(Model, Vec<chc::CHC<chc::Atom, Constraint>>, Derivation)> {
-        let d = derivation.clone_with_template(true);
-        let clauses: Vec<_> = d.collect_chcs().collect();
+        let c1 = derive_tree::CloneConfiguration::new()
+            .mode_shared(true)
+            .polymorphic(false);
+        let c2 = derive_tree::CloneConfiguration::new()
+            .mode_shared(true)
+            .polymorphic(true);
 
-        crate::title!("infer_with_shared_type");
-        pdebug!(d);
-        for c in clauses.iter() {
-            pdebug!(c);
-        }
+        let configurations = vec![c1, c2];
+        for c in configurations {
+            let d = derivation.clone_with_template(c);
+            let clauses: Vec<_> = d.collect_chcs().collect();
 
-        match solver::chc::default_solver().solve(&clauses) {
-            solver::chc::CHCResult::Sat(m) => Some((m, clauses, d)),
-            _ => {
-                debug!("infer_with_shared_type: unsat");
-                panic!("unimplmeneted")
+            crate::title!("infer_with_shared_type");
+            pdebug!(d);
+            for c in clauses.iter() {
+                pdebug!(c);
+            }
+
+            match solver::chc::default_solver().solve(&clauses) {
+                solver::chc::CHCResult::Sat(m) => return Some((m, clauses, d)),
+                _ => {}
             }
         }
+        debug!("infer_with_shared_type: unsat");
+        panic!("unimplmeneted")
     }
     fn infer_type_with_subject_expansion(
         &mut self,
