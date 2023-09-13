@@ -1,6 +1,7 @@
 use std::{collections::HashSet, fmt};
 
 pub mod chc;
+mod csisat;
 pub mod disj;
 pub mod interpolation;
 pub mod qe;
