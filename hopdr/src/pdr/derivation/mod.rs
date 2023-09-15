@@ -969,15 +969,15 @@ impl Context {
         &mut self,
         derivation: &Derivation,
     ) -> Option<(Model, Vec<chc::CHC<chc::Atom, Constraint>>, Derivation)> {
-        //let c1 = derive_tree::CloneConfiguration::new()
-        //    .mode_shared(true)
-        //    .polymorphic(false);
+        let c1 = derive_tree::CloneConfiguration::new()
+            .mode_shared(true)
+            .polymorphic(false);
         let c2 = derive_tree::CloneConfiguration::new()
             .mode_shared(true)
             .polymorphic(true);
 
-        //let configurations = vec![c1, c2];
-        let configurations = vec![c2];
+        let configurations = vec![c1, c2];
+        //let configurations = vec![c2];
         for c in configurations {
             let d = derivation.clone_with_template(c);
             let clauses: Vec<_> = d.collect_chcs().collect();

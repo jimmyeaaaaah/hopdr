@@ -1446,6 +1446,11 @@ impl Derivation {
                     })
                     .collect();
                 let (arg_tys, ret_ty) = ty1.arrow();
+
+                if derivations.len() == 0 {
+                    return Self::rule_app(context, expr, d1, derivations.into_iter());
+                }
+
                 if configuration.mode_shared {
                     derivations = vec![derivations.remove(0)];
                 } else {
