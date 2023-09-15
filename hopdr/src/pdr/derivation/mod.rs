@@ -980,7 +980,7 @@ impl Context {
         //let configurations = vec![c2];
         for c in configurations {
             let d = derivation.clone_with_template(c);
-            let clauses: Vec<_> = d.collect_chcs().collect();
+            let clauses: Vec<_> = d.collect_chcs(false).collect();
 
             crate::title!("infer_with_shared_type");
             pdebug!(d);
@@ -994,7 +994,8 @@ impl Context {
             }
         }
         debug!("infer_with_shared_type: unsat");
-        panic!("unimplmeneted")
+        //panic!("unimplmeneted")
+        None
     }
     fn infer_type_with_subject_expansion(
         &mut self,
@@ -1005,7 +1006,7 @@ impl Context {
             .polymorphic(true);
         let d = derivation.clone_with_template(c1);
         title!("interpolation");
-        let clauses: Vec<_> = d.collect_chcs().collect();
+        let clauses: Vec<_> = d.collect_chcs(true).collect();
         for c in clauses.iter() {
             pdebug!(c);
         }
@@ -1776,7 +1777,7 @@ impl PossibleDerivation {
             pdebug!(ct);
             let mut constraint = Constraint::mk_true();
             pdebug!("derivation constraints:");
-            for c in ct.collect_constraints() {
+            for c in ct.collect_constraints(false) {
                 pdebug!(c);
                 constraint = Constraint::mk_conj(constraint, c.clone().into());
             }

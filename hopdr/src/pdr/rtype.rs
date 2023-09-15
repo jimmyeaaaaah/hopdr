@@ -518,7 +518,7 @@ impl<C: Refinement> Tau<C> {
                 let t2 = t2.rename(x2, x1);
                 Tau::check_subtype_result(context, t1, &t2)
             }
-            (TauKind::Arrow(ts1, t1), TauKind::Arrow(ts2, t2)) => {
+            (TauKind::Arrow(ts1, t1), TauKind::Arrow(ts2, t2)) if ts1.len() == ts2.len() => {
                 // check ts2 <: ts1
                 if ts1.iter().zip(ts2.iter()).all(|(t1, t2)| t1 == t2) {
                     Tau::check_subtype_result(context, t1, t2)
@@ -526,6 +526,32 @@ impl<C: Refinement> Tau<C> {
                     None
                 }
             }
+            (_, _) => panic!("fatal"),
+        }
+    }
+    pub fn check_subtype_structural(context: C, t: &Tau<C>, s: &Tau<C>) -> Option<C> {
+        match (t.kind(), s.kind()) {
+            (TauKind::Proposition(c1), TauKind::Proposition(c2)) => {
+                Some(C::mk_implies_opt(C::mk_conj(context, c2.clone()), c1.clone()).unwrap())
+            }
+            (TauKind::IArrow(x1, t1), TauKind::IArrow(x2, t2)) => {
+                let t2 = t2.rename(x2, x1);
+                Tau::check_subtype_structural(context, t1, &t2)
+            }
+            (TauKind::Arrow(ts1, t1), TauKind::Arrow(ts2, t2)) if ts1.len() == ts2.len() => {
+                // check ts2 <: ts1
+                let result_c = Self::check_subtype_structural(context.clone(), t1, t2);
+                let rty = t2.rty_no_exists();
+                let context = C::mk_conj(context, rty);
+                ts1.iter()
+                    .zip(ts2.iter())
+                    .fold(result_c, |accum, (t1, t2)| {
+                        let c1 = accum?;
+                        let c2 = Self::check_subtype_structural(context.clone(), t2, t1)?;
+                        Some(C::mk_conj(c1, c2))
+                    })
+            }
+            (TauKind::Arrow(_, _), TauKind::Arrow(_, _)) => None,
             (_, _) => panic!("fatal"),
         }
     }

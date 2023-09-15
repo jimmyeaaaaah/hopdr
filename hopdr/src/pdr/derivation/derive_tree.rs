@@ -1196,8 +1196,9 @@ impl Derivation {
         self.finalize_subject_expansion(reduction, target_node);
     }
 
-    pub fn collect_constraints<'a>(&'a self) -> impl Iterator<Item = Atom> + 'a {
+    pub fn collect_constraints<'a>(&'a self, structural: bool) -> impl Iterator<Item = Atom> + 'a {
         // collect all subsumptions
+        pdebug!("collect_constraints");
         self.tree
             .filter(|n| matches!(n.rule, Rule::Subsumption))
             .map(move |n| {
@@ -1211,23 +1212,35 @@ impl Derivation {
                 assert_eq!(children.len(), 1);
                 let child = &children[0];
                 // conjoin constraint of the rule
-                Ty::check_subtype_result(constraints.clone(), &child.item.ty, &ty).unwrap_or_else(
-                    || {
-                        let mut coefficients = Stack::new();
-                        let c =
-                            Ty::check_subtype(&constraints, &child.item.ty, &ty, &mut coefficients);
-                        if coefficients.iter().next().is_some() {
-                            panic!("failed to check subtype: {} <: {}", child.item.ty, ty)
-                        }
-                        c
-                    },
-                )
+                pdebug!(child.item.ty, " <: " ty);
+                if structural {
+                    Ty::check_subtype_structural(constraints.clone(), &child.item.ty, &ty).expect(
+                        &format!("failed to check subtype: {} <: {}", child.item.ty, ty),
+                    )
+                } else {
+                    Ty::check_subtype_result(constraints.clone(), &child.item.ty, &ty)
+                        .unwrap_or_else(|| {
+                            let mut coefficients = Stack::new();
+                            let c = Ty::check_subtype(
+                                &constraints,
+                                &child.item.ty,
+                                &ty,
+                                &mut coefficients,
+                            );
+                            if coefficients.iter().next().is_some() {
+                                panic!("failed to check subtype: {} <: {}", child.item.ty, ty)
+                            }
+                            c
+                        })
+                }
             })
     }
+
     pub fn collect_chcs<'a>(
         &'a self,
+        structural: bool,
     ) -> impl Iterator<Item = chc::CHC<chc::Atom, Constraint>> + 'a {
-        self.collect_constraints()
+        self.collect_constraints(structural)
             .map(|c| match c.to_chcs_or_pcsps() {
                 either::Either::Left(c) => c.into_iter(),
                 either::Either::Right(_) => panic!("failed to transform to chcs: {}", c),
@@ -1454,7 +1467,8 @@ impl Derivation {
                 if configuration.mode_shared {
                     derivations = vec![derivations.remove(0)];
                 } else {
-                    panic!("unimplmented")
+                    //panic!("unimplmented")
+                    // TODO: implement intersection type subsumption for
                 }
                 assert_eq!(derivations.len(), arg_tys.len());
                 let new_arg_tys = derivations.iter().map(|d| d.root_ty().clone()).collect();
