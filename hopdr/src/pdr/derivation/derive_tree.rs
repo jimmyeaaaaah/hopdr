@@ -1246,6 +1246,25 @@ impl Derivation {
         ints: Stack<Ident>,
         univ_ints: Stack<Ident>,
     ) -> Self {
+        // aux function for clone_wit template_inner
+        fn calc_fv(
+            configuration: &CloneConfiguration,
+            ints: &Stack<Ident>,
+            univ_ints: &Stack<Ident>,
+            expr: &G,
+        ) -> HashSet<Ident> {
+            let mut fvs: HashSet<_> = ints.iter().cloned().collect();
+
+            let expr_fvs = expr.fv();
+            // if polymorphic type is enabled, insert all the variables in univ_ints to fvs
+            // otherwise we only insert the variables that expr depend on explicitly in their body
+            for x in univ_ints.iter() {
+                if configuration.polymorphic || expr_fvs.contains(x) {
+                    fvs.insert(*x);
+                }
+            }
+            fvs
+        }
         let n = self.get_node_by_id(node_id);
         let expr = n.item.expr.clone();
         let context = Stack::new();
@@ -1350,16 +1369,7 @@ impl Derivation {
                 let (arg_ty, _) = n.item.ty.arrow();
 
                 let mut arg_template_tys = Vec::new();
-                let mut fvs: HashSet<_> = ints.iter().cloned().collect();
-
-                let expr_fvs = expr.fv();
-                // if polymorphic type is enabled, insert all the variables in univ_ints to fvs
-                // otherwise we only insert the variables that expr depend on explicitly in their body
-                for x in univ_ints.iter() {
-                    if configuration.polymorphic || expr_fvs.contains(x) {
-                        fvs.insert(*x);
-                    }
-                }
+                let fvs = calc_fv(&configuration, &ints, &univ_ints, &expr);
                 let mut ty_map = Stack::new();
                 if configuration.mode_shared {
                     let arg_temp_ty = Ty::from_sty(&x.ty, &fvs);
@@ -1444,7 +1454,9 @@ impl Derivation {
                 assert_eq!(derivations.len(), arg_tys.len());
                 let new_arg_tys = derivations.iter().map(|d| d.root_ty().clone()).collect();
 
-                let ret_tmp_ty = ret_ty.clone_with_template(&mut ints.iter().cloned().collect());
+                let mut fvs = calc_fv(&configuration, &ints, &univ_ints, &expr);
+
+                let ret_tmp_ty = ret_ty.clone_with_template(&mut fvs);
                 let ty3 = Ty::mk_arrow(new_arg_tys, ret_tmp_ty);
 
                 let d3 = Self::rule_subsumption(context.clone(), d1, ty3);
