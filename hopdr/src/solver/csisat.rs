@@ -76,5 +76,5 @@ fn test_constraint_to_csisat() {
     let o2 = Op::mk_mul(v(x), Op::mk_const(2));
     let p = Constraint::mk_pred(PredKind::Geq, vec![o, o2]);
     let s = constraint_to_csisat(&p);
-    panic!("{}", s)
+    assert!(s.len() > 0)
 }
