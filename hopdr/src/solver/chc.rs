@@ -61,6 +61,9 @@ fn get_epilogue(style: CHCStyle) -> &'static str {
 }
 
 fn predicate_to_smt2(p: &Ident, args: &[Op]) -> String {
+    if args.len() == 0 {
+        return smt::ident_2_smt2(p);
+    }
     let mut r = format!("({}", smt::ident_2_smt2(p));
     for arg in args {
         r += " ";
