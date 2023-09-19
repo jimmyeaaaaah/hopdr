@@ -338,6 +338,13 @@ impl CloneConfiguration {
     }
 }
 
+impl std::fmt::Display for CloneConfiguration {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "mode_shared: {}", self.mode_shared)?;
+        write!(f, "polymorphic: {}", self.polymorphic)
+    }
+}
+
 impl Derivation {
     pub fn get_node_by_id<'a>(&'a self, node_id: ID) -> Node<'a, DeriveNode> {
         self.tree.get_node_by_id(node_id)
@@ -1392,7 +1399,9 @@ impl Derivation {
                     }
                 } else {
                     for t in arg_ty.iter() {
-                        let arg_temp_ty = Ty::from_sty(&x.ty, &fvs);
+                        // wrong: intersection type is required at this part (Ty::from_sty removes all the intersection types)
+                        let mut fvs = fvs.clone();
+                        let arg_temp_ty = t.clone_with_template(&mut fvs);
                         arg_template_tys.push(arg_temp_ty.clone());
                         ty_map.push_mut((t.clone(), arg_temp_ty.clone()));
                     }
@@ -1468,7 +1477,21 @@ impl Derivation {
                     derivations = vec![derivations.remove(0)];
                 } else {
                     //panic!("unimplmented")
-                    // TODO: implement intersection type subsumption for
+                }
+                if derivations.len() != arg_tys.len() {
+                    pdebug!("derivations vs arg_tys not match");
+                    debug!("{}", configuration);
+                    pdebug!(self.get_node_by_id(node_id).item);
+                    debug!("derivations:");
+                    for d in derivations.iter() {
+                        pdebug!(d);
+                        pdebug!("--end--")
+                    }
+                    pdebug!("arg_tys:");
+                    for d in arg_tys.iter() {
+                        pdebug!(d);
+                        pdebug!("--end--")
+                    }
                 }
                 assert_eq!(derivations.len(), arg_tys.len());
                 let new_arg_tys = derivations.iter().map(|d| d.root_ty().clone()).collect();

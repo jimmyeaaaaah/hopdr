@@ -569,7 +569,12 @@ impl<C: Refinement> Tau<C> {
                 fvs.remove(x);
                 Tau::mk_iarrow(*x, t_temp)
             }
-            TauKind::PTy(x, t) => t.clone_with_template(fvs),
+            TauKind::PTy(x, t) => {
+                fvs.insert(*x);
+                let t_temp = t.clone_with_template(fvs);
+                fvs.remove(x);
+                Tau::mk_poly_ty(*x, t_temp)
+            }
             TauKind::Arrow(ts, t) => {
                 let ts = ts.iter().map(|s| s.clone_with_template(fvs)).collect();
                 let t = t.clone_with_template(fvs);
