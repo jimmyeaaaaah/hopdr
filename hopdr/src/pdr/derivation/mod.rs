@@ -994,17 +994,18 @@ impl Context {
             }
         }
         debug!("infer_with_shared_type: unsat");
-        //panic!("unimplmeneted")
+        //panic!("unimplmeneted");
         None
     }
     fn infer_type_with_subject_expansion(
         &mut self,
         derivation: Derivation,
     ) -> Option<(Model, Vec<chc::CHC<chc::Atom, Constraint>>, Derivation)> {
-        let c1 = derive_tree::CloneConfiguration::new()
-            .mode_shared(false)
-            .polymorphic(true);
-        let d = derivation.clone_with_template(c1);
+        //let c1 = derive_tree::CloneConfiguration::new()
+        //    .mode_shared(false)
+        //    .polymorphic(true);
+        //let d = derivation.clone_with_template(c1);
+        let d = derivation.clone();
         title!("interpolation");
         let clauses: Vec<_> = d.collect_chcs(true).collect();
         for c in clauses.iter() {
