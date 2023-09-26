@@ -470,33 +470,29 @@ impl Interpolation for SMTInterpolSolver {
 }
 
 impl CsisatSolver {
-    fn execute_solver(&mut self, left: &Constraint, right: &Constraint) -> String {
-        let left = super::csisat::constraint_to_csisat(left);
-        let right = super::csisat::constraint_to_csisat(right);
-
-        let query = format!("{} ; {}", left, right);
-
+    fn execute_solver(&mut self, query: &str) -> String {
         let out = interp_execution!({
             util::exec_input_with_timeout("csisat", &[], query.as_bytes(), Duration::from_secs(1))
         });
         String::from_utf8(out).unwrap()
     }
-    fn parse_result(&mut self, result: String, _fvs: HashSet<Ident>) -> Constraint {
-        use crate::parse;
-        use nom::error::VerboseError;
+    fn parse_result(&mut self, result: String) -> Option<Constraint> {
         super::csisat::parse(&result)
     }
 }
 
 impl Interpolation for CsisatSolver {
     fn interpolate(&mut self, left: &Constraint, right: &Constraint) -> Constraint {
-        let mut fvs = HashSet::new();
-        left.fv_with_vec(&mut fvs);
-        right.fv_with_vec(&mut fvs);
+        let lefts = super::csisat::constraint_to_csisat(left);
+        let rights = super::csisat::constraint_to_csisat(right);
 
-        let s = self.execute_solver(left, right);
+        let query = format!("{} ; {}", lefts, rights);
+
+        let s = self.execute_solver(&query);
         debug!("result: {}", s);
-        self.parse_result(s, fvs)
+        let reason =
+            format!("interpolation failed: {left} ; {right}, query: {query}, solver's output: {s}");
+        self.parse_result(s).expect(&reason)
     }
 }
 
@@ -841,14 +837,14 @@ fn test_interpolation() {
     let h2 = CHCHead::Predicate(a.clone());
     let clause1 = CHC { head: h1, body: b1 };
     let clause2 = CHC { head: h2, body: b2 };
-    debug!("- {}", clause1);
-    debug!("- {}", clause2);
+    println!("- {}", clause1);
+    println!("- {}", clause2);
     let clauses = vec![clause1, clause2];
 
     let config = InterpolationConfig::new().use_chc_if_requied();
     let m = solve(&clauses, &config);
 
     for (x, (_, z)) in m.model {
-        debug!("{} => {}", x, z)
+        println!("{} => {}", x, z)
     }
 }

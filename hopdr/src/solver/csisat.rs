@@ -1,5 +1,5 @@
 /// This file contains auxiliary functions for handling csisat's input and output
-use crate::formula::{Constraint, ConstraintExpr, Op, OpExpr};
+use crate::formula::{Constraint, ConstraintExpr, Op, OpExpr, PredKind};
 use crate::parse;
 
 use std::collections::HashMap;
@@ -42,10 +42,13 @@ fn op_to_csisat(o: &Op) -> String {
 pub(super) fn constraint_to_csisat(c: &Constraint) -> String {
     match c.kind() {
         ConstraintExpr::True => "0 = 0".to_string(),
-        ConstraintExpr::False => "0 != 0".to_string(),
+        ConstraintExpr::False => "0 < 0".to_string(),
         ConstraintExpr::Pred(p, l) if l.len() == 2 => {
             let lhs = op_to_csisat(&l[0]);
             let rhs = op_to_csisat(&l[1]);
+            if *p == PredKind::Neq {
+                return format!("(not ({lhs} = {rhs}))");
+            }
             let p = p.to_string();
             format!("({lhs} {p} {rhs})")
         }
@@ -146,13 +149,11 @@ fn test_constraint_to_csisat() {
     assert!(s.len() > 0)
 }
 
-pub(super) fn parse(s: &str) -> Constraint {
+pub(super) fn parse(s: &str) -> Option<Constraint> {
     use nom::error::VerboseError;
 
-    let e = parse::parse_expr::<VerboseError<&str>>(s)
-        .expect(&format!("failed to parse: {s}"))
-        .1;
-    parse_expression_to_constraint(&e)
+    let e = parse::parse_expr::<VerboseError<&str>>(s).ok()?.1;
+    Some(parse_expression_to_constraint(&e))
 }
 
 #[test]
