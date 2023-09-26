@@ -206,7 +206,7 @@ pub fn default_solver() -> Box<dyn CHCSolver> {
 }
 
 pub fn interpolating_solver() -> Box<dyn CHCSolver> {
-    chc_solver(CHCStyle::Spacer)
+    chc_solver(CHCStyle::Hoice)
 }
 
 macro_rules! chc_execution {

@@ -367,7 +367,7 @@ impl InterpolationSolver {
         }
     }
     pub fn default_solver() -> Box<dyn Interpolation> {
-        Self::get_solver(InterpolationSolver::Spacer)
+        Self::get_solver(InterpolationSolver::Csisat)
     }
 }
 
@@ -463,40 +463,28 @@ impl SMTInterpolSolver {
 impl Interpolation for SMTInterpolSolver {
     fn interpolate(&mut self, left: &Constraint, right: &Constraint) -> Constraint {
         let (s, fvs) = self.generate_smt_string(left, right);
+        //panic!("{}", s);
         let r = self.execute_solver(s);
         self.parse_result(r, fvs).unwrap()
     }
 }
 
 impl CsisatSolver {
-    fn generate_constraint_string(&mut self, c: &Constraint) -> String {
-        format!("%HES\nM =v {}.", c.to_hes_format())
-    }
-    fn execute_solver(&mut self, smt_string1: String, smt_string2: String) -> String {
-        let f1 = smt::save_smt2(smt_string1);
-        let f2 = smt::save_smt2(smt_string2);
-        // TODO: determine the path when it's compiled
-        let arg = format!(
-            "{},{}",
-            f1.path().to_str().unwrap(),
-            f2.path().to_str().unwrap()
-        );
-        let args = vec![arg.as_str()];
+    fn execute_solver(&mut self, left: &Constraint, right: &Constraint) -> String {
+        let left = super::csisat::constraint_to_csisat(left);
+        let right = super::csisat::constraint_to_csisat(right);
+
+        let query = format!("{} ; {}", left, right);
+
         let out = interp_execution!({
-            util::exec_with_timeout("fpat_interp", &args, Duration::from_secs(1))
+            util::exec_input_with_timeout("csisat", &[], query.as_bytes(), Duration::from_secs(1))
         });
         String::from_utf8(out).unwrap()
     }
-    fn parse_result(
-        &mut self,
-        result: String,
-        _fvs: HashSet<Ident>,
-    ) -> Result<Constraint, InterpolationError> {
+    fn parse_result(&mut self, result: String, _fvs: HashSet<Ident>) -> Constraint {
         use crate::parse;
         use nom::error::VerboseError;
-        let e = parse::parse_expr::<VerboseError<&str>>(&result).unwrap().1;
-        let c = Constraint::from(e);
-        Ok(c)
+        super::csisat::parse(&result)
     }
 }
 
@@ -506,15 +494,20 @@ impl Interpolation for CsisatSolver {
         left.fv_with_vec(&mut fvs);
         right.fv_with_vec(&mut fvs);
 
-        let left_s = self.generate_constraint_string(left);
-        let right_s = self.generate_constraint_string(right);
-        debug!("{}", &left_s);
-        debug!("{}", &right_s);
-
-        let s = self.execute_solver(left_s, right_s);
+        let s = self.execute_solver(left, right);
         debug!("result: {}", s);
-        self.parse_result(s, fvs).unwrap()
+        self.parse_result(s, fvs)
     }
+}
+
+#[test]
+fn test_csisat() {
+    let x = Ident::fresh();
+    let c1 = Constraint::mk_eq(Op::mk_var(x), Op::mk_const(1));
+    let c2 = Constraint::mk_eq(Op::mk_var(x), Op::mk_const(2));
+    let mut sol = CsisatSolver {};
+    let s = sol.interpolate(&c1, &c2);
+    println!("{}", s);
 }
 
 impl Interpolation for SpacerSolver {
@@ -754,7 +747,7 @@ impl Default for InterpolationConfig {
 /// interpolate predicates under the given CHC constraints.
 ///
 /// Assumption: `chc' is satisfiable.
-pub fn solve(chc: &Vec<CHC>, _config: &InterpolationConfig) -> Model {
+pub fn solve_old(chc: &Vec<CHC>, _config: &InterpolationConfig) -> Model {
     use solver::chc::CHCSolver;
     debug!("[interpolation::solve]");
     for c in chc {
@@ -777,7 +770,7 @@ pub fn solve(chc: &Vec<CHC>, _config: &InterpolationConfig) -> Model {
 /// interpolate predicates under the given CHC constraints.
 ///
 /// Assumption: `chc' is satisfiable.
-pub fn solve_old(chc: &Vec<CHC>, config: &InterpolationConfig) -> Model {
+pub fn solve(chc: &Vec<CHC>, config: &InterpolationConfig) -> Model {
     debug!("[interpolation::solve]");
     for c in chc {
         debug!("- {}", c);
