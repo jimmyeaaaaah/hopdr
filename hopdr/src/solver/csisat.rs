@@ -159,7 +159,7 @@ pub(super) fn parse(s: &str) -> Option<Constraint> {
 #[test]
 fn parse_csisat() {
     let s = "2*x_0 <= 2";
-    let c = parse(s);
+    let c = parse(s).unwrap();
     use crate::formula::*;
     match c.kind() {
         ConstraintExpr::Pred(p, l) if l.len() == 2 => {

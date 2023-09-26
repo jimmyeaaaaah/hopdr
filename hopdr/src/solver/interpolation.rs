@@ -776,6 +776,10 @@ pub fn solve(chc: &Vec<CHC>, config: &InterpolationConfig) -> Model {
     match topological_sort(chc) {
         Some((preds, n_args)) => {
             let least_model = generate_least_solution(chc, &preds, &n_args);
+            debug_assert!(crate::formula::chc::check_the_model_validity(
+                &least_model,
+                chc
+            ));
 
             interpolate_preds(
                 chc,

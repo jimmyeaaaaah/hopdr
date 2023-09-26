@@ -600,3 +600,25 @@ fn test_solution_tractability() {
     m.model.insert(Ident::fresh(), (Vec::new(), c));
     assert!(m.is_solution_tractable());
 }
+
+/// this is a debug function for checking the given model is actually "a model" of the given CHC by
+/// using SMT solver.
+pub fn check_the_model_validity(model: &Model, chc: &Vec<CHC<Atom, Constraint>>) -> bool {
+    use crate::solver::smt;
+    let mut solver = smt::default_solver();
+    let c = chc.iter().fold(Constraint::mk_true(), |c, chc| {
+        Constraint::mk_conj(c, chc.replace_with_model(model))
+    });
+    let vars = c.fv();
+    match solver.solve(&c, &vars) {
+        crate::solver::SolverResult::Sat => true,
+        crate::solver::SolverResult::Unsat => false,
+        _ => panic!("error"),
+    }
+}
+
+#[test]
+fn test_check_the_model_validity() {
+    let (chc, model, _) = gen_clause_pqp();
+    assert!(check_the_model_validity(&model, &vec![chc]))
+}
