@@ -271,6 +271,8 @@ fn remove_pred_except_for<'a>(
 ) -> (Constraint, Constraint, Option<&'a Vec<Op>>) {
     debug!("{}", clause);
     debug!("{}", p);
+    // this function get the model of q from `model` or `least_model`,
+    // and replaces their arguments
     let get_constraint = |q: &chc::Atom| -> Constraint {
         debug!("get_constraint q: {}", q);
         let (arg_vars, c) = match model.model.get(&q.predicate) {
@@ -281,6 +283,10 @@ fn remove_pred_except_for<'a>(
             }
         };
         let mut c = c.clone();
+        let s: String = arg_vars
+            .iter()
+            .fold("".to_string(), |x, y| format!("{x} {y}, "));
+        debug!("before subst: P({s}) = {c}",);
         // replace [q.args/arg_vars]c
         assert_eq!(arg_vars.len(), q.args.len());
         for (i, item) in arg_vars.iter().enumerate() {
@@ -304,6 +310,7 @@ fn remove_pred_except_for<'a>(
     // i.e. p(x, y) /\ p(x + 1, y) => C is invalid
     let mut args = None;
     for body in clause.body.predicates.iter() {
+        // the following makes sure that the given problem has no cylcle
         debug_assert!(body.predicate != p || (args.is_none() && !head_contains_p));
         if body.predicate == p {
             args = Some(&body.args);
@@ -489,6 +496,7 @@ impl Interpolation for CsisatSolver {
         let query = format!("{} ; {}", lefts, rights);
 
         let s = self.execute_solver(&query);
+        crate::title!("csisat");
         debug!("result: {}", s);
         let reason =
             format!("interpolation failed: {left} ; {right}, query: {query}, solver's output: {s}");
@@ -606,10 +614,12 @@ fn interpolate_preds(
     least_model: &Model,
     mut solver: Box<dyn Interpolation>,
 ) -> Model {
+    crate::title!("intepolate_preds");
     debug_assert!(crate::solver::chc::is_solution_valid(chc, least_model));
     let mut model = Model::new();
     // interpolate in the decending order of preds
     for p in sorted_preds.iter().rev() {
+        debug!("current target pred: {p}");
         let arg_vars: Vec<Ident> = (0..*n_args.get(p).unwrap())
             .map(|_| Ident::fresh())
             .collect();
@@ -622,18 +632,20 @@ fn interpolate_preds(
                 let (body, head, args) = remove_pred_except_for(*p, clause, least_model, &model);
                 let args = args.unwrap();
                 let body = conjoin_args(&arg_vars, args, body);
+                debug!("conjoined: {body}");
                 // Constraint::mk_disj(body_constraint.negate().unwrap(), head),
                 let c = Constraint::mk_disj(body.negate().unwrap(), head);
                 #[cfg(debug_assertions)]
                 {
                     use crate::formula::Rename;
                     let mut solver = smt::default_solver();
-                    debug!("{}", c);
                     let (args, mut c2) = least_model.model.get(p).unwrap().clone();
                     for (id, replaced) in args.iter().zip(arg_vars.iter()) {
                         c2 = c2.rename(id, replaced);
                     }
+                    debug!("now try to check if {c2} implies {c}");
                     let check = Constraint::mk_implies(c2, c.clone());
+                    debug!("{check}");
                     if !solver.solve_with_universal_quantifiers(&check).is_sat() {
                         use colored::Colorize;
                         warn!("{}", "fail!".red());
@@ -689,9 +701,11 @@ fn interpolate_preds(
         {
             let mut solver = smt::default_solver();
             crate::title!("strongest");
+            debug!("{strongest}");
             // adhoc: to print the formula
             solver.solve(&strongest_tmp, &HashSet::new());
             crate::title!("weakest");
+            debug!("{weakest}");
             solver.solve(&weakest, &HashSet::new());
             // check weakest => c => strongest
             let arrow3 = Constraint::mk_implies(weakest.clone(), strongest_tmp.clone());
@@ -712,7 +726,10 @@ fn interpolate_preds(
             assert!(solver.solve(&arrow2, &HashSet::new()).is_sat());
         }
 
-        debug!("interpolated: {}", c);
+        let s: String = arg_vars
+            .iter()
+            .fold("".to_string(), |x, y| format!("{x} {y}, "));
+        debug!("interpolated: {}({s}) = {c}", p);
         model.model.insert(*p, (arg_vars, c));
     }
     model
@@ -780,6 +797,8 @@ pub fn solve(chc: &Vec<CHC>, config: &InterpolationConfig) -> Model {
                 &least_model,
                 chc
             ));
+            crate::title!("least_model");
+            debug!("{least_model}");
 
             interpolate_preds(
                 chc,

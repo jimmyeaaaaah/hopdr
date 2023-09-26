@@ -108,14 +108,7 @@ fn parse_expression_to_constraint(e: &parse::Expr) -> Constraint {
             | parse::ExprKind::And(_, _)
             | parse::ExprKind::Or(_, _) => panic!("program error"),
 
-            parse::ExprKind::Var(x) => match env.get(x.as_str()) {
-                Some(v) => Op::mk_var(*v),
-                None => {
-                    let v = Ident::fresh();
-                    env.insert(x, v);
-                    Op::mk_var(v)
-                }
-            },
+            parse::ExprKind::Var(x) => Op::mk_var(Ident::parse_ident(x).unwrap()),
             parse::ExprKind::Num(v) => Op::mk_const(*v),
             parse::ExprKind::Op(o, x, y) => {
                 let x = arith(x, env);

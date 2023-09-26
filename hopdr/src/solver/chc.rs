@@ -267,7 +267,7 @@ impl<'a> LetEnv<'a> {
     }
 }
 
-fn parse_predicate_variable(v: &str) -> Ident {
+pub fn parse_predicate_variable(v: &str) -> Ident {
     assert!(v.starts_with('x'));
     Ident::parse_ident(&v[1..]).unwrap_or_else(|| panic!("parse fail"))
 }
