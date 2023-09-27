@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use super::smt::{constraint_to_smt2_inner, encode_ident, z3_solver};
 use super::SMTSolverType;
 use crate::formula::chc::Model;
@@ -101,7 +103,20 @@ fn parse_predicate(kind_str: &str) -> PredKind {
         _ => panic!("unknown operator: {}", kind_str),
     }
 }
-fn parse_constraint_cons(cons: &Cons) -> Constraint {
+fn parse_let_arg<'a>(v: &'a Value, env: &mut HashMap<String, Constraint>) -> (String, Constraint) {
+    println!("let arg: {:?}", v);
+    let cons = v
+        .as_cons()
+        .unwrap_or_else(|| panic!("parse error: {:?}", v));
+    println!("body: {:?}", cons.cdr().as_cons().unwrap().car());
+    let varname = cons
+        .car()
+        .as_symbol()
+        .unwrap_or_else(|| panic!("parse error: {:?}", v));
+    let expr = parse_constraint(cons.cdr().as_cons().unwrap().car(), env);
+    (varname.to_string(), expr)
+}
+fn parse_constraint_cons(cons: &Cons, env: &mut HashMap<String, Constraint>) -> Constraint {
     let cons_str = cons
         .car()
         .as_symbol()
@@ -114,7 +129,7 @@ fn parse_constraint_cons(cons: &Cons) -> Constraint {
                 .as_cons()
                 .unwrap_or_else(|| panic!("parse error: {:?}", cons_str))
                 .iter()
-                .map(|v| parse_constraint(v.car()))
+                .map(|v| parse_constraint(v.car(), env))
                 .collect();
             // TODO: implement cases where there are more than two arguments
             assert_eq!(args.len(), 2);
@@ -138,10 +153,34 @@ fn parse_constraint_cons(cons: &Cons) -> Constraint {
                         .as_cons()
                         .unwrap_or_else(|| panic!("parse error: {:?}", cons_str))
                         .iter()
-                        .map(|v| parse_constraint(v.car()))
+                        .map(|v| parse_constraint(v.car(), env))
                         .collect();
                     assert_eq!(args.len(), 1);
                     args[0].negate().unwrap()
+                }
+                "let" => {
+                    let args: Vec<_> = cons
+                        .cdr()
+                        .as_cons()
+                        .unwrap_or_else(|| panic!("parse error: {:?}", cons_str))
+                        .iter()
+                        .cloned()
+                        .collect();
+                    assert_eq!(args.len(), 2);
+                    let (varname, expr) =
+                        parse_let_arg(args[0].car().as_cons().unwrap().car(), env);
+                    let old = env.insert(varname.clone(), expr);
+                    println!("parse_constriant: {:?}", args[1].car());
+                    let c = parse_constraint(args[1].car(), env);
+                    match old {
+                        Some(old_expr) => {
+                            env.insert(varname, old_expr);
+                        }
+                        None => {
+                            env.remove(&varname);
+                        }
+                    }
+                    c
                 }
                 _ => {
                     let pred = parse_predicate(kind_str);
@@ -162,13 +201,14 @@ fn parse_constraint_cons(cons: &Cons) -> Constraint {
     }
 }
 
-fn parse_constraint(v: &Value) -> Constraint {
+fn parse_constraint(v: &Value, env: &mut HashMap<String, Constraint>) -> Constraint {
     match v {
         Value::Bool(t) if *t => Constraint::mk_true(),
         Value::Symbol(s) if s.as_ref() == "true" => Constraint::mk_true(),
         Value::Bool(_) => Constraint::mk_false(),
         Value::Symbol(s) if s.as_ref() == "false" => Constraint::mk_false(),
-        Value::Cons(cons) => parse_constraint_cons(cons),
+        Value::Cons(cons) => parse_constraint_cons(cons, env),
+        Value::Symbol(s) if env.contains_key(s.as_ref()) => env.get(s.as_ref()).unwrap().clone(),
         Value::Nil
         | Value::Null
         | Value::Number(_)
@@ -183,20 +223,22 @@ fn parse_constraint(v: &Value) -> Constraint {
 
 #[test]
 fn test_parse_constraint() {
+    let mut env = HashMap::new();
+    let env = &mut env;
     use crate::formula::AlphaEquivalence;
     let s = "(= x_x1 0)";
     let x = lexpr::from_str(s).unwrap();
-    let c = parse_constraint(&x);
+    let c = parse_constraint(&x, env);
     let x = Ident::fresh();
     let c2 = Constraint::mk_eq(Op::mk_var(x), Op::mk_const(0));
     assert!(c.alpha_equiv(&c2));
 
     let x = lexpr::from_str("#t").unwrap();
-    let c = parse_constraint(&x);
+    let c = parse_constraint(&x, env);
     assert!(c.alpha_equiv(&Constraint::mk_true()));
 
     let x = lexpr::from_str("#f").unwrap();
-    let c = parse_constraint(&x);
+    let c = parse_constraint(&x, env);
     assert!(c.alpha_equiv(&Constraint::mk_false()));
 }
 
@@ -236,7 +278,7 @@ impl QESolver {
             x.iter()
                 .map(|x| x.car())
                 .filter(filter_value)
-                .map(parse_constraint)
+                .map(|x| parse_constraint(x, &mut HashMap::new()))
                 .fold(Constraint::mk_true(), Constraint::mk_conj)
         } else {
             panic!("parse error: qe smt2 formula {} ({:?})", s, x)
@@ -306,7 +348,18 @@ fn test_z3_qe_result() {
     let c2 = Constraint::mk_geq(o, Op::mk_const(0));
 
     let c = z3_solver.parse(s).unwrap();
-    assert!(c.alpha_equiv(&c2))
+    assert!(c.alpha_equiv(&c2));
+
+    let s = "(goals
+(goal
+  (>= xx_9291 1)
+  (>= xx_9292 0)
+  (let ((a!1 (or (not (>= xx_9292 0)) (<= (+ xx_9291 (* (- 1) xx_9292)) 0))))
+    (not (and (not (<= xx_9291 0)) a!1)))
+  (>= xx_9292 0)
+  :precision precise :depth 1)
+)    ";
+    z3_solver.parse(s).unwrap();
 }
 
 #[test]
