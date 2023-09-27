@@ -4,7 +4,7 @@ use nom::{
     branch::alt,
     bytes::complete::{tag, take_while},
     character::complete::{alpha1, alphanumeric1, char, digit1, one_of},
-    combinator::{map, map_res},
+    combinator::{map, map_res, opt},
     error::ParseError,
     multi::{fold_many0, many0, separated_list},
     sequence::{pair, preceded},
@@ -52,9 +52,11 @@ fn parse_bool<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Ex
     ))(input)
 }
 
-// 負の数
 fn parse_num<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Expr, E> {
-    let (input, num) = map_res(preceded(sp, digit1), FromStr::from_str)(input)?;
+    // handle negative number
+    let (input, sign) = opt(preceded(sp, char('-')))(input)?;
+    let (input, num): (_, i64) = map_res(preceded(sp, digit1), FromStr::from_str)(input)?;
+    let num = if sign.is_some() { -num } else { num };
     Ok((input, Expr::mk_num(num)))
 }
 
@@ -91,7 +93,7 @@ fn parse_neg<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Exp
 }
 
 fn parse_atom<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Expr, E> {
-    alt((parse_par, parse_neg, parse_num, parse_bool, parse_var))(input)
+    alt((parse_par, parse_num, parse_neg, parse_bool, parse_var))(input)
 }
 
 fn parse_arith2<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Expr, E> {
@@ -219,6 +221,26 @@ fn test_parse_expr() {
             Expr::mk_or(
                 Expr::mk_true(),
                 Expr::mk_and(Expr::mk_false(), Expr::mk_false()),
+            ),
+        ),
+        (
+            "(-2*x_397 + 2*x_398) <= 0",
+            Expr::mk_pred(
+                PredKind::Leq,
+                Expr::mk_op(
+                    OpKind::Add,
+                    Expr::mk_op(
+                        OpKind::Mul,
+                        Expr::mk_num(-2),
+                        Expr::mk_var("x_397".to_string()),
+                    ),
+                    Expr::mk_op(
+                        OpKind::Mul,
+                        Expr::mk_num(2),
+                        Expr::mk_var("x_398".to_string()),
+                    ),
+                ),
+                Expr::mk_num(0),
             ),
         ),
     ];

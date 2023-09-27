@@ -502,6 +502,7 @@ impl Interpolation for CsisatSolver {
 
         let s = self.execute_solver(&query);
         crate::title!("csisat");
+        debug!("query: {}", query);
         debug!("result: {}", s);
         let reason =
             format!("interpolation failed: {left} ; {right}, query: {query}, solver's output: {s}");
