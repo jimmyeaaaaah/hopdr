@@ -1,7 +1,7 @@
 use super::smt::{constraint_to_smt2_inner, encode_ident, z3_solver};
 use super::SMTSolverType;
 use crate::formula::chc::Model;
-use crate::formula::{Bot, Constraint, Fv, Ident, Logic, Op, OpKind, PredKind, Top};
+use crate::formula::{Bot, Constraint, Fv, Ident, Logic, Negation, Op, OpKind, PredKind, Top};
 use lexpr::Value;
 use lexpr::{self, Cons};
 
@@ -91,10 +91,7 @@ fn test_parse_op() {
     assert!(o1.alpha_equiv(&o2));
 }
 
-fn parse_predicate(expr: &Value) -> PredKind {
-    let kind_str = expr
-        .as_symbol()
-        .unwrap_or_else(|| panic!("parse error: {:?}", expr));
+fn parse_predicate(kind_str: &str) -> PredKind {
     match kind_str {
         "=" => PredKind::Eq,
         "<" => PredKind::Lt,
@@ -130,18 +127,37 @@ fn parse_constraint_cons(cons: &Cons) -> Constraint {
             }
         }
         _ => {
-            let pred = parse_predicate(cons.car());
-            let args: Vec<_> = cons
-                .cdr()
-                .as_cons()
-                .unwrap_or_else(|| panic!("parse error: {:?}", cons_str))
-                .iter()
-                .map(|v| parse_op(v.car()))
-                .collect();
-            // currently, we don't care about the predicates that take more than
-            // two arguments; so if there is, then it must can cause some bugs.
-            assert_eq!(args.len(), 2);
-            Constraint::mk_pred(pred, args)
+            let expr = cons.car();
+            let kind_str = expr
+                .as_symbol()
+                .unwrap_or_else(|| panic!("parse error: {:?}", expr));
+            match kind_str {
+                "not" => {
+                    let args: Vec<_> = cons
+                        .cdr()
+                        .as_cons()
+                        .unwrap_or_else(|| panic!("parse error: {:?}", cons_str))
+                        .iter()
+                        .map(|v| parse_constraint(v.car()))
+                        .collect();
+                    assert_eq!(args.len(), 1);
+                    args[0].negate().unwrap()
+                }
+                _ => {
+                    let pred = parse_predicate(kind_str);
+                    let args: Vec<_> = cons
+                        .cdr()
+                        .as_cons()
+                        .unwrap_or_else(|| panic!("parse error: {:?}", cons_str))
+                        .iter()
+                        .map(|v| parse_op(v.car()))
+                        .collect();
+                    // currently, we don't care about the predicates that take more than
+                    // two arguments; so if there is, then it must can cause some bugs.
+                    assert_eq!(args.len(), 2);
+                    Constraint::mk_pred(pred, args)
+                }
+            }
         }
     }
 }
