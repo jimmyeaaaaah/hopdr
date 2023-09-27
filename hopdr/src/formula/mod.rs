@@ -1061,6 +1061,27 @@ impl Constraint {
         let (_, c) = self.prenex_normal_form_raw(&mut HashSet::new());
         c
     }
+    pub fn replace_exists_with_fresh_var(&self) -> Constraint {
+        match self.kind() {
+            ConstraintExpr::True | ConstraintExpr::False | ConstraintExpr::Pred(_, _) => {
+                self.clone()
+            }
+            ConstraintExpr::Conj(x, y) => {
+                let left = x.replace_exists_with_fresh_var();
+                let right = y.replace_exists_with_fresh_var();
+                Constraint::mk_conj(left, right)
+            }
+            ConstraintExpr::Disj(x, y) => {
+                let left = x.replace_exists_with_fresh_var();
+                let right = y.replace_exists_with_fresh_var();
+                Constraint::mk_disj(left, right)
+            }
+            ConstraintExpr::Quantifier(p, x, c) if *p == QuantifierKind::Existential => c
+                .rename(&x.id, &Ident::fresh())
+                .replace_exists_with_fresh_var(),
+            _ => panic!("program error"),
+        }
+    }
     pub fn to_pnf_raw(&self) -> (Vec<(QuantifierKind, Variable)>, Constraint) {
         self.prenex_normal_form_raw(&mut HashSet::new())
     }

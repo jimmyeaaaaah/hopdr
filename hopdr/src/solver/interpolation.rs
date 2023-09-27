@@ -694,9 +694,13 @@ fn interpolate_preds(
         // calculate SMTInterpol("weakest", not "strongest")
         let strongest_tmp = strongest.clone();
         let strongest = strongest.negate().unwrap();
+        debug!("before pnf");
+        debug!("{strongest}");
+        debug!("{weakest}");
         // translate constraints to prenex normal form
-        let strongest = strongest.to_pnf();
-        let weakest = weakest.to_pnf();
+        // bug here
+        let strongest = strongest.replace_exists_with_fresh_var();
+        let weakest = weakest.replace_exists_with_fresh_var();
         #[cfg(debug_assertions)]
         {
             let mut solver = smt::default_solver();
