@@ -132,7 +132,7 @@ fn parse_and<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Exp
     let (input, e1) = preceded(sp, parse_app)(input)?;
     fold_many0(
         pair(
-            preceded(sp, alt((tag("&&"), tag("/\\")))),
+            preceded(sp, alt((tag("&&"), tag("&"), tag("/\\")))),
             preceded(sp, parse_app),
         ),
         e1,
@@ -144,7 +144,7 @@ fn parse_or<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Expr
     let (input, e1) = preceded(sp, parse_and)(input)?;
     fold_many0(
         pair(
-            preceded(sp, alt((tag("||"), tag("\\/")))),
+            preceded(sp, alt((tag("||"), tag("|"), tag("\\/")))),
             preceded(sp, parse_and),
         ),
         e1,

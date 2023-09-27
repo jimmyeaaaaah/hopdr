@@ -30,8 +30,17 @@ fn op_to_csisat(o: &Op) -> String {
         OpExpr::Op(opkind, o1, o2) => {
             let lhs = op_to_csisat(o1);
             let rhs = op_to_csisat(o2);
-            let k = opkind.to_string();
-            format!("({lhs} {k} {rhs})")
+
+            match opkind {
+                crate::formula::OpKind::Sub => {
+                    format!("({lhs} + (- ({rhs})))")
+                }
+                crate::formula::OpKind::Add | crate::formula::OpKind::Mul => {
+                    let k = opkind.to_string();
+                    format!("({lhs} {k} {rhs})")
+                }
+                crate::formula::OpKind::Div | crate::formula::OpKind::Mod => unimplemented!(),
+            }
         }
         OpExpr::Var(v) => v.to_string(),
         OpExpr::Const(c) => c.to_string(),
@@ -46,11 +55,15 @@ pub(super) fn constraint_to_csisat(c: &Constraint) -> String {
         ConstraintExpr::Pred(p, l) if l.len() == 2 => {
             let lhs = op_to_csisat(&l[0]);
             let rhs = op_to_csisat(&l[1]);
-            if *p == PredKind::Neq {
-                return format!("(not ({lhs} = {rhs}))");
+            match p {
+                PredKind::Neq => format!("(not ({lhs} = {rhs}))"),
+                PredKind::Gt => format!("({rhs} < {lhs})"),
+                PredKind::Geq => format!("({rhs} <= {lhs})"),
+                _ => {
+                    let p = p.to_string();
+                    format!("({lhs} {p} {rhs})")
+                }
             }
-            let p = p.to_string();
-            format!("({lhs} {p} {rhs})")
         }
         ConstraintExpr::Pred(_, _) => {
             unimplemented!("interpolation by csisat for formulas that contain a predicate that takes more than two is not supported");
@@ -93,11 +106,17 @@ fn parse_expression_to_constraint(e: &parse::Expr) -> Constraint {
             parse::ExprKind::Var(_) | parse::ExprKind::Num(_) | parse::ExprKind::Op(_, _, _) => {
                 panic!("program error")
             }
-            parse::ExprKind::App(_, _)
-            | parse::ExprKind::Fix(_, _, _)
+            parse::ExprKind::App(x, y) => match x.kind() {
+                parse::ExprKind::Var(pred) if pred == "not" => {
+                    let y = expr(y, env);
+                    y.negate().unwrap()
+                }
+                _ => panic!("program error: failed to handle {}", e),
+            },
+            parse::ExprKind::Fix(_, _, _)
             | parse::ExprKind::Abs(_, _)
             | parse::ExprKind::Univ(_, _)
-            | parse::ExprKind::Exist(_, _) => panic!("program error"),
+            | parse::ExprKind::Exist(_, _) => panic!("program error: failed to handle {}", e),
         }
     }
     fn arith<'a>(e: &'a parse::Expr, env: &mut HashMap<&'a str, Ident>) -> Op {
@@ -164,4 +183,7 @@ fn parse_csisat() {
         }
         _ => panic!("program error"),
     }
+
+    let s = " (x_1193 < 0 | -1*x_1194 <= -1)";
+    let c = parse(s).unwrap();
 }

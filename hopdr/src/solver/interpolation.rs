@@ -479,7 +479,12 @@ impl Interpolation for SMTInterpolSolver {
 impl CsisatSolver {
     fn execute_solver(&mut self, query: &str) -> String {
         let out = interp_execution!({
-            util::exec_input_with_timeout("csisat", &[], query.as_bytes(), Duration::from_secs(1))
+            util::exec_input_with_timeout(
+                "csisat",
+                &["-int", "-round"],
+                query.as_bytes(),
+                Duration::from_secs(1),
+            )
         });
         String::from_utf8(out).unwrap()
     }
