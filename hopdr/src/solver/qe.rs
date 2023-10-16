@@ -104,11 +104,11 @@ fn parse_predicate(kind_str: &str) -> PredKind {
     }
 }
 fn parse_let_arg<'a>(v: &'a Value, env: &mut HashMap<String, Constraint>) -> (String, Constraint) {
-    println!("let arg: {:?}", v);
+    debug!("let arg: {:?}", v);
     let cons = v
         .as_cons()
         .unwrap_or_else(|| panic!("parse error: {:?}", v));
-    println!("body: {:?}", cons.cdr().as_cons().unwrap().car());
+    debug!("body: {:?}", cons.cdr().as_cons().unwrap().car());
     let varname = cons
         .car()
         .as_symbol()
@@ -133,12 +133,14 @@ fn parse_constraint_cons(cons: &Cons, env: &mut HashMap<String, Constraint>) -> 
                 .collect();
             // TODO: implement cases where there are more than two arguments
             assert_eq!(args.len(), 2);
-            let x = args[0].clone();
-            let y = args[1].clone();
             if cons_str == "and" {
-                Constraint::mk_conj(x, y)
+                args.iter().fold(Constraint::mk_true(), |x, y| {
+                    Constraint::mk_conj(x, y.clone())
+                })
             } else {
-                Constraint::mk_disj(x, y)
+                args.iter().fold(Constraint::mk_false(), |x, y| {
+                    Constraint::mk_disj(x, y.clone())
+                })
             }
         }
         _ => {
@@ -258,6 +260,7 @@ impl QESolver {
         )
     }
     fn parse(&self, s: &str) -> Result<Constraint, lexpr::parse::Error> {
+        debug!("qe parsing: {s}");
         fn filter_value(v: &&Value) -> bool {
             let symbols = [":precision", "goal", "precise", ":depth"];
             match v {
