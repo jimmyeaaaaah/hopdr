@@ -1298,7 +1298,8 @@ fn handle_app(
                     let arg_pts = arg_t.iter().map(|t| {
                         // check if arg_constraint |- argg: arg_t
                         debug!("arg_t: {t}");
-                        handle_abs(config, tenv, ienv, all_coefficients, argg, t, cty)
+                        let cty = cty.push(t.rty_no_exists());
+                        handle_abs(config, tenv, ienv, all_coefficients, argg, t, &cty)
                     });
                     // Assume pred_pt = t1 /\ t2 -> t
                     // then, we have to derive arg_t: t1 and arg_t: t2
