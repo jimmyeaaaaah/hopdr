@@ -856,9 +856,10 @@ pub fn solve(chc: &Vec<CHC>, config: &InterpolationConfig) -> Model {
                     qe_solver.model_quantifer_elimination(&mut m);
                     m
                 }
-                solver::chc::CHCResult::Unsat
-                | solver::chc::CHCResult::Unknown
-                | solver::chc::CHCResult::Timeout => panic!("program error"),
+                solver::chc::CHCResult::Unsat => panic!("program error: unsat!"),
+                solver::chc::CHCResult::Unknown | solver::chc::CHCResult::Timeout => {
+                    panic!("program error")
+                }
             }
         }
         None => panic!("constraints contain a cycle"),
