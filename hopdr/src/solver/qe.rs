@@ -132,7 +132,6 @@ fn parse_constraint_cons(cons: &Cons, env: &mut HashMap<String, Constraint>) -> 
                 .map(|v| parse_constraint(v.car(), env))
                 .collect();
             // TODO: implement cases where there are more than two arguments
-            assert_eq!(args.len(), 2);
             if cons_str == "and" {
                 args.iter().fold(Constraint::mk_true(), |x, y| {
                     Constraint::mk_conj(x, y.clone())
@@ -169,17 +168,22 @@ fn parse_constraint_cons(cons: &Cons, env: &mut HashMap<String, Constraint>) -> 
                         .cloned()
                         .collect();
                     assert_eq!(args.len(), 2);
-                    let (varname, expr) =
-                        parse_let_arg(args[0].car().as_cons().unwrap().car(), env);
-                    let old = env.insert(varname.clone(), expr);
-                    println!("parse_constriant: {:?}", args[1].car());
+                    let mut olds = Vec::new();
+                    for v in args[0].car().as_cons().unwrap().into_iter() {
+                        let (varname, expr) = parse_let_arg(v.car(), env);
+                        let old = env.insert(varname.clone(), expr);
+                        olds.push((varname, old));
+                    }
+                    debug!("parse_constriant: {:?}", args[1].car());
                     let c = parse_constraint(args[1].car(), env);
-                    match old {
-                        Some(old_expr) => {
-                            env.insert(varname, old_expr);
-                        }
-                        None => {
-                            env.remove(&varname);
+                    for (varname, old) in olds.into_iter() {
+                        match old {
+                            Some(old_expr) => {
+                                env.insert(varname, old_expr);
+                            }
+                            None => {
+                                env.remove(&varname);
+                            }
                         }
                     }
                     c
@@ -211,12 +215,18 @@ fn parse_constraint(v: &Value, env: &mut HashMap<String, Constraint>) -> Constra
         Value::Symbol(s) if s.as_ref() == "false" => Constraint::mk_false(),
         Value::Cons(cons) => parse_constraint_cons(cons, env),
         Value::Symbol(s) if env.contains_key(s.as_ref()) => env.get(s.as_ref()).unwrap().clone(),
+        Value::Symbol(s) => {
+            println!("environments:");
+            for (k, v) in env.iter() {
+                println!("{}: {}", k, v);
+            }
+            panic!("failed to handle symbol: {:?}", s)
+        }
         Value::Nil
         | Value::Null
         | Value::Number(_)
         | Value::Char(_)
         | Value::String(_)
-        | Value::Symbol(_)
         | Value::Keyword(_)
         | Value::Bytes(_)
         | Value::Vector(_) => panic!("parse error: {:?}", v),
@@ -362,6 +372,25 @@ fn test_z3_qe_result() {
   (>= xx_9292 0)
   :precision precise :depth 1)
 )    ";
+    z3_solver.parse(s).unwrap();
+
+    let s = "(goals
+(goal
+  (let ((a!1 (and (not false)
+                  (not (<= xx_25532 (- 1)))
+                  (= 0 0)
+                  (<= (+ xx_25532 (* (- 1) xx_25530)) (- 1))))
+        (a!4 (and (= 0 0)
+                  (< (* (- 1) xx_25530) 0)
+                  (not (<= xx_25530 0))
+                  (= xx_25531 0)
+                  (not (<= 0 xx_25530))
+                  false)))
+  (let ((a!2 (or a!1 (and (not (>= xx_25532 0)) true (= 0 0) (>= xx_25530 0)))))
+  (let ((a!3 (not (and (not (<= xx_25530 0)) (= xx_25531 0) a!2))))
+    (or (>= (* (- 1) xx_25530) 0) a!3 a!4))))
+  :precision precise :depth 1)
+)";
     z3_solver.parse(s).unwrap();
 }
 

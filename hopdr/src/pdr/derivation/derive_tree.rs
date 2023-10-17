@@ -10,7 +10,7 @@ use crate::{formula::*, highlight};
 
 use rpds::{HashTrieMap, Stack};
 
-const PRINT_ASSUMPTION: bool = false;
+const PRINT_ASSUMPTION: bool = true;
 
 #[derive(Clone, Debug)]
 pub(super) struct DeriveNode {
