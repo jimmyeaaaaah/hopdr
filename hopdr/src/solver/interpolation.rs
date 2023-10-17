@@ -844,7 +844,7 @@ pub fn solve(chc: &Vec<CHC>, config: &InterpolationConfig) -> Model {
                 &n_args,
                 &least_model,
                 InterpolationSolver::default_solver(),
-                InterpolationSolver::get_solver(InterpolationSolver::Spacer),
+                InterpolationSolver::get_solver(InterpolationSolver::Hoice),
             )
         }
         None if config.use_chc_if_requied => {
