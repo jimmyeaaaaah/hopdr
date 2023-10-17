@@ -11,6 +11,7 @@
 
 use crate::formula::chc;
 use crate::formula::chc::Model;
+use crate::formula::hes::Const;
 use crate::formula::Fv;
 use crate::formula::Op;
 use crate::formula::Subst;
@@ -50,6 +51,7 @@ pub enum InterpolationSolver {
     SMTInterpol,
     Csisat,
     Spacer,
+    Hoice,
 }
 
 // topological sort
@@ -365,12 +367,14 @@ macro_rules! interp_execution {
 struct SMTInterpolSolver {}
 struct CsisatSolver {}
 struct SpacerSolver {}
+struct HoiceSolver {}
 impl InterpolationSolver {
     pub fn get_solver(sol: InterpolationSolver) -> Box<dyn Interpolation> {
         match sol {
             InterpolationSolver::SMTInterpol => Box::new(SMTInterpolSolver {}),
             InterpolationSolver::Csisat => Box::new(CsisatSolver {}),
             InterpolationSolver::Spacer => Box::new(SpacerSolver {}),
+            InterpolationSolver::Hoice => Box::new(HoiceSolver {}),
         }
     }
     pub fn default_solver() -> Box<dyn Interpolation> {
@@ -468,11 +472,11 @@ impl SMTInterpolSolver {
     }
 }
 impl Interpolation for SMTInterpolSolver {
-    fn interpolate(&mut self, left: &Constraint, right: &Constraint) -> Constraint {
+    fn interpolate(&mut self, left: &Constraint, right: &Constraint) -> Option<Constraint> {
         let (s, fvs) = self.generate_smt_string(left, right);
         //panic!("{}", s);
         let r = self.execute_solver(s);
-        self.parse_result(r, fvs).unwrap()
+        self.parse_result(r, fvs).ok()
     }
 }
 
@@ -494,7 +498,7 @@ impl CsisatSolver {
 }
 
 impl Interpolation for CsisatSolver {
-    fn interpolate(&mut self, left: &Constraint, right: &Constraint) -> Constraint {
+    fn interpolate(&mut self, left: &Constraint, right: &Constraint) -> Option<Constraint> {
         let lefts = super::csisat::constraint_to_csisat(left);
         let rights = super::csisat::constraint_to_csisat(right);
 
@@ -504,9 +508,16 @@ impl Interpolation for CsisatSolver {
         crate::title!("csisat");
         debug!("query: {}", query);
         debug!("result: {}", s);
-        let reason =
-            format!("interpolation failed: {left} ; {right}, query: {query}, solver's output: {s}");
-        self.parse_result(s).expect(&reason)
+        let r = self.parse_result(s.clone());
+        match r {
+            Some(r) => Some(r),
+            None => {
+                debug!(
+                    "interpolation failed: {left} ; {right}, query: {query}, solver's output: {s}"
+                );
+                None
+            }
+        }
     }
 }
 
@@ -516,50 +527,63 @@ fn test_csisat() {
     let c1 = Constraint::mk_eq(Op::mk_var(x), Op::mk_const(1));
     let c2 = Constraint::mk_eq(Op::mk_var(x), Op::mk_const(2));
     let mut sol = CsisatSolver {};
-    let s = sol.interpolate(&c1, &c2);
+    let s = sol.interpolate(&c1, &c2).unwrap();
     println!("{}", s);
 }
 
+fn interpolate_by_chc(left: &Constraint, right: &Constraint, style: CHCStyle) -> Constraint {
+    use crate::solver::chc::chc_solver;
+
+    debug!("{left} => {right}");
+    let right = right.negate().unwrap();
+    let fvs1 = left.fv();
+    let fvs2 = right.fv();
+    let fvs = fvs1.intersection(&fvs2);
+    let p = Ident::fresh();
+    let args: Vec<_> = fvs.into_iter().map(|i| Op::mk_var(*i)).collect();
+    let a = chc::Atom::new(p, args.clone());
+    let h1 = chc::CHCHead::Predicate(a.clone());
+    let b1 = chc::CHCBody {
+        predicates: Vec::new(),
+        constraint: left.clone(),
+    };
+    let h2 = chc::CHCHead::Constraint(Constraint::mk_false());
+    let b2 = chc::CHCBody {
+        predicates: vec![a],
+        constraint: right.negate().unwrap(),
+    };
+    let c1 = chc::CHC { head: h1, body: b1 };
+    let c2 = chc::CHC { head: h2, body: b2 };
+    let clauses = vec![c1, c2];
+    let mut solver = chc_solver(style);
+    let (idents, mut c) = match solver.solve(&clauses) {
+        solver::chc::CHCResult::Sat(m) => m.model.get(&p).unwrap().clone(),
+        solver::chc::CHCResult::Unsat
+        | solver::chc::CHCResult::Unknown
+        | solver::chc::CHCResult::Timeout => panic!("interpolation failed"),
+    };
+    assert_eq!(idents.len(), args.len());
+    for (i, o) in idents.into_iter().zip(args.into_iter()) {
+        c = c.subst(&i, &o);
+    }
+    c
+}
+
 impl Interpolation for SpacerSolver {
-    fn interpolate(&mut self, left: &Constraint, right: &Constraint) -> Constraint {
-        println!("{left} => {right}");
-        use crate::solver::chc::chc_solver;
-        let mut fvs = left.fv();
-        right.fv_with_vec(&mut fvs);
-        let p = Ident::fresh();
-        let args: Vec<_> = fvs.iter().map(|i| Op::mk_var(*i)).collect();
-        let a = chc::Atom::new(p, args.clone());
-        let h1 = chc::CHCHead::Predicate(a.clone());
-        let b1 = chc::CHCBody {
-            predicates: Vec::new(),
-            constraint: left.clone(),
-        };
-        let h2 = chc::CHCHead::Constraint(Constraint::mk_false());
-        let b2 = chc::CHCBody {
-            predicates: vec![a],
-            constraint: right.negate().unwrap(),
-        };
-        let c1 = chc::CHC { head: h1, body: b1 };
-        let c2 = chc::CHC { head: h2, body: b2 };
-        let clauses = vec![c1, c2];
-        let mut solver = chc_solver(CHCStyle::Spacer);
-        let (idents, mut c) = match solver.solve(&clauses) {
-            solver::chc::CHCResult::Sat(m) => m.model.get(&p).unwrap().clone(),
-            solver::chc::CHCResult::Unsat
-            | solver::chc::CHCResult::Unknown
-            | solver::chc::CHCResult::Timeout => panic!("interpolation failed"),
-        };
-        assert_eq!(idents.len(), args.len());
-        for (i, o) in idents.into_iter().zip(args.into_iter()) {
-            c = c.subst(&i, &o);
-        }
-        c
+    fn interpolate(&mut self, left: &Constraint, right: &Constraint) -> Option<Constraint> {
+        Some(interpolate_by_chc(left, right, CHCStyle::Spacer))
+    }
+}
+
+impl Interpolation for HoiceSolver {
+    fn interpolate(&mut self, left: &Constraint, right: &Constraint) -> Option<Constraint> {
+        Some(interpolate_by_chc(left, right, CHCStyle::Hoice))
     }
 }
 
 pub trait Interpolation {
     /// calculates psi where left => psi and psi => right where fv(psi) ⊂ fv(left) ∪ fv(right)
-    fn interpolate(&mut self, left: &Constraint, right: &Constraint) -> Constraint;
+    fn interpolate(&mut self, left: &Constraint, right: &Constraint) -> Option<Constraint>;
 }
 
 fn generate_least_solution(
@@ -619,6 +643,7 @@ fn interpolate_preds(
     n_args: &HashMap<Ident, usize>,
     least_model: &Model,
     mut solver: Box<dyn Interpolation>,
+    mut backup_solver: Box<dyn Interpolation>,
 ) -> Model {
     crate::title!("intepolate_preds");
     debug_assert!(crate::solver::chc::is_solution_valid(chc, least_model));
@@ -723,7 +748,10 @@ fn interpolate_preds(
         }
         // interpolation:
         crate::title!("trying to interpolate...");
-        let c = solver.interpolate(&weakest, &strongest);
+        let c = solver
+            .interpolate(&weakest, &strongest)
+            .or_else(|| backup_solver.interpolate(&weakest, &strongest))
+            .unwrap();
 
         #[cfg(debug_assertions)]
         {
@@ -816,6 +844,7 @@ pub fn solve(chc: &Vec<CHC>, config: &InterpolationConfig) -> Model {
                 &n_args,
                 &least_model,
                 InterpolationSolver::default_solver(),
+                InterpolationSolver::get_solver(InterpolationSolver::Spacer),
             )
         }
         None if config.use_chc_if_requied => {
