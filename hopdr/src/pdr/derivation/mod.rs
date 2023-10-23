@@ -1016,7 +1016,10 @@ impl Context {
         // 4. solve the constraints by using the interpolation solver
         match solver::chc::default_solver().solve(&clauses) {
             solver::chc::CHCResult::Sat(m) => Some((m, clauses, derivation)),
-            solver::chc::CHCResult::Unsat => None,
+            solver::chc::CHCResult::Unsat => {
+                // this should not happen?
+                panic!("fail!")
+            }
             solver::chc::CHCResult::Unknown => {
                 panic!(
                     "PDR fails to infer a refinement type due to the background CHC solver's error"

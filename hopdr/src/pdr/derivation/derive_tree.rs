@@ -666,8 +666,6 @@ impl Derivation {
                 update_app_branchs(t, child, ident, op);
             }
         }
-        pdebug!("update parents");
-        pdebug!(self.tree);
         self.tree
             .update_parent_until(target_id, |t, cur, prev| {
                 let n = t.get_node_by_id(cur).item;
@@ -866,6 +864,7 @@ impl Derivation {
     }
     fn update_expr_inner(
         &mut self,
+        context: Stack<Atom>,
         node_id: ID,
         expr: &G,
         mut alpha_renaming_map: Stack<(Ident, Ident)>,
@@ -885,11 +884,11 @@ impl Derivation {
         node.ty = retrieve_ty_alpha_renaming(&old_ty, alpha_renaming_map.clone());
 
         // update context
-        let mut context = node.context.clone();
+        let mut context = context.clone();
         for (x, y) in alpha_renaming_map.iter() {
             context = context.iter().map(|a| a.rename(x, y)).collect();
         }
-        node.context = context;
+        node.context = context.clone();
 
         let children: Vec<_> = self
             .tree
@@ -904,15 +903,31 @@ impl Derivation {
             Rule::Conjoin => {
                 let (g1, g2) = expr.conj();
                 assert_eq!(children.len(), 2);
-                self.update_expr_inner(children[0], g1, alpha_renaming_map.clone());
-                self.update_expr_inner(children[1], g2, alpha_renaming_map.clone());
+                self.update_expr_inner(
+                    context.clone(),
+                    children[0],
+                    g1,
+                    alpha_renaming_map.clone(),
+                );
+                self.update_expr_inner(
+                    context.clone(),
+                    children[1],
+                    g2,
+                    alpha_renaming_map.clone(),
+                );
                 Rule::Conjoin
             }
             Rule::Disjoin => {
                 let (g1, g2) = expr.disj();
                 assert_eq!(children.len(), 2);
-                self.update_expr_inner(children[0], g1, alpha_renaming_map.clone());
-                self.update_expr_inner(children[1], g2, alpha_renaming_map.clone());
+
+                let c: Option<Constraint> = g1.clone().into();
+                let c = c.unwrap();
+                let context1 = context.push(c.clone().into());
+                let context2 = context.push(c.negate().unwrap().into());
+
+                self.update_expr_inner(context1, children[0], g1, alpha_renaming_map.clone());
+                self.update_expr_inner(context2, children[1], g2, alpha_renaming_map.clone());
                 Rule::Disjoin
             }
             Rule::Var(i, ty) => {
@@ -929,7 +944,7 @@ impl Derivation {
                 }
 
                 assert_eq!(children.len(), 1);
-                self.update_expr_inner(children[0], g, alpha_renaming_map.clone());
+                self.update_expr_inner(context.clone(), children[0], g, alpha_renaming_map.clone());
                 Rule::Univ
             }
             Rule::IAbs => {
@@ -952,7 +967,7 @@ impl Derivation {
                     _ => (),
                 }
                 assert_eq!(children.len(), 1);
-                self.update_expr_inner(children[0], g, alpha_renaming_map.clone());
+                self.update_expr_inner(context.clone(), children[0], g, alpha_renaming_map.clone());
                 Rule::IAbs
             }
             Rule::Abs(tys) => {
@@ -962,14 +977,14 @@ impl Derivation {
                     .map(|t| retrieve_ty_alpha_renaming(&t, alpha_renaming_map.clone()))
                     .collect();
                 assert_eq!(children.len(), 1);
-                self.update_expr_inner(children[0], g, alpha_renaming_map.clone());
+                self.update_expr_inner(context.clone(), children[0], g, alpha_renaming_map.clone());
                 Rule::Abs(tys)
             }
             Rule::IApp(op) => {
                 let (x, y) = expr.app();
                 let mut op = op.clone();
                 assert_eq!(children.len(), 1);
-                self.update_expr_inner(children[0], x, alpha_renaming_map.clone());
+                self.update_expr_inner(context.clone(), children[0], x, alpha_renaming_map.clone());
 
                 for (x, y) in alpha_renaming_map.iter() {
                     op = op.rename(x, y)
@@ -979,16 +994,26 @@ impl Derivation {
             Rule::App => {
                 let (x, y) = expr.app();
                 assert!(children.len() >= 1);
-                self.update_expr_inner(children[0], x, alpha_renaming_map.clone());
+                self.update_expr_inner(context.clone(), children[0], x, alpha_renaming_map.clone());
                 for i in 1..children.len() {
-                    self.update_expr_inner(children[i], y, alpha_renaming_map.clone());
+                    self.update_expr_inner(
+                        context.clone(),
+                        children[i],
+                        y,
+                        alpha_renaming_map.clone(),
+                    );
                 }
                 Rule::App
             }
             Rule::Subsumption | Rule::Poly(_) => {
                 let rule = n.rule.clone();
                 assert_eq!(children.len(), 1);
-                self.update_expr_inner(children[0], &expr, alpha_renaming_map.clone());
+                self.update_expr_inner(
+                    context.clone(),
+                    children[0],
+                    &expr,
+                    alpha_renaming_map.clone(),
+                );
 
                 let mut expr = expr.clone();
                 reset_expr_for_subsumption(&mut expr);
@@ -997,7 +1022,12 @@ impl Derivation {
             }
             Rule::Equivalence => {
                 assert_eq!(children.len(), 1);
-                self.update_expr_inner(children[0], &expr, alpha_renaming_map.clone());
+                self.update_expr_inner(
+                    context.clone(),
+                    children[0],
+                    &expr,
+                    alpha_renaming_map.clone(),
+                );
 
                 let mut expr = expr.clone();
                 reset_expr_for_subsumption(&mut expr);
@@ -1013,7 +1043,7 @@ impl Derivation {
         //pdebug!("update_expr");
         //pdebug!(self.tree);
         let root_id = self.tree.root().id;
-        self.update_expr_inner(root_id, expr, Stack::new());
+        self.update_expr_inner(Stack::new(), root_id, expr, Stack::new());
     }
 
     fn finalize_subject_expansion(&mut self, reduction: &super::Reduction, target_node: ID) {
@@ -1068,12 +1098,13 @@ impl Derivation {
 
     fn append_int_abs(
         &self,
+        context: Stack<Atom>,
         tree: Tree<DeriveNode>,
         ri: &super::ReductionInfo,
     ) -> Tree<DeriveNode> {
         let dummy = G::mk_true();
         let n = DeriveNode {
-            context: tree.root().item.context.clone(),
+            context,
             rule: Rule::IAbs,
             expr: dummy.clone(),
             ty: Tau::mk_iarrow(ri.old_id, tree.root().item.ty.clone()),
@@ -1083,6 +1114,7 @@ impl Derivation {
 
     fn append_int_app(
         &self,
+        context: Stack<Atom>,
         tree: Tree<DeriveNode>,
         ri: &super::ReductionInfo,
     ) -> Tree<DeriveNode> {
@@ -1090,7 +1122,7 @@ impl Derivation {
         let op: Op = ri.arg.clone().into();
         let (x, ty) = tree.root().item.ty.iarrow();
         let n = DeriveNode {
-            context: tree.root().item.context.clone(),
+            context: context,
             rule: Rule::IApp(op.clone()),
             expr: dummy.clone(),
             ty: ty.subst(x, &op),
@@ -1100,6 +1132,7 @@ impl Derivation {
 
     fn append_pred_abs(
         &self,
+        context: Stack<Atom>,
         tree: Tree<DeriveNode>,
         arg_derivations: &Vec<Derivation>,
     ) -> Tree<DeriveNode> {
@@ -1109,7 +1142,7 @@ impl Derivation {
             .collect();
         let dummy = G::mk_true();
         let n = DeriveNode {
-            context: tree.root().item.context.clone(),
+            context: context,
             rule: Rule::Abs(arg_tys.clone()),
             expr: dummy.clone(),
             ty: Tau::mk_arrow(arg_tys.clone(), tree.root().item.ty.clone()),
@@ -1119,12 +1152,10 @@ impl Derivation {
 
     fn append_pred_app(
         &self,
+        context: Stack<Atom>,
         tree: Tree<DeriveNode>,
         arg_derivations: Vec<Derivation>,
     ) -> Tree<DeriveNode> {
-        debug!("append_pred_app");
-        pdebug!(tree);
-        let context = tree.root().item.context.clone();
         let pred_derivation = Derivation {
             coefficients: Stack::new(),
             tree: tree,
@@ -1135,6 +1166,7 @@ impl Derivation {
 
     pub fn append_abs(
         &self,
+        context: Stack<Atom>,
         t: Tree<DeriveNode>,
         reduction: &super::Reduction,
         derivation_map: &HashMap<usize, Vec<Derivation>>,
@@ -1143,11 +1175,11 @@ impl Derivation {
         for (idx, ri) in reduction.reduction_infos.iter().enumerate().rev() {
             match ri.reduction_type {
                 super::ReductionType::Int(_) => {
-                    subtree = self.append_int_abs(subtree, ri);
+                    subtree = self.append_int_abs(context.clone(), subtree, ri);
                 }
                 super::ReductionType::Pred(_) => {
                     let derivations = derivation_map.get(&idx).unwrap();
-                    subtree = self.append_pred_abs(subtree, derivations);
+                    subtree = self.append_pred_abs(context.clone(), subtree, derivations);
                 }
             }
         }
@@ -1155,6 +1187,7 @@ impl Derivation {
     }
     pub fn append_app(
         &self,
+        context: Stack<Atom>,
         t: Tree<DeriveNode>,
         reduction: &super::Reduction,
         mut derivation_map: HashMap<usize, Vec<Derivation>>,
@@ -1163,11 +1196,11 @@ impl Derivation {
         for (idx, ri) in reduction.reduction_infos.iter().enumerate() {
             match ri.reduction_type {
                 super::ReductionType::Int(_) => {
-                    subtree = self.append_int_app(subtree, ri);
+                    subtree = self.append_int_app(context.clone(), subtree, ri);
                 }
                 super::ReductionType::Pred(_) => {
                     let derivations = derivation_map.remove(&idx).unwrap();
-                    subtree = self.append_pred_app(subtree, derivations);
+                    subtree = self.append_pred_app(context.clone(), subtree, derivations);
                 }
             }
         }
@@ -1189,9 +1222,10 @@ impl Derivation {
                 }
             }
         }
+        let context = target_node.to_node(&self.tree).item.context.clone();
         let subtree = self.extract_body_derivation(target_node, int_arg_count);
-        let subtree = self.append_abs(subtree, reduction, &derivation_map);
-        let subtree = self.append_app(subtree, reduction, derivation_map);
+        let subtree = self.append_abs(context.clone(), subtree, reduction, &derivation_map);
+        let subtree = self.append_app(context.clone(), subtree, reduction, derivation_map);
         // top_id must be a fresh id assigned by the dummy expr
         let top_id = subtree.root().item.expr.aux.id;
         self.tree = self.tree.insert_partial_tree(target_node, |_| subtree).0;
