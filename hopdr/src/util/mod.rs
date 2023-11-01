@@ -195,7 +195,7 @@ pub fn global_counter() -> u64 {
 macro_rules! title {
     ($arg:tt) => {{
         use colored::Colorize;
-        log::debug!("{}{}{}", "[".bold(), $arg.bold(), "]".bold());
+        log::info!("{}{}{}", "[".bold(), $arg.bold(), "]".bold());
     }};
 }
 #[macro_export]

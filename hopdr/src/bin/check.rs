@@ -25,14 +25,15 @@ struct Args {
     input: String,
     #[clap(long)]
     no_inlining: bool,
-    #[clap(long)]
-    remove_disjunction: bool,
+    //#[clap(long)]
+    //remove_disjunction: bool,
 }
 
 fn gen_configuration_from_args(args: &Args) -> hopdr::Configuration {
     hopdr::Configuration::new()
         .inlining(!args.no_inlining)
-        .remove_disjunction(args.remove_disjunction)
+        //.remove_disjunction(args.remove_disjunction)
+        .remove_disjunction(false)
         .wait_every_step(false)
 }
 
@@ -80,7 +81,7 @@ fn main() {
         debug!("{}", fml);
     }
 
-    let config = checker::Config::new(ctx);
+    let config = checker::Config::new(&ctx);
 
-    checker::run(vc, &config);
+    checker::run(vc, config);
 }
