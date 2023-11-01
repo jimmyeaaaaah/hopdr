@@ -9,6 +9,11 @@ name = "hopdr"
 path = "src/bin/main.rs"
 doc = false
 
+[[bin]]
+name = "check"
+path = "src/bin/check.rs"
+doc = false
+
 [lib]
 name = "hopdr"
 path = "src/lib.rs"
