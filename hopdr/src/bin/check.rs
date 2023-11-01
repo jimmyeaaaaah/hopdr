@@ -8,10 +8,7 @@ extern crate ctrlc;
 use hopdr::*;
 
 use clap::Parser;
-use colored::Colorize;
-use hopdr::pdr::PDRConfig;
-use hopdr::pdr::VerificationResult;
-use hopdr::preprocess::Context;
+use hopdr::checker;
 use hopdr::title;
 use hopdr::util::Pretty;
 use nom::error::VerboseError;
@@ -77,4 +74,13 @@ fn main() {
             debug!("TOP={}", vc.toplevel);
         }
     }
+    title!("proprocessed");
+    let (vc, ctx) = preprocess::hes::preprocess(f);
+    for fml in vc.clauses.iter() {
+        debug!("{}", fml);
+    }
+
+    let config = checker::Config::new(ctx);
+
+    checker::run(vc, &config);
 }

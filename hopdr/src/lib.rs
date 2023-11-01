@@ -2,6 +2,7 @@ extern crate lazy_static;
 #[macro_use]
 extern crate log;
 
+pub mod checker;
 pub mod formula;
 pub mod parse;
 pub mod pdr;
