@@ -1,7 +1,6 @@
 use crate::formula::hes::{Goal, Problem};
-use crate::formula::{Constraint, Ident, Op, Type as SType, Variable};
-use crate::ml::syntax::{Expr, Program};
-use crate::ml::Function;
+use crate::formula::{Bot, Constraint, Ident, Op, Type as HFLType};
+use crate::ml::{Expr, Function, Program, Type as SType, Variable};
 use crate::preprocess::Context;
 
 pub struct Config<'a> {
@@ -21,12 +20,12 @@ impl<'a> Translator<'a> {
     fn new(config: Config<'a>) -> Self {
         Self { config }
     }
-    fn translate_type(&self, t: &SType) -> SType {
+    fn translate_type(&self, t: &HFLType) -> SType {
         match t.kind() {
             crate::formula::TypeKind::Proposition => {
-                SType::mk_type_arrow(SType::mk_type_prop(), SType::mk_type_prop())
+                SType::mk_type_arrow(SType::mk_type_unit(), SType::mk_type_unit())
             }
-            crate::formula::TypeKind::Integer => t.clone(),
+            crate::formula::TypeKind::Integer => SType::mk_type_int(),
             crate::formula::TypeKind::Arrow(t1, t2) => {
                 let t1 = self.translate_type(t1);
                 let t2 = self.translate_type(t2);
@@ -39,7 +38,7 @@ impl<'a> Translator<'a> {
         F: FnOnce(Ident) -> Expr,
     {
         let p = Ident::fresh();
-        let v = Variable::mk(p, SType::mk_type_prop());
+        let v = Variable::mk(p, SType::mk_type_unit());
         let body = f(p);
         Expr::mk_fun(v, body)
     }
@@ -84,7 +83,7 @@ impl<'a> Translator<'a> {
                 let g2 = self.translate_goal(g2.clone());
                 let g2 = Expr::mk_app(g2, Expr::mk_var(p));
                 let ident = Ident::fresh();
-                let c = Constraint::mk_eq(Op::mk_var(ident), Op::zero());
+                let c = Constraint::mk_geq(Op::mk_var(ident), Op::zero());
                 let body = Expr::mk_if(c, g1, g2);
                 Expr::mk_letrand(ident, body)
             }),
@@ -95,7 +94,7 @@ impl<'a> Translator<'a> {
             }),
             crate::formula::hes::GoalKind::Univ(v, g) => Self::gen_prop(|p| {
                 let body = self.translate_goal(g.clone());
-                Expr::mk_letrand(v.id, body)
+                Expr::mk_letrand(v.id, Expr::mk_app(body, Expr::mk_var(p)))
             }),
         }
     }
@@ -111,6 +110,10 @@ impl<'a> Translator<'a> {
             })
             .collect();
         let main = self.translate_goal(problem.top.clone());
+        let main = Expr::mk_assert(Expr::mk_app(
+            main,
+            Expr::mk_constraint(Constraint::mk_false()),
+        ));
         Program {
             functions,
             main,
@@ -120,5 +123,7 @@ impl<'a> Translator<'a> {
 }
 
 pub fn run(problem: Problem<Constraint>, config: Config) {
-    let program = Translator::new(config).translate(problem);
+    let trans = Translator::new(config);
+    let s = trans.translate(problem).dump_ml();
+    println!("{s}");
 }
