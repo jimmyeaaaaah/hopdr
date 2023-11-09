@@ -140,7 +140,7 @@ pub fn run(problem: Problem<Constraint>, config: Config) {
     println!("{s}");
 
     match executor::executor(s) {
-        executor::ExecResult::Unknown => println!("unknown"),
-        executor::ExecResult::Invalid => println!("fail"),
+        executor::ExecResult::Unknown => println!("Unknown"),
+        executor::ExecResult::Invalid => println!("Invalid"),
     }
 }

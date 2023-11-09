@@ -13,17 +13,20 @@ pub(super) fn save_prog(prog: String) -> NamedTempFile {
 }
 
 fn parse(s: &str) -> ExecResult {
-    ExecResult::Unknown
+    if s.contains(&"FalseExc") {
+        ExecResult::Invalid
+    } else {
+        ExecResult::Unknown
+    }
 }
 
 pub fn executor(s: String) -> ExecResult {
     let f = save_prog(s);
     let args = vec![f.path().to_str().unwrap()];
-    println!("filename: {}", &args[0]);
-    crate::util::wait_for_line();
+    debug!("filename: {}", &args[0]);
     let out =
         util::exec_input_with_timeout("hopdr-check-runner", &args, &[], Duration::from_secs(1));
     let s = String::from_utf8(out).unwrap();
-    println!("result: {s}");
+    debug!("result: {s}");
     parse(&s)
 }
