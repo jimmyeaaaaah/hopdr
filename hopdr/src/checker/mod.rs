@@ -1,6 +1,6 @@
 use crate::formula::hes::{Goal, Problem};
 use crate::formula::{Bot, Constraint, Ident, Negation, Op, Type as HFLType};
-use crate::ml::{Expr, Function, Program, Type as SType, Variable};
+use crate::ml::{optimize, Expr, Function, Program, Type as SType, Variable};
 use crate::preprocess::Context;
 
 pub struct Config<'a> {
@@ -68,6 +68,9 @@ impl<'a> Translator<'a> {
             }
             crate::formula::hes::GoalKind::App(g1, g2) => {
                 let g1 = self.translate_goal(g1.clone());
+                // TODO: check the type of g1 so that we can infer g2 is op or not
+                // corner case: g2 is a variable
+                // I think they are preprocessed but I forgot it
                 match g2.kind() {
                     crate::formula::hes::GoalKind::Op(o) => Expr::mk_iapp(g1, o.clone()),
                     _ => {
@@ -130,6 +133,8 @@ impl<'a> Translator<'a> {
 
 pub fn run(problem: Problem<Constraint>, config: Config) {
     let trans = Translator::new(config);
-    let s = trans.translate(problem).dump_ml();
+    let prog = trans.translate(problem);
+    let prog = optimize(prog);
+    let s = prog.dump_ml();
     println!("{s}");
 }
