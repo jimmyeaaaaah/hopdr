@@ -10,11 +10,7 @@ use hopdr::*;
 use clap::Parser;
 use hopdr::checker;
 use hopdr::title;
-use hopdr::util::Pretty;
 use nom::error::VerboseError;
-
-use std::fs;
-use std::time;
 
 /// Validity checker for νHFL(Z)
 #[derive(Parser, Debug, Clone)]

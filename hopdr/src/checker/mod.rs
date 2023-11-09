@@ -1,6 +1,6 @@
 mod executor;
 use crate::formula::hes::{Goal, GoalKind, Problem};
-use crate::formula::{Bot, Constraint, Ident, Negation, Op, Type as HFLType};
+use crate::formula::{Constraint, Ident, Negation, Op, Type as HFLType};
 use crate::ml::{optimize, Expr, Function, Program, Type as SType, Variable};
 use crate::preprocess::Context;
 

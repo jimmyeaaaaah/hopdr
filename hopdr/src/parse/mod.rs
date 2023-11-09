@@ -1,3 +1,4 @@
+mod chc_parse;
 mod hes;
 mod parse;
 
