@@ -7,7 +7,7 @@ pub mod interpolation;
 pub mod qe;
 pub mod sat;
 pub mod smt;
-mod util;
+pub mod util;
 
 #[derive(Copy, Clone)]
 pub enum SMTSolverType {

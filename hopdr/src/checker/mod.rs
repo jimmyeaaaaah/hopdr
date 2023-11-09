@@ -1,3 +1,4 @@
+mod executor;
 use crate::formula::hes::{Goal, Problem};
 use crate::formula::{Bot, Constraint, Ident, Negation, Op, Type as HFLType};
 use crate::ml::{optimize, Expr, Function, Program, Type as SType, Variable};
@@ -137,4 +138,9 @@ pub fn run(problem: Problem<Constraint>, config: Config) {
     let prog = optimize(prog);
     let s = prog.dump_ml();
     println!("{s}");
+
+    match executor::executor(s) {
+        executor::ExecResult::Unknown => println!("unknown"),
+        executor::ExecResult::Invalid => println!("fail"),
+    }
 }
