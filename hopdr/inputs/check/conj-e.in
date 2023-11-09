@@ -1,0 +1,4 @@
+%HES
+MAIN =v F 0.
+F n =v n != 100 /\ F (n + 1).
+
