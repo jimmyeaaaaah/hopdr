@@ -25,12 +25,7 @@ fn translate_rterm_top(t: &RTerm) -> Constraint {
             | val::RVal::DTypNew { .. }
             | val::RVal::Array { .. } => panic!("program error"),
         },
-        RTerm::App {
-            depth,
-            typ,
-            op,
-            args,
-        } => match op {
+        RTerm::App { op, args, .. } => match op {
             term::Op::Add
             | term::Op::Sub
             | term::Op::Mul
@@ -93,12 +88,7 @@ fn translate_rterm_top(t: &RTerm) -> Constraint {
             }
             term::Op::Distinct => todo!(),
         },
-        RTerm::Fun {
-            depth,
-            typ,
-            name,
-            args,
-        } => todo!(),
+        RTerm::Fun { .. } => todo!(),
     }
 }
 
@@ -173,33 +163,13 @@ fn translate_rterm_op(t: &RTerm) -> Op {
             let y = translate_rterm_op(&args[1]);
             Op::mk_bin_op(op, x, y)
         }
-        RTerm::DTypNew {
-            depth,
-            typ,
-            name,
-            args,
-        } => todo!(),
-        RTerm::DTypSlc {
-            depth,
-            typ,
-            name,
-            term,
-        } => todo!(),
-        RTerm::DTypTst {
-            depth,
-            typ,
-            name,
-            term,
-        } => todo!(),
-        RTerm::Fun {
-            depth,
-            typ,
-            name,
-            args,
-        } => {
+        RTerm::DTypNew { .. } => todo!(),
+        RTerm::DTypSlc { .. } => todo!(),
+        RTerm::DTypTst { .. } => todo!(),
+        RTerm::Fun { .. } => {
             panic!("fun?")
         }
-        RTerm::CArray { depth, typ, term } => todo!(),
+        RTerm::CArray { .. } => todo!(),
     }
 }
 
@@ -209,7 +179,6 @@ fn translate_rterm(t: &RTerm, predicates: &mut Vec<chc::Atom>, c: &mut Constrain
 
 fn translate_clause(c: &Clause) -> CHC {
     let constraint = c.lhs_terms().iter().fold(Constraint::mk_true(), |c, t| {
-        let e = t.get();
         Constraint::mk_conj(c.clone(), translate_rterm_top(t))
     });
     let predicates = c
@@ -242,11 +211,90 @@ fn translate_clause(c: &Clause) -> CHC {
     }
 }
 
-fn translate(instance: &Instance) -> Vec<CHC> {
+fn rename_op(o: &Op, varmap: &mut HashMap<Ident, Ident>) -> Op {
+    match o.kind() {
+        crate::formula::OpExpr::Op(o, x, y) => {
+            Op::mk_bin_op(*o, rename_op(x, varmap), rename_op(y, varmap))
+        }
+        crate::formula::OpExpr::Var(v) => match varmap.get(v) {
+            Some(i) => Op::mk_var(i.clone()),
+            None => {
+                let i = Ident::fresh();
+                varmap.insert(v.clone(), i.clone());
+                Op::mk_var(i)
+            }
+        },
+        crate::formula::OpExpr::Const(x) => Op::mk_const(*x),
+        crate::formula::OpExpr::Ptr(_, y) => panic!("program error"),
+    }
+}
+
+fn rename_constraint(c: &Constraint, varmap: &mut HashMap<Ident, Ident>) -> Constraint {
+    match c.kind() {
+        crate::formula::ConstraintExpr::True | crate::formula::ConstraintExpr::False => c.clone(),
+        crate::formula::ConstraintExpr::Pred(p, l) => {
+            Constraint::mk_pred(*p, l.iter().map(|x| rename_op(x, varmap)).collect())
+        }
+        crate::formula::ConstraintExpr::Conj(x, y) => {
+            Constraint::mk_conj(rename_constraint(x, varmap), rename_constraint(y, varmap))
+        }
+        crate::formula::ConstraintExpr::Disj(x, y) => {
+            Constraint::mk_disj(rename_constraint(x, varmap), rename_constraint(y, varmap))
+        }
+        crate::formula::ConstraintExpr::Quantifier(q, x, c) => {
+            Constraint::mk_quantifier(*q, x.clone(), rename_constraint(c, varmap))
+        }
+    }
+}
+
+fn rename_clause(c: CHC, pred_map: &mut HashMap<Ident, Ident>) -> CHC {
+    let mut arg_map = HashMap::new();
+    let head = match c.head {
+        CHCHead::Constraint(c) => CHCHead::Constraint(rename_constraint(&c, &mut arg_map)),
+        CHCHead::Predicate(p) => match pred_map.get(&p.predicate) {
+            Some(i) => CHCHead::Predicate(chc::Atom {
+                predicate: i.clone(),
+                args: p.args.iter().map(|x| rename_op(x, &mut arg_map)).collect(),
+            }),
+            None => {
+                let i = Ident::fresh();
+                pred_map.insert(p.predicate, i.clone());
+                CHCHead::Predicate(chc::Atom {
+                    predicate: i,
+                    args: p.args.iter().map(|x| rename_op(x, &mut arg_map)).collect(),
+                })
+            }
+        },
+    };
+    let predicates = c
+        .body
+        .predicates
+        .iter()
+        .map(|p| chc::Atom {
+            predicate: match pred_map.get(&p.predicate) {
+                Some(i) => i.clone(),
+                None => {
+                    let i = Ident::fresh();
+                    pred_map.insert(p.predicate, i.clone());
+                    i
+                }
+            },
+            args: p.args.iter().map(|x| rename_op(x, &mut arg_map)).collect(),
+        })
+        .collect();
+    let constraint = rename_constraint(&c.body.constraint, &mut arg_map);
+    let body = chc::CHCBody {
+        predicates,
+        constraint,
+    };
+    CHC { head, body }
+}
+
+fn translate(instance: &Instance, var_map: &mut HashMap<Ident, Ident>) -> Vec<CHC> {
     let clauses = instance
         .clauses()
         .into_iter()
-        .map(|c| translate_clause(c))
+        .map(|c| rename_clause(translate_clause(c), var_map))
         .collect();
     clauses
 }
@@ -265,8 +313,8 @@ fn parse_file(input: &str) -> Result<Vec<chc::CHC<chc::Atom, Constraint>>, &'sta
         Err(_) => return Err("parse fail"),
     };
     assert_eq!(res, parse::Parsed::CheckSat);
-
-    Ok(translate(&instance))
+    let mut var_map = HashMap::new();
+    Ok(translate(&instance, &mut var_map))
 }
 
 #[test]
