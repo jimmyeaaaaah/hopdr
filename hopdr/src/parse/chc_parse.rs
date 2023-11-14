@@ -1,6 +1,7 @@
 use crate::formula::chc::CHCHead;
 use crate::formula::{chc, Logic};
-use crate::formula::{Bot, Constraint, Ident, Negation, Op, OpKind, Top};
+use crate::formula::{Bot, Constraint, Ident, Negation, Op, OpKind, PredKind, Top};
+use crate::util::Pretty;
 use hoice::common::*;
 use hoice::instance::Clause;
 use hoice::instance::Instance;
@@ -43,7 +44,18 @@ fn translate_rterm_top(t: &RTerm) -> Constraint {
             | term::Op::Select
             | term::Op::Mod => panic!("program error"),
             term::Op::Gt | term::Op::Ge | term::Op::Le | term::Op::Lt | term::Op::Eql => {
-                unimplemented!()
+                assert_eq!(args.len(), 2);
+                let x = translate_rterm_op(&args[0]);
+                let y = translate_rterm_op(&args[1]);
+                let p = match op {
+                    term::Op::Gt => PredKind::Gt,
+                    term::Op::Ge => PredKind::Geq,
+                    term::Op::Le => PredKind::Leq,
+                    term::Op::Lt => PredKind::Lt,
+                    term::Op::Eql => PredKind::Eq,
+                    _ => unreachable!(),
+                };
+                Constraint::mk_bin_pred(p, x, y)
             }
             term::Op::Impl => {
                 assert_eq!(args.len(), 2);
@@ -207,7 +219,10 @@ fn translate_clause(c: &Clause) -> CHC {
         constraint,
     };
     let rhs = match c.rhs() {
-        Some((p, args)) => unimplemented!(),
+        Some((p, args)) => chc::CHCHead::Predicate(chc::Atom {
+            predicate: Ident::from(p.get() as u64),
+            args: args.iter().map(|x| translate_rterm_op(x)).collect(),
+        }),
         None => chc::CHCHead::Constraint(Constraint::mk_false()),
     };
     CHC {
@@ -270,5 +285,8 @@ fn test_parse_file() {
 ))
 (check-sat)
     ";
-    parse_file(input).unwrap();
+    let chc = parse_file(input).unwrap();
+    chc.iter().for_each(|c| {
+        println!("{}", c.pretty_display());
+    })
 }
