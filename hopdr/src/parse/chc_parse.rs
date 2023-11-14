@@ -1,3 +1,4 @@
+use crate::formula::chc::CHCHead;
 use crate::formula::{chc, Logic};
 use crate::formula::{Bot, Constraint, Ident, Negation, Op, OpKind, Top};
 use hoice::common::*;
@@ -190,16 +191,29 @@ fn translate_rterm_op(t: &RTerm) -> Op {
     }
 }
 
-fn translate_rterm(t: &RTerm, predicates: &mut Vec<chc::Atom>, c: &mut Constraint) {}
+fn translate_rterm(t: &RTerm, predicates: &mut Vec<chc::Atom>, c: &mut Constraint) {
+    *c = Constraint::mk_conj(c.clone(), translate_rterm_top(t));
+}
 
 fn translate_clause(c: &Clause) -> CHC {
     let mut predicates = Vec::new();
     let mut constraint = Constraint::mk_true();
-    let lhs = c.lhs_terms().iter().for_each(|t| {
+    c.lhs_terms().iter().for_each(|t| {
         let e = t.get();
         translate_rterm(e, &mut predicates, &mut constraint)
     });
-    unimplemented!()
+    let lhs = chc::CHCBody {
+        predicates,
+        constraint,
+    };
+    let rhs = match c.rhs() {
+        Some((p, args)) => unimplemented!(),
+        None => chc::CHCHead::Constraint(Constraint::mk_false()),
+    };
+    CHC {
+        head: rhs,
+        body: lhs,
+    }
 }
 
 fn translate(instance: &Instance) -> Vec<CHC> {

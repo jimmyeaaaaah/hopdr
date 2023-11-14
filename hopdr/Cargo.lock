@@ -280,7 +280,7 @@ checksum = "d77f7ec81a6d05a3abb01ab6eb7590f6083d08449fe5a1c8b1e620283546ccb7"
 [[package]]
 name = "hoice"
 version = "1.10.0"
-source = "git+https://github.com/moratorium08/hoice?branch=master#173f3453cd12d1ae6f3799653735ffbdad74cc08"
+source = "git+https://github.com/moratorium08/hoice#d02bf96d5c8ead3cac623be2eb629cd8ae20ac5d"
 dependencies = [
  "ansi_term",
  "atty",
