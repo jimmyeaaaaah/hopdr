@@ -208,12 +208,23 @@ fn translate_rterm(t: &RTerm, predicates: &mut Vec<chc::Atom>, c: &mut Constrain
 }
 
 fn translate_clause(c: &Clause) -> CHC {
-    let mut predicates = Vec::new();
-    let mut constraint = Constraint::mk_true();
-    c.lhs_terms().iter().for_each(|t| {
+    let constraint = c.lhs_terms().iter().fold(Constraint::mk_true(), |c, t| {
         let e = t.get();
-        translate_rterm(e, &mut predicates, &mut constraint)
+        Constraint::mk_conj(c.clone(), translate_rterm_top(t))
     });
+    let predicates = c
+        .lhs_preds()
+        .iter()
+        .fold(Vec::new(), |mut predicates, (p, args_h)| {
+            args_h.iter().for_each(|a| {
+                let args = a.iter().map(|x| translate_rterm_op(x)).collect();
+                predicates.push(chc::Atom {
+                    predicate: Ident::from(p.get() as u64),
+                    args,
+                });
+            });
+            predicates
+        });
     let lhs = chc::CHCBody {
         predicates,
         constraint,
