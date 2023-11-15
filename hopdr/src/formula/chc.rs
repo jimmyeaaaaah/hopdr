@@ -651,28 +651,62 @@ pub fn merge_chcs_with_same_head(chcs: Vec<CHC<Atom, Constraint>>) -> Vec<CHC<At
                 CHCHead::Constraint(_) => continue,
                 CHCHead::Predicate(a) => a,
             };
-            let eqs: Vec<_> = atom
+            let mut eqs: Vec<_> = atom
                 .args
                 .iter()
                 .zip(varnames.iter())
-                .map(|(a, x)| (a.fv(), *x, a.clone()))
+                .map(|(a, x)| (Op::mk_var(*x), a.clone()))
                 .collect();
+            let mut constraint = chc.body.constraint.clone();
+            let mut predicates = chc.body.predicates.clone();
+
             let fvs = chc.fv();
+            // remove fvs as much as possible
             for fv in fvs.iter() {
-                for (fvs_in_eq, x, o) in eqs.iter() {
-                    if fvs_in_eq.contains(fv) {
-                        match Op::solve_for(fv, &Op::mk_var(*x), o) {
-                            Some(o) => {
-                                unimplemented!()
-                            }
-                            None => (),
-                        }
+                let r = eqs.iter().enumerate().find_map(|(i, (o1, o2))| {
+                    let mut fvs = o1.fv();
+                    o2.fv_with_vec(&mut fvs);
+                    if fvs.contains(fv) {
+                        Op::solve_for(fv, o1, o2).map(|x| (i, x))
+                    } else {
+                        None
                     }
+                });
+                match r {
+                    Some((idx, replace)) => {
+                        let mut new_eqs = Vec::new();
+                        for (i, (o1, o2)) in eqs.into_iter().enumerate() {
+                            if i == idx {
+                                continue;
+                            }
+                            let o1 = o1.subst(fv, &replace);
+                            let o2 = o2.subst(fv, &replace);
+                            new_eqs.push((o1, o2));
+                        }
+                        // replace predicates
+                        constraint = constraint.subst(fv, &replace);
+                        predicates = predicates
+                            .into_iter()
+                            .map(|p| Atom {
+                                args: p.args.into_iter().map(|a| a.subst(fv, &replace)).collect(),
+                                ..p
+                            })
+                            .collect();
+                        eqs = new_eqs;
+                    }
+                    None => (),
                 }
             }
-
-            //let args = atom.args.iter().map(|a| {
-            //}).collect();
+            *chc = CHC {
+                head: CHCHead::Predicate(Atom {
+                    predicate: p.predicate,
+                    args: varnames.iter().map(|x| Op::mk_var(*x)).collect(),
+                }),
+                body: CHCBody {
+                    constraint,
+                    predicates,
+                },
+            }
         }
     }
     // 4. merge chcs
