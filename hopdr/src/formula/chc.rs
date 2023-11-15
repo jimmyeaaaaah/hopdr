@@ -624,13 +624,19 @@ fn test_check_the_model_validity() {
 }
 
 /// Merge CHCs that have the same head predicate.
+/// Divide goal formulas and clauses
 ///
 /// For example, if we have the following CHCs:
 /// - x_1 >= 101 -> P0(x_1,x_1 - 10)
 /// - x_2 <= 100 ∧ P0(x_4,x_3) ∧ P0(x_2 + 11,x_4) -> P0(x_2,x_3)
 /// this function returns the following CHC:
 ///  (x_1 >= 101 /\ w = x_1 - 10 /\ x_2 = w) \/ (x_1 <= 100 /\  P0(x_4,x_2) ∧ P0(x_1 + 11,x_4)) -> P0(x_1, x_2)
-pub fn merge_chcs_with_same_head(chcs: Vec<CHC<Atom, Constraint>>) -> Vec<CHC<Atom, Constraint>> {
+pub fn merge_chcs_with_same_head(
+    chcs: Vec<CHC<Atom, Constraint>>,
+) -> (
+    Vec<CHC<Atom, Constraint>>,
+    HashMap<Ident, Vec<CHC<Atom, Constraint>>>,
+) {
     // 2. group chcs that have the same head
     let mut map = HashMap::new();
     let mut constraints = Vec::new();
@@ -699,7 +705,7 @@ pub fn merge_chcs_with_same_head(chcs: Vec<CHC<Atom, Constraint>>) -> Vec<CHC<At
             }
             *chc = CHC {
                 head: CHCHead::Predicate(Atom {
-                    predicate: p.predicate,
+                    predicate: *k,
                     args: varnames.iter().map(|x| Op::mk_var(*x)).collect(),
                 }),
                 body: CHCBody {
@@ -709,6 +715,10 @@ pub fn merge_chcs_with_same_head(chcs: Vec<CHC<Atom, Constraint>>) -> Vec<CHC<At
             }
         }
     }
-    // 4. merge chcs
-    unimplemented!()
+    (
+        constraints,
+        map.into_iter()
+            .map(|(k, chcs)| (k, chcs.into_iter().map(|(_, v)| v).collect()))
+            .collect(),
+    )
 }
