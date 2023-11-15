@@ -622,3 +622,59 @@ fn test_check_the_model_validity() {
     let (chc, model, _) = gen_clause_pqp();
     assert!(check_the_model_validity(&model, &vec![chc]))
 }
+
+/// Merge CHCs that have the same head predicate.
+///
+/// For example, if we have the following CHCs:
+/// - x_1 >= 101 -> P0(x_1,x_1 - 10)
+/// - x_2 <= 100 ∧ P0(x_4,x_3) ∧ P0(x_2 + 11,x_4) -> P0(x_2,x_3)
+/// this function returns the following CHC:
+///  (x_1 >= 101 /\ w = x_1 - 10 /\ x_2 = w) \/ (x_1 <= 100 /\  P0(x_4,x_2) ∧ P0(x_1 + 11,x_4)) -> P0(x_1, x_2)
+pub fn merge_chcs_with_same_head(chcs: Vec<CHC<Atom, Constraint>>) -> Vec<CHC<Atom, Constraint>> {
+    // 2. group chcs that have the same head
+    let mut map = HashMap::new();
+    let mut constraints = Vec::new();
+    chcs.into_iter().for_each(|chc| match chc.head {
+        CHCHead::Constraint(_) => constraints.push(chc),
+        CHCHead::Predicate(ref p) => map
+            .entry(p.predicate)
+            .or_insert(Vec::new())
+            .push((p.clone(), chc)),
+    });
+    // 2. normalize the head (e.g. ... => P(x, y + 1)  ---> ... /\ y + 1 = w => P(x, w))
+    // 3. rename vairables so that all the chcs have the same (non-free) variables
+    for (k, chcs) in map.iter_mut() {
+        let nargs = chcs[0].0.args.len();
+        let varnames = (0..nargs).map(|_| Ident::fresh()).collect::<Vec<_>>();
+        for (p, chc) in chcs.iter_mut() {
+            let atom = match &chc.head {
+                CHCHead::Constraint(_) => continue,
+                CHCHead::Predicate(a) => a,
+            };
+            let eqs: Vec<_> = atom
+                .args
+                .iter()
+                .zip(varnames.iter())
+                .map(|(a, x)| (a.fv(), *x, a.clone()))
+                .collect();
+            let fvs = chc.fv();
+            for fv in fvs.iter() {
+                for (fvs_in_eq, x, o) in eqs.iter() {
+                    if fvs_in_eq.contains(fv) {
+                        match Op::solve_for(fv, &Op::mk_var(*x), o) {
+                            Some(o) => {
+                                unimplemented!()
+                            }
+                            None => (),
+                        }
+                    }
+                }
+            }
+
+            //let args = atom.args.iter().map(|a| {
+            //}).collect();
+        }
+    }
+    // 4. merge chcs
+    unimplemented!()
+}

@@ -100,7 +100,7 @@ fn pred_to_vec(constr: &Constraint, m: &HashMap<Ident, usize>) -> Vec<Op> {
         }
         variables[*idx] = *id;
     }
-    z.normalize(&variables)
+    z.normalize(&variables).unwrap()
 }
 
 /// returns a constraint that does not contain universal quantifiers

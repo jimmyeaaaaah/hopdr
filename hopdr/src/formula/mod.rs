@@ -194,6 +194,7 @@ impl Op {
         }
     }
 
+    /// Checks if the given op is a constant, and equals to `c`
     pub fn check_const(&self, c: i64) -> bool {
         matches!(self.kind(), OpExpr::Const(c2) if c == *c2)
     }
@@ -378,7 +379,7 @@ impl Op {
     /// This method normalizes the given op to `o₀x₁ + ⋯ + o_n-1 xₙ `
     /// v[i] is the coefficient for xᵢ in the normalized `op`(i.e. oᵢ).
     /// v[n] is the constant part of `o_normalized` (i.e. o₀).
-    pub fn normalize(&self, variables: &Vec<Ident>) -> Vec<Op> {
+    pub fn normalize(&self, variables: &Vec<Ident>) -> Option<Vec<Op>> {
         fn parse_mult(o: &Op, m: &HashMap<Ident, usize>) -> Option<(Op, Option<Ident>)> {
             match o.kind() {
                 crate::formula::OpExpr::Op(OpKind::Mul, o1, o2) => {
@@ -413,17 +414,44 @@ impl Op {
         let additions = self.expand_expr_to_vec();
         let constant_index = variables.len();
         for addition in additions {
-            let (coef, v) = parse_mult(&addition, &m).unwrap_or_else(|| {
-                panic!(
-                    "there is non-linear exprresion, which is note supported: {}",
-                    addition
-                )
-            });
+            let (coef, v) = parse_mult(&addition, &m)?;
             let id = v.map_or(constant_index, |v| *m.get(&v).unwrap());
             result_vec[id] = Op::mk_add(result_vec[id].clone(), coef);
         }
         debug_assert!(result_vec.len() == variables.len() + 1);
-        result_vec
+        Some(result_vec)
+    }
+    pub fn solve_for(x: &Ident, o1: &Self, o2: &Self) -> Option<Op> {
+        let o = Op::mk_sub(o1.clone(), o2.clone());
+        let mut fv = o.fv();
+        if !fv.contains(x) {
+            return None;
+        }
+        fv.remove(x);
+
+        let mut variables = vec![*x];
+        for v in fv.into_iter() {
+            variables.push(v);
+        }
+        let mut v = o.normalize(&variables)?;
+
+        // Of course, we can do more, but for now it's ok (like checking if we can divide "xi" by x_0)
+        let coef = v[0].eval_with_empty_env();
+        if coef == Some(1) {
+            let mut r = Op::mk_minus(v.pop().unwrap());
+            for (x, o) in variables.into_iter().zip(v.into_iter()).skip(1) {
+                r = Op::mk_sub(r, Op::mk_mul(Op::mk_var(x), o));
+            }
+            Some(r)
+        } else if coef == Some(-1) {
+            let mut r = v.pop().unwrap();
+            for (x, o) in variables.into_iter().zip(v.into_iter()).skip(1) {
+                r = Op::mk_add(r, Op::mk_mul(Op::mk_var(x), o));
+            }
+            Some(r)
+        } else {
+            None
+        }
     }
 }
 #[test]
@@ -454,6 +482,37 @@ fn test_expansion() {
     let v2 = o2.eval(&env).unwrap();
     assert_eq!(v, v2);
 }
+
+#[test]
+fn test_solve_for() {
+    let x = Ident::fresh();
+    let y = Ident::fresh();
+    let z = Ident::fresh();
+    println!("x: {x}");
+    println!("y: {y}");
+
+    // x = y
+    let r = Op::solve_for(&y, &Op::mk_var(x), &Op::mk_var(y));
+    assert!(r.is_some());
+    let r = r.unwrap();
+    println!("{}", r);
+    match r.kind() {
+        OpExpr::Var(z) if *z == x => (),
+        _ => panic!(),
+    }
+
+    // 3 * (4 * x + 2 * y) - z = y
+    let o1 = Op::mk_mul(Op::mk_const(4), Op::mk_var(x));
+    let o2 = Op::mk_mul(Op::mk_const(2), Op::mk_var(y));
+    let o3 = Op::mk_add(o1, o2);
+    let o4 = Op::mk_mul(Op::mk_const(3), o3);
+    let o5 = Op::mk_sub(o4, Op::mk_var(z));
+
+    let r = Op::solve_for(&z, &o5, &Op::mk_var(y));
+    assert!(r.is_some());
+    println!("{}", r.unwrap());
+}
+
 impl DerefPtr for Op {
     fn deref_ptr(&self, id: &Ident) -> Op {
         match self.kind() {
@@ -497,7 +556,7 @@ fn test_normalize() {
         Op::mk_add(Op::mk_const(1), Op::mk_add(Op::mk_var(x), Op::mk_var(y))),
     );
     let o = Op::mk_add(Op::mk_add(Op::mk_add(o1, o2), o3), o4);
-    let v = o.normalize(&vars);
+    let v = o.normalize(&vars).unwrap();
 
     assert_eq!(v.len(), 3);
 
@@ -1676,8 +1735,9 @@ impl Constraint {
                     ConstraintExpr::Pred(pred, l) if l.len() == 2 => {
                         let left = &l[0];
                         let right = &l[1];
-                        let normalized =
-                            Op::mk_sub(left.clone(), right.clone()).normalize(&vec![target_var]);
+                        let normalized = Op::mk_sub(left.clone(), right.clone())
+                            .normalize(&vec![target_var])
+                            .unwrap();
 
                         if let (Some(1), Some(x)) = (
                             normalized[0].eval_with_empty_env(),

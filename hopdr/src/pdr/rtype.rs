@@ -1546,7 +1546,7 @@ impl Ty {
                                                     let right = l[1].clone();
                                                     let l = Op::mk_sub(left, right);
                                                     let vars = vec![*var];
-                                                    let l = l.normalize(&vars);
+                                                    let l = l.normalize(&vars).unwrap();
                                                     let coef = &l[0];
                                                     coef.eval_with_empty_env().map_or(clause.clone(), |x| {
                                                         if x == 1 {
