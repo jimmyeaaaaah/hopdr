@@ -173,10 +173,6 @@ fn translate_rterm_op(t: &RTerm) -> Op {
     }
 }
 
-fn translate_rterm(t: &RTerm, predicates: &mut Vec<chc::Atom>, c: &mut Constraint) {
-    *c = Constraint::mk_conj(c.clone(), translate_rterm_top(t));
-}
-
 fn translate_clause(c: &Clause) -> CHC {
     let constraint = c.lhs_terms().iter().fold(Constraint::mk_true(), |c, t| {
         Constraint::mk_conj(c.clone(), translate_rterm_top(t))
@@ -225,7 +221,7 @@ fn rename_op(o: &Op, varmap: &mut HashMap<Ident, Ident>) -> Op {
             }
         },
         crate::formula::OpExpr::Const(x) => Op::mk_const(*x),
-        crate::formula::OpExpr::Ptr(_, y) => panic!("program error"),
+        crate::formula::OpExpr::Ptr(_, _) => panic!("program error"),
     }
 }
 
