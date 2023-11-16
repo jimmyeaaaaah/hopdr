@@ -349,6 +349,51 @@ impl<C: Bot + Top> Goal<C> {
         }
         x
     }
+    /// If self is "trivially" true, then it returns true.
+    /// Otherwise, it's unknown.
+    pub fn is_true(&self) -> bool {
+        match self.kind() {
+            GoalKind::Constr(c) => c.is_true(),
+            GoalKind::Conj(c1, c2) => c1.is_true() && c2.is_true(),
+            GoalKind::Disj(c1, c2) => c1.is_true() || c2.is_true(),
+            GoalKind::Univ(_, c) => c.is_true(),
+            _ => false,
+        }
+    }
+
+    /// If self is "trivially" false, then it returns true.
+    /// Otherwise, it's unknown.
+    pub fn is_false(&self) -> bool {
+        match self.kind() {
+            GoalKind::Constr(c) => c.is_false(),
+            GoalKind::Conj(c1, c2) => c1.is_false() || c2.is_false(),
+            GoalKind::Disj(c1, c2) => c1.is_false() && c2.is_false(),
+            GoalKind::Univ(_, c) => c.is_false(),
+            _ => false,
+        }
+    }
+
+    /// This returns a formula that is equivalent to the conjunction of `lhs` and `rhs`.
+    pub fn mk_conj_opt(lhs: Goal<C>, rhs: Goal<C>) -> Goal<C> {
+        if lhs.is_true() {
+            rhs
+        } else if rhs.is_true() {
+            lhs
+        } else {
+            Goal::mk_conj(lhs, rhs)
+        }
+    }
+
+    /// This returns a formula that is equivalent to the disjunction of `lhs` and `rhs`.
+    pub fn mk_disj_opt(lhs: Goal<C>, rhs: Goal<C>) -> Goal<C> {
+        if lhs.is_false() {
+            rhs
+        } else if rhs.is_false() {
+            lhs
+        } else {
+            Goal::mk_disj(lhs, rhs)
+        }
+    }
 }
 
 impl<C: Negation, T: Default> GoalBase<C, T> {

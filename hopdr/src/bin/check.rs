@@ -23,6 +23,8 @@ struct Args {
     no_inlining: bool,
     //#[clap(long)]
     //remove_disjunction: bool,
+    #[clap(long)]
+    chc: bool,
 }
 
 fn gen_configuration_from_args(args: &Args) -> hopdr::Configuration {
@@ -31,6 +33,33 @@ fn gen_configuration_from_args(args: &Args) -> hopdr::Configuration {
         //.remove_disjunction(args.remove_disjunction)
         .remove_disjunction(false)
         .wait_every_step(false)
+}
+fn get_problem(
+    filename: &str,
+    config: &hopdr::Configuration,
+) -> (
+    hopdr::formula::hes::Problem<hopdr::formula::Constraint>,
+    hopdr::preprocess::Context,
+) {
+    let contents =
+        preprocess::hfl_preprocessor::open_file_with_preprocess(&filename, &config).unwrap();
+    debug!("starting Checker...");
+    let (_, f) = parse::parse::<VerboseError<&str>>(&contents).unwrap();
+    title!("problem");
+    match &f {
+        parse::Problem::NuHFLZValidityChecking(vc) => {
+            for fml in vc.formulas.iter() {
+                debug!("{}", fml);
+            }
+            debug!("TOP={}", vc.toplevel);
+        }
+    }
+    title!("proprocessed");
+    let (vc, ctx) = preprocess::hes::preprocess(f);
+    for fml in vc.clauses.iter() {
+        debug!("{}", fml);
+    }
+    (vc, ctx)
 }
 
 fn main() {
@@ -56,26 +85,16 @@ fn main() {
     let args = Args::parse();
     let config = gen_configuration_from_args(&args);
 
-    let contents =
-        preprocess::hfl_preprocessor::open_file_with_preprocess(&args.input, &config).unwrap();
-
-    debug!("starting Checker...");
-    let (_, f) = parse::parse::<VerboseError<&str>>(&contents).unwrap();
-
-    title!("problem");
-    match &f {
-        parse::Problem::NuHFLZValidityChecking(vc) => {
-            for fml in vc.formulas.iter() {
-                debug!("{}", fml);
-            }
-            debug!("TOP={}", vc.toplevel);
-        }
-    }
-    title!("proprocessed");
-    let (vc, ctx) = preprocess::hes::preprocess(f);
-    for fml in vc.clauses.iter() {
-        debug!("{}", fml);
-    }
+    let (vc, ctx) = if args.chc {
+        let data = std::fs::read_to_string(&args.input).unwrap();
+        let chcs = parse::parse_chc(&data).unwrap();
+        (
+            crate::formula::chc::translate_to_hes(chcs),
+            hopdr::preprocess::Context::empty(),
+        )
+    } else {
+        get_problem(&args.input, &config)
+    };
 
     let config = checker::Config::new(&ctx);
 

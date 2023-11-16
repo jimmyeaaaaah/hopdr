@@ -19,7 +19,7 @@ type IdentMap = HashTrieMap<parse::Ident, formula::Ident>;
 pub struct Context {
     pub ident_map: IdentMap,
     pub inverse_map: HashMap<formula::Ident, parse::Ident>,
-    pub original: ValidityChecking<parse::Ident, SimpleType>,
+    pub original: Option<ValidityChecking<parse::Ident, SimpleType>>,
 }
 
 impl Context {
@@ -31,7 +31,14 @@ impl Context {
         Context {
             ident_map,
             inverse_map,
-            original,
+            original: Some(original),
+        }
+    }
+    pub fn empty() -> Context {
+        Context {
+            ident_map: HashTrieMap::new(),
+            inverse_map: HashMap::new(),
+            original: None,
         }
     }
 }

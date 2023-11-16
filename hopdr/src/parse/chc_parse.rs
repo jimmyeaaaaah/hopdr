@@ -299,7 +299,7 @@ fn translate(instance: &Instance, var_map: &mut HashMap<Ident, Ident>) -> Vec<CH
     clauses
 }
 
-fn parse_file(input: &str) -> Result<Vec<chc::CHC<chc::Atom, Constraint>>, &'static str> {
+pub fn parse_chc(input: &str) -> Result<Vec<chc::CHC<chc::Atom, Constraint>>, &'static str> {
     println!("wow");
     let mut instance = Instance::new();
     println!("nice");
@@ -317,8 +317,7 @@ fn parse_file(input: &str) -> Result<Vec<chc::CHC<chc::Atom, Constraint>>, &'sta
     Ok(translate(&instance, &mut var_map))
 }
 
-#[test]
-fn test_parse_file() {
+pub fn get_mc91() -> Vec<chc::CHC<chc::Atom, Constraint>> {
     let input = "(set-logic HORN)
 (declare-fun mc91 ( Int Int ) Bool)
 (assert (forall ((n Int)) (=> (> n 100) (mc91 n (- n 10)))))
@@ -344,7 +343,12 @@ fn test_parse_file() {
 ))
 (check-sat)
     ";
-    let chc = parse_file(input).unwrap();
+    parse_chc(input).unwrap()
+}
+
+#[test]
+fn test_parse_file() {
+    let chc = get_mc91();
     chc.iter().for_each(|c| {
         println!("{}", c.pretty_display());
     })
