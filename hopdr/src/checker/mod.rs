@@ -141,9 +141,9 @@ impl<'a> Translator<'a> {
                 }
             }),
             GoalKind::Disj(g1, g2) => Self::gen_prop(|p| {
-                let g1 = self.translate_goal(g1.clone());
-                let g2 = self.translate_goal(g2.clone());
-                Expr::mk_app(g1, Expr::mk_app(g2, Expr::mk_var(p)))
+                let g1 = Expr::mk_app(self.translate_goal(g1.clone()), Expr::mk_var(p));
+                let g2 = Expr::mk_app(self.translate_goal(g2.clone()), Expr::mk_var(p));
+                Expr::mk_try_with(g1, g2)
             }),
             GoalKind::Univ(v, g) => Self::gen_prop(|p| {
                 let body = self.translate_goal(g.clone());
