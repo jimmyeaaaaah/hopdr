@@ -1,4 +1,6 @@
+mod ai;
 mod executor;
+
 use crate::formula::hes::{Goal, GoalKind, Problem};
 use crate::formula::{Constraint, Ident, Logic, Negation, Op, Type as HFLType};
 use crate::ml::{optimize, Expr, Function, Program, Type as SType, Variable};
