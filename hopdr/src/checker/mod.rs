@@ -79,10 +79,11 @@ impl<'a> Translator<'a> {
         }
     }
     fn translate_constraint(&self, c: &Constraint) -> Expr {
-        match self.translate_constraint_inner(c) {
+        let e = match self.translate_constraint_inner(c) {
             either::Left(c) => Expr::mk_constraint(c),
             either::Right(e) => e,
-        }
+        };
+        Self::gen_prop(|_| Expr::mk_if(e, Expr::mk_unit(), Expr::mk_raise()))
     }
     fn handle_conj_disj(&self, g11: &G, g12: &G, g21: &G, g22: &G) -> Option<Expr> {
         let s11: Option<Constraint> = g11.clone().into();
