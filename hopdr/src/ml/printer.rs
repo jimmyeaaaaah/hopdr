@@ -233,7 +233,7 @@ impl<'a> Program<'a> {
         writeln!(f, ") done")
     }
     fn dump_library_func<W: Write>(&self, f: &mut W) -> Result<(), fmt::Error> {
-        writeln!(f, "let rand_int () = Random.int 100 - 50\n")?;
+        writeln!(f, "let rand_int () = Random.int 10000000 - 5000000\n")?;
         writeln!(f, "exception FalseExc\n")
     }
     pub fn dump_ml(&self) -> String {
