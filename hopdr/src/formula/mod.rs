@@ -2298,6 +2298,8 @@ impl TeXFormat for Constraint {
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 pub enum PrecedenceKind {
+    Sequential, // for ml
+    If,         // for ml
     Disj,
     Conj,
     Not,
