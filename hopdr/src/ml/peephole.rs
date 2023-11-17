@@ -11,6 +11,11 @@ pub(super) fn peephole_optimize<'a>(mut p: Program<'a>) -> Program<'a> {
                 let c2 = f(c2);
                 Expr::mk_or(c1, c2)
             }
+            ExprKind::And(c1, c2) => {
+                let c1 = f(c1);
+                let c2 = f(c2);
+                Expr::mk_and(c1, c2)
+            }
             ExprKind::App(e1, e2) => match e1.kind() {
                 ExprKind::Fun { ident, body } => body.subst(ident.ident, e2.clone()),
                 _ => {

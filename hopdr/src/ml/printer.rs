@@ -162,6 +162,7 @@ impl DumpML for Expr {
             ExprKind::Var(x) => x.dump_ml(f, ctx),
             ExprKind::Constraint(c) => c.dump_ml(f, ctx),
             ExprKind::Or(x, y) => dump_bin_op(f, self.precedence(), "||", x, y, ctx),
+            ExprKind::And(x, y) => dump_bin_op(f, self.precedence(), "&&", x, y, ctx),
             ExprKind::App(p1, p2) => {
                 paren(f, self.precedence(), p1, ctx)?;
                 write!(f, " ")?;

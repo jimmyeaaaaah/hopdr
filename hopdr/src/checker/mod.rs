@@ -1,6 +1,6 @@
 mod executor;
 use crate::formula::hes::{Goal, GoalKind, Problem};
-use crate::formula::{Constraint, Ident, Negation, Op, Type as HFLType};
+use crate::formula::{Constraint, Ident, Logic, Negation, Op, Type as HFLType};
 use crate::ml::{optimize, Expr, Function, Program, Type as SType, Variable};
 use crate::preprocess::Context;
 
@@ -44,6 +44,46 @@ impl<'a> Translator<'a> {
         let body = f(p);
         Expr::mk_fun(v, body)
     }
+    fn translate_constraint_inner(&self, c: &Constraint) -> either::Either<Constraint, Expr> {
+        match c.kind() {
+            crate::formula::ConstraintExpr::True
+            | crate::formula::ConstraintExpr::False
+            | crate::formula::ConstraintExpr::Pred(_, _) => either::Left(c.clone()),
+            crate::formula::ConstraintExpr::Conj(c1, c2) => {
+                let c1 = self.translate_constraint_inner(c1);
+                let c2 = self.translate_constraint_inner(c2);
+                match (c1, c2) {
+                    (either::Left(c1), either::Left(c2)) => {
+                        either::Left(Constraint::mk_conj(c1, c2))
+                    }
+                    (either::Left(c), either::Right(e)) | (either::Right(e), either::Left(c)) => {
+                        either::Right(Expr::mk_and(Expr::mk_constraint(c), e))
+                    }
+                    (either::Right(e1), either::Right(e2)) => either::Right(Expr::mk_and(e1, e2)),
+                }
+            }
+            crate::formula::ConstraintExpr::Disj(c1, c2) => {
+                let c1 = self.translate_constraint_inner(c1);
+                let c2 = self.translate_constraint_inner(c2);
+                match (c1, c2) {
+                    (either::Left(c1), either::Left(c2)) => {
+                        either::Left(Constraint::mk_disj(c1, c2))
+                    }
+                    (either::Left(c), either::Right(e)) | (either::Right(e), either::Left(c)) => {
+                        either::Right(Expr::mk_or(Expr::mk_constraint(c), e))
+                    }
+                    (either::Right(e1), either::Right(e2)) => either::Right(Expr::mk_or(e1, e2)),
+                }
+            }
+            crate::formula::ConstraintExpr::Quantifier(_, _, _) => todo!(),
+        }
+    }
+    fn translate_constraint(&self, c: &Constraint) -> Expr {
+        match self.translate_constraint_inner(c) {
+            either::Left(c) => Expr::mk_constraint(c),
+            either::Right(e) => e,
+        }
+    }
     fn handle_conj_disj(&self, g11: &G, g12: &G, g21: &G, g22: &G) -> Option<Expr> {
         let s11: Option<Constraint> = g11.clone().into();
         let s12: Option<Constraint> = g12.clone().into();
@@ -67,7 +107,7 @@ impl<'a> Translator<'a> {
                 let g2 = self.translate_goal(g2.clone());
                 let g1 = Expr::mk_app(g1.clone(), Expr::mk_var(p));
                 let g2 = Expr::mk_app(g2.clone(), Expr::mk_var(p));
-                Expr::mk_if(c2, g1, g2)
+                Expr::mk_if(self.translate_constraint(&c2), g1, g2)
             }))
         } else {
             None
@@ -85,9 +125,7 @@ impl<'a> Translator<'a> {
     // [∀x. Ψ] = fun p -> let x = * in [Ψ] p
     fn translate_goal(&self, goal: G) -> Expr {
         match goal.kind() {
-            GoalKind::Constr(c) => {
-                Self::gen_prop(|_| Expr::mk_if(c.clone(), Expr::mk_unit(), Expr::mk_raise()))
-            }
+            GoalKind::Constr(c) => self.translate_constraint(c),
             GoalKind::Op(_) => {
                 unreachable!()
             }
@@ -136,7 +174,7 @@ impl<'a> Translator<'a> {
                 } else if Into::<Option<Constraint>>::into(g2_fml.clone()).is_some() {
                     Expr::mk_sequential(g2, g1)
                 } else {
-                    let body = Expr::mk_if(c, g1, g2);
+                    let body = Expr::mk_if(Expr::mk_constraint(c), g1, g2);
                     Expr::mk_letrand(ident, body)
                 }
             }),
