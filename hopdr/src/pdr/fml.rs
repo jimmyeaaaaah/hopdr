@@ -4,10 +4,13 @@ use std::fmt::Display;
 use crate::formula::fofml;
 use crate::formula::hes::Problem;
 use crate::formula::hes::{Goal, GoalKind};
-use crate::formula::{Constraint, Fv, Ident, Logic, Op, Subst, Type as SType, Variable};
+use crate::formula::{
+    Constraint, Fv, Ident, Logic, Op, Precedence, Subst, Type as SType, Variable,
+};
 use crate::pdr::rtype::{least_fml, types_check, Refinement, Tau, TypeEnvironment};
 use crate::solver;
 use crate::solver::smt;
+use crate::util::Pretty;
 
 impl From<Goal<Constraint>> for Goal<fofml::Atom> {
     fn from(g: Goal<Constraint>) -> Self {
@@ -72,7 +75,7 @@ pub struct Env<C> {
     tmap: HashMap<Ident, SType>,
 }
 
-impl<C: Display> Display for Env<C> {
+impl<C: Pretty + Precedence> Display for Env<C> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for (k, fml) in self.map.iter() {
             writeln!(f, "{}: {}\n", k, fml)?;
@@ -139,7 +142,7 @@ impl<C: Refinement> Env<C> {
                         }
                         gs = new_gs;
                     }
-                    assert!(gs.len() > 0);
+                    assert!(!gs.is_empty());
                     Goal::mk_ho_disj(&gs, self.tmap.get(x).unwrap().clone())
                 }
                 None => Goal::mk_var(*x),
@@ -230,7 +233,7 @@ pub fn env_types<C: Refinement>(env: &Env<C>, tenv: &TypeEnvironment<Tau<C>>) ->
     crate::title!("env_types");
     for (x, g) in env.map.iter() {
         let ts = tenv.get(x).unwrap();
-        let c = types_check(g, ts.iter().map(|x| x.clone()));
+        let c = types_check(g, ts.iter().cloned());
         debug!("pred name: {}", x);
         debug!("{}", g);
         debug!("generates");

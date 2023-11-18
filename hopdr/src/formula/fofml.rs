@@ -3,15 +3,12 @@ use std::fmt;
 
 use super::chc;
 use super::pcsp;
-use super::{
-    hes, Bot, Constraint, DerefPtr, FirstOrderLogic, Fv, Ident, Logic, Negation, Op, OpKind,
-    PredKind, QuantifierKind, Rename, Subst, Top, Type, Variable,
-};
+use super::*;
 use crate::solver;
 use crate::solver::smt;
 use crate::util::P;
 
-#[derive(Debug)]
+#[derive(Debug, Hash)]
 pub enum AtomKind {
     True, // equivalent to Constraint(True). just for optimization purpose
     Constraint(Constraint),
@@ -25,28 +22,17 @@ pub type Atom = P<AtomKind>;
 
 impl fmt::Display for Atom {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.kind() {
-            AtomKind::True => write!(f, "true"),
-            AtomKind::Constraint(c) => write!(f, "({})", c),
-            AtomKind::Predicate(id, ops) => {
-                write!(f, "{}(", id)?;
-                for op in ops.iter() {
-                    write!(f, "{},", op)?;
-                }
-                write!(f, ")")
-            }
-            AtomKind::Conj(x, y) => write!(f, "({} ∧ {})", x, y),
-            AtomKind::Disj(x, y) => write!(f, "({} ∨ {})", x, y),
-            AtomKind::Not(x) => write!(f, "not({})", x),
-            AtomKind::Quantifier(q, x, c) => write!(f, "{} {}. {}", q, x, c),
-        }
+        write!(f, "{}", self.pretty_display())
     }
 }
+
 impl PartialEq for Atom {
     fn eq(&self, other: &Self) -> bool {
         let r = match (self.kind(), other.kind()) {
             (AtomKind::True, AtomKind::True) => true,
             (AtomKind::Constraint(c1), AtomKind::Constraint(c2)) => c1 == c2,
+            (AtomKind::True, AtomKind::Constraint(c))
+            | (AtomKind::Constraint(c), AtomKind::True) => c.is_true(),
             (AtomKind::Predicate(p1, l1), AtomKind::Predicate(p2, l2)) => p1 == p2 && l1 == l2,
             (AtomKind::Conj(x1, y1), AtomKind::Conj(x2, y2)) => x1 == x2 && y1 == y2,
             (AtomKind::Disj(x1, y1), AtomKind::Disj(x2, y2)) => x1 == x2 && y1 == y2,
@@ -56,7 +42,6 @@ impl PartialEq for Atom {
             }
             (_, _) => false,
         };
-        debug!("{} == {}?: {}", self, other, r);
         r
     }
 }
@@ -178,7 +163,7 @@ impl From<Atom> for pcsp::Atom {
                 let c: pcsp::Atom = a.clone().into();
                 pcsp::Atom::mk_quantifier(*q, *x, c)
             }
-            AtomKind::Predicate(p, l) => pcsp::Atom::mk_pred(p.clone(), l.clone()),
+            AtomKind::Predicate(p, l) => pcsp::Atom::mk_pred(*p, l.clone()),
         }
     }
 }
@@ -229,7 +214,7 @@ impl Bot for Atom {
 }
 
 impl Logic for Atom {
-    fn is_conj<'a>(&'a self) -> Option<(&'a Atom, &'a Atom)> {
+    fn is_conj(&self) -> Option<(&Atom, &Atom)> {
         match self.kind() {
             AtomKind::Conj(x, y) => Some((x, y)),
             _ => None,
@@ -247,7 +232,7 @@ impl Logic for Atom {
             Atom::new(Conj(x, y))
         }
     }
-    fn is_disj<'a>(&'a self) -> Option<(&'a Atom, &'a Atom)> {
+    fn is_disj(&self) -> Option<(&Atom, &Atom)> {
         match self.kind() {
             AtomKind::Disj(x, y) => Some((x, y)),
             _ => None,
@@ -271,16 +256,14 @@ impl Negation for Atom {
     fn negate(&self) -> Option<Atom> {
         match self.kind() {
             AtomKind::True => Some(Atom::mk_false()),
-            AtomKind::Constraint(c) => c.negate().map(|c| Atom::mk_constraint(c)),
+            AtomKind::Constraint(c) => c.negate().map(Atom::mk_constraint),
             AtomKind::Predicate(_, _) => Some(Atom::mk_not(self.clone())),
             AtomKind::Conj(c1, c2) => c1
                 .negate()
-                .map(|c1| c2.negate().map(|c2| Atom::mk_disj(c1, c2)))
-                .flatten(),
+                .and_then(|c1| c2.negate().map(|c2| Atom::mk_disj(c1, c2))),
             AtomKind::Disj(c1, c2) => c1
                 .negate()
-                .map(|c1| c2.negate().map(|c2| Atom::mk_conj(c1, c2)))
-                .flatten(),
+                .and_then(|c1| c2.negate().map(|c2| Atom::mk_disj(c1, c2))),
             AtomKind::Not(a) => Some(a.clone()),
             AtomKind::Quantifier(q, x, a) => {
                 let q = q.negate();
@@ -335,6 +318,19 @@ impl From<Constraint> for hes::Goal<Atom> {
     fn from(c: Constraint) -> Self {
         let a: Atom = c.into();
         a.into()
+    }
+}
+
+impl Precedence for Atom {
+    fn precedence(&self) -> PrecedenceKind {
+        match self.kind() {
+            AtomKind::True | AtomKind::Predicate(_, _) => PrecedenceKind::Atom,
+            AtomKind::Constraint(c) => c.precedence(),
+            AtomKind::Conj(_, _) => PrecedenceKind::Conj,
+            AtomKind::Disj(_, _) => PrecedenceKind::Disj,
+            AtomKind::Not(_) => PrecedenceKind::Not,
+            AtomKind::Quantifier(_, _, _) => PrecedenceKind::Abs,
+        }
     }
 }
 
@@ -469,16 +465,14 @@ impl Atom {
             AtomKind::Predicate(_, _) => None,
             AtomKind::Conj(x, y) => x
                 .to_constraint()
-                .map(|x| y.to_constraint().map(|y| Constraint::mk_conj(x, y)))
-                .flatten(),
+                .and_then(|x| y.to_constraint().map(|y| Constraint::mk_conj(x, y))),
             AtomKind::Disj(x, y) => x
                 .to_constraint()
-                .map(|x| y.to_constraint().map(|y| Constraint::mk_disj(x, y)))
-                .flatten(),
+                .and_then(|x| y.to_constraint().map(|y| Constraint::mk_disj(x, y))),
             AtomKind::Quantifier(q, x, c) => c
                 .to_constraint()
                 .map(|c| Constraint::mk_quantifier(*q, Variable::mk(*x, Type::mk_type_int()), c)),
-            AtomKind::Not(x) => x.to_constraint().map(|x| x.negate()).flatten(),
+            AtomKind::Not(x) => x.to_constraint().and_then(|x| x.negate()),
         }
     }
     pub fn assign(&self, model: &HashMap<Ident, (Vec<Ident>, Constraint)>) -> Constraint {
@@ -490,7 +484,7 @@ impl Atom {
                     let v: Vec<_> = r
                         .iter()
                         .zip(l.iter())
-                        .map(|(x, y)| (x.clone(), y.clone()))
+                        .map(|(x, y)| (*x, y.clone()))
                         .collect();
                     c.subst_multi(&v)
                 }
@@ -507,7 +501,7 @@ impl Atom {
                 Variable::mk(*x, Type::mk_type_int()),
                 c.assign(model),
             ),
-            AtomKind::Not(x) => x.assign(&model).negate().unwrap(),
+            AtomKind::Not(x) => x.assign(model).negate().unwrap(),
         }
     }
     // reduces Atom a to a' where all the occurences of not
@@ -581,7 +575,7 @@ impl Atom {
                 };
                 env.insert(x);
                 let (mut v, a) = a.prenex_normal_form_raw(env);
-                debug_assert!(v.iter().find(|(_, y)| { x == *y }).is_none());
+                debug_assert!(!v.iter().any(|(_, y)| { x == *y }));
                 v.push((*q, x));
                 env.remove(&x);
                 (v, a)
@@ -710,7 +704,7 @@ impl DerefPtr for Atom {
             }
             AtomKind::Quantifier(q, v, x) => {
                 let x = x.deref_ptr(id);
-                Atom::mk_quantifier(*q, v.clone(), x)
+                Atom::mk_quantifier(*q, *v, x)
             }
         }
     }
@@ -789,7 +783,7 @@ impl TemplateKind for Linear {
         let v: Vec<_> = args
             .iter()
             .zip(arg_ops.iter())
-            .map(|(x, y)| (x.clone(), y.clone()))
+            .map(|(x, y)| (*x, y.clone()))
             .collect();
         c.subst_multi(&v)
     }
@@ -805,7 +799,7 @@ impl TemplateKind for Linear {
         let v: Vec<_> = args
             .iter()
             .zip(arg_ops.iter())
-            .map(|(x, y)| (x.clone(), y.clone()))
+            .map(|(x, y)| (*x, y.clone()))
             .collect();
         c.subst_multi(&v)
     }
@@ -827,9 +821,9 @@ fn gen_linear_sum(coefs: impl IntoIterator<Item = Op>, args: &[Ident]) -> Op {
     if !args.is_empty() {
         let mut coefs = coefs.into_iter();
         let c = coefs.next().unwrap();
-        let mut cur = Op::mk_bin_op(OpKind::Mul, c, args[0].clone().into());
+        let mut cur = Op::mk_bin_op(OpKind::Mul, c, args[0].into());
         for (id, coef) in args[1..].iter().zip(coefs) {
-            let id = id.clone();
+            let id = *id;
             let term = Op::mk_bin_op(OpKind::Mul, coef, id.into());
             cur = Op::mk_bin_op(OpKind::Add, cur, term)
         }
@@ -841,12 +835,8 @@ fn gen_linear_sum(coefs: impl IntoIterator<Item = Op>, args: &[Ident]) -> Op {
 
 impl<'a> Template<'a> {
     fn new(nargs: usize) -> Template<'a> {
-        let mut template_kinds: Vec<Box<dyn TemplateKind>> = Vec::new();
-        // Here, the list of templates
-        //// 1. ax + by + c = d
-        //template_kinds.push(Box::new(new_eq_template(nargs)));
         // 1. ax + by + c > d
-        template_kinds.push(Box::new(new_gt_template(nargs)));
+        let template_kinds: Vec<Box<dyn TemplateKind>> = vec![Box::new(new_gt_template(nargs))];
         Template {
             nargs,
             template_kinds,
@@ -862,15 +852,15 @@ impl<'a> Template<'a> {
     }
 
     fn coef_iter(&'a self) -> impl Iterator<Item = &'a Ident> {
-        self.template_kinds.iter().map(|x| x.coefs()).flatten()
+        self.template_kinds.iter().flat_map(|x| x.coefs())
     }
 
-    fn to_constraint(self, model: &solver::Model) -> (Vec<Ident>, Constraint) {
+    fn to_constraint(&self, model: &solver::Model) -> (Vec<Ident>, Constraint) {
         let args = (0..self.nargs)
             .into_iter()
             .map(|_| Ident::fresh())
             .collect::<Vec<_>>();
-        let op_args: Vec<Op> = args.iter().map(|x| x.clone().into()).collect();
+        let op_args: Vec<Op> = args.iter().map(|x| (*x).into()).collect();
         let mut c = Constraint::mk_true();
         for t in self.template_kinds.iter() {
             c = Constraint::mk_conj(t.instantiate(&op_args, model), c);

@@ -10,7 +10,7 @@ type Out = ValidityChecking<formula::Ident, SimpleType>;
 type InClause = Clause<parse::Ident, SimpleType>;
 type OutClause = Clause<formula::Ident, SimpleType>;
 
-pub fn alpha_renaming<'a>(input: In) -> (Out, Context) {
+pub fn alpha_renaming(input: In) -> (Out, Context) {
     let env = Environment::new();
     let env = alpha_rename_clauses(env, &input.clauses);
     let clauses = input
@@ -60,7 +60,7 @@ fn alpha_rename_expr(
     }
 }
 
-fn alpha_rename_clause<'a>(mut env: Environment, c: &'a InClause) -> OutClause {
+fn alpha_rename_clause(mut env: Environment, c: &InClause) -> OutClause {
     let mut args = Vec::new();
     for arg in c.args.iter() {
         let k = formula::Ident::fresh();
@@ -75,7 +75,7 @@ fn alpha_rename_clause<'a>(mut env: Environment, c: &'a InClause) -> OutClause {
     Clause { args, id, expr }
 }
 
-fn alpha_rename_clauses<'a>(mut env: Environment, c: &'a [InClause]) -> Environment {
+fn alpha_rename_clauses(mut env: Environment, c: &[InClause]) -> Environment {
     for clause in c.iter() {
         let k = formula::Ident::fresh();
         env = env.insert(clause.id.id.clone(), k);

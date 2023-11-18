@@ -21,11 +21,11 @@ pub struct VariableInfo<'a> {
     pub variable: Variable,
     pub idents: &'a HashSet<Ident>,
 }
-pub fn variable_info<'a>(
+pub fn variable_info(
     reduction_id: usize,
     variable: Variable,
-    idents: &'a HashSet<Ident>,
-) -> VariableInfo<'a> {
+    idents: &HashSet<Ident>,
+) -> VariableInfo {
     VariableInfo {
         reduction_id,
         variable,
@@ -94,7 +94,7 @@ impl Optimizer for RepetitiveOptimizer {
         // singleton template
         Some(vec![derivation::Ty::from_sty(
             &info.variable.ty,
-            &info.idents,
+            info.idents,
         )])
     }
 }
@@ -204,7 +204,7 @@ impl Optimizer for NaiveOptimizer {
         // singleton template
         Some(vec![derivation::Ty::from_sty(
             &info.variable.ty,
-            &info.idents,
+            info.idents,
         )])
     }
 }

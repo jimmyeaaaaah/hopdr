@@ -1,14 +1,15 @@
 use crate::formula::ty::Type;
 use crate::formula::{
-    Bot, Constraint, FirstOrderLogic, Fv, Ident, Logic, Op, Rename, TeXPrinter, Top, Variable,
+    Bot, Constraint, FirstOrderLogic, Fv, Ident, Logic, Op, Precedence, PrecedenceKind, Rename,
+    TeXPrinter, Top, Variable,
 };
 use crate::pdr::rtype::Refinement;
-use crate::util::P;
+use crate::util::{Pretty, P};
 use std::collections::HashSet;
 
 use std::fmt;
 
-use super::{fofml, Subst, TeXFormat};
+use super::{fofml, Negation, Subst, TeXFormat};
 
 #[derive(Debug)]
 pub enum ConstKind {
@@ -63,7 +64,7 @@ pub struct GoalBase<C, T> {
 }
 
 impl<C, T> GoalBase<C, T> {
-    pub fn kind<'a>(&'a self) -> &'a GoalKind<C, T> {
+    pub fn kind(&self) -> &GoalKind<C, T> {
         &*self.ptr
     }
 }
@@ -94,19 +95,9 @@ impl<C, T: Clone> Clone for GoalBase<C, T> {
 
 pub type Goal<C> = GoalBase<C, ()>;
 
-impl<C: fmt::Display, T> fmt::Display for GoalBase<C, T> {
+impl<C: Pretty + Precedence, T> fmt::Display for GoalBase<C, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use GoalKind::*;
-        match self.kind() {
-            Constr(c) => write!(f, "({})", c),
-            Op(o) => write!(f, "({})", o),
-            Var(x) => write!(f, "{}", x),
-            App(x, y) => write!(f, "[{} {}]", x, y),
-            Conj(x, y) => write!(f, "({} ∧ {})", x, y),
-            Disj(x, y) => write!(f, "({} ∨ {})", x, y),
-            Univ(x, y) => write!(f, "(∀{}.{})", x, y),
-            Abs(x, y) => write!(f, "(\\{}.{})", x, y),
-        }
+        write!(f, "{}", self.pretty_display())
     }
 }
 
@@ -140,10 +131,7 @@ impl<C: Top, T: Default> Top for GoalBase<C, T> {
     }
 
     fn is_true(&self) -> bool {
-        match self.kind() {
-            GoalKind::Constr(c) if c.is_true() => true,
-            _ => false,
-        }
+        matches!(self.kind(), GoalKind::Constr(c) if c.is_true())
     }
 }
 impl<C: Bot, T: Default> Bot for GoalBase<C, T> {
@@ -152,10 +140,7 @@ impl<C: Bot, T: Default> Bot for GoalBase<C, T> {
     }
 
     fn is_false(&self) -> bool {
-        match self.kind() {
-            GoalKind::Constr(c) if c.is_false() => true,
-            _ => false,
-        }
+        matches!(self.kind(), GoalKind::Constr(c) if c.is_false())
     }
 }
 impl<C> From<C> for GoalBase<C, ()> {
@@ -281,19 +266,61 @@ impl<C, T> GoalBase<C, T> {
             aux,
         }
     }
+    pub fn is_var(&self) -> bool {
+        matches!(self.kind(), GoalKind::Var(_))
+    }
+    pub fn is_univ(&self) -> bool {
+        matches!(self.kind(), GoalKind::Univ(_, _))
+    }
+    pub fn conj<'a>(&'a self) -> (&'a Self, &'a Self) {
+        match self.kind() {
+            GoalKind::Conj(g1, g2) => (g1, g2),
+            _ => panic!("the given expr is not conj"),
+        }
+    }
+    pub fn disj<'a>(&'a self) -> (&'a Self, &'a Self) {
+        match self.kind() {
+            GoalKind::Disj(g1, g2) => (g1, g2),
+            _ => panic!("the given expr is not disj"),
+        }
+    }
+    pub fn univ<'a>(&'a self) -> (&'a Variable, &'a Self) {
+        match self.kind() {
+            GoalKind::Univ(x, g) => (x, g),
+            _ => panic!("the given expr is not univ"),
+        }
+    }
+    pub fn abs<'a>(&'a self) -> (&'a Variable, &'a Self) {
+        match self.kind() {
+            GoalKind::Abs(x, g) => (x, g),
+            _ => panic!("the given expr is not abs"),
+        }
+    }
+    pub fn app<'a>(&'a self) -> (&'a Self, &'a Self) {
+        match self.kind() {
+            GoalKind::App(x, y) => (x, y),
+            _ => panic!("the given expr is not app"),
+        }
+    }
+    pub fn var<'a>(&'a self) -> &'a Ident {
+        match self.kind() {
+            GoalKind::Var(x) => x,
+            _ => panic!("the given expr is not abs"),
+        }
+    }
+    pub fn atom<'a>(&'a self) -> &'a C {
+        match self.kind() {
+            GoalKind::Constr(c) => c,
+            _ => panic!("the given expr is not atom"),
+        }
+    }
 }
 impl<C, T> GoalBase<C, T> {
     pub fn is_conj(&self) -> bool {
-        match self.kind() {
-            GoalKind::Conj(_, _) => true,
-            _ => false,
-        }
+        matches!(self.kind(), GoalKind::Conj(_, _))
     }
     pub fn is_disj(&self) -> bool {
-        match self.kind() {
-            GoalKind::Disj(_, _) => true,
-            _ => false,
-        }
+        matches!(self.kind(), GoalKind::Disj(_, _))
     }
 }
 impl<C: Bot + Top> Goal<C> {
@@ -321,6 +348,58 @@ impl<C: Bot + Top> Goal<C> {
             x = Goal::mk_abs(v.clone(), x);
         }
         x
+    }
+    /// If self is "trivially" true, then it returns true.
+    /// Otherwise, it's unknown.
+    pub fn is_true(&self) -> bool {
+        match self.kind() {
+            GoalKind::Constr(c) => c.is_true(),
+            GoalKind::Conj(c1, c2) => c1.is_true() && c2.is_true(),
+            GoalKind::Disj(c1, c2) => c1.is_true() || c2.is_true(),
+            GoalKind::Univ(_, c) => c.is_true(),
+            _ => false,
+        }
+    }
+
+    /// If self is "trivially" false, then it returns true.
+    /// Otherwise, it's unknown.
+    pub fn is_false(&self) -> bool {
+        match self.kind() {
+            GoalKind::Constr(c) => c.is_false(),
+            GoalKind::Conj(c1, c2) => c1.is_false() || c2.is_false(),
+            GoalKind::Disj(c1, c2) => c1.is_false() && c2.is_false(),
+            GoalKind::Univ(_, c) => c.is_false(),
+            _ => false,
+        }
+    }
+
+    /// This returns a formula that is equivalent to the conjunction of `lhs` and `rhs`.
+    pub fn mk_conj_opt(lhs: Goal<C>, rhs: Goal<C>) -> Goal<C> {
+        if lhs.is_true() {
+            rhs
+        } else if rhs.is_true() {
+            lhs
+        } else {
+            Goal::mk_conj(lhs, rhs)
+        }
+    }
+
+    /// This returns a formula that is equivalent to the disjunction of `lhs` and `rhs`.
+    pub fn mk_disj_opt(lhs: Goal<C>, rhs: Goal<C>) -> Goal<C> {
+        if lhs.is_false() {
+            rhs
+        } else if rhs.is_false() {
+            lhs
+        } else {
+            Goal::mk_disj(lhs, rhs)
+        }
+    }
+}
+
+impl<C: Negation, T: Default> GoalBase<C, T> {
+    pub fn mk_imply_t(lhs: C, rhs: GoalBase<C, T>, aux: T) -> Option<GoalBase<C, T>> {
+        lhs.negate()
+            .map(|lhs| Self::mk_disj_t(Self::mk_constr_t(lhs, T::default()), rhs, aux))
     }
 }
 
@@ -381,15 +460,18 @@ impl<C: Rename, T: Clone> Rename for GoalBase<C, T> {
         }
     }
 }
-impl<C: Subst<Item = Op, Id = Ident> + Rename + Fv<Id = Ident> + fmt::Display, T: Clone> Subst
-    for GoalBase<C, T>
+impl<C: Subst<Item = Op, Id = Ident> + Rename + Fv<Id = Ident> + Precedence + Pretty, T: Clone>
+    Subst for GoalBase<C, T>
 {
     type Item = GoalBase<C, T>;
     type Id = Variable;
     // we assume formula has already been alpha-renamed
     // TODO: where? We will not assume alpha-renamed
     fn subst(&self, x: &Variable, v: &GoalBase<C, T>) -> Self {
-        fn subst_inner<C: Subst<Item = Op, Id = Ident> + Rename + fmt::Display, T: Clone>(
+        fn subst_inner<
+            C: Subst<Item = Op, Id = Ident> + Rename + Pretty + Precedence + Fv<Id = Ident>,
+            T: Clone,
+        >(
             target: &GoalBase<C, T>,
             x: &Variable,
             v: &GoalBase<C, T>,
@@ -400,7 +482,8 @@ impl<C: Subst<Item = Op, Id = Ident> + Rename + Fv<Id = Ident> + fmt::Display, T
             match target.kind() {
                 GoalKind::Var(y) => {
                     if x.id == *y {
-                        v.clone()
+                        v.alpha_renaming()
+                        //v.clone()
                     } else {
                         target.clone()
                     }
@@ -478,55 +561,42 @@ impl<C: Subst<Item = Op, Id = Ident> + Rename + Fv<Id = Ident> + fmt::Display, T
 
 impl<C: Rename + Fv<Id = Ident>, T: Clone> GoalBase<C, T> {
     pub fn alpha_renaming(&self) -> GoalBase<C, T> {
-        pub fn go<C: Rename, T: Clone>(
-            goal: &GoalBase<C, T>,
-            vars: &mut HashSet<Ident>,
-        ) -> GoalBase<C, T> {
-            // aux function for checking the uniqueness of v.id;
-            // if v.id has already appeared previously (meaning v.id in vars),
-            // first it generates a fresh identifier and rename v.id with the new one.
-            let aux = |v: &Variable, g: &GoalBase<C, T>, vars: &HashSet<Ident>| {
-                if vars.contains(&v.id) {
-                    let id = Ident::fresh();
-                    let g = g.rename(&v.id, &id);
-                    (Variable::mk(id, v.ty.clone()), g)
-                } else {
-                    (v.clone(), g.clone())
-                }
-            };
-            match goal.kind() {
-                GoalKind::Constr(_) | GoalKind::Op(_) | GoalKind::Var(_) => goal.clone(),
-                GoalKind::Abs(v, g) => {
-                    let (v, g) = aux(v, g, vars);
-                    vars.insert(v.id);
-                    let g = go(&g, vars);
-                    GoalBase::mk_abs_t(v, g, goal.aux.clone())
-                }
-                GoalKind::Univ(v, g) => {
-                    let (v, g) = aux(v, g, vars);
-                    vars.insert(v.id);
-                    let g = go(&g, vars);
-                    GoalBase::mk_univ_t(v, g, goal.aux.clone())
-                }
-                GoalKind::App(g1, g2) => {
-                    let g1 = go(g1, vars);
-                    let g2 = go(g2, vars);
-                    GoalBase::mk_app_t(g1, g2, goal.aux.clone())
-                }
-                GoalKind::Conj(g1, g2) => {
-                    let g1 = go(g1, vars);
-                    let g2 = go(g2, vars);
-                    GoalBase::mk_conj_t(g1, g2, goal.aux.clone())
-                }
-                GoalKind::Disj(g1, g2) => {
-                    let g1 = go(g1, vars);
-                    let g2 = go(g2, vars);
-                    GoalBase::mk_disj_t(g1, g2, goal.aux.clone())
-                }
+        fn aux<C: Rename, T: Clone>(
+            v: &Variable,
+            g: &GoalBase<C, T>,
+        ) -> (Variable, GoalBase<C, T>) {
+            let id = Ident::fresh();
+            let g = g.rename(&v.id, &id);
+            (Variable::mk(id, v.ty.clone()), g)
+        }
+        match self.kind() {
+            GoalKind::Constr(_) | GoalKind::Op(_) | GoalKind::Var(_) => self.clone(),
+            GoalKind::Abs(v, g) => {
+                let (v, g) = aux(v, g);
+                let g = g.alpha_renaming();
+                GoalBase::mk_abs_t(v, g, self.aux.clone())
+            }
+            GoalKind::Univ(v, g) => {
+                let (v, g) = aux(v, g);
+                let g = g.alpha_renaming();
+                GoalBase::mk_univ_t(v, g, self.aux.clone())
+            }
+            GoalKind::App(g1, g2) => {
+                let g1 = g1.alpha_renaming();
+                let g2 = g2.alpha_renaming();
+                GoalBase::mk_app_t(g1, g2, self.aux.clone())
+            }
+            GoalKind::Conj(g1, g2) => {
+                let g1 = g1.alpha_renaming();
+                let g2 = g2.alpha_renaming();
+                GoalBase::mk_conj_t(g1, g2, self.aux.clone())
+            }
+            GoalKind::Disj(g1, g2) => {
+                let g1 = g1.alpha_renaming();
+                let g2 = g2.alpha_renaming();
+                GoalBase::mk_disj_t(g1, g2, self.aux.clone())
             }
         }
-        let mut fvs = self.fv();
-        go(self, &mut fvs)
     }
 }
 
@@ -552,6 +622,20 @@ impl<C: Refinement> PartialEq for Goal<C> {
     }
 }
 
+impl<T, C: Precedence> Precedence for GoalBase<C, T> {
+    fn precedence(&self) -> PrecedenceKind {
+        match self.kind() {
+            GoalKind::Constr(c) => c.precedence(),
+            GoalKind::Op(o) => o.precedence(),
+            GoalKind::Var(_) => PrecedenceKind::Atom,
+            GoalKind::Univ(_, _) | GoalKind::Abs(_, _) => PrecedenceKind::Abs,
+            GoalKind::App(_, _) => PrecedenceKind::App,
+            GoalKind::Conj(_, _) => PrecedenceKind::Conj,
+            GoalKind::Disj(_, _) => PrecedenceKind::Disj,
+        }
+    }
+}
+
 // TODO: fix not to use Refinement
 impl<C: Refinement> Goal<C> {
     fn reduce_inner(&self) -> Goal<C> {
@@ -561,12 +645,7 @@ impl<C: Refinement> Goal<C> {
                 let g = g.reduce_inner();
                 let arg = arg.reduce_inner();
                 match g.kind() {
-                    GoalKind::Abs(x, g) => {
-                        let g2 = g.subst(x, &arg);
-                        // debug
-                        // println!("app: [{}/{}]{} ---> {}", arg, x.id, g, g2);
-                        g2
-                    }
+                    GoalKind::Abs(x, g) => g.subst(x, &arg),
                     _ => GoalBase::mk_app(g, arg),
                 }
             }
@@ -668,7 +747,7 @@ impl<C: Refinement, T: Clone + Default> GoalBase<C, T> {
                 };
                 env.insert(x.id);
                 let (mut v, a) = a.prenex_normal_form_raw(env);
-                debug_assert!(v.iter().find(|y| { x.id == y.id }).is_none());
+                debug_assert!(!v.iter().any(|y| { x.id == y.id }));
                 env.remove(&x.id);
                 v.push(x);
                 (v, a)
@@ -725,7 +804,7 @@ impl<C, T> GoalBase<C, T> {
         }
     }
     // returns ident of Abs(ident, x). If self is not Abs(_), abs_var panics.
-    pub fn abs_var<'a>(&'a self) -> &'a Variable {
+    pub fn abs_var(&self) -> &Variable {
         match self.kind() {
             GoalKind::Abs(x, _) => x,
             _ => panic!("abs_var assumes that self.kind() is Abs(_, _)."),
@@ -786,10 +865,9 @@ impl<C: Fv<Id = Ident>> Fv for Clause<C> {
     }
 }
 
-impl<C: fmt::Display> fmt::Display for Clause<C> {
+impl<C: Pretty + Precedence> fmt::Display for Clause<C> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} ", self.head)?;
-        write!(f, "= {}", self.body)
+        write!(f, "{}", self.pretty_display())
     }
 }
 
@@ -827,13 +905,9 @@ impl From<Problem<Constraint>> for Problem<fofml::Atom> {
     }
 }
 
-impl<C: fmt::Display> fmt::Display for Problem<C> {
+impl<C: Pretty + Precedence> fmt::Display for Problem<C> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(f, "toplevel: {}", &self.top)?;
-        for c in self.clauses.iter() {
-            writeln!(f, "- {}", c)?;
-        }
-        fmt::Result::Ok(())
+        write!(f, "{}", self.pretty_display())
     }
 }
 
@@ -905,11 +979,6 @@ impl<C> Problem<C> {
     }
 
     pub fn get_clause<'a>(&'a self, id: &Ident) -> Option<&'a Clause<C>> {
-        for c in self.clauses.iter() {
-            if c.head.id == *id {
-                return Some(c);
-            }
-        }
-        None
+        self.clauses.iter().find(|&c| c.head.id == *id)
     }
 }

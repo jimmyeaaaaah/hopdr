@@ -8,15 +8,15 @@ pub mod ty;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
-use colored::Colorize;
 use rpds::Stack;
 
 pub use crate::formula::ty::*;
 use crate::parse::ExprKind;
 use crate::util::global_counter;
+use crate::util::Pretty;
 pub use crate::util::P;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum PredKind {
     Eq,
     Neq,
@@ -28,18 +28,7 @@ pub enum PredKind {
 
 impl fmt::Display for PredKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                PredKind::Eq => "=",
-                PredKind::Neq => "!=",
-                PredKind::Lt => "<",
-                PredKind::Leq => "<=",
-                PredKind::Gt => ">",
-                PredKind::Geq => ">=",
-            }
-        )
+        write!(f, "{}", self.pretty_display())
     }
 }
 
@@ -55,7 +44,7 @@ impl PredKind {
         }
     }
 }
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum OpKind {
     Add,
     Sub,
@@ -66,21 +55,11 @@ pub enum OpKind {
 
 impl fmt::Display for OpKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                OpKind::Add => "+",
-                OpKind::Sub => "-",
-                OpKind::Mul => "*",
-                OpKind::Div => "/",
-                OpKind::Mod => "%",
-            }
-        )
+        write!(f, "{}", self.pretty_display())
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum QuantifierKind {
     Universal,
     Existential,
@@ -88,14 +67,7 @@ pub enum QuantifierKind {
 
 impl fmt::Display for QuantifierKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                QuantifierKind::Universal => "∀",
-                QuantifierKind::Existential => "∃",
-            }
-        )
+        write!(f, "{}", self.pretty_display())
     }
 }
 
@@ -106,33 +78,35 @@ impl QuantifierKind {
             QuantifierKind::Universal => QuantifierKind::Existential,
         }
     }
+    pub fn is_existential(&self) -> bool {
+        matches!(self, Self::Existential)
+    }
+    pub fn is_universal(&self) -> bool {
+        matches!(self, Self::Universal)
+    }
+    pub fn to_str(&self) -> &'static str {
+        match self {
+            QuantifierKind::Universal => "∀",
+            QuantifierKind::Existential => "∃",
+        }
+    }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Hash)]
 pub enum OpExpr {
     Op(OpKind, Op, Op),
     Var(Ident),
     Const(i64),
     // for tracking substitution, we memorize the old ident and replaced op
+    // also this is a guard for optimization. you don't have to deref ptr to implement
+    // optimization (otherwise, derivation procedure will break)
     Ptr(Ident, Op),
 }
 
 pub type Op = P<OpExpr>;
 impl fmt::Display for Op {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use OpExpr::*;
-        match self.kind() {
-            Op(k, o1, o2) => {
-                // handle (0 - x)
-                match (*k, o1.kind()) {
-                    (OpKind::Sub, OpExpr::Const(0)) => write!(f, "(-{})", o2),
-                    _ => write!(f, "({} {} {})", o1, k, o2),
-                }
-            }
-            Var(i) => write!(f, "{}", i),
-            Const(c) => write!(f, "{}", c),
-            Ptr(_, o) => write!(f, "{}", o),
-        }
+        write!(f, "{}", self.pretty_display())
     }
 }
 impl PartialEq for Op {
@@ -175,6 +149,12 @@ pub struct IntegerEnvironment {
     imap: Stack<Ident>,
 }
 
+impl Default for IntegerEnvironment {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl IntegerEnvironment {
     pub fn new() -> IntegerEnvironment {
         IntegerEnvironment { imap: Stack::new() }
@@ -191,7 +171,7 @@ impl IntegerEnvironment {
         // assumes alpha-renamed
         self.imap.iter().copied().collect()
     }
-    pub fn add(mut self, v: Ident) -> IntegerEnvironment {
+    pub fn push(mut self, v: Ident) -> IntegerEnvironment {
         self.imap.push_mut(v);
         self
     }
@@ -202,15 +182,21 @@ impl IntegerEnvironment {
 }
 
 impl Op {
-    pub fn mk_bin_op(op: OpKind, x: Op, y: Op) -> Op {
+    fn mk_bin_op_raw(op: OpKind, x: Op, y: Op) -> Op {
         Op::new(OpExpr::Op(op, x, y))
     }
-
-    pub fn check_const(&self, c: i64) -> bool {
-        match self.kind() {
-            OpExpr::Const(c2) if c == *c2 => true,
-            _ => false,
+    pub fn mk_bin_op(op: OpKind, x: Op, y: Op) -> Op {
+        match op {
+            OpKind::Add => Op::mk_add(x, y),
+            OpKind::Sub => Op::mk_sub(x, y),
+            OpKind::Mul => Op::mk_mul(x, y),
+            OpKind::Div | OpKind::Mod => Op::mk_bin_op_raw(op, x, y),
         }
+    }
+
+    /// Checks if the given op is a constant, and equals to `c`
+    pub fn check_const(&self, c: i64) -> bool {
+        matches!(self.kind(), OpExpr::Const(c2) if c == *c2)
     }
 
     pub fn mk_add(x: Op, y: Op) -> Op {
@@ -219,7 +205,15 @@ impl Op {
         } else if y.check_const(0) {
             x
         } else {
-            Op::new(OpExpr::Op(OpKind::Add, x, y))
+            match y.kind() {
+                // assumes constant appears in the left-hand side of mul
+                // this is true if you construct muls with mk_mul
+                OpExpr::Op(OpKind::Mul, y, z) if y.check_const(-1) => Op::mk_sub(x, z.clone()),
+                OpExpr::Const(c) if *c < 0 => Op::mk_sub(x, Op::mk_const(-c)),
+                OpExpr::Op(_, _, _) | OpExpr::Const(_) | OpExpr::Var(_) | OpExpr::Ptr(_, _) => {
+                    Op::mk_bin_op_raw(OpKind::Add, x, y)
+                }
+            }
         }
     }
 
@@ -229,11 +223,20 @@ impl Op {
         } else if y.check_const(0) {
             x
         } else {
-            Op::new(OpExpr::Op(OpKind::Sub, x, y))
+            match y.kind() {
+                // assumes constant appears in the left-hand side of mul
+                // this is true if you construct muls with mk_mul
+                OpExpr::Op(OpKind::Mul, y, z) if y.check_const(-1) => Op::mk_add(x, z.clone()),
+                OpExpr::Const(c) if *c < 0 => Op::mk_add(x, Op::mk_const(-c)),
+                OpExpr::Op(_, _, _) | OpExpr::Const(_) | OpExpr::Var(_) | OpExpr::Ptr(_, _) => {
+                    Op::mk_bin_op_raw(OpKind::Sub, x, y)
+                }
+            }
         }
     }
 
     pub fn mk_mul(x: Op, y: Op) -> Op {
+        use OpKind::*;
         if x.check_const(1) {
             y
         } else if y.check_const(1) {
@@ -243,13 +246,23 @@ impl Op {
         } else {
             match (x.kind(), y.kind()) {
                 (OpExpr::Const(x), OpExpr::Const(y)) => Op::mk_const(x * y),
-                _ => Op::new(OpExpr::Op(OpKind::Mul, x, y)),
+                (OpExpr::Const(c), OpExpr::Op(Mul, a, b))
+                | (OpExpr::Op(Mul, a, b), OpExpr::Const(c)) => {
+                    // place const in the left-hand side of OpExpr::Op
+                    match (a.kind(), b.kind()) {
+                        (OpExpr::Const(y), z) | (z, OpExpr::Const(y)) => {
+                            Op::mk_mul(Op::mk_const(c * y), Op::new(z.clone()))
+                        }
+                        (_, _) => Op::mk_bin_op_raw(OpKind::Mul, x, y),
+                    }
+                }
+                _ => Op::mk_bin_op_raw(OpKind::Mul, x, y),
             }
         }
     }
 
     pub fn mk_minus(x: Op) -> Op {
-        Op::new(OpExpr::Op(OpKind::Sub, Op::mk_const(0), x))
+        Op::mk_bin_op_raw(OpKind::Sub, Op::mk_const(0), x)
     }
 
     pub fn mk_inc(x: Op) -> Op {
@@ -354,9 +367,9 @@ impl Op {
     /// expands the given op (e.g. (4 + 1) * ((2 - 3) + 2) -> (4 + 1) * (2 - 3) + (4 + 1) * 2 -> ((4 + 1) * 2 -  (4 + 1) * 3 + (4 + 1) * 2)
     pub fn expand_expr(&self) -> Op {
         let v = self.expand_expr_to_vec();
-        assert!(v.len() > 0);
+        assert!(!v.is_empty());
         let mut o = v[0].clone();
-        for o2 in v[1..].into_iter() {
+        for o2 in v[1..].iter() {
             o = Op::mk_add(o, o2.clone())
         }
         o
@@ -366,7 +379,7 @@ impl Op {
     /// This method normalizes the given op to `o₀x₁ + ⋯ + o_n-1 xₙ `
     /// v[i] is the coefficient for xᵢ in the normalized `op`(i.e. oᵢ).
     /// v[n] is the constant part of `o_normalized` (i.e. o₀).
-    pub fn normalize(&self, variables: &Vec<Ident>) -> Vec<Op> {
+    pub fn normalize(&self, variables: &Vec<Ident>) -> Option<Vec<Op>> {
         fn parse_mult(o: &Op, m: &HashMap<Ident, usize>) -> Option<(Op, Option<Ident>)> {
             match o.kind() {
                 crate::formula::OpExpr::Op(OpKind::Mul, o1, o2) => {
@@ -401,14 +414,44 @@ impl Op {
         let additions = self.expand_expr_to_vec();
         let constant_index = variables.len();
         for addition in additions {
-            let (coef, v) = parse_mult(&addition, &m).expect(&format!(
-                "there is non-linear exprresion, which is note supported: {addition}"
-            ));
+            let (coef, v) = parse_mult(&addition, &m)?;
             let id = v.map_or(constant_index, |v| *m.get(&v).unwrap());
             result_vec[id] = Op::mk_add(result_vec[id].clone(), coef);
         }
         debug_assert!(result_vec.len() == variables.len() + 1);
-        result_vec
+        Some(result_vec)
+    }
+    pub fn solve_for(x: &Ident, o1: &Self, o2: &Self) -> Option<Op> {
+        let o = Op::mk_sub(o1.clone(), o2.clone());
+        let mut fv = o.fv();
+        if !fv.contains(x) {
+            return None;
+        }
+        fv.remove(x);
+
+        let mut variables = vec![*x];
+        for v in fv.into_iter() {
+            variables.push(v);
+        }
+        let mut v = o.normalize(&variables)?;
+
+        // Of course, we can do more, but for now it's ok (like checking if we can divide "xi" by x_0)
+        let coef = v[0].eval_with_empty_env();
+        if coef == Some(1) {
+            let mut r = Op::mk_minus(v.pop().unwrap());
+            for (x, o) in variables.into_iter().zip(v.into_iter()).skip(1) {
+                r = Op::mk_sub(r, Op::mk_mul(Op::mk_var(x), o));
+            }
+            Some(r)
+        } else if coef == Some(-1) {
+            let mut r = v.pop().unwrap();
+            for (x, o) in variables.into_iter().zip(v.into_iter()).skip(1) {
+                r = Op::mk_add(r, Op::mk_mul(Op::mk_var(x), o));
+            }
+            Some(r)
+        } else {
+            None
+        }
     }
 }
 #[test]
@@ -439,6 +482,37 @@ fn test_expansion() {
     let v2 = o2.eval(&env).unwrap();
     assert_eq!(v, v2);
 }
+
+#[test]
+fn test_solve_for() {
+    let x = Ident::fresh();
+    let y = Ident::fresh();
+    let z = Ident::fresh();
+    println!("x: {x}");
+    println!("y: {y}");
+
+    // x = y
+    let r = Op::solve_for(&y, &Op::mk_var(x), &Op::mk_var(y));
+    assert!(r.is_some());
+    let r = r.unwrap();
+    println!("{}", r);
+    match r.kind() {
+        OpExpr::Var(z) if *z == x => (),
+        _ => panic!(),
+    }
+
+    // 3 * (4 * x + 2 * y) - z = y
+    let o1 = Op::mk_mul(Op::mk_const(4), Op::mk_var(x));
+    let o2 = Op::mk_mul(Op::mk_const(2), Op::mk_var(y));
+    let o3 = Op::mk_add(o1, o2);
+    let o4 = Op::mk_mul(Op::mk_const(3), o3);
+    let o5 = Op::mk_sub(o4, Op::mk_var(z));
+
+    let r = Op::solve_for(&z, &o5, &Op::mk_var(y));
+    assert!(r.is_some());
+    println!("{}", r.unwrap());
+}
+
 impl DerefPtr for Op {
     fn deref_ptr(&self, id: &Ident) -> Op {
         match self.kind() {
@@ -482,7 +556,7 @@ fn test_normalize() {
         Op::mk_add(Op::mk_const(1), Op::mk_add(Op::mk_var(x), Op::mk_var(y))),
     );
     let o = Op::mk_add(Op::mk_add(Op::mk_add(o1, o2), o3), o4);
-    let v = o.normalize(&vars);
+    let v = o.normalize(&vars).unwrap();
 
     assert_eq!(v.len(), 3);
 
@@ -518,6 +592,27 @@ impl Rename for Op {
     }
 }
 
+impl AlphaEquivalence for Op {
+    fn alpha_equiv_map(&self, other: &Self, map: &mut HashMap<Ident, Ident>) -> bool {
+        let left = self.flatten();
+        let right = other.flatten();
+        match (left.kind(), right.kind()) {
+            (OpExpr::Op(o1, x1, y1), OpExpr::Op(o2, x2, y2)) if o1 == o2 => {
+                x1.alpha_equiv_map(x2, map) && y1.alpha_equiv_map(y2, map)
+            }
+            (OpExpr::Var(x1), OpExpr::Var(x2)) => match map.get(x1) {
+                Some(x2_) => x2 == x2_,
+                None => {
+                    map.insert(*x1, *x2);
+                    true
+                }
+            },
+            (OpExpr::Const(c1), OpExpr::Const(c2)) => c1 == c2,
+            (_, _) => false,
+        }
+    }
+}
+
 pub trait Top {
     fn mk_true() -> Self;
     fn is_true(&self) -> bool;
@@ -530,9 +625,9 @@ pub trait Bot {
 
 pub trait Logic: Top + Bot + Clone {
     fn mk_conj(x: Self, y: Self) -> Self;
-    fn is_conj<'a>(&'a self) -> Option<(&'a Self, &'a Self)>;
+    fn is_conj(&self) -> Option<(&Self, &Self)>;
     fn mk_disj(x: Self, y: Self) -> Self;
-    fn is_disj<'a>(&'a self) -> Option<(&'a Self, &'a Self)>;
+    fn is_disj(&self) -> Option<(&Self, &Self)>;
 
     fn to_cnf(&self) -> Vec<Self> {
         fn cross_or<C: Clone + Logic>(v1: &[C], v2: &[C]) -> Vec<C> {
@@ -544,20 +639,17 @@ pub trait Logic: Top + Bot + Clone {
             }
             v
         }
-        match self.is_conj() {
-            Some((x, y)) => {
-                let mut v1 = x.to_cnf();
-                let mut v2 = y.to_cnf();
-                v1.append(&mut v2);
-                return v1;
-            }
-            None => (),
-        }
+        if let Some((x, y)) = self.is_conj() {
+            let mut v1 = x.to_cnf();
+            let mut v2 = y.to_cnf();
+            v1.append(&mut v2);
+            return v1;
+        };
         match self.is_disj() {
             Some((x, y)) => {
                 let v1 = x.to_cnf();
                 let v2 = y.to_cnf();
-                return cross_or(&v1, &v2);
+                cross_or(&v1, &v2)
             }
             None => vec![self.clone()],
         }
@@ -572,20 +664,17 @@ pub trait Logic: Top + Bot + Clone {
             }
             v
         }
-        match self.is_disj() {
-            Some((x, y)) => {
-                let mut v1 = x.to_dnf();
-                let mut v2 = y.to_dnf();
-                v1.append(&mut v2);
-                return v1;
-            }
-            None => (),
+        if let Some((x, y)) = self.is_disj() {
+            let mut v1 = x.to_dnf();
+            let mut v2 = y.to_dnf();
+            v1.append(&mut v2);
+            return v1;
         }
         match self.is_conj() {
             Some((x, y)) => {
                 let v1 = x.to_dnf();
                 let v2 = y.to_dnf();
-                return cross_and(&v1, &v2);
+                cross_and(&v1, &v2)
             }
             None => vec![self.clone()],
         }
@@ -609,14 +698,14 @@ pub trait Subst: Sized + Clone {
     // issue: - https://github.com/rust-lang/rust-analyzer/issues/10932
     //        - https://github.com/rust-lang/rust-analyzer/issues/12484
     fn subst_multi(&self, substs: &[(Self::Id, Self::Item)]) -> Self {
-        let mut itr = substs.into_iter();
+        let mut itr = substs.iter();
         let (id, item) = match itr.next() {
             Some((id, item)) => (id, item),
             None => return self.clone(),
         };
-        let mut ret = self.subst(&id, &item);
+        let mut ret = self.subst(id, item);
         for (ident, val) in itr {
-            ret = ret.subst(&ident, &val);
+            ret = ret.subst(ident, val);
         }
         ret
     }
@@ -661,7 +750,14 @@ pub trait DerefPtr {
     fn deref_ptr(&self, id: &Ident) -> Self;
 }
 
-#[derive(Debug)]
+pub trait AlphaEquivalence {
+    fn alpha_equiv_map(&self, other: &Self, map: &mut HashMap<Ident, Ident>) -> bool;
+    fn alpha_equiv(&self, other: &Self) -> bool {
+        self.alpha_equiv_map(other, &mut HashMap::new())
+    }
+}
+
+#[derive(Debug, Hash)]
 pub enum ConstraintExpr {
     True,
     False,
@@ -675,27 +771,7 @@ pub type Constraint = P<ConstraintExpr>;
 
 impl fmt::Display for Constraint {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use ConstraintExpr::*;
-        match self.kind() {
-            True => write!(f, "true"),
-            False => write!(f, "false"),
-            Pred(p, ops) => {
-                if ops.len() == 2 {
-                    return write!(f, "{} {} {}", ops[0], p, ops[1]);
-                }
-                write!(f, "{}(", p)?;
-                if !ops.is_empty() {
-                    write!(f, "{}", ops[0])?;
-                    for op in &ops[1..] {
-                        write!(f, ", {}", op)?;
-                    }
-                }
-                write!(f, ")")
-            }
-            Conj(c1, c2) => write!(f, "({}) ∧ ({})", c1, c2),
-            Disj(c1, c2) => write!(f, "({}) ∨ ({})", c1, c2),
-            Quantifier(q, x, c) => write!(f, "{}{}.{}", q, x, c),
-        }
+        write!(f, "{}", self.pretty_display())
     }
 }
 
@@ -764,7 +840,7 @@ impl Logic for Constraint {
             Constraint::new(ConstraintExpr::Conj(x, y))
         }
     }
-    fn is_conj<'a>(&'a self) -> Option<(&'a Constraint, &'a Constraint)> {
+    fn is_conj(&self) -> Option<(&Constraint, &Constraint)> {
         match self.kind() {
             ConstraintExpr::Conj(x, y) => Some((x, y)),
             _ => None,
@@ -781,7 +857,7 @@ impl Logic for Constraint {
             Constraint::new(ConstraintExpr::Disj(x, y))
         }
     }
-    fn is_disj<'a>(&'a self) -> Option<(&'a Constraint, &'a Constraint)> {
+    fn is_disj(&self) -> Option<(&Constraint, &Constraint)> {
         match self.kind() {
             ConstraintExpr::Disj(x, y) => Some((x, y)),
             _ => None,
@@ -845,6 +921,69 @@ impl Rename for Constraint {
             Quantifier(_, _, _) => panic!("assumption broken"),
         }
     }
+}
+
+impl AlphaEquivalence for Constraint {
+    fn alpha_equiv_map(&self, other: &Self, map: &mut HashMap<Ident, Ident>) -> bool {
+        match (self.kind(), other.kind()) {
+            (ConstraintExpr::True, ConstraintExpr::True)
+            | (ConstraintExpr::False, ConstraintExpr::False) => true,
+            (ConstraintExpr::Pred(p1, l1), ConstraintExpr::Pred(p2, l2))
+                if p1 == p2 && l1.len() == l2.len() =>
+            {
+                l1.iter()
+                    .zip(l2.iter())
+                    .all(|(x, y)| x.alpha_equiv_map(y, map))
+            }
+            (ConstraintExpr::Conj(x1, y1), ConstraintExpr::Conj(x2, y2))
+            | (ConstraintExpr::Disj(x1, y1), ConstraintExpr::Disj(x2, y2)) => {
+                x1.alpha_equiv_map(x2, map) && y1.alpha_equiv_map(y2, map)
+            }
+            (ConstraintExpr::Quantifier(q1, v1, x1), ConstraintExpr::Quantifier(q2, v2, x2))
+                if q1 == q2 =>
+            {
+                // renaming to avoid shadowing
+                let x = Ident::fresh();
+                let x1 = x1.rename(&v1.id, &x);
+                let x2 = x2.rename(&v2.id, &x);
+                x1.alpha_equiv_map(&x2, map)
+            }
+            (_, _) => false,
+        }
+    }
+}
+
+#[test]
+fn test_alpha_equivalence_for_constraint() {
+    fn gen() -> Constraint {
+        let x = Ident::fresh();
+        let y = Ident::fresh();
+        Constraint::mk_exists_int(
+            y,
+            Constraint::mk_conj(
+                Constraint::mk_eq(Op::mk_var(x), Op::mk_var(y)),
+                Constraint::mk_eq(Op::mk_var(x), Op::mk_add(Op::mk_var(y), Op::mk_const(1))),
+            ),
+        )
+    }
+    fn gen2() -> Constraint {
+        let x = Ident::fresh();
+        let y = Ident::fresh();
+        let z = Ident::fresh();
+        Constraint::mk_exists_int(
+            y,
+            Constraint::mk_conj(
+                Constraint::mk_eq(Op::mk_var(x), Op::mk_var(y)),
+                Constraint::mk_eq(Op::mk_var(x), Op::mk_add(Op::mk_var(z), Op::mk_const(1))),
+            ),
+        )
+    }
+
+    let c1 = gen();
+    let c2 = gen();
+    let c3 = gen2();
+    assert!(c1.alpha_equiv(&c2));
+    assert!(!c1.alpha_equiv(&c3));
 }
 
 pub trait Negation {
@@ -971,8 +1110,8 @@ impl Constraint {
                 };
                 env.insert(x.id);
                 let (mut v, c) = c.prenex_normal_form_raw(env);
-                debug_assert!(v.iter().find(|(_, y)| { x.id == y.id }).is_none());
-                v.push((*q, x.clone()));
+                debug_assert!(!v.iter().any(|(_, y)| { x.id == y.id }));
+                v.push((*q, x));
                 (v, c)
             }
         }
@@ -980,6 +1119,27 @@ impl Constraint {
     pub fn to_pnf(&self) -> Constraint {
         let (_, c) = self.prenex_normal_form_raw(&mut HashSet::new());
         c
+    }
+    pub fn replace_exists_with_fresh_var(&self) -> Constraint {
+        match self.kind() {
+            ConstraintExpr::True | ConstraintExpr::False | ConstraintExpr::Pred(_, _) => {
+                self.clone()
+            }
+            ConstraintExpr::Conj(x, y) => {
+                let left = x.replace_exists_with_fresh_var();
+                let right = y.replace_exists_with_fresh_var();
+                Constraint::mk_conj(left, right)
+            }
+            ConstraintExpr::Disj(x, y) => {
+                let left = x.replace_exists_with_fresh_var();
+                let right = y.replace_exists_with_fresh_var();
+                Constraint::mk_disj(left, right)
+            }
+            ConstraintExpr::Quantifier(p, x, c) if *p == QuantifierKind::Existential => c
+                .rename(&x.id, &Ident::fresh())
+                .replace_exists_with_fresh_var(),
+            _ => panic!("program error"),
+        }
     }
     pub fn to_pnf_raw(&self) -> (Vec<(QuantifierKind, Variable)>, Constraint) {
         self.prenex_normal_form_raw(&mut HashSet::new())
@@ -1093,7 +1253,7 @@ pub struct Ident {
 
 impl fmt::Display for Ident {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "x_{}", self.id)
+        write!(f, "{}", self.pretty_display())
     }
 }
 
@@ -1102,18 +1262,21 @@ impl Ident {
         let id = global_counter();
         Ident { id }
     }
-    pub fn rename_idents(args: &Vec<Ident>, x: &Ident, y: &Ident) -> Vec<Ident> {
+    pub fn rename_idents(args: &[Ident], x: &Ident, y: &Ident) -> Vec<Ident> {
         args.iter()
             .map(|arg| if arg == x { *y } else { *arg })
             .collect()
     }
     /// assumption: string expression is x_\d+
-    pub fn from_str(s: &str) -> Option<Ident> {
+    pub fn parse_ident(s: &str) -> Option<Ident> {
         debug!("Ident::from_str: {}", s);
-        match (&s[2..]).parse() {
+        match s[2..].parse() {
             Ok(id) => Some(Ident { id }),
             Err(_) => None,
         }
+    }
+    pub fn get_id(&self) -> u64 {
+        self.id
     }
 }
 
@@ -1123,7 +1286,7 @@ impl From<u64> for Ident {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq, Hash)]
 pub struct VariableS {
     pub id: Ident,
     pub ty: Type,
@@ -1132,12 +1295,7 @@ pub type Variable = P<VariableS>;
 
 impl fmt::Display for Variable {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}: {}",
-            format!("{}", self.id).purple(),
-            format!("{}", self.ty).cyan()
-        )
+        write!(f, "{}", self.pretty_display())
     }
 }
 
@@ -1194,6 +1352,12 @@ pub struct Env {
     map: std::collections::HashMap<Ident, i64>,
 }
 
+impl Default for Env {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Env {
     pub fn new() -> Self {
         Env {
@@ -1216,6 +1380,15 @@ impl OpKind {
             OpKind::Mod => x % y,
         }
     }
+    pub fn to_str(&self) -> &'static str {
+        match self {
+            OpKind::Add => "+",
+            OpKind::Sub => "-",
+            OpKind::Mul => "*",
+            OpKind::Div => "/",
+            OpKind::Mod => "%",
+        }
+    }
 }
 
 impl Op {
@@ -1236,10 +1409,9 @@ impl Op {
     }
     /// simplifies the expression and reduce Ptr
     pub fn simplify(&self) -> Op {
-        match self.eval(&Env::new()) {
-            Some(x) => return Op::mk_const(x),
-            None => (),
-        };
+        if let Some(x) = self.eval(&Env::new()) {
+            return Op::mk_const(x);
+        }
         match self.kind() {
             OpExpr::Op(o, x, y) => {
                 let x = x.simplify();
@@ -1293,6 +1465,16 @@ impl PredKind {
             PredKind::Geq => x >= y,
         }
         .into()
+    }
+    pub fn to_str(&self) -> &'static str {
+        match self {
+            PredKind::Eq => "=",
+            PredKind::Neq => "!=",
+            PredKind::Lt => "<",
+            PredKind::Leq => "<=",
+            PredKind::Gt => ">",
+            PredKind::Geq => ">=",
+        }
     }
 }
 
@@ -1388,10 +1570,10 @@ impl Constraint {
                 let mut geq_track_new = Vec::new();
                 let mut inserted = false;
                 for (l, r) in geq_track.into_iter() {
-                    if &left == &r && &right == &l {
+                    if left == r && right == l {
                         inserted = true;
                         eqs.push((left.clone(), right.clone(), false))
-                    } else if &left == &l && &right == &r {
+                    } else if left == l && right == r {
                         // already inserted
                         inserted = true;
                     }
@@ -1553,17 +1735,16 @@ impl Constraint {
                     ConstraintExpr::Pred(pred, l) if l.len() == 2 => {
                         let left = &l[0];
                         let right = &l[1];
-                        let normalized =
-                            Op::mk_sub(left.clone(), right.clone()).normalize(&vec![target_var]);
-                        match (
+                        let normalized = Op::mk_sub(left.clone(), right.clone())
+                            .normalize(&vec![target_var])
+                            .unwrap();
+
+                        if let (Some(1), Some(x)) = (
                             normalized[0].eval_with_empty_env(),
                             normalized[1].eval_with_empty_env(),
                         ) {
-                            (Some(1), Some(x)) => {
-                                // Note that we have to transpose v so that x <pred> v
-                                update(*pred, target_var, -x, &mut table, id);
-                            }
-                            _ => (),
+                            // Note that we have to transpose v so that x <pred> v
+                            update(*pred, target_var, -x, &mut table, id);
                         }
                     }
                     ConstraintExpr::Pred(_, _) | ConstraintExpr::True | ConstraintExpr::False => (),
@@ -2111,6 +2292,59 @@ impl TeXFormat for Constraint {
                     TeXPrinter(c)
                 )
             }
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+pub enum PrecedenceKind {
+    Sequential, // for ml
+    If,         // for ml
+    Disj,
+    Conj,
+    Not,
+    Pred, // PredKind operators
+    Add,  // +, -
+    Mul,  // *, /, %
+    Abs,
+    App,
+    Atom,
+}
+
+pub trait Precedence {
+    fn precedence(&self) -> PrecedenceKind;
+}
+
+impl Precedence for OpKind {
+    fn precedence(&self) -> PrecedenceKind {
+        match self {
+            OpKind::Add => PrecedenceKind::Add,
+            OpKind::Sub => PrecedenceKind::Add,
+            OpKind::Mul => PrecedenceKind::Mul,
+            OpKind::Div => PrecedenceKind::Mul,
+            OpKind::Mod => PrecedenceKind::Mul,
+        }
+    }
+}
+
+impl Precedence for Op {
+    fn precedence(&self) -> PrecedenceKind {
+        match self.kind() {
+            OpExpr::Op(opkind, _, _) => opkind.precedence(),
+            OpExpr::Var(_) | OpExpr::Const(_) => PrecedenceKind::Atom,
+            OpExpr::Ptr(_, o) => o.precedence(),
+        }
+    }
+}
+
+impl Precedence for Constraint {
+    fn precedence(&self) -> PrecedenceKind {
+        match self.kind() {
+            ConstraintExpr::True | ConstraintExpr::False => PrecedenceKind::Atom,
+            ConstraintExpr::Pred(_, _) => PrecedenceKind::Pred,
+            ConstraintExpr::Conj(_, _) => PrecedenceKind::Conj,
+            ConstraintExpr::Disj(_, _) => PrecedenceKind::Disj,
+            ConstraintExpr::Quantifier(_, _, _) => PrecedenceKind::Abs,
         }
     }
 }

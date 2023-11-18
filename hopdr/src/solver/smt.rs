@@ -12,19 +12,19 @@ use crate::formula::{
 use lexpr;
 use lexpr::Value;
 
-fn encode_ident(x: &Ident) -> String {
+pub fn encode_ident(x: &Ident) -> String {
     format!("x{}", x)
 }
 
 fn parse_variable(v: &str) -> Ident {
     assert!(v.starts_with('x'));
-    Ident::from_str(&v[1..]).unwrap_or_else(|| panic!("parse fail"))
+    Ident::parse_ident(&v[1..]).unwrap_or_else(|| panic!("parse fail"))
 }
 
 fn parse_declare_fun(v: lexpr::Value) -> (Ident, i64) {
     // parse fail
     const ERRMSG: &str = "smt model parse fail";
-    fn cons_value_to_iter<'a>(v: &'a lexpr::Value) -> impl Iterator<Item = &'a lexpr::Value> {
+    fn cons_value_to_iter(v: &lexpr::Value) -> impl Iterator<Item = &lexpr::Value> {
         v.as_cons()
             .unwrap_or_else(|| panic!("{}({})", ERRMSG, v))
             .iter()
@@ -65,7 +65,8 @@ impl Model {
                 .filter(|(x, _)| !x.is_symbol())
                 .map(|(v, _)| parse_declare_fun(v))
                 .collect(),
-            _ => panic!("parse error: smt2 model: {}", s),
+            Value::Null => HashMap::new(),
+            _ => panic!("parse error: smt2 model: {} ({:?})", s, x),
         };
         Ok(Model { model })
     }
@@ -113,6 +114,10 @@ fn z3_new_version_parse_model() {
         }
         Err(_) => panic!("model is broken"),
     }
+
+    let model = "(
+      )";
+    assert!(Model::from_z3_model_str(model).is_ok());
 }
 
 pub trait SMTSolver {
@@ -128,6 +133,7 @@ pub trait SMTSolver {
     /// - constraint: The constraint to be checked by SMT solver
     /// - vars: variables to be bound by universal quantifiers.
     /// - fvs: variables to be bound by existential quantifier
+    /// invariant: dom(returned model) == fv
     fn solve_with_model(
         &mut self,
         constraint: &Constraint,
@@ -206,7 +212,7 @@ pub(super) fn constraint_to_smt2_inner(c: &Constraint, style: SMTSolverType) -> 
         ConstraintExpr::True => "true".to_string(),
         ConstraintExpr::False => "false".to_string(),
         ConstraintExpr::Pred(p, l) => {
-            let args = l.iter().map(|op| op_to_smt2(op)).collect::<Vec<_>>();
+            let args = l.iter().map(op_to_smt2).collect::<Vec<_>>();
             pred_to_smt2(p, &args)
         }
         ConstraintExpr::Conj(c1, c2) => format!("(and {} {})", f(c1, style), f(c2, style)),
@@ -245,11 +251,11 @@ fn constraint_to_smt2(
             .map(|ident| format!("(declare-const {} Int)", encode_ident(ident)))
             .collect::<Vec<_>>()
             .join("\n"),
-        None => format!(""),
+        None => String::new(),
     };
     let model = match fvs {
         Some(_) => "(get-model)".to_string(),
-        None => format!(""),
+        None => String::new(),
     };
     format!("{}\n(assert {})\n(check-sat)\n{}\n", decls, c_s, model)
 }
@@ -280,7 +286,7 @@ pub fn default_solver() -> Box<dyn SMTSolver> {
     smt_solver(SMTSolverType::Z3)
 }
 
-fn z3_solver(smt_string: String) -> String {
+pub fn z3_solver(smt_string: String) -> String {
     let f = save_smt2(smt_string);
     let args = vec![f.path().to_str().unwrap()];
     // debug
@@ -363,7 +369,7 @@ impl AutoSolver {
         debug!("check if {constraint} is sat");
         let mut sat_solver =
             super::sat::SATSolver::default_solver(Self::MIN_INT, Self::MAX_INT, Self::BIT_SIZE);
-        let m = sat_solver.solve(&constraint)?;
+        let m = sat_solver.solve(constraint)?;
 
         if !self.validate(constraint, &m) {
             warn!("failed to solve by sat since bit size is too small");
@@ -392,13 +398,18 @@ impl SMTSolver for AutoSolver {
         fvs: &HashSet<Ident>,
     ) -> Result<Model, SolverResult> {
         debug!("smt::auto_solver: {c}");
-        if c.fv().difference(&vars).next().is_none() {
-            let mut sat_solver = smt_solver(SMTSolverType::Z3);
-            sat_solver.solve_with_model(c, vars, fvs)
+        debug!("fvs len: {}", fvs.len());
+        if c.fv().difference(vars).next().is_none() {
+            let mut smt_solver = smt_solver(SMTSolverType::Z3);
+            smt_solver.solve_with_model(c, vars, fvs)
         } else {
             let constraint = self.farkas_transform(c, vars);
             self.solve_inner(&constraint)
         }
+        .map(|mut m| {
+            m.compensate(fvs);
+            m
+        })
     }
 }
 

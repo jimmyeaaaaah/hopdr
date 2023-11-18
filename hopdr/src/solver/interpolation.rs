@@ -11,11 +11,13 @@
 
 use crate::formula::chc;
 use crate::formula::chc::Model;
+use crate::formula::hes::Const;
 use crate::formula::Fv;
 use crate::formula::Op;
 use crate::formula::Subst;
 use crate::formula::{Bot, Constraint, FirstOrderLogic, Ident, Logic, Negation, Top};
 use crate::solver;
+use crate::solver::chc::CHCStyle;
 use crate::solver::interpolation::InterpolationSolver::SMTInterpol;
 use crate::solver::smt::ident_2_smt2;
 use crate::solver::util;
@@ -48,6 +50,8 @@ fn get_smt_interpol_path() -> String {
 pub enum InterpolationSolver {
     SMTInterpol,
     Csisat,
+    Spacer,
+    Hoice,
 }
 
 // topological sort
@@ -84,7 +88,7 @@ fn topological_sort(l: &[CHC]) -> Option<(Vec<Ident>, HashMap<Ident, usize>)> {
             None => panic!("program error"),
         }
         sorted.push(cur);
-        return Ok(());
+        Ok(())
     }
 
     fn sort(graph: &Graph) -> Option<Vec<Ident>> {
@@ -208,7 +212,7 @@ fn test_topological_sort() {
     for o in order.iter() {
         print!("{} ", o);
     }
-    println!("");
+    println!();
     assert!(order.len() == 3);
     // R and P must appear before Q appears
     assert_eq!(order[2], qi);
@@ -234,10 +238,7 @@ fn test_topological_sort() {
     assert!(topological_sort(&clauses).is_none());
 }
 
-fn check_contains_head<'a>(
-    p: Ident,
-    head: &'a chc::CHCHead<chc::Atom, Constraint>,
-) -> Option<&'a Vec<Op>> {
+fn check_contains_head(p: Ident, head: &chc::CHCHead<chc::Atom, Constraint>) -> Option<&Vec<Op>> {
     match head {
         chc::CHCHead::Predicate(a) if p == a.predicate => Some(&a.args),
         _ => None,
@@ -249,7 +250,7 @@ fn check_contains_body(p: Ident, body: &chc::CHCBody<chc::Atom, Constraint>) -> 
             return true;
         }
     }
-    return false;
+    false
 }
 
 // replace q by model(q) if q in model
@@ -272,6 +273,8 @@ fn remove_pred_except_for<'a>(
 ) -> (Constraint, Constraint, Option<&'a Vec<Op>>) {
     debug!("{}", clause);
     debug!("{}", p);
+    // this function get the model of q from `model` or `least_model`,
+    // and replaces their arguments
     let get_constraint = |q: &chc::Atom| -> Constraint {
         debug!("get_constraint q: {}", q);
         let (arg_vars, c) = match model.model.get(&q.predicate) {
@@ -282,10 +285,14 @@ fn remove_pred_except_for<'a>(
             }
         };
         let mut c = c.clone();
+        let s: String = arg_vars
+            .iter()
+            .fold("".to_string(), |x, y| format!("{x} {y}, "));
+        debug!("before subst: P({s}) = {c}",);
         // replace [q.args/arg_vars]c
         assert_eq!(arg_vars.len(), q.args.len());
-        for i in 0..arg_vars.len() {
-            c = c.subst(&arg_vars[i], &q.args[i]);
+        for (i, item) in arg_vars.iter().enumerate() {
+            c = c.subst(item, &q.args[i]);
         }
         debug!("model[{}] = {}", q.predicate, c);
         debug!("args:");
@@ -305,6 +312,7 @@ fn remove_pred_except_for<'a>(
     // i.e. p(x, y) /\ p(x + 1, y) => C is invalid
     let mut args = None;
     for body in clause.body.predicates.iter() {
+        // the following makes sure that the given problem has no cylcle
         debug_assert!(body.predicate != p || (args.is_none() && !head_contains_p));
         if body.predicate == p {
             args = Some(&body.args);
@@ -358,15 +366,19 @@ macro_rules! interp_execution {
 
 struct SMTInterpolSolver {}
 struct CsisatSolver {}
+struct SpacerSolver {}
+struct HoiceSolver {}
 impl InterpolationSolver {
     pub fn get_solver(sol: InterpolationSolver) -> Box<dyn Interpolation> {
         match sol {
             InterpolationSolver::SMTInterpol => Box::new(SMTInterpolSolver {}),
             InterpolationSolver::Csisat => Box::new(CsisatSolver {}),
+            InterpolationSolver::Spacer => Box::new(SpacerSolver {}),
+            InterpolationSolver::Hoice => Box::new(HoiceSolver {}),
         }
     }
     pub fn default_solver() -> Box<dyn Interpolation> {
-        Self::get_solver(SMTInterpol)
+        Self::get_solver(InterpolationSolver::Csisat)
     }
 }
 
@@ -460,65 +472,118 @@ impl SMTInterpolSolver {
     }
 }
 impl Interpolation for SMTInterpolSolver {
-    fn interpolate(&mut self, left: &Constraint, right: &Constraint) -> Constraint {
+    fn interpolate(&mut self, left: &Constraint, right: &Constraint) -> Option<Constraint> {
         let (s, fvs) = self.generate_smt_string(left, right);
+        //panic!("{}", s);
         let r = self.execute_solver(s);
-        self.parse_result(r, fvs).unwrap()
+        self.parse_result(r, fvs).ok()
     }
 }
 
 impl CsisatSolver {
-    fn generate_constraint_string(&mut self, c: &Constraint) -> String {
-        format!("%HES\nM =v {}.", c.to_hes_format())
-    }
-    fn execute_solver(&mut self, smt_string1: String, smt_string2: String) -> String {
-        let f1 = smt::save_smt2(smt_string1);
-        let f2 = smt::save_smt2(smt_string2);
-        // TODO: determine the path when it's compiled
-        let arg = format!(
-            "{},{}",
-            f1.path().to_str().unwrap(),
-            f2.path().to_str().unwrap()
-        );
-        let args = vec![arg.as_str()];
+    fn execute_solver(&mut self, query: &str) -> String {
         let out = interp_execution!({
-            util::exec_with_timeout("fpat_interp", &args, Duration::from_secs(1))
+            util::exec_input_with_timeout(
+                "csisat",
+                &["-int", "-round"],
+                query.as_bytes(),
+                Duration::from_secs(1),
+            )
         });
         String::from_utf8(out).unwrap()
     }
-    fn parse_result(
-        &mut self,
-        result: String,
-        _fvs: HashSet<Ident>,
-    ) -> Result<Constraint, InterpolationError> {
-        use crate::parse;
-        use nom::error::VerboseError;
-        let e = parse::parse_expr::<VerboseError<&str>>(&result).unwrap().1;
-        let c = Constraint::from(e);
-        Ok(c)
+    fn parse_result(&mut self, result: String) -> Option<Constraint> {
+        super::csisat::parse(&result)
     }
 }
 
 impl Interpolation for CsisatSolver {
-    fn interpolate(&mut self, left: &Constraint, right: &Constraint) -> Constraint {
-        let mut fvs = HashSet::new();
-        left.fv_with_vec(&mut fvs);
-        right.fv_with_vec(&mut fvs);
+    fn interpolate(&mut self, left: &Constraint, right: &Constraint) -> Option<Constraint> {
+        let lefts = super::csisat::constraint_to_csisat(left);
+        let rights = super::csisat::constraint_to_csisat(right);
 
-        let left_s = self.generate_constraint_string(left);
-        let right_s = self.generate_constraint_string(right);
-        debug!("{}", &left_s);
-        debug!("{}", &right_s);
+        let query = format!("{} ; {}", lefts, rights);
 
-        let s = self.execute_solver(left_s, right_s);
+        let s = self.execute_solver(&query);
+        crate::title!("csisat");
+        debug!("query: {}", query);
         debug!("result: {}", s);
-        self.parse_result(s, fvs).unwrap()
+        let r = self.parse_result(s.clone());
+        match r {
+            Some(r) => Some(r),
+            None => {
+                debug!(
+                    "interpolation failed: {left} ; {right}, query: {query}, solver's output: {s}"
+                );
+                None
+            }
+        }
+    }
+}
+
+#[test]
+fn test_csisat() {
+    let x = Ident::fresh();
+    let c1 = Constraint::mk_eq(Op::mk_var(x), Op::mk_const(1));
+    let c2 = Constraint::mk_eq(Op::mk_var(x), Op::mk_const(2));
+    let mut sol = CsisatSolver {};
+    let s = sol.interpolate(&c1, &c2).unwrap();
+    println!("{}", s);
+}
+
+fn interpolate_by_chc(left: &Constraint, right: &Constraint, style: CHCStyle) -> Constraint {
+    use crate::solver::chc::chc_solver;
+
+    debug!("{left} => {right}");
+    let right = right.negate().unwrap();
+    let fvs1 = left.fv();
+    let fvs2 = right.fv();
+    let fvs = fvs1.intersection(&fvs2);
+    let p = Ident::fresh();
+    let args: Vec<_> = fvs.into_iter().map(|i| Op::mk_var(*i)).collect();
+    let a = chc::Atom::new(p, args.clone());
+    let h1 = chc::CHCHead::Predicate(a.clone());
+    let b1 = chc::CHCBody {
+        predicates: Vec::new(),
+        constraint: left.clone(),
+    };
+    let h2 = chc::CHCHead::Constraint(Constraint::mk_false());
+    let b2 = chc::CHCBody {
+        predicates: vec![a],
+        constraint: right.negate().unwrap(),
+    };
+    let c1 = chc::CHC { head: h1, body: b1 };
+    let c2 = chc::CHC { head: h2, body: b2 };
+    let clauses = vec![c1, c2];
+    let mut solver = chc_solver(style);
+    let (idents, mut c) = match solver.solve(&clauses) {
+        solver::chc::CHCResult::Sat(m) => m.model.get(&p).unwrap().clone(),
+        solver::chc::CHCResult::Unsat
+        | solver::chc::CHCResult::Unknown
+        | solver::chc::CHCResult::Timeout => panic!("interpolation failed"),
+    };
+    assert_eq!(idents.len(), args.len());
+    for (i, o) in idents.into_iter().zip(args.into_iter()) {
+        c = c.subst(&i, &o);
+    }
+    c
+}
+
+impl Interpolation for SpacerSolver {
+    fn interpolate(&mut self, left: &Constraint, right: &Constraint) -> Option<Constraint> {
+        Some(interpolate_by_chc(left, right, CHCStyle::Spacer))
+    }
+}
+
+impl Interpolation for HoiceSolver {
+    fn interpolate(&mut self, left: &Constraint, right: &Constraint) -> Option<Constraint> {
+        Some(interpolate_by_chc(left, right, CHCStyle::Hoice))
     }
 }
 
 pub trait Interpolation {
     /// calculates psi where left => psi and psi => right where fv(psi) ⊂ fv(left) ∪ fv(right)
-    fn interpolate(&mut self, left: &Constraint, right: &Constraint) -> Constraint;
+    fn interpolate(&mut self, left: &Constraint, right: &Constraint) -> Option<Constraint>;
 }
 
 fn generate_least_solution(
@@ -530,32 +595,29 @@ fn generate_least_solution(
     for p in sorted_preds.iter() {
         // assume p(arg_vars..) := ?
         // and calculate ? by Terauchi (2010)
-        let arg_vars: Vec<Ident> = (0..*n_args.get(&p).unwrap())
+        let arg_vars: Vec<Ident> = (0..*n_args.get(p).unwrap())
             .map(|_| Ident::fresh())
             .collect();
         let mut constraint = Constraint::mk_false();
 
         for clause in chc {
             // case: ... => p(x)
-            match check_contains_head(*p, &clause.head) {
-                Some(args) => {
-                    debug!("contains_head: {}", clause);
-                    // here we reuse `remove_pred_except_for'.
-                    // this function first try to substitute pred with the def
-                    // in `model', and then substitute it with def in `least_model'.
-                    // However, since we are calculating least_model in the ascending order
-                    // of DAG of preds, all the predicates that appear in the body
-                    // of `clause' must have been in `model'.
-                    // Therefore, we pass Model::new() (empty model) as least_model,
-                    // and this never fails.
-                    let (body, _, args_debug) =
-                        remove_pred_except_for(*p, clause, &Model::new(), &model);
-                    debug_assert!(args_debug.is_none());
-                    let c = conjoin_args(&arg_vars, &args, body);
-                    debug!("{}", c);
-                    constraint = Constraint::mk_disj(constraint, c);
-                }
-                None => (),
+            if let Some(args) = check_contains_head(*p, &clause.head) {
+                debug!("contains_head: {}", clause);
+                // here we reuse `remove_pred_except_for'.
+                // this function first try to substitute pred with the def
+                // in `model', and then substitute it with def in `least_model'.
+                // However, since we are calculating least_model in the ascending order
+                // of DAG of preds, all the predicates that appear in the body
+                // of `clause' must have been in `model'.
+                // Therefore, we pass Model::new() (empty model) as least_model,
+                // and this never fails.
+                let (body, _, args_debug) =
+                    remove_pred_except_for(*p, clause, &Model::new(), &model);
+                debug_assert!(args_debug.is_none());
+                let c = conjoin_args(&arg_vars, args, body);
+                debug!("{}", c);
+                constraint = Constraint::mk_disj(constraint, c);
             }
         }
         // quantify free variables.
@@ -581,12 +643,15 @@ fn interpolate_preds(
     n_args: &HashMap<Ident, usize>,
     least_model: &Model,
     mut solver: Box<dyn Interpolation>,
+    mut backup_solver: Box<dyn Interpolation>,
 ) -> Model {
-    debug_assert!(crate::solver::chc::is_solution_valid(chc, &least_model));
+    crate::title!("intepolate_preds");
+    debug_assert!(crate::solver::chc::is_solution_valid(chc, least_model));
     let mut model = Model::new();
     // interpolate in the decending order of preds
-    for p in sorted_preds.into_iter().rev() {
-        let arg_vars: Vec<Ident> = (0..*n_args.get(&p).unwrap())
+    for p in sorted_preds.iter().rev() {
+        debug!("current target pred: {p}");
+        let arg_vars: Vec<Ident> = (0..*n_args.get(p).unwrap())
             .map(|_| Ident::fresh())
             .collect();
         let mut strongest = Constraint::mk_true();
@@ -595,21 +660,23 @@ fn interpolate_preds(
             // case: p(x) /\ ... => ...
             if check_contains_body(*p, &clause.body) {
                 debug!("contains_body: {}", clause);
-                let (body, head, args) = remove_pred_except_for(*p, clause, &least_model, &model);
+                let (body, head, args) = remove_pred_except_for(*p, clause, least_model, &model);
                 let args = args.unwrap();
-                let body = conjoin_args(&arg_vars, &args, body);
+                let body = conjoin_args(&arg_vars, args, body);
+                debug!("conjoined: {body}");
                 // Constraint::mk_disj(body_constraint.negate().unwrap(), head),
                 let c = Constraint::mk_disj(body.negate().unwrap(), head);
                 #[cfg(debug_assertions)]
                 {
                     use crate::formula::Rename;
                     let mut solver = smt::default_solver();
-                    debug!("{}", c);
-                    let (args, mut c2) = least_model.model.get(&p).unwrap().clone();
+                    let (args, mut c2) = least_model.model.get(p).unwrap().clone();
                     for (id, replaced) in args.iter().zip(arg_vars.iter()) {
                         c2 = c2.rename(id, replaced);
                     }
+                    debug!("now try to check if {c2} implies {c}");
                     let check = Constraint::mk_implies(c2, c.clone());
+                    debug!("{check}");
                     if !solver.solve_with_universal_quantifiers(&check).is_sat() {
                         use colored::Colorize;
                         warn!("{}", "fail!".red());
@@ -634,27 +701,23 @@ fn interpolate_preds(
                             "{}",
                             solver
                                 .solve_with_universal_quantifiers(
-                                    &clause.replace_with_model(&least_model),
+                                    &clause.replace_with_model(least_model),
                                 )
                                 .is_sat()
                         );
-                        assert!(false);
+                        panic!("fail!")
                     }
                 }
                 strongest = Constraint::mk_conj(strongest, c);
             }
             // case: ... => p(x)
-            match check_contains_head(*p, &clause.head) {
-                Some(args) => {
-                    debug!("contains_head: {}", clause);
-                    let (body, _, args_debug) =
-                        remove_pred_except_for(*p, clause, &least_model, &model);
-                    debug_assert!(args_debug.is_none());
-                    let c = conjoin_args(&arg_vars, &args, body);
-                    debug!("{}", c);
-                    weakest = Constraint::mk_disj(weakest, c);
-                }
-                None => (),
+            if let Some(args) = check_contains_head(*p, &clause.head) {
+                debug!("contains_head: {}", clause);
+                let (body, _, args_debug) = remove_pred_except_for(*p, clause, least_model, &model);
+                debug_assert!(args_debug.is_none());
+                let c = conjoin_args(&arg_vars, args, body);
+                debug!("{}", c);
+                weakest = Constraint::mk_disj(weakest, c);
             }
         }
 
@@ -662,24 +725,33 @@ fn interpolate_preds(
         // calculate SMTInterpol("weakest", not "strongest")
         let strongest_tmp = strongest.clone();
         let strongest = strongest.negate().unwrap();
+        debug!("before pnf");
+        debug!("{strongest}");
+        debug!("{weakest}");
         // translate constraints to prenex normal form
-        let strongest = strongest.to_pnf();
-        let weakest = weakest.to_pnf();
+        // bug here
+        let strongest = strongest.replace_exists_with_fresh_var();
+        let weakest = weakest.replace_exists_with_fresh_var();
         #[cfg(debug_assertions)]
         {
             let mut solver = smt::default_solver();
             crate::title!("strongest");
+            debug!("{strongest}");
             // adhoc: to print the formula
-            solver.solve(&strongest_tmp, &mut HashSet::new());
+            solver.solve(&strongest_tmp, &HashSet::new());
             crate::title!("weakest");
-            solver.solve(&weakest, &mut HashSet::new());
+            debug!("{weakest}");
+            solver.solve(&weakest, &HashSet::new());
             // check weakest => c => strongest
             let arrow3 = Constraint::mk_implies(weakest.clone(), strongest_tmp.clone());
             assert!(solver.solve_with_universal_quantifiers(&arrow3).is_sat());
         }
         // interpolation:
         crate::title!("trying to interpolate...");
-        let c = solver.interpolate(&weakest, &strongest);
+        let c = solver
+            .interpolate(&weakest, &strongest)
+            .or_else(|| backup_solver.interpolate(&weakest, &strongest))
+            .unwrap();
 
         #[cfg(debug_assertions)]
         {
@@ -688,11 +760,14 @@ fn interpolate_preds(
             // check if weakest => strongest
             let arrow1 = Constraint::mk_implies(weakest, c.clone());
             let arrow2 = Constraint::mk_implies(c.clone(), strongest_tmp);
-            assert!(solver.solve(&arrow1, &mut HashSet::new()).is_sat());
-            assert!(solver.solve(&arrow2, &mut HashSet::new()).is_sat());
+            assert!(solver.solve(&arrow1, &HashSet::new()).is_sat());
+            assert!(solver.solve(&arrow2, &HashSet::new()).is_sat());
         }
 
-        debug!("interpolated: {}", c);
+        let s: String = arg_vars
+            .iter()
+            .fold("".to_string(), |x, y| format!("{x} {y}, "));
+        debug!("interpolated: {}({s}) = {c}", p);
         model.model.insert(*p, (arg_vars, c));
     }
     model
@@ -723,6 +798,29 @@ impl Default for InterpolationConfig {
 /// interpolate predicates under the given CHC constraints.
 ///
 /// Assumption: `chc' is satisfiable.
+pub fn solve_old(chc: &Vec<CHC>, _config: &InterpolationConfig) -> Model {
+    use solver::chc::CHCSolver;
+    debug!("[interpolation::solve]");
+    for c in chc {
+        debug!("- {}", c);
+    }
+    let mut solver = solver::chc::SpacerSolver::new().interpolation(true);
+    let chc: Vec<_> = chc.iter().map(|c| c.fresh_variables()).collect();
+    match solver.solve(&chc) {
+        solver::chc::CHCResult::Sat(mut m) => {
+            let qe_solver = solver::qe::QESolver::default_solver();
+            qe_solver.model_quantifer_elimination(&mut m);
+            m
+        }
+        solver::chc::CHCResult::Unsat
+        | solver::chc::CHCResult::Unknown
+        | solver::chc::CHCResult::Timeout => panic!("program error"),
+    }
+}
+
+/// interpolate predicates under the given CHC constraints.
+///
+/// Assumption: `chc' is satisfiable.
 pub fn solve(chc: &Vec<CHC>, config: &InterpolationConfig) -> Model {
     debug!("[interpolation::solve]");
     for c in chc {
@@ -733,6 +831,12 @@ pub fn solve(chc: &Vec<CHC>, config: &InterpolationConfig) -> Model {
     match topological_sort(chc) {
         Some((preds, n_args)) => {
             let least_model = generate_least_solution(chc, &preds, &n_args);
+            debug_assert!(crate::formula::chc::check_the_model_validity(
+                &least_model,
+                chc
+            ));
+            crate::title!("least_model");
+            debug!("{least_model}");
 
             interpolate_preds(
                 chc,
@@ -740,15 +844,22 @@ pub fn solve(chc: &Vec<CHC>, config: &InterpolationConfig) -> Model {
                 &n_args,
                 &least_model,
                 InterpolationSolver::default_solver(),
+                InterpolationSolver::get_solver(InterpolationSolver::Hoice),
             )
         }
         None if config.use_chc_if_requied => {
-            let mut solver = solver::chc::default_solver();
+            debug!("using chc solver since the constraints contain a loop");
+            let mut solver = solver::chc::interpolating_solver();
             match solver.solve(chc) {
-                solver::chc::CHCResult::Sat(m) => m,
-                solver::chc::CHCResult::Unsat
-                | solver::chc::CHCResult::Unknown
-                | solver::chc::CHCResult::Timeout => panic!("program error"),
+                solver::chc::CHCResult::Sat(mut m) => {
+                    let qe_solver = solver::qe::QESolver::default_solver();
+                    qe_solver.model_quantifer_elimination(&mut m);
+                    m
+                }
+                solver::chc::CHCResult::Unsat => panic!("program error: unsat!"),
+                solver::chc::CHCResult::Unknown | solver::chc::CHCResult::Timeout => {
+                    panic!("program error")
+                }
             }
         }
         None => panic!("constraints contain a cycle"),
@@ -789,14 +900,14 @@ fn test_interpolation() {
     let h2 = CHCHead::Predicate(a.clone());
     let clause1 = CHC { head: h1, body: b1 };
     let clause2 = CHC { head: h2, body: b2 };
-    debug!("- {}", clause1);
-    debug!("- {}", clause2);
+    println!("- {}", clause1);
+    println!("- {}", clause2);
     let clauses = vec![clause1, clause2];
 
     let config = InterpolationConfig::new().use_chc_if_requied();
     let m = solve(&clauses, &config);
 
     for (x, (_, z)) in m.model {
-        debug!("{} => {}", x, z)
+        println!("{} => {}", x, z)
     }
 }

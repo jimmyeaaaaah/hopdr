@@ -4,7 +4,9 @@ use std::fmt;
 
 use std::vec;
 
+use crate::formula::Type;
 use crate::pdr::rtype::Refinement;
+use crate::util::Pretty;
 
 use super::pcsp;
 use super::Bot;
@@ -59,16 +61,7 @@ pub struct CHCBody<A, C> {
 
 impl fmt::Display for Atom {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}(", self.predicate)?;
-        if !self.args.is_empty() {
-            write!(f, "{}", self.args[0])?;
-            if !self.args.len() > 1 {
-                for arg in self.args[1..].iter() {
-                    write!(f, ",{}", arg)?;
-                }
-            }
-        }
-        write!(f, ")")
+        write!(f, "{}", self.pretty_display())
     }
 }
 
@@ -371,9 +364,8 @@ impl<A> From<CHC<A, pcsp::Atom>> for CHC<A, Constraint> {
 impl<C: TConstraint> CHCBody<Atom, C> {
     fn collect_predicates(&self, predicates: &mut HashMap<Ident, usize>) {
         for a in self.predicates.iter() {
-            match predicates.insert(a.predicate, a.args.len()) {
-                Some(n) => debug_assert!(n == a.args.len()),
-                None => (),
+            if let Some(n) = predicates.insert(a.predicate, a.args.len()) {
+                debug_assert!(n == a.args.len())
             }
         }
     }
@@ -382,10 +374,11 @@ impl<C: TConstraint> CHC<Atom, C> {
     pub fn collect_predicates(&self, predicates: &mut HashMap<Ident, usize>) {
         match &self.head {
             CHCHead::Constraint(_) => (),
-            CHCHead::Predicate(a) => match predicates.insert(a.predicate, a.args.len()) {
-                Some(n) => debug_assert!(n == a.args.len()),
-                None => (),
-            },
+            CHCHead::Predicate(a) => {
+                if let Some(n) = predicates.insert(a.predicate, a.args.len()) {
+                    debug_assert!(n == a.args.len())
+                }
+            }
         }
         self.body.collect_predicates(predicates);
     }
@@ -398,7 +391,7 @@ impl Atom {
         let v: Vec<_> =
             m.0.iter()
                 .zip(self.args.iter())
-                .map(|(x, y)| (x.clone(), y.clone()))
+                .map(|(x, y)| (*x, y.clone()))
                 .collect();
         m.1.subst_multi(&v)
     }
@@ -539,20 +532,13 @@ pub struct Model {
 
 impl fmt::Display for Model {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for (key, (args, assign)) in self.model.iter() {
-            write!(f, "{}(", key)?;
-            let mut first = true;
-            for arg in args.iter() {
-                if first {
-                    first = false
-                } else {
-                    write!(f, ", ")?;
-                }
-                write!(f, "{}", arg)?;
-            }
-            write!(f, ") => {}\n", assign)?;
-        }
-        Ok(())
+        write!(f, "{}", self.pretty_display())
+    }
+}
+
+impl Default for Model {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -567,4 +553,257 @@ impl Model {
             self.model.insert(k, v);
         }
     }
+    /// check if model is tracktable
+    ///
+    /// model is tracktable: all constraints in model do not contain any existential quantifier.
+    pub fn is_solution_tractable(&self) -> bool {
+        for (_, (_, c)) in self.model.iter() {
+            let (qs, _) = c.to_pnf_raw();
+            for (q, _) in qs {
+                if q.is_existential() {
+                    return false;
+                }
+            }
+        }
+        true
+    }
+}
+
+#[test]
+fn test_solution_tractability() {
+    use super::{Constraint, FirstOrderLogic, Ident, QuantifierKind};
+    let v = Ident::fresh();
+    let w = Ident::fresh();
+
+    let c = Constraint::mk_quantifier_int(
+        QuantifierKind::Universal,
+        w,
+        Constraint::mk_quantifier_int(
+            QuantifierKind::Existential,
+            v,
+            Constraint::mk_eq(Op::mk_var(v), Op::mk_var(w)),
+        ),
+    );
+    let mut m = Model::new();
+    m.model.insert(Ident::fresh(), (Vec::new(), c));
+    assert!(!m.is_solution_tractable());
+
+    let c = Constraint::mk_quantifier_int(
+        QuantifierKind::Universal,
+        w,
+        Constraint::mk_quantifier_int(
+            QuantifierKind::Universal,
+            v,
+            Constraint::mk_eq(Op::mk_var(v), Op::mk_var(w)),
+        ),
+    );
+    let mut m = Model::new();
+    m.model.insert(Ident::fresh(), (Vec::new(), c));
+    assert!(m.is_solution_tractable());
+}
+
+/// this is a debug function for checking the given model is actually "a model" of the given CHC by
+/// using SMT solver.
+pub fn check_the_model_validity(model: &Model, chc: &Vec<CHC<Atom, Constraint>>) -> bool {
+    use crate::solver::smt;
+    let mut solver = smt::default_solver();
+    let c = chc.iter().fold(Constraint::mk_true(), |c, chc| {
+        Constraint::mk_conj(c, chc.replace_with_model(model))
+    });
+    let vars = c.fv();
+    match solver.solve(&c, &vars) {
+        crate::solver::SolverResult::Sat => true,
+        crate::solver::SolverResult::Unsat => false,
+        _ => panic!("error"),
+    }
+}
+
+#[test]
+fn test_check_the_model_validity() {
+    let (chc, model, _) = gen_clause_pqp();
+    assert!(check_the_model_validity(&model, &vec![chc]))
+}
+
+/// Merge CHCs that have the same head predicate.
+/// Divide goal formulas and clauses
+///
+/// For example, if we have the following CHCs:
+/// - x_1 >= 101 -> P0(x_1,x_1 - 10)
+/// - x_2 <= 100 ∧ P0(x_4,x_3) ∧ P0(x_2 + 11,x_4) -> P0(x_2,x_3)
+/// this function returns the following CHC:
+///  (x_1 >= 101 /\ w = x_1 - 10 /\ x_2 = w) \/ (x_1 <= 100 /\  P0(x_4,x_2) ∧ P0(x_1 + 11,x_4)) -> P0(x_1, x_2)
+fn merge_chcs_with_same_head(
+    chcs: Vec<CHC<Atom, Constraint>>,
+) -> (
+    Vec<(CHCBody<Atom, Constraint>, Constraint)>,
+    HashMap<Ident, Vec<(Atom, CHCBody<Atom, Constraint>)>>,
+) {
+    // 2. group chcs that have the same head
+    let mut map = HashMap::new();
+    let mut constraints = Vec::new();
+    chcs.into_iter().for_each(|chc| match chc.head {
+        CHCHead::Constraint(c) => constraints.push((chc.body, c)),
+        CHCHead::Predicate(ref p) => map
+            .entry(p.predicate)
+            .or_insert(Vec::new())
+            .push((p.clone(), chc.body)),
+    });
+    // 2. normalize the head (e.g. ... => P(x, y + 1)  ---> ... /\ y + 1 = w => P(x, w))
+    // 3. rename vairables so that all the chcs have the same (non-free) variables
+    for (k, chcs) in map.iter_mut() {
+        let nargs = chcs[0].0.args.len();
+        let varnames = (0..nargs).map(|_| Ident::fresh()).collect::<Vec<_>>();
+        for (atom, body) in chcs.iter_mut() {
+            let mut eqs: Vec<_> = atom
+                .args
+                .iter()
+                .zip(varnames.iter())
+                .map(|(a, x)| (Op::mk_var(*x), a.clone()))
+                .collect();
+            let mut constraint = body.constraint.clone();
+            let mut predicates = body.predicates.clone();
+
+            let mut fvs = body.fv();
+            atom.fv_with_vec(&mut fvs);
+
+            // remove fvs as much as possible
+            for fv in fvs.iter() {
+                let r = eqs.iter().enumerate().find_map(|(i, (o1, o2))| {
+                    let mut fvs = o1.fv();
+                    o2.fv_with_vec(&mut fvs);
+                    if fvs.contains(fv) {
+                        Op::solve_for(fv, o1, o2).map(|x| (i, x))
+                    } else {
+                        None
+                    }
+                });
+                match r {
+                    Some((idx, replace)) => {
+                        let mut new_eqs = Vec::new();
+                        for (i, (o1, o2)) in eqs.into_iter().enumerate() {
+                            if i == idx {
+                                continue;
+                            }
+                            let o1 = o1.subst(fv, &replace);
+                            let o2 = o2.subst(fv, &replace);
+                            new_eqs.push((o1, o2));
+                        }
+                        // replace predicates
+                        constraint = constraint.subst(fv, &replace);
+                        predicates = predicates
+                            .into_iter()
+                            .map(|p| Atom {
+                                args: p.args.into_iter().map(|a| a.subst(fv, &replace)).collect(),
+                                ..p
+                            })
+                            .collect();
+                        eqs = new_eqs;
+                    }
+                    None => (),
+                }
+            }
+            for (o1, o2) in eqs {
+                constraint = Constraint::mk_conj(constraint, Constraint::mk_eq(o1, o2));
+            }
+            *body = CHCBody {
+                constraint,
+                predicates,
+            };
+            *atom = Atom {
+                predicate: *k,
+                args: varnames.iter().map(|x| Op::mk_var(*x)).collect(),
+            }
+        }
+    }
+    (constraints, map)
+}
+
+pub fn translate_to_hes(
+    chcs: Vec<CHC<Atom, Constraint>>,
+) -> crate::formula::hes::Problem<Constraint> {
+    use crate::formula::hes::*;
+    use crate::formula::Variable;
+    fn translate_predicates(
+        predicates: Vec<Atom>,
+        mut constraint: Goal<Constraint>,
+    ) -> Goal<Constraint> {
+        for p in predicates {
+            let pred = Goal::mk_var(p.predicate);
+            let app = p
+                .args
+                .into_iter()
+                .fold(pred, |a, x| Goal::mk_app(a, Goal::mk_op(x.clone())));
+            constraint = Goal::mk_disj_opt(constraint, app);
+        }
+        constraint
+    }
+    fn quantify(
+        mut c: Goal<Constraint>,
+        clause_names: &HashSet<Ident>,
+        defined: &HashSet<Ident>,
+    ) -> Goal<Constraint> {
+        let fvs = c.fv();
+        for v in fvs.difference(&defined) {
+            if !clause_names.contains(v) {
+                c = Goal::mk_univ(Variable::mk(*v, Type::mk_type_int()), c);
+            }
+        }
+        c
+    }
+    let (toplevel, map) = merge_chcs_with_same_head(chcs);
+    let clause_names = map.keys().cloned().collect::<HashSet<_>>();
+
+    let mut top = Goal::mk_true();
+    for (body, head) in toplevel {
+        let c = Goal::mk_constr(body.constraint.negate().unwrap());
+        let c = Goal::mk_conj_opt(c, Goal::mk_constr(head.negate().unwrap()));
+        let c = translate_predicates(body.predicates, c);
+        let c = quantify(c, &clause_names, &HashSet::new());
+        top = Goal::mk_conj_opt(top, c);
+    }
+    let mut clauses = Vec::new();
+    for (k, chcs) in map {
+        let mut ty = Type::mk_type_prop();
+        let args: Vec<Ident> = chcs[0]
+            .0
+            .args
+            .iter()
+            .map(|x| match x.kind() {
+                crate::formula::OpExpr::Var(v) => *v,
+                _ => panic!("error"),
+            })
+            .collect();
+        for _ in args.iter() {
+            ty = Type::mk_type_arrow(Type::mk_type_int(), ty);
+        }
+        let defined = chcs[0].0.fv();
+        let mut form = Goal::mk_true();
+        for (_, body) in chcs {
+            let c = Goal::mk_constr(body.constraint.negate().unwrap());
+            let c = translate_predicates(body.predicates, c);
+            let c = quantify(c, &clause_names, &defined);
+            form = Goal::mk_conj_opt(form, c);
+        }
+
+        // TODO: append abs
+        for x in args {
+            form = Goal::mk_abs(Variable::mk(x, Type::mk_type_int()), form);
+        }
+        clauses.push(Clause {
+            head: Variable::mk(k, ty),
+            body: form,
+        });
+    }
+    Problem { clauses, top }
+}
+
+#[test]
+fn test_translation() {
+    let chcs = crate::parse::get_mc91();
+    println!("Target CHC");
+    chcs.iter().for_each(|c| println!("{c}"));
+
+    println!("Translated HES");
+    let hes = translate_to_hes(chcs);
+    println!("{}", hes);
 }

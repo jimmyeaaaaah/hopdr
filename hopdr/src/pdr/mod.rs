@@ -1,18 +1,28 @@
 pub mod derivation;
+pub mod engine;
 pub mod fml;
 mod infer;
 mod optimizer;
-pub mod pdr;
 pub mod rtype;
 
-pub use pdr::run;
+pub use engine::run;
 use std::fmt;
 
 #[derive(Debug)]
 pub enum VerificationResult {
-    Valid,
+    Valid(ValidCertificate),
     Invalid,
     Unknown,
+}
+
+#[derive(Debug)]
+pub struct ValidCertificate {
+    pub certificate: rtype::TypeEnvironment<rtype::Ty>,
+}
+impl ValidCertificate {
+    fn new(certificate: rtype::TypeEnvironment<rtype::Ty>) -> Self {
+        Self { certificate }
+    }
 }
 
 impl fmt::Display for VerificationResult {
@@ -22,7 +32,7 @@ impl fmt::Display for VerificationResult {
             f,
             "{}",
             match self {
-                Valid => "valid",
+                Valid(_) => "valid",
                 Invalid => "invalid",
                 Unknown => "unknown",
             }
@@ -32,19 +42,15 @@ impl fmt::Display for VerificationResult {
 
 pub struct PDRConfig {
     dump_tex_progress: bool,
-}
-
-impl Default for PDRConfig {
-    fn default() -> Self {
-        PDRConfig {
-            dump_tex_progress: false,
-        }
-    }
+    config: crate::Configuration,
 }
 
 impl PDRConfig {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(config: crate::Configuration) -> Self {
+        PDRConfig {
+            dump_tex_progress: false,
+            config: config,
+        }
     }
     pub fn dump_tex_progress(mut self, dump_tex_progress: bool) -> Self {
         self.dump_tex_progress = dump_tex_progress;

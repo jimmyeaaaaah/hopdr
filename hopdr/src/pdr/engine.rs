@@ -1,5 +1,5 @@
-use super::rtype::{PolymorphicType, Refinement, Tau, TyEnv, TypeEnvironment};
-use super::{PDRConfig, VerificationResult};
+use super::rtype::{Refinement, Tau, TyEnv, TypeEnvironment};
+use super::{PDRConfig, ValidCertificate, VerificationResult};
 use crate::formula::hes::Problem;
 use crate::formula::{hes, Constraint, TeXPrinter};
 use crate::pdr::derivation;
@@ -37,8 +37,8 @@ pub struct HoPDR {
     config: PDRConfig,
 }
 
-impl<C: Refinement> TypeEnvironment<PolymorphicType<Tau<C>>> {
-    fn new_top_env(problem: &Problem<C>) -> TypeEnvironment<PolymorphicType<Tau<C>>> {
+impl<C: Refinement> TypeEnvironment<Tau<C>> {
+    fn new_top_env(problem: &Problem<C>) -> TypeEnvironment<Tau<C>> {
         let mut new_env = TypeEnvironment::new();
         for c in problem.clauses.iter() {
             new_env.add_top(c.head.id, &c.head.ty)
@@ -46,7 +46,7 @@ impl<C: Refinement> TypeEnvironment<PolymorphicType<Tau<C>>> {
         new_env
     }
 
-    fn new_bot_env(problem: &Problem<C>) -> TypeEnvironment<PolymorphicType<Tau<C>>> {
+    fn new_bot_env(problem: &Problem<C>) -> TypeEnvironment<Tau<C>> {
         let mut new_env = TypeEnvironment::new();
         for c in problem.clauses.iter() {
             new_env.add_bot(c.head.id, &c.head.ty)
@@ -160,11 +160,11 @@ impl HoPDR {
     }
 
     fn get_current_cex_level(&self) -> usize {
-        assert!(self.envs.len() >= self.models.len() + 1);
+        assert!(self.envs.len() > self.models.len());
         self.envs.len() - self.models.len() - 1
     }
 
-    fn get_current_target_approx<'a>(&'a self) -> &'a TyEnv {
+    fn get_current_target_approx(&self) -> &TyEnv {
         let level = self.get_current_cex_level();
         &self.envs[level]
     }
@@ -172,6 +172,9 @@ impl HoPDR {
     fn check_feasible(&mut self) -> Result<bool, Error> {
         debug!("[PDR]check feasible");
         loop {
+            if self.config.config.wait_every_step {
+                crate::util::wait_for_line();
+            }
             debug!("model size: {}", self.models.len());
             debug!("env size: {}", self.envs.len());
             if self.models.len() == self.envs.len() {
@@ -249,12 +252,12 @@ impl HoPDR {
         let cnf = cex_next.to_cnf();
         debug!("{}", gamma_i);
 
-        let mut env = gamma_i.clone();
-        debug!("check: {}", derivation::type_check_top(&cex_next, &mut env));
+        let env = gamma_i.clone();
+        debug!("check: {}", derivation::type_check_top(&cex_next, &env));
 
         for x in cnf {
-            let mut env = gamma_i.clone();
-            if !derivation::type_check_top(&x, &mut env) {
+            let env = gamma_i.clone();
+            if !derivation::type_check_top(&x, &env) {
                 debug!("candidate: {}", x);
 
                 if self.config.dump_tex_progress {
@@ -300,7 +303,10 @@ impl HoPDR {
 pub fn run(problem: Problem<Constraint>, config: PDRConfig) -> VerificationResult {
     let mut pdr = HoPDR::new(problem, config);
     match pdr.run() {
-        Ok(PDRResult::Valid) => VerificationResult::Valid,
+        Ok(PDRResult::Valid) => {
+            let certificate = ValidCertificate::new(pdr.envs[pdr.envs.len() - 1].clone());
+            VerificationResult::Valid(certificate)
+        }
         Ok(PDRResult::Invalid) => VerificationResult::Invalid,
         Err(x) => {
             warn!("{}", "Failed to complete PDR".red());

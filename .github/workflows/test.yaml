@@ -16,7 +16,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: install dependency
-      run: sudo apt install -y z3 default-jre wget
+      run: sudo apt update && sudo apt upgrade -y && sudo apt install -y z3 default-jre wget
     - name: get smtinterpol
       run: mkdir -p ~/.local/share/hopdr && wget https://ultimate.informatik.uni-freiburg.de/smtinterpol/smtinterpol-2.5-1147-g108647d8.jar -O ~/.local/share/hopdr/smtinterpol.jar
     - name: Setup tmate session

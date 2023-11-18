@@ -5,7 +5,7 @@ use std::fmt;
 
 use super::{Ident, TeXFormat, TeXPrinter};
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum TypeKind {
     Proposition,
     Integer,
@@ -44,22 +44,22 @@ impl Type {
         Type::new(TypeKind::Arrow(lhs, rhs))
     }
     pub fn is_int(&self) -> bool {
-        match self.kind() {
-            TypeKind::Integer => true,
-            _ => false,
-        }
+        matches!(self.kind(), TypeKind::Integer)
     }
     pub fn is_prop(&self) -> bool {
-        match self.kind() {
-            TypeKind::Proposition => true,
-            _ => false,
-        }
+        matches!(self.kind(), TypeKind::Proposition)
     }
     pub fn order(&self) -> usize {
         match self.kind() {
             TypeKind::Proposition => 0,
             TypeKind::Integer => 0,
             TypeKind::Arrow(x, y) => std::cmp::max(x.order() + 1, y.order()),
+        }
+    }
+    pub fn arrow<'a>(&'a self) -> (&'a Self, &'a Self) {
+        match self.kind() {
+            TypeKind::Arrow(x, y) => (x, y),
+            _ => panic!("not an arrow"),
         }
     }
 }
@@ -92,7 +92,13 @@ impl fmt::Display for TyEnv {
     }
 }
 
-impl<'a> TyEnv {
+impl Default for TyEnv {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl TyEnv {
     pub fn new() -> TyEnv {
         TyEnv {
             map: HashTrieMap::new(),
@@ -109,7 +115,7 @@ impl<'a> TyEnv {
     }
 }
 
-pub fn generate_global_environment<C>(formulas: &Vec<super::hes::Clause<C>>) -> TyEnv {
+pub fn generate_global_environment<C>(formulas: &[super::hes::Clause<C>]) -> TyEnv {
     let mut env = TyEnv::new();
     for formula in formulas.iter() {
         env.add(formula.head.id, formula.head.ty.clone());

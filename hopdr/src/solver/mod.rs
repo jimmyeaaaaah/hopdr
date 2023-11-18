@@ -1,11 +1,13 @@
-use std::fmt;
+use std::{collections::HashSet, fmt};
 
 pub mod chc;
+mod csisat;
 pub mod disj;
 pub mod interpolation;
+pub mod qe;
 pub mod sat;
 pub mod smt;
-mod util;
+pub mod util;
 
 #[derive(Copy, Clone)]
 pub enum SMTSolverType {
@@ -39,29 +41,27 @@ impl fmt::Display for Model {
     }
 }
 
+impl Model {
+    fn compensate(&mut self, fvs: &HashSet<crate::formula::Ident>) {
+        for fv in fvs.iter() {
+            if !self.model.contains_key(fv) {
+                self.model.insert(*fv, 0);
+            }
+        }
+    }
+}
+
 impl SolverResult {
     pub fn is_sat(&self) -> bool {
-        match self {
-            SolverResult::Sat => true,
-            _ => false,
-        }
+        matches!(self, SolverResult::Sat)
     }
     pub fn is_unsat(&self) -> bool {
-        match self {
-            SolverResult::Unsat => true,
-            _ => false,
-        }
+        matches!(self, SolverResult::Unsat)
     }
     pub fn is_unknown(&self) -> bool {
-        match self {
-            SolverResult::Unknown => true,
-            _ => false,
-        }
+        matches!(self, SolverResult::Unknown)
     }
     pub fn is_timeout(&self) -> bool {
-        match self {
-            SolverResult::Timeout => true,
-            _ => false,
-        }
+        matches!(self, SolverResult::Timeout)
     }
 }

@@ -67,11 +67,7 @@ fn transform_clause(clause: hes::Clause<formula::Constraint>) -> hes::Clause<for
 }
 
 pub fn transform(problem: hes::Problem<formula::Constraint>) -> hes::Problem<formula::Constraint> {
-    let clauses = problem
-        .clauses
-        .into_iter()
-        .map(|c| transform_clause(c))
-        .collect();
+    let clauses = problem.clauses.into_iter().map(transform_clause).collect();
     let top = transform_goal(&problem.top);
     hes::Problem { top, clauses }
 }

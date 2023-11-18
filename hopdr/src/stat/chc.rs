@@ -22,6 +22,12 @@ impl CHCStatistics {
     }
 }
 
+impl Default for CHCStatistics {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub fn count() {
     STAT.lock().unwrap().chc.count += 1;
 }

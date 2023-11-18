@@ -10,13 +10,13 @@ use lexpr::Value;
 
 fn parse_variable(v: &str) -> Ident {
     assert!(v.starts_with('x'));
-    Ident::from_str(&v[1..]).unwrap_or_else(|| panic!("parse fail"))
+    Ident::parse_ident(&v[1..]).unwrap_or_else(|| panic!("parse fail"))
 }
 
 fn parse_declare_fun(v: lexpr::Value, bit_size: u32) -> (Ident, i64) {
     // parse fail
     const ERRMSG: &str = "smt model parse fail";
-    fn cons_value_to_iter<'a>(v: &'a lexpr::Value) -> impl Iterator<Item = &'a lexpr::Value> {
+    fn cons_value_to_iter(v: &lexpr::Value) -> impl Iterator<Item = &lexpr::Value> {
         v.as_cons()
             .unwrap_or_else(|| panic!("{}({})", ERRMSG, v))
             .iter()
@@ -56,6 +56,7 @@ impl Model {
                 .filter(|(x, _)| !x.is_symbol())
                 .map(|(v, _)| parse_declare_fun(v, bit_size))
                 .collect(),
+            Value::Null => HashMap::new(),
             _ => panic!("parse error: smt2 model: {}", s),
         };
         Ok(Model { model })
@@ -98,6 +99,10 @@ fn z3_new_parse_model() {
         }
         Err(_) => panic!("model is broken"),
     }
+
+    let model = "(
+      )";
+    assert!(Model::from_z3_sat_model_str(model, 32).is_ok());
 }
 
 #[derive(Clone, Copy)]
@@ -152,7 +157,9 @@ impl SATSolver {
         debug!("smt_solve result: {:?}", &s);
         if s.starts_with("sat") {
             let pos = s.find('\n').unwrap();
-            Ok(Model::from_z3_sat_model_str(&s[pos..], self.bit_size).unwrap())
+            let mut m = Model::from_z3_sat_model_str(&s[pos..], self.bit_size).unwrap();
+            m.compensate(&fvs);
+            Ok(m)
         } else if s.starts_with("unsat") {
             Err(SolverResult::Unsat)
         } else {
@@ -232,7 +239,7 @@ impl SATSolver {
                 format!("({} {} {})", k, o1, o2)
             }
             OpExpr::Var(x) => ident_2_smt2(x),
-            OpExpr::Const(c) => format!("{}", self.int_2_smt2(*c)),
+            OpExpr::Const(c) => self.int_2_smt2(*c),
             OpExpr::Ptr(_, o) => self.op_to_smt2(o),
         }
     }

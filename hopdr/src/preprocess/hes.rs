@@ -2,6 +2,7 @@ use super::alpha::alpha_renaming;
 use super::eta;
 #[allow(unused_imports)]
 use super::extravar;
+use super::forall_pass;
 use super::safety;
 use super::transform::transform;
 use super::typing::typing;
@@ -169,7 +170,7 @@ fn quantify_validity_checking(vc: NuHFLzValidityChecking) -> NuHFLzValidityCheck
     NuHFLzValidityChecking { formulas, toplevel }
 }
 
-pub fn preprocess<'a>(vc: parse::Problem) -> (hes::Problem<formula::Constraint>, Context) {
+pub fn preprocess(vc: parse::Problem) -> (hes::Problem<formula::Constraint>, Context) {
     match vc {
         parse::Problem::NuHFLZValidityChecking(vc) => {
             let vc = quantify_validity_checking(vc);
@@ -180,6 +181,7 @@ pub fn preprocess<'a>(vc: parse::Problem) -> (hes::Problem<formula::Constraint>,
             let problem = safety::transform(problem);
             debug!("[safety::transform]\n{}\n", problem);
             let problem = eta::transform(problem);
+            let problem = forall_pass::transform(problem);
             // let problem = extravar::transform(problem);
             (problem, ctx)
         }

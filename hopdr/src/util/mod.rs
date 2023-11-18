@@ -1,9 +1,15 @@
+use std::io;
+use std::io::BufRead;
 use std::marker::PhantomData;
 use std::ops::Deref;
 use std::sync::mpsc;
 use std::thread;
 use std::time;
 use std::{fmt, rc::Rc};
+
+pub mod printer;
+
+pub use printer::{set_colored, set_default_width, Pretty};
 
 //pub trait Kind {
 //    type Ty;
@@ -24,7 +30,7 @@ pub fn P<T: 'static>(value: T) -> P<T> {
 }
 
 impl<T> P<T> {
-    pub fn kind<'a>(&'a self) -> &'a T {
+    pub fn kind(&self) -> &T {
         &*self.ptr
     }
     pub fn ptr_id(&self) -> usize {
@@ -89,7 +95,7 @@ pub fn Unique<T: 'static>(value: T) -> Unique<T> {
 }
 
 impl<T> Unique<T> {
-    pub fn kind<'a>(&'a self) -> &'a T {
+    pub fn kind(&self) -> &T {
         &*self.ptr
     }
     pub fn into(self) -> T {
@@ -134,7 +140,7 @@ pub fn PhantomPtr<T: 'static, S>(value: T) -> PhantomPtr<T, S> {
 }
 
 impl<T, S> PhantomPtr<T, S> {
-    pub fn kind<'a>(&'a self) -> &'a T {
+    pub fn kind(&self) -> &T {
         &*self.ptr
     }
 }
@@ -189,7 +195,14 @@ pub fn global_counter() -> u64 {
 macro_rules! title {
     ($arg:tt) => {{
         use colored::Colorize;
-        debug!("{}{}{}", "[".bold(), $arg.bold(), "]".bold());
+        log::info!("{}{}{}", "[".bold(), $arg.bold(), "]".bold());
+    }};
+}
+#[macro_export]
+macro_rules! highlight {
+    ($arg:tt) => {{
+        use colored::Colorize;
+        log::debug!("{}", $arg.red());
     }};
 }
 
@@ -214,7 +227,7 @@ const STACK_SIZE: usize = 4 * 1024 * 1024;
 /// returns Some(x) if `f` finishes within `timeout`; None otherwise.
 /// if timeout is None, the execution continues until ctrl-c or termination of the
 /// given procedure.
-pub fn executes_with_timeout_and_ctrlc<T: Send + 'static, F: FnOnce() -> T + Send + 'static>(
+pub fn executes_with_timeout_and_ctrlc<'a, T: Send + 'static, F: FnOnce() -> T + Send + 'static>(
     f: F,
     timeout: Option<time::Duration>,
 ) -> Result<T, ExecutionError> {
@@ -229,7 +242,7 @@ pub fn executes_with_timeout_and_ctrlc<T: Send + 'static, F: FnOnce() -> T + Sen
     let join_handler = thread::spawn(move || {
         let x = thread::Builder::new()
             .stack_size(STACK_SIZE)
-            .spawn(move || f())
+            .spawn(f)
             .unwrap()
             .join();
         let s = match &x {
@@ -254,4 +267,16 @@ pub fn executes_with_timeout_and_ctrlc<T: Send + 'static, F: FnOnce() -> T + Sen
         }
     }
     join_handler.join().map_err(|_| ExecutionError::Panic)
+}
+
+#[allow(dead_code)]
+/// Pauses program execution for debugging purposes, prompting the user to input a line.
+pub fn wait_for_line() {
+    use colored::Colorize;
+    println!("{}", "Input something to proceed".green());
+    let mut line = String::new();
+    io::stdin()
+        .lock()
+        .read_line(&mut line)
+        .expect("failed to read stdin");
 }
