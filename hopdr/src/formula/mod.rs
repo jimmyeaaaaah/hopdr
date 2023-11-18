@@ -421,20 +421,28 @@ impl Op {
         debug_assert!(result_vec.len() == variables.len() + 1);
         Some(result_vec)
     }
-    pub fn solve_for(x: &Ident, o1: &Self, o2: &Self) -> Option<Op> {
-        let o = Op::mk_sub(o1.clone(), o2.clone());
-        let mut fv = o.fv();
-        if !fv.contains(x) {
+
+    /// normalize the given op o with respect to the given variable.
+    /// returned vector of variables must starts with the variable
+    fn normalize_with_focus(&self, on: &Ident) -> Option<(Vec<Ident>, Vec<Op>)> {
+        let mut fv = self.fv();
+        if !fv.contains(on) {
             return None;
         }
-        fv.remove(x);
+        fv.remove(on);
 
-        let mut variables = vec![*x];
+        let mut variables = vec![*on];
         for v in fv.into_iter() {
             variables.push(v);
         }
-        let mut v = o.normalize(&variables)?;
-
+        let v = self.normalize(&variables)?;
+        Some((variables, v))
+    }
+    /// This function solves the given linear equation `o1 <op> o2` w.r.t. x.
+    /// To capture the sign of the solution, this function returns a pair of (bool, Op). (so that we can solve -x + 2 < 3, correctly).
+    pub fn solve_for_with_sign(x: &Ident, o1: &Self, o2: &Self) -> Option<(bool, Op)> {
+        let o = Op::mk_sub(o1.clone(), o2.clone());
+        let (variables, mut v) = o.normalize_with_focus(x)?;
         // Of course, we can do more, but for now it's ok (like checking if we can divide "xi" by x_0)
         let coef = v[0].eval_with_empty_env();
         if coef == Some(1) {
@@ -442,16 +450,20 @@ impl Op {
             for (x, o) in variables.into_iter().zip(v.into_iter()).skip(1) {
                 r = Op::mk_sub(r, Op::mk_mul(Op::mk_var(x), o));
             }
-            Some(r)
+            Some((true, r))
         } else if coef == Some(-1) {
             let mut r = v.pop().unwrap();
             for (x, o) in variables.into_iter().zip(v.into_iter()).skip(1) {
                 r = Op::mk_add(r, Op::mk_mul(Op::mk_var(x), o));
             }
-            Some(r)
+            Some((false, r))
         } else {
             None
         }
+    }
+    pub fn solve_for(x: &Ident, o1: &Self, o2: &Self) -> Option<Op> {
+        let (_, o) = Self::solve_for_with_sign(x, o1, o2)?;
+        Some(o)
     }
 }
 #[test]
