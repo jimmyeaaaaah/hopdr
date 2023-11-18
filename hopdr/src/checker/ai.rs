@@ -83,6 +83,26 @@ impl Domain {
             _ => false,
         }
     }
+    /// returns the minimum value of the domain (in i64).
+    pub fn min(&self) -> Option<i64> {
+        if self.is_bot() {
+            return None;
+        }
+        Some(match self.lb {
+            Some(x) => x,
+            None => std::i64::MIN,
+        })
+    }
+    /// returns the maximum value of the domain (in i64).
+    pub fn max(&self) -> Option<i64> {
+        if self.is_bot() {
+            return None;
+        }
+        Some(match self.ub {
+            Some(x) => x - 1,
+            None => std::i64::MAX,
+        })
+    }
 }
 
 impl PartialEq for Domain {
@@ -144,6 +164,10 @@ fn test_domain() {
     assert!(i == i.join(j));
     assert!(j == k.meet(j));
     assert!(k == k.join(j));
+    assert!(Some(1) == i.min());
+    assert!(Some(2) == i.max());
+    assert!(None == j.min());
+    assert!(None == j.max());
 
     let all = Domain::all();
 
@@ -155,24 +179,122 @@ fn test_domain() {
     assert!(all <= all);
     assert!(all == all);
 }
+/// cx + d != 0 ---> cx + d = 0
+fn handle_neq(c: i64, d: i64) -> Domain {
+    if d % c != 0 {
+        Domain::all()
+    } else {
+        Domain::interval(-d / c, -d / c + 1)
+    }
+}
+/// cx + d < 0 ---> cx + d >= 0
+fn handle_lt(c: i64, d: i64) -> Domain {
+    if c < 0 {
+        return handle_geq(-c, -d);
+    }
+    // x >= -d / c
+    // x >= -3/4
+    Domain::lb(-d / c)
+}
+/// cx + d <= 0 ---> cx + d > 0
+fn handle_leq(c: i64, d: i64) -> Domain {
+    if c < 0 {
+        return handle_gt(-c, -d);
+    }
+    // x <= -d / c
+    // 4x + 3 <= 0 ---> x > -3/4
+    if d % c != 0 {
+        Domain::lb(-d / c)
+    } else {
+        Domain::lb(-d / c)
+    }
+}
+/// cx + d > 0
+fn handle_gt(c: i64, d: i64) -> Domain {
+    if c < 0 {
+        return handle_leq(-c, -d);
+    }
+    // x <= -d / c
+    Domain::ub(-d / c + 1)
+}
+/// cx + d >= 0
+fn handle_geq(c: i64, d: i64) -> Domain {
+    if c < 0 {
+        return handle_lt(-c, -d);
+    }
+    if d % c != 0 {
+        Domain::ub(-d / c + 1)
+    } else {
+        Domain::ub(-d / c)
+    }
+}
 
+/// Given a atom left <pred> right, return the domain where the expr is **false**.
 fn handle_pred(target: Ident, p: PredKind, left: &Op, right: &Op) -> Domain {
     let o = Op::mk_sub(left.clone(), right.clone());
-    let norm = Op::solve_for_with_sign(&target, left, right);
-    let (sign, r) = match norm {
+    let fv = o.fv();
+    if fv.len() != 1 || !fv.contains(&target) {
+        return Domain::all();
+    }
+    let coefs = o.normalize(&vec![target]);
+    let coefs = match coefs {
+        Some(coefs) => coefs,
+        None => return Domain::all(),
+    };
+    assert_eq!(coefs.len(), 2);
+    let c = coefs[0].clone();
+    let d = coefs[1].clone();
+    // cx + d <pred> 0
+    let d = match d.eval_with_empty_env() {
         Some(v) => v,
         None => return Domain::all(),
     };
-    if r.fv().len() != 0 {
+    let c = match c.eval_with_empty_env() {
+        Some(v) => v,
+        None => return Domain::all(),
+    };
+
+    if c == 0 {
         return Domain::all();
     }
+
     match p {
+        // cx == d -> x != d/c
         PredKind::Eq => Domain::all(),
-        PredKind::Neq => todo!(),
-        PredKind::Lt => todo!(),
-        PredKind::Leq => todo!(),
-        PredKind::Gt => todo!(),
-        PredKind::Geq => todo!(),
+        PredKind::Neq => handle_neq(c, d),
+        PredKind::Lt => handle_lt(c, d),
+        PredKind::Leq => handle_leq(c, d),
+        PredKind::Gt => handle_gt(c, d),
+        PredKind::Geq => handle_geq(c, d),
+    }
+}
+
+#[test]
+fn test_handle_pred() {
+    use std::i64::MIN;
+    use PredKind::*;
+    let x = Ident::fresh();
+    // 4 < x + x
+    let o1 = Op::mk_const(4);
+    let o2 = Op::mk_add(Op::mk_var(x), Op::mk_var(x));
+
+    let preds = [Eq, Neq, Lt, Leq, Gt, Geq];
+    // 4 >= x + x --> -2x + 4 >= 0 <=> 2x - 4 < 0 ----> 2x - 4 >= 0
+    let mins = [MIN, 2, MIN, MIN, 2, 2];
+    for (pred, mn) in preds.into_iter().zip(mins.into_iter()) {
+        let d = handle_pred(x, *pred, &o1, &o2);
+        println!("{d}");
+        assert_eq!(d.min().unwrap(), *mn);
+    }
+
+    // 5 < x + x
+    let o1 = Op::mk_const(5);
+    let o2 = Op::mk_add(Op::mk_var(x), Op::mk_var(x));
+    let mins = [MIN, MIN, MIN, MIN, 2, 2];
+    for (pred, mn) in preds.into_iter().zip(mins.into_iter()) {
+        let d = handle_pred(x, *pred, &o1, &o2);
+        println!("{d}");
+        assert_eq!(d.min().unwrap(), *mn);
     }
 }
 
