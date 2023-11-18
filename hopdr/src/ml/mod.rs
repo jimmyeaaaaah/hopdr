@@ -4,7 +4,7 @@ pub mod syntax;
 pub mod ty;
 
 use crate::formula::Ident;
-pub use syntax::{Expr, ExprKind, Function, Program};
+pub use syntax::{Expr, ExprKind, Function, Program, Range};
 pub use ty::{Type, TypeKind};
 
 #[derive(Clone, Debug)]

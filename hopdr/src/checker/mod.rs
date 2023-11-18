@@ -3,7 +3,7 @@ mod executor;
 
 use crate::formula::hes::{Goal, GoalKind, Problem};
 use crate::formula::{Constraint, Ident, Logic, Negation, Op, Type as HFLType};
-use crate::ml::{optimize, Expr, Function, Program, Type as SType, Variable};
+use crate::ml::{optimize, Expr, Function, Program, Range, Type as SType, Variable};
 use crate::preprocess::Context;
 
 pub struct Config<'a> {
@@ -178,7 +178,7 @@ impl<'a> Translator<'a> {
                     Expr::mk_sequential(g2, g1)
                 } else {
                     let body = Expr::mk_if(Expr::mk_constraint(c), g1, g2);
-                    Expr::mk_letrand(ident, body)
+                    Expr::mk_let_bool_rand(ident, body)
                 }
             }),
             GoalKind::Disj(g1, g2) => Self::gen_prop(|p| {
@@ -188,7 +188,9 @@ impl<'a> Translator<'a> {
             }),
             GoalKind::Univ(v, g) => Self::gen_prop(|p| {
                 let body = self.translate_goal(g.clone());
-                Expr::mk_letrand(v.id, Expr::mk_app(body, Expr::mk_var(p)))
+                assert!(v.ty.is_int());
+                let range = ai::analyze(v.id, g);
+                Expr::mk_letrand(v.id, range, Expr::mk_app(body, Expr::mk_var(p)))
             }),
         }
     }

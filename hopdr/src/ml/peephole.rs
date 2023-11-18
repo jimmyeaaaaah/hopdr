@@ -41,9 +41,9 @@ pub(super) fn peephole_optimize<'a>(mut p: Program<'a>) -> Program<'a> {
                 let els = f(els);
                 Expr::mk_if(cond, then, els)
             }
-            ExprKind::LetRand { ident, body } => {
+            ExprKind::LetRand { ident, range, body } => {
                 let body = f(body);
-                Expr::mk_letrand(ident.clone(), body)
+                Expr::mk_letrand(ident.clone(), range.clone(), body)
             }
             ExprKind::TryWith { body, handler } => {
                 let body = f(body);

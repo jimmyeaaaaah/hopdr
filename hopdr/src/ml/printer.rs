@@ -2,7 +2,7 @@
 ///
 /// Our algorithm highly depends on `ocamlformat` to pretty-print things.
 /// We only care about here whether we insert parentheses or not.
-use super::syntax::{Expr, ExprKind, Function, Program};
+use super::syntax::{Expr, ExprKind, Function, Program, Range};
 use crate::formula::{Constraint, Ident, Op, OpKind, Precedence, PrecedenceKind, PredKind};
 use crate::preprocess::Context;
 use crate::solver::util;
@@ -155,6 +155,21 @@ impl DumpML for Ident {
         }
     }
 }
+impl DumpML for Range {
+    fn dump_ml<W: Write>(&self, f: &mut W, _ctx: &Context) -> Result<(), fmt::Error> {
+        fn aux<W: Write>(f: &mut W, x: Option<i64>) -> Result<(), fmt::Error> {
+            match x {
+                Some(x) => write!(f, "Some({})", x),
+                None => write!(f, "None"),
+            }
+        }
+        write!(f, "(")?;
+        aux(f, self.lb)?;
+        write!(f, ", ")?;
+        aux(f, self.ub)?;
+        write!(f, ")")
+    }
+}
 
 impl DumpML for Expr {
     fn dump_ml<W: Write>(&self, f: &mut W, ctx: &Context) -> Result<(), fmt::Error> {
@@ -187,10 +202,12 @@ impl DumpML for Expr {
                 write!(f, " else ")?;
                 els.dump_ml(f, ctx)
             }
-            ExprKind::LetRand { ident, body } => {
+            ExprKind::LetRand { ident, range, body } => {
                 write!(f, "let ")?;
                 ident.dump_ml(f, ctx)?;
-                write!(f, " = rand_int() in ")?;
+                write!(f, " = rand_int ")?;
+                range.dump_ml(f, ctx)?;
+                write!(f, " in ")?;
                 body.dump_ml(f, ctx)
             }
             ExprKind::Assert(c) => {

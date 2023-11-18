@@ -4,6 +4,40 @@ use super::{Type as SType, Variable};
 use crate::formula::{Constraint, Ident, Op, Precedence, PrecedenceKind, PredKind, Subst};
 use crate::util::P;
 
+/// Represents a half-open interval [lb, ub).
+///
+/// lb or ub can be None, which means there is no ends.
+/// For example, `Range{lb: None, ub: 5}` represents [-∞, 5).
+#[derive(Debug, Clone)]
+pub struct Range {
+    pub lb: Option<i64>,
+    pub ub: Option<i64>,
+}
+
+impl Range {
+    pub fn new() -> Self {
+        Range { lb: None, ub: None }
+    }
+    pub fn lb(self, lb: i64) -> Self {
+        Self {
+            lb: Some(lb),
+            ..self
+        }
+    }
+    pub fn ub(self, ub: i64) -> Self {
+        Self {
+            ub: Some(ub),
+            ..self
+        }
+    }
+    pub fn boolean() -> Self {
+        Self {
+            lb: Some(0),
+            ub: Some(2),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum ExprKind {
     Var(Ident),
@@ -12,14 +46,31 @@ pub enum ExprKind {
     And(Expr, Expr),
     App(Expr, Expr),
     IApp(Expr, Op),
-    Fun { ident: Variable, body: Expr },
-    If { cond: Expr, then: Expr, els: Expr },
-    LetRand { ident: Ident, body: Expr },
+    Fun {
+        ident: Variable,
+        body: Expr,
+    },
+    If {
+        cond: Expr,
+        then: Expr,
+        els: Expr,
+    },
+    LetRand {
+        ident: Ident,
+        range: Range,
+        body: Expr,
+    },
     Raise,
     Unit,
-    TryWith { body: Expr, handler: Expr },
+    TryWith {
+        body: Expr,
+        handler: Expr,
+    },
     Assert(Expr),
-    Sequential { lhs: Expr, rhs: Expr },
+    Sequential {
+        lhs: Expr,
+        rhs: Expr,
+    },
 }
 pub type Expr = P<ExprKind>;
 
@@ -68,8 +119,15 @@ impl Expr {
     pub fn mk_if(cond: Expr, then: Expr, els: Expr) -> Self {
         P::new(ExprKind::If { cond, then, els })
     }
-    pub fn mk_letrand(ident: Ident, body: Expr) -> Self {
-        P::new(ExprKind::LetRand { ident, body })
+    pub fn mk_letrand(ident: Ident, range: Range, body: Expr) -> Self {
+        P::new(ExprKind::LetRand { ident, range, body })
+    }
+    pub fn mk_let_bool_rand(ident: Ident, body: Expr) -> Self {
+        P::new(ExprKind::LetRand {
+            ident,
+            range: Range::boolean(),
+            body,
+        })
     }
     pub fn mk_assert(cond: Expr) -> Self {
         P::new(ExprKind::Assert(cond))
@@ -111,11 +169,15 @@ impl Expr {
                 then.subst(ident, e.clone()),
                 els.subst(ident, e),
             ),
-            ExprKind::LetRand { ident: x, body } => {
+            ExprKind::LetRand {
+                ident: x,
+                range,
+                body,
+            } => {
                 if *x == ident {
-                    Expr::mk_letrand(x.clone(), body.clone())
+                    Expr::mk_letrand(x.clone(), range.clone(), body.clone())
                 } else {
-                    Expr::mk_letrand(x.clone(), body.subst(ident, e))
+                    Expr::mk_letrand(x.clone(), range.clone(), body.subst(ident, e))
                 }
             }
             ExprKind::Raise => self.clone(),
@@ -158,11 +220,15 @@ impl Expr {
                 then.isubst(ident, e.clone()),
                 els.isubst(ident, e),
             ),
-            ExprKind::LetRand { ident: x, body } => {
+            ExprKind::LetRand {
+                ident: x,
+                range,
+                body,
+            } => {
                 if *x == ident {
-                    Expr::mk_letrand(x.clone(), body.clone())
+                    Expr::mk_letrand(x.clone(), range.clone(), body.clone())
                 } else {
-                    Expr::mk_letrand(x.clone(), body.isubst(ident, e))
+                    Expr::mk_letrand(x.clone(), range.clone(), body.isubst(ident, e))
                 }
             }
             ExprKind::Raise => self.clone(),
