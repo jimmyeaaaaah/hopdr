@@ -1,5 +1,3 @@
-use std::fmt::write;
-
 use crate::formula::hes::{Goal, GoalKind};
 use crate::formula::{Constraint, Fv, Ident, Op, PredKind};
 use crate::ml::Range;
@@ -77,12 +75,14 @@ impl Domain {
         };
         Domain { lb, ub }
     }
+    #[allow(dead_code)]
     pub fn is_bot(&self) -> bool {
         match (self.lb, self.ub) {
             (Some(x), Some(y)) => x >= y,
             _ => false,
         }
     }
+    #[allow(dead_code)]
     /// returns the minimum value of the domain (in i64).
     pub fn min(&self) -> Option<i64> {
         if self.is_bot() {
@@ -93,6 +93,7 @@ impl Domain {
             None => std::i64::MIN,
         })
     }
+    #[allow(dead_code)]
     /// returns the maximum value of the domain (in i64).
     pub fn max(&self) -> Option<i64> {
         if self.is_bot() {
@@ -281,7 +282,7 @@ fn test_handle_pred() {
     let preds = [Eq, Neq, Lt, Leq, Gt, Geq];
     // 4 >= x + x --> -2x + 4 >= 0 <=> 2x - 4 < 0 ----> 2x - 4 >= 0
     let mins = [MIN, 2, MIN, MIN, 2, 2];
-    for (pred, mn) in preds.into_iter().zip(mins.into_iter()) {
+    for (pred, mn) in preds.iter().zip(mins.iter()) {
         let d = handle_pred(x, *pred, &o1, &o2);
         println!("{d}");
         assert_eq!(d.min().unwrap(), *mn);
@@ -291,7 +292,7 @@ fn test_handle_pred() {
     let o1 = Op::mk_const(5);
     let o2 = Op::mk_add(Op::mk_var(x), Op::mk_var(x));
     let mins = [MIN, MIN, MIN, MIN, 2, 2];
-    for (pred, mn) in preds.into_iter().zip(mins.into_iter()) {
+    for (pred, mn) in preds.iter().zip(mins.iter()) {
         let d = handle_pred(x, *pred, &o1, &o2);
         println!("{d}");
         assert_eq!(d.min().unwrap(), *mn);
@@ -322,6 +323,35 @@ fn gen_bound(x: Ident, c: &Constraint) -> Domain {
     }
 }
 
+fn analyze_inner(x: Ident, g: &Goal<Constraint>) -> Domain {
+    match g.kind() {
+        GoalKind::Constr(c) => gen_bound(x, c),
+        GoalKind::Op(_) => panic!("program error"),
+        GoalKind::Var(_) | GoalKind::Abs(_, _) | GoalKind::App(_, _) => Domain::all(),
+        GoalKind::Conj(g1, g2) => {
+            let d1 = analyze_inner(x, g1);
+            let d2 = analyze_inner(x, g2);
+            d1.join(d2)
+        }
+        GoalKind::Disj(g1, g2) => {
+            let d1 = analyze_inner(x, g1);
+            let d2 = analyze_inner(x, g2);
+            d1.meet(d2)
+        }
+        GoalKind::Univ(_, g) => analyze_inner(x, g),
+    }
+}
+
 pub fn analyze(x: Ident, g: &Goal<Constraint>) -> Range {
-    unimplemented!()
+    let d = analyze_inner(x, g);
+    let mut r = Range::new();
+    match d.lb {
+        Some(x) => r = r.lb(x),
+        None => (),
+    }
+    match d.ub {
+        Some(x) => r = r.ub(x),
+        None => (),
+    }
+    r
 }

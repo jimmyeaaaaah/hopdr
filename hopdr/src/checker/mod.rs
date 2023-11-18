@@ -3,7 +3,7 @@ mod executor;
 
 use crate::formula::hes::{Goal, GoalKind, Problem};
 use crate::formula::{Constraint, Ident, Logic, Negation, Op, Type as HFLType};
-use crate::ml::{optimize, Expr, Function, Program, Range, Type as SType, Variable};
+use crate::ml::{optimize, Expr, Function, Program, Type as SType, Variable};
 use crate::preprocess::Context;
 
 pub struct Config<'a> {
@@ -168,7 +168,7 @@ impl<'a> Translator<'a> {
                 let g2 = self.translate_goal(g2_fml.clone());
                 let g2 = Expr::mk_app(g2, Expr::mk_var(p));
                 let ident = Ident::fresh();
-                let c = Constraint::mk_geq(Op::mk_var(ident), Op::zero());
+                let c = Constraint::mk_eq(Op::mk_var(ident), Op::zero());
 
                 //[θ /\ Ψ2] = fun p -> [θ] p; [Ψ2]p
                 //[Ψ1 /\ θ] = fun p -> [θ] p; [Ψ1]p

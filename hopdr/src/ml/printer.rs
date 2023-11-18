@@ -10,6 +10,22 @@ use std::fmt;
 use std::fmt::Write;
 use std::time::Duration;
 
+const LIBRARY: &str = r#"
+exception FalseExc
+let check_mx = 1000000
+let check_mn = -1000000
+let rand_int (x, y) = 
+  let mn = match x with 
+    | Some(x) -> x
+    | None -> check_mn
+  in
+  let mx = match y with
+    | Some(x) -> x
+    | None -> check_mx
+  in 
+    Random.int (mx - mn) + mn
+"#;
+
 pub fn do_format(input: &str) -> String {
     // ocamlformat  --impl -
     let args = vec!["--impl", "-"];
@@ -251,8 +267,7 @@ impl<'a> Program<'a> {
         writeln!(f, ") done")
     }
     fn dump_library_func<W: Write>(&self, f: &mut W) -> Result<(), fmt::Error> {
-        writeln!(f, "let rand_int () = Random.int 10000000 - 5000000\n")?;
-        writeln!(f, "exception FalseExc\n")
+        writeln!(f, "{}", LIBRARY)
     }
     pub fn dump_ml(&self) -> String {
         let mut s = String::new();

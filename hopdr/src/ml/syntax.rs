@@ -1,7 +1,7 @@
 use core::panic;
 
 use super::{Type as SType, Variable};
-use crate::formula::{Constraint, Ident, Op, Precedence, PrecedenceKind, PredKind, Subst};
+use crate::formula::{Constraint, Ident, Op, Precedence, PrecedenceKind, Subst};
 use crate::util::P;
 
 /// Represents a half-open interval [lb, ub).
