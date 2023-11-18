@@ -19,14 +19,14 @@ jobs:
       run: sudo apt update && sudo apt upgrade -y && sudo apt install -y z3 default-jre wget
     - name: get smtinterpol
       run: mkdir -p ~/.local/share/hopdr && wget https://ultimate.informatik.uni-freiburg.de/smtinterpol/smtinterpol-2.5-1147-g108647d8.jar -O ~/.local/share/hopdr/smtinterpol.jar
+    - name: OCaml Format Install
+      run: sudo add-apt-repository ppa:avsm/ppa && sudo apt update && sudo apt install -y opam && opam init -y && eval $(opam env)  && opam install ocamlformat 
     - name: Setup tmate session
       uses: mxschmitt/action-tmate@v3
     - name: get hoice
       run: cargo install --git https://github.com/hopv/hoice --locked
     - name: Format
       run: cargo fmt --all -- --check
-    - name: OCaml Format Install
-      run: sudo add-apt-repository ppa:avsm/ppa && sudo apt update && sudo apt install -y opam && opam init -y && eval $(opam env)  && opam install ocamlformat 
     # - name: Clippy
     #   run: cargo clippy -- -D warnings
     - name: Build
