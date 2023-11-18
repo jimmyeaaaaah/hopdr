@@ -25,6 +25,8 @@ jobs:
       run: cargo install --git https://github.com/hopv/hoice --locked
     - name: Format
       run: cargo fmt --all -- --check
+    - name: OCaml Format Install
+      run: sudo add-apt-repository ppa:avsm/ppa && sudo apt update && sudo apt install -y opam && opam init -y && eval $(opam env)  && opam install ocamlformat 
     # - name: Clippy
     #   run: cargo clippy -- -D warnings
     - name: Build
