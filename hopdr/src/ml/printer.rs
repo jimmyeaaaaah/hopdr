@@ -120,7 +120,7 @@ impl DumpML for Constraint {
                 dump_bin_op(f, self.precedence(), "&&", c1, c2, ctx)
             }
             crate::formula::ConstraintExpr::Disj(c1, c2) => {
-                dump_bin_op(f, self.precedence(), "&&", c1, c2, ctx)
+                dump_bin_op(f, self.precedence(), "||", c1, c2, ctx)
             }
             crate::formula::ConstraintExpr::Quantifier(q, x, g) => {
                 assert!(q.is_universal());

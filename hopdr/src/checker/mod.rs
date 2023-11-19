@@ -216,6 +216,7 @@ impl<'a> Translator<'a> {
 }
 
 pub fn run(problem: Problem<Constraint>, config: Config) {
+    println!("{problem}");
     let trans = Translator::new(config);
     let prog = trans.translate(problem);
     let prog = optimize(prog);

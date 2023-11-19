@@ -1,5 +1,9 @@
 #!/bin/sh
-d=`realpath $0`
+d=`dirname $0`
+d=`realpath $d`
+echo $d
 export PATH=$d/bin:$PATH
+
+hopdr-check-runner
 
 cargo run --bin check -- --input $@
