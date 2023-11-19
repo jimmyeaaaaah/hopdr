@@ -1,3 +1,5 @@
 #!/bin/sh
+d=`realpath $0`
+export PATH=$d/bin:$PATH
 
 cargo run --bin check -- --input $@
