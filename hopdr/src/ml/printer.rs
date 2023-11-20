@@ -158,6 +158,15 @@ impl DumpML for Op {
             }
             crate::formula::OpExpr::Var(x) => x.dump_ml(f, ctx),
             crate::formula::OpExpr::Const(c) => write!(f, "{}", c),
+            crate::formula::OpExpr::ITE(c, x, y) => {
+                write!(f, "if ")?;
+                c.dump_ml(f, ctx)?;
+                write!(f, " then begin")?;
+                x.dump_ml(f, ctx)?;
+                write!(f, "end else begin")?;
+                y.dump_ml(f, ctx)?;
+                write!(f, "end")
+            }
             crate::formula::OpExpr::Ptr(_, g) => g.dump_ml(f, ctx),
         }
     }
@@ -208,15 +217,16 @@ impl DumpML for Expr {
                 write!(f, "fun ")?;
                 ident.ident.dump_ml(f, ctx)?;
                 write!(f, " -> ")?;
-                body.dump_ml(f, ctx)
+                paren(f, self.precedence(), body, ctx)
             }
             ExprKind::If { cond, then, els } => {
                 write!(f, "if ")?;
                 cond.dump_ml(f, ctx)?;
-                write!(f, " then ")?;
+                write!(f, " then begin")?;
                 then.dump_ml(f, ctx)?;
-                write!(f, " else ")?;
-                els.dump_ml(f, ctx)
+                write!(f, "end else begin")?;
+                els.dump_ml(f, ctx)?;
+                write!(f, "end")
             }
             ExprKind::LetRand { ident, range, body } => {
                 write!(f, "let ")?;
@@ -228,20 +238,19 @@ impl DumpML for Expr {
             }
             ExprKind::Assert(c) => {
                 write!(f, "assert ")?;
-                c.dump_ml(f, ctx)
+                paren(f, self.precedence(), c, ctx)
             }
             ExprKind::Unit => write!(f, "()"),
             ExprKind::Raise => write!(f, "(raise FalseExc)"),
             ExprKind::TryWith { body, handler } => {
-                write!(f, "try ")?;
+                write!(f, "try begin")?;
                 body.dump_ml(f, ctx)?;
-                write!(f, " with FalseExc -> ")?;
-                handler.dump_ml(f, ctx)
+                write!(f, "end with FalseExc -> begin")?;
+                handler.dump_ml(f, ctx)?;
+                write!(f, "end")
             }
             ExprKind::Sequential { lhs, rhs } => {
-                lhs.dump_ml(f, ctx)?;
-                write!(f, "; ")?;
-                rhs.dump_ml(f, ctx)
+                dump_bin_op(f, self.precedence(), ";", lhs, rhs, ctx)
             }
         }
     }

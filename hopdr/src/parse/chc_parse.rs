@@ -230,6 +230,11 @@ fn rename_op(o: &Op, varmap: &mut HashMap<Ident, Ident>) -> Op {
             }
         },
         crate::formula::OpExpr::Const(x) => Op::mk_const(*x),
+        crate::formula::OpExpr::ITE(c, x, y) => Op::mk_ite(
+            rename_constraint(c, varmap),
+            rename_op(x, varmap),
+            rename_op(y, varmap),
+        ),
         crate::formula::OpExpr::Ptr(_, _) => panic!("program error"),
     }
 }

@@ -5,6 +5,7 @@ pub mod hes;
 pub mod pcsp;
 pub mod ty;
 
+use std::arch::x86_64;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
@@ -97,6 +98,7 @@ pub enum OpExpr {
     Op(OpKind, Op, Op),
     Var(Ident),
     Const(i64),
+    ITE(Constraint, Op, Op),
     // for tracking substitution, we memorize the old ident and replaced op
     // also this is a guard for optimization. you don't have to deref ptr to implement
     // optimization (otherwise, derivation procedure will break)
@@ -131,6 +133,11 @@ impl Fv for Op {
             }
             OpExpr::Var(x) => {
                 fvs.insert(*x);
+            }
+            OpExpr::ITE(x, y, z) => {
+                x.fv_with_vec(fvs);
+                y.fv_with_vec(fvs);
+                z.fv_with_vec(fvs);
             }
             OpExpr::Const(_) => {}
             OpExpr::Ptr(_, o) => o.fv_with_vec(fvs),
@@ -210,9 +217,11 @@ impl Op {
                 // this is true if you construct muls with mk_mul
                 OpExpr::Op(OpKind::Mul, y, z) if y.check_const(-1) => Op::mk_sub(x, z.clone()),
                 OpExpr::Const(c) if *c < 0 => Op::mk_sub(x, Op::mk_const(-c)),
-                OpExpr::Op(_, _, _) | OpExpr::Const(_) | OpExpr::Var(_) | OpExpr::Ptr(_, _) => {
-                    Op::mk_bin_op_raw(OpKind::Add, x, y)
-                }
+                OpExpr::Op(_, _, _)
+                | OpExpr::Const(_)
+                | OpExpr::Var(_)
+                | OpExpr::Ptr(_, _)
+                | OpExpr::ITE(_, _, _) => Op::mk_bin_op_raw(OpKind::Add, x, y),
             }
         }
     }
@@ -228,9 +237,11 @@ impl Op {
                 // this is true if you construct muls with mk_mul
                 OpExpr::Op(OpKind::Mul, y, z) if y.check_const(-1) => Op::mk_add(x, z.clone()),
                 OpExpr::Const(c) if *c < 0 => Op::mk_add(x, Op::mk_const(-c)),
-                OpExpr::Op(_, _, _) | OpExpr::Const(_) | OpExpr::Var(_) | OpExpr::Ptr(_, _) => {
-                    Op::mk_bin_op_raw(OpKind::Sub, x, y)
-                }
+                OpExpr::Op(_, _, _)
+                | OpExpr::Const(_)
+                | OpExpr::Var(_)
+                | OpExpr::Ptr(_, _)
+                | OpExpr::ITE(_, _, _) => Op::mk_bin_op_raw(OpKind::Sub, x, y),
             }
         }
     }
@@ -258,6 +269,14 @@ impl Op {
                 }
                 _ => Op::mk_bin_op_raw(OpKind::Mul, x, y),
             }
+        }
+    }
+
+    pub fn mk_ite(c: Constraint, x: Op, y: Op) -> Op {
+        if x == y {
+            x
+        } else {
+            Op::new(OpExpr::ITE(c, x, y))
         }
     }
 
@@ -300,6 +319,12 @@ impl Op {
                 Op::mk_bin_op(*o, x, y)
             }
             OpExpr::Ptr(_, o) => o.flatten(),
+            OpExpr::ITE(x, y, z) => {
+                let x = x.flatten();
+                let y = y.flatten();
+                let z = z.flatten();
+                Op::mk_ite(x, y, z)
+            }
             OpExpr::Const(_) | OpExpr::Var(_) => self.clone(),
         }
     }
@@ -317,6 +342,7 @@ impl Op {
                 format!("{}", c)
             }
             OpExpr::Ptr(_, x) => x.to_hes_format(),
+            OpExpr::ITE(_, _, _) => unimplemented!(),
         }
     }
     pub fn negate(&self) -> Op {
@@ -326,53 +352,55 @@ impl Op {
                 OpExpr::Const(-1) => o2.clone(),
                 _ => Op::mk_mul(Op::mk_const(-1), self.clone()),
             },
-            OpExpr::Op(_, _, _) | OpExpr::Var(_) | OpExpr::Const(_) | OpExpr::Ptr(_, _) => {
-                Op::mk_mul(Op::mk_const(-1), self.clone())
-            }
+            OpExpr::Op(_, _, _)
+            | OpExpr::Var(_)
+            | OpExpr::Const(_)
+            | OpExpr::Ptr(_, _)
+            | OpExpr::ITE(_, _, _) => Op::mk_mul(Op::mk_const(-1), self.clone()),
         }
     }
     // expand to term vectors which can be reduced to op by `add`.
     // that is, given `x + y`, expand_expr_to_vec returns [x, y]
-    pub fn expand_expr_to_vec(&self) -> Vec<Op> {
+    pub fn expand_expr_to_vec(&self) -> Option<Vec<Op>> {
         match self.kind() {
-            OpExpr::Var(_) | OpExpr::Const(_) => vec![self.clone()],
+            OpExpr::Var(_) | OpExpr::Const(_) => Some(vec![self.clone()]),
             OpExpr::Ptr(_, o) => o.expand_expr_to_vec(),
             OpExpr::Op(OpKind::Add, o1, o2) => {
-                let mut v1 = o1.expand_expr_to_vec();
-                let mut v2 = o2.expand_expr_to_vec();
+                let mut v1 = o1.expand_expr_to_vec()?;
+                let mut v2 = o2.expand_expr_to_vec()?;
                 v1.append(&mut v2);
-                v1
+                Some(v1)
             }
             OpExpr::Op(OpKind::Sub, o1, o2) => {
                 let o2 = o2.negate();
-                let mut v1 = o1.expand_expr_to_vec();
-                let mut v2 = o2.expand_expr_to_vec();
+                let mut v1 = o1.expand_expr_to_vec()?;
+                let mut v2 = o2.expand_expr_to_vec()?;
                 v1.append(&mut v2);
-                v1
+                Some(v1)
             }
             OpExpr::Op(OpKind::Mul, o1, o2) => {
-                let v1 = o1.expand_expr_to_vec();
-                let v2 = o2.expand_expr_to_vec();
+                let v1 = o1.expand_expr_to_vec()?;
+                let v2 = o2.expand_expr_to_vec()?;
                 let mut new_v = Vec::new();
                 for o1 in v1.iter() {
                     for o2 in v2.iter() {
                         new_v.push(Op::mk_bin_op(OpKind::Mul, o1.clone(), o2.clone()));
                     }
                 }
-                new_v
+                Some(new_v)
             }
-            OpExpr::Op(o, _, _) => panic!("not supported operator: {}", o),
+            OpExpr::Op(_, _, _) | OpExpr::ITE(_, _, _) => None,
         }
     }
     /// expands the given op (e.g. (4 + 1) * ((2 - 3) + 2) -> (4 + 1) * (2 - 3) + (4 + 1) * 2 -> ((4 + 1) * 2 -  (4 + 1) * 3 + (4 + 1) * 2)
-    pub fn expand_expr(&self) -> Op {
-        let v = self.expand_expr_to_vec();
+    pub fn expand_expr(&self) -> Option<Op> {
+        let v = self.expand_expr_to_vec()?;
         assert!(!v.is_empty());
         let mut o = v[0].clone();
         for o2 in v[1..].iter() {
             o = Op::mk_add(o, o2.clone())
         }
-        o
+        Some(o)
     }
     /// Given an linear op (of type Op) and a vector of variables x₁, …, xₙ,
     /// op.normalize returns a vector of Ops `v`.
@@ -400,7 +428,9 @@ impl Op {
                     Some((o.clone(), None))
                 }
                 crate::formula::OpExpr::Ptr(_, o) => parse_mult(o, m),
-                crate::formula::OpExpr::Op(_, _, _) => panic!("program error"),
+                OpExpr::ITE(_, _, _) | crate::formula::OpExpr::Op(_, _, _) => {
+                    panic!("program error")
+                }
             }
         }
         // assumption v.len() == m.len() + 1
@@ -411,7 +441,7 @@ impl Op {
         for (i, v) in variables.iter().enumerate() {
             m.insert(*v, i);
         }
-        let additions = self.expand_expr_to_vec();
+        let additions = self.expand_expr_to_vec()?;
         let constant_index = variables.len();
         for addition in additions {
             let (coef, v) = parse_mult(&addition, &m)?;
@@ -479,7 +509,7 @@ fn test_expansion() {
         Op::mk_bin_op(OpKind::Sub, Op::mk_var(x), Op::mk_var(w)),
     );
     let o = Op::mk_bin_op(OpKind::Mul, o1, o2);
-    let o2 = o.expand_expr();
+    let o2 = o.expand_expr().unwrap();
     println!("{o}");
     println!("{o2}");
 
@@ -532,6 +562,12 @@ impl DerefPtr for Op {
                 let x = x.deref_ptr(id);
                 let y = y.deref_ptr(id);
                 Op::mk_bin_op(*o, x, y)
+            }
+            OpExpr::ITE(c, x, y) => {
+                let c = c.deref_ptr(id);
+                let x = x.deref_ptr(id);
+                let y = y.deref_ptr(id);
+                Op::mk_ite(c, x, y)
             }
             OpExpr::Var(_) | OpExpr::Const(_) => self.clone(),
             OpExpr::Ptr(id2, _o) if id == id2 => Op::mk_var(*id),
@@ -1183,6 +1219,29 @@ impl Constraint {
             ConstraintExpr::Quantifier(_, _, _) => unimplemented!(),
         }
     }
+    pub fn flatten(&self) -> Constraint {
+        match self.kind() {
+            ConstraintExpr::True | ConstraintExpr::False => self.clone(),
+            ConstraintExpr::Pred(p, l) => {
+                let l = l.iter().map(|o| o.flatten()).collect();
+                Constraint::mk_pred(*p, l)
+            }
+            ConstraintExpr::Conj(c1, c2) => {
+                let c1 = c1.flatten();
+                let c2 = c2.flatten();
+                Constraint::mk_conj(c1, c2)
+            }
+            ConstraintExpr::Disj(c1, c2) => {
+                let c1 = c1.flatten();
+                let c2 = c2.flatten();
+                Constraint::mk_disj(c1, c2)
+            }
+            ConstraintExpr::Quantifier(q, x, c) => {
+                let c = c.flatten();
+                Constraint::mk_quantifier(*q, x.clone(), c)
+            }
+        }
+    }
 }
 
 #[test]
@@ -1413,6 +1472,13 @@ impl Op {
             }
             OpExpr::Var(x) => env.map.get(x).cloned(),
             OpExpr::Const(c) => Some(*c),
+            OpExpr::ITE(c, x, y) => {
+                if c.eval(env)? {
+                    x.eval(env)
+                } else {
+                    y.eval(env)
+                }
+            }
             OpExpr::Ptr(_, x) => x.eval(env),
         }
     }
@@ -1429,6 +1495,12 @@ impl Op {
                 let x = x.simplify();
                 let y = y.simplify();
                 Op::mk_bin_op(*o, x, y)
+            }
+            OpExpr::ITE(c, x, y) => {
+                let c = c.simplify();
+                let x = x.simplify();
+                let y = y.simplify();
+                Op::mk_ite(c, x, y)
             }
             OpExpr::Ptr(_, x) => x.simplify(),
             OpExpr::Var(_) | OpExpr::Const(_) => self.clone(),
@@ -2236,6 +2308,7 @@ impl TeXFormat for Op {
                 write!(f, " {c} ")
             }
             OpExpr::Ptr(_, o) => write!(f, "{}", TeXPrinter(o)),
+            OpExpr::ITE(_, _, _) => unimplemented!(),
         }
     }
 }
@@ -2344,6 +2417,7 @@ impl Precedence for Op {
         match self.kind() {
             OpExpr::Op(opkind, _, _) => opkind.precedence(),
             OpExpr::Var(_) | OpExpr::Const(_) => PrecedenceKind::Atom,
+            OpExpr::ITE(_, _, _) => PrecedenceKind::If,
             OpExpr::Ptr(_, o) => o.precedence(),
         }
     }

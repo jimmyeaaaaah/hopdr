@@ -1207,7 +1207,7 @@ fn test_generate_arithmetic_template() {
 fn preprocess_eq(left: &Op, right: &Op, vars: &HashSet<Ident>) -> Option<(Ident, Op)> {
     // 0 = right - left
     let right = Op::mk_sub(right.clone(), left.clone());
-    let additions = right.expand_expr_to_vec();
+    let additions = right.expand_expr_to_vec()?;
     let mut result_ops = Op::mk_const(0);
     let mut already_found = None; // Option<(ident, is_neg)>
     fn check(c: &Op, o: &Op) -> Option<(Ident, bool)> {
@@ -1217,10 +1217,12 @@ fn preprocess_eq(left: &Op, right: &Op, vars: &HashSet<Ident>) -> Option<(Ident,
             OpExpr::Const(_) | OpExpr::Op(_, _, _) | OpExpr::Var(_) | OpExpr::Ptr(_, _) => {
                 return None
             }
+            OpExpr::ITE(_, _, _) => unimplemented!(),
         };
         match o.kind() {
             OpExpr::Var(x) => Some((*x, is_neg)),
             OpExpr::Op(_, _, _) | OpExpr::Const(_) | OpExpr::Ptr(_, _) => None,
+            OpExpr::ITE(_, _, _) => unimplemented!(),
         }
     }
     for v in additions {
@@ -1238,6 +1240,7 @@ fn preprocess_eq(left: &Op, right: &Op, vars: &HashSet<Ident>) -> Option<(Ident,
                 result_ops = Op::mk_add(result_ops, v.clone())
             }
             OpExpr::Ptr(_, _) => panic!("assumption violated: ptrs are flattened"),
+            OpExpr::ITE(_, _, _) => unimplemented!(),
         }
     }
     already_found.map(|(ident, is_neg)| {
