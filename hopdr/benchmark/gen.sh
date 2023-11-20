@@ -26,7 +26,7 @@ cd transition_systems/multi-phase
 mkdir -p $INPUTS/golem_safe $INPUTS/golem_unsafe
 cp *.smt2 $INPUTS/golem_safe
 cp unsafe/*.smt2 $INPUTS/golem_unsafe
-ls $INPUTS/golem_safe > $LISTS/golem_safe
-ls $INPUTS/golem_unsafe > $LISTS/golem_unsafe
+cd $INPUTS && find golem_safe -type f > $LISTS/golem_safe
+cd $INPUTS && find golem_unsafe -type f > $LISTS/golem_unsafe
 
 
