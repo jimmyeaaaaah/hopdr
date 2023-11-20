@@ -148,7 +148,6 @@ impl std::fmt::Display for Domain {
         write!(f, ")")
     }
 }
-
 #[test]
 fn test_domain() {
     let i = Domain::interval(1, 3);

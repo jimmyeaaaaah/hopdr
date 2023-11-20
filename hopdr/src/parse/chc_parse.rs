@@ -158,10 +158,19 @@ fn translate_rterm_op(t: &RTerm) -> Op {
                 term::Op::Store => todo!(),
                 term::Op::Select => todo!(),
             };
-            assert_eq!(args.len(), 2);
+            assert!(args.len() >= 2);
+
+            if args.len() != 2 {
+                assert!(op == OpKind::Add || op == OpKind::Mul);
+            }
             let x = translate_rterm_op(&args[0]);
             let y = translate_rterm_op(&args[1]);
-            Op::mk_bin_op(op, x, y)
+            let mut o = Op::mk_bin_op(op, x, y);
+            for z in args.iter().skip(2) {
+                let z = translate_rterm_op(z);
+                o = Op::mk_bin_op(op, o, z);
+            }
+            o
         }
         RTerm::DTypNew { .. } => todo!(),
         RTerm::DTypSlc { .. } => todo!(),
