@@ -1744,8 +1744,9 @@ impl Constraint {
         }
         result_constraint
     }
-    // x > 0 /\ x <= 1 -> x = 1
-    pub fn simplify_by_finding_eq(&self) -> Constraint {
+    /// x > 0 /\ x <= 1 -> x = 1
+    /// This function can fail if the given op is not linear.
+    pub fn simplify_by_finding_eq(&self) -> Option<Constraint> {
         fn update(
             pred: PredKind,
             x: Ident,
@@ -1827,9 +1828,8 @@ impl Constraint {
                     ConstraintExpr::Pred(pred, l) if l.len() == 2 => {
                         let left = &l[0];
                         let right = &l[1];
-                        let normalized = Op::mk_sub(left.clone(), right.clone())
-                            .normalize(&vec![target_var])
-                            .unwrap();
+                        let normalized =
+                            Op::mk_sub(left.clone(), right.clone()).normalize(&vec![target_var])?;
 
                         if let (Some(1), Some(x)) = (
                             normalized[0].eval_with_empty_env(),
@@ -1881,7 +1881,7 @@ impl Constraint {
         for (q, v) in qs {
             result_constraint = Constraint::mk_quantifier(q, v, result_constraint);
         }
-        result_constraint
+        Some(result_constraint)
     }
     /// simplifies the same clause in cnf/dnf
     ///
@@ -1929,7 +1929,8 @@ impl Constraint {
     pub fn simplify(&self) -> Self {
         let c = self.simplify_trivial();
         let c = c.simplify_geq_geq();
-        let c = c.simplify_by_finding_eq();
+        // skip if it fails
+        let c = c.simplify_by_finding_eq().unwrap_or(c.clone());
         let c = c.simplify_trivial();
         let c = c.simplify_same_clause();
         c
@@ -1987,7 +1988,7 @@ fn test_simplify_by_finding_eq() {
     let yx = Constraint::mk_eq(Op::mk_var(x), Op::mk_var(y));
     let c = Constraint::mk_conj(Constraint::mk_conj(xz, x1), yx);
     println!("before {c}");
-    let c = c.simplify_by_finding_eq();
+    let c = c.simplify_by_finding_eq().unwrap();
     println!("after {c}");
     let c = c.simplify();
     println!("simplified {c}");
@@ -1999,7 +2000,7 @@ fn test_simplify_by_finding_eq() {
     let yx = Constraint::mk_eq(Op::mk_var(x), Op::mk_var(y));
     let c = Constraint::mk_conj(Constraint::mk_conj(xz, x1), yx);
     println!("before {c}");
-    let c = c.simplify_by_finding_eq();
+    let c = c.simplify_by_finding_eq().unwrap();
     println!("after {c}");
     let c = c.simplify();
     println!("simplified {c}");
@@ -2014,7 +2015,7 @@ fn test_simplify_by_finding_eq() {
     let yx = Constraint::mk_eq(Op::mk_var(x), Op::mk_var(y));
     let c = Constraint::mk_conj(Constraint::mk_conj(xz, x1), yx);
     println!("before {c}");
-    let c = c.simplify_by_finding_eq();
+    let c = c.simplify_by_finding_eq().unwrap();
     println!("after {c}");
     let c = c.simplify();
     println!("simplified {c}");
@@ -2026,7 +2027,7 @@ fn test_simplify_by_finding_eq() {
     let yx = Constraint::mk_eq(Op::mk_var(x), Op::mk_var(y));
     let c = Constraint::mk_conj(Constraint::mk_conj(xz, x1), yx);
     println!("before {c}");
-    let c = c.simplify_by_finding_eq();
+    let c = c.simplify_by_finding_eq().unwrap();
     println!("after {c}");
     let c = c.simplify();
     println!("simplified {c}");
@@ -2038,7 +2039,7 @@ fn test_simplify_by_finding_eq() {
     let yx = Constraint::mk_eq(Op::mk_var(x), Op::mk_var(y));
     let c_ = Constraint::mk_conj(Constraint::mk_conj(xz, x1), yx);
     println!("before {c}");
-    let c = c_.simplify_by_finding_eq();
+    let c = c_.simplify_by_finding_eq().unwrap();
     println!("after {c}");
     let c = c.simplify();
     println!("simplified {c}");
@@ -2048,7 +2049,7 @@ fn test_simplify_by_finding_eq() {
     let yx = Constraint::mk_neq(Op::mk_var(x), Op::zero());
     let c = Constraint::mk_conj(c_, yx);
     println!("before {c}");
-    let c = c.simplify_by_finding_eq();
+    let c = c.simplify_by_finding_eq().unwrap();
     println!("after {c}");
     let c = c.simplify();
     println!("simplified {c}");
