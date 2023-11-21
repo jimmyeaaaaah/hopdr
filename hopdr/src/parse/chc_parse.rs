@@ -315,11 +315,8 @@ fn translate(instance: &Instance, var_map: &mut HashMap<Ident, Ident>) -> Vec<CH
 }
 
 pub fn parse_chc(input: &str) -> Result<Vec<chc::CHC<chc::Atom, Constraint>>, &'static str> {
-    println!("wow");
     let mut instance = Instance::new();
-    println!("nice");
     let mut cxt = parse::ParserCxt::new();
-    println!("hello");
     let res = match cxt
         .parser(input, 0, &hoice::common::Profiler::new())
         .parse(&mut instance)

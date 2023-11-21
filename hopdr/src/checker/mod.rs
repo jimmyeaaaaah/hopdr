@@ -216,12 +216,13 @@ impl<'a> Translator<'a> {
 }
 
 pub fn run(problem: Problem<Constraint>, config: Config) {
+    println!("translated nu hflz");
     println!("{problem}");
     let trans = Translator::new(config);
     let prog = trans.translate(problem);
-    println!("{}", prog.dump_ml());
     let prog = optimize(prog);
     let s = prog.dump_ml();
+    println!("Generated Program");
     println!("{s}");
 
     match executor::executor(s) {

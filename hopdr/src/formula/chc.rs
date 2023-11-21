@@ -11,6 +11,7 @@ use crate::util::Pretty;
 use super::pcsp;
 use super::Bot;
 use super::Negation;
+use super::PredKind;
 use super::Subst;
 use super::{Constraint, Fv, Ident, Logic, Op, Rename, Top};
 
@@ -660,7 +661,25 @@ fn merge_chcs_with_same_head(
                 .zip(varnames.iter())
                 .map(|(a, x)| (Op::mk_var(*x), a.clone()))
                 .collect();
-            let mut constraint = body.constraint.clone();
+            let constraint = body.constraint.clone();
+
+            let cnf = constraint.to_cnf();
+            let mut constrs = Vec::new();
+            for c in cnf {
+                match c.kind() {
+                    crate::formula::ConstraintExpr::Pred(p, l)
+                        if l.len() == 2 && *p == PredKind::Eq =>
+                    {
+                        let x = &l[0];
+                        let y = &l[1];
+                        eqs.push((x.clone(), y.clone()));
+                    }
+                    _ => constrs.push(c),
+                }
+            }
+            let mut constraint = constrs
+                .into_iter()
+                .fold(Constraint::mk_true(), |c, x| Constraint::mk_conj(c, x));
             let mut predicates = body.predicates.clone();
 
             let mut fvs = body.fv();

@@ -88,6 +88,10 @@ fn main() {
     let (vc, ctx) = if args.chc {
         let data = std::fs::read_to_string(&args.input).unwrap();
         let chcs = parse::parse_chc(&data).unwrap();
+        println!("CHCs");
+        for chc in chcs.iter() {
+            println!("{}", chc);
+        }
         (
             crate::formula::chc::translate_to_hes(chcs),
             hopdr::preprocess::Context::empty(),

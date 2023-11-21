@@ -622,7 +622,8 @@ impl Subst for Op {
 
             OpExpr::Var(id2) if id == id2 => Op::mk_ptr(*id, v.clone()),
             OpExpr::Ptr(x, o) => Op::mk_ptr(*x, o.subst(id, v)),
-            _ => self.clone(),
+            OpExpr::ITE(c, x, y) => Op::mk_ite(c.subst(id, v), x.subst(id, v), y.subst(id, v)),
+            OpExpr::Const(_) | OpExpr::Var(_) => self.clone(),
         }
     }
 }
@@ -634,7 +635,10 @@ impl Rename for Op {
 
             OpExpr::Var(id3) if id == id3 => Op::mk_var(*id2),
             OpExpr::Ptr(x, o) => Op::mk_ptr(*x, o.rename(id, id2)),
-            _ => self.clone(),
+            OpExpr::ITE(c, x, y) => {
+                Op::mk_ite(c.rename(id, id2), x.rename(id, id2), y.rename(id, id2))
+            }
+            OpExpr::Const(_) | OpExpr::Var(_) => self.clone(),
         }
     }
 }
@@ -655,6 +659,11 @@ impl AlphaEquivalence for Op {
                 }
             },
             (OpExpr::Const(c1), OpExpr::Const(c2)) => c1 == c2,
+            (OpExpr::ITE(c, x, y), OpExpr::ITE(c2, x2, y2)) => {
+                c.alpha_equiv_map(c2, map)
+                    && x.alpha_equiv_map(x2, map)
+                    && y.alpha_equiv_map(y2, map)
+            }
             (_, _) => false,
         }
     }
