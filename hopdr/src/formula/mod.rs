@@ -5,7 +5,6 @@ pub mod hes;
 pub mod pcsp;
 pub mod ty;
 
-use std::arch::x86_64;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 

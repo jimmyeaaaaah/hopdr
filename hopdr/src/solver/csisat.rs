@@ -186,5 +186,5 @@ fn parse_csisat() {
     }
 
     let s = " (x_1193 < 0 | -1*x_1194 <= -1)";
-    let c = parse(s).unwrap();
+    let _c = parse(s).unwrap();
 }

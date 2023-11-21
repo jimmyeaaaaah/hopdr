@@ -56,7 +56,7 @@ impl std::fmt::Display for Rule {
             Rule::Subsumption => "Sub",
             Rule::Equivalence => "Equi",
             Rule::Atom => "Atom",
-            Rule::Poly(x) => "Poly",
+            Rule::Poly(_) => "Poly",
         };
         write!(f, "{}", s)
     }
@@ -463,10 +463,6 @@ impl Derivation {
         }
     }
 
-    pub fn rule_instantiate(expr: G, ty: Ty, instantiations: Stack<Instantiation>) -> Self {
-        unimplemented!()
-    }
-
     fn rule_one_arg_inner(node: DeriveNode, d: Self) -> Self {
         Self {
             tree: Tree::tree_with_child(node, d.tree),
@@ -562,9 +558,6 @@ impl Derivation {
     pub fn root_ty(&self) -> &Ty {
         &self.tree.root().item.ty
     }
-    pub fn node_id_to_ty<'a>(&'a self, id: &'a ID) -> &'a Ty {
-        &id.to_item(&self.tree).ty
-    }
     /// get subderivation of `id`
     fn sub_derivation<'a>(&'a self, id: &'a ID) -> Self {
         let node = id.to_node(&self.tree);
@@ -655,17 +648,6 @@ impl Derivation {
     }
 
     fn update_parents(&mut self, target_id: ID) {
-        fn update_app_branchs(t: &mut Tree<DeriveNode>, target_id: ID, ident: &Ident, op: &Op) {
-            t.update_node_by_id(target_id).ty =
-                t.get_node_by_id(target_id).item.ty.subst(ident, op);
-            for child in t
-                .get_children(target_id.to_node(&t))
-                .map(|n| n.id)
-                .collect::<Vec<_>>()
-            {
-                update_app_branchs(t, child, ident, op);
-            }
-        }
         self.tree
             .update_parent_until(target_id, |t, cur, prev| {
                 let n = t.get_node_by_id(cur).item;
@@ -833,7 +815,7 @@ impl Derivation {
                                     for child in children[1..].iter() {
                                         if node.expr.aux.id == child.item.expr.aux.id {
                                             todo!();
-                                            return (true, n.clone());
+                                            //return (true, n.clone());
                                         }
                                     }
                                     panic!("program error")
@@ -981,7 +963,7 @@ impl Derivation {
                 Rule::Abs(tys)
             }
             Rule::IApp(op) => {
-                let (x, y) = expr.app();
+                let (x, _y) = expr.app();
                 let mut op = op.clone();
                 assert_eq!(children.len(), 1);
                 self.update_expr_inner(context.clone(), children[0], x, alpha_renaming_map.clone());
@@ -1541,9 +1523,7 @@ impl Derivation {
             }
             // skip subsumption and equivalence
             Rule::Equivalence => {
-                let ty = n.item.ty.clone();
                 let child = self.tree.get_one_child(n);
-                let before_ty = child.item.ty.clone();
                 let d = self.clone_with_template_inner(
                     child.id,
                     env,
@@ -1618,8 +1598,7 @@ impl Derivation {
                 panic!("derivation is not well-formed");
             };
             match &n.item.rule {
-                Rule::Var(_, ty) => {
-                    let x = n.item.expr.var();
+                Rule::Var(_, _ty) => {
                     d.tree.get_no_child(n);
                     //if !ints.iter().any(|y| x == y) {
                     //    let ty2 = env.get(&x).unwrap();

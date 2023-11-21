@@ -750,7 +750,7 @@ impl Tau<fofml::Atom> {
                 fvs.remove(x);
                 Tau::mk_iarrow(*x, t_temp)
             }
-            TauKind::PTy(x, t) => t.clone_with_rty_template(constraint, fvs),
+            TauKind::PTy(_x, t) => t.clone_with_rty_template(constraint, fvs),
             TauKind::Arrow(ts, t) => {
                 let t = t.clone_with_rty_template(constraint, fvs);
                 Tau::mk_arrow(ts.clone(), t)
@@ -825,7 +825,7 @@ impl<C> Tau<C> {
         let mut ty = self;
         loop {
             match ty.kind() {
-                TauKind::PTy(x, t) => {
+                TauKind::PTy(_x, t) => {
                     ty = t;
                 }
                 _ => break ty.clone(),
@@ -2118,7 +2118,7 @@ fn types<C: Refinement>(fml: Goal<C>, t: Tau<C>) -> Goal<C> {
             let c = c.clone().negate().unwrap().into();
             Goal::mk_disj(c, fml)
         }
-        TauKind::PTy(x, t) => {
+        TauKind::PTy(_, _) => {
             panic!("program error")
         }
         TauKind::IArrow(x, t) => {
