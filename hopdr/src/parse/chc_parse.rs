@@ -1,7 +1,6 @@
 use crate::formula::chc::CHCHead;
 use crate::formula::{chc, Logic};
 use crate::formula::{Bot, Constraint, Ident, Negation, Op, OpKind, PredKind, Top};
-use crate::util::Pretty;
 use hoice::common::*;
 use hoice::instance::Clause;
 use hoice::instance::Instance;
@@ -364,6 +363,7 @@ pub fn get_mc91() -> Vec<chc::CHC<chc::Atom, Constraint>> {
 
 #[test]
 fn test_parse_file() {
+    use crate::util::Pretty;
     let chc = get_mc91();
     chc.iter().for_each(|c| {
         println!("{}", c.pretty_display());

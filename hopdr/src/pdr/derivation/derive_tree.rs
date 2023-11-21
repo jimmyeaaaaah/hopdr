@@ -594,7 +594,6 @@ impl Derivation {
         let var_expr = G::mk_var(var);
         let mut tree = self.tree.clone();
         let mut derivations = vec![];
-        let contexts = self.get_node_by_id(node_id).item.context.clone();
         for node in self
             .tree
             .filter_descendants(self.tree.get_node_by_id(node_id), move |n| {
