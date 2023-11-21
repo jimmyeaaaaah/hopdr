@@ -227,5 +227,6 @@ pub fn run(problem: Problem<Constraint>, config: Config) {
     match executor::executor(s) {
         executor::ExecResult::Unknown => println!("Unknown"),
         executor::ExecResult::Invalid => println!("Invalid"),
+        executor::ExecResult::Fail(s) => println!("Fail\nReason: {s}"),
     }
 }

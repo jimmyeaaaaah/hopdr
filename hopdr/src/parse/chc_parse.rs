@@ -140,7 +140,7 @@ fn translate_rterm_op(t: &RTerm) -> Op {
                 term::Op::IDiv => OpKind::Div,
                 term::Op::Div => todo!(),
                 term::Op::Rem => OpKind::Mod,
-                term::Op::Mod => todo!(),
+                term::Op::Mod => OpKind::Mod,
                 term::Op::Ite => {
                     assert_eq!(args.len(), 3);
                     let c = translate_rterm_top(&args[0]);

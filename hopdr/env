@@ -1,0 +1,5 @@
+#!/bin/sh
+d=`dirname $0`
+d=`realpath $d`
+
+export PATH=$d/bin:$PATH

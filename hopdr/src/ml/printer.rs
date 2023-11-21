@@ -25,6 +25,7 @@ let rand_int (x, y) =
   in 
     Random.int (mx - mn) + mn
 "#;
+pub const FAIL_STRING: &str = "Failed to find a counterexample";
 
 pub fn do_format(input: &str) -> String {
     // ocamlformat  --impl -
@@ -143,7 +144,7 @@ impl OpKind {
             OpKind::Sub => "-",
             OpKind::Mul => "*",
             OpKind::Div => "/",
-            OpKind::Mod => "%",
+            OpKind::Mod => "mod",
         }
         .to_string()
     }
@@ -273,7 +274,7 @@ impl<'a> Program<'a> {
             "let () = for i = 1 to 1000 do (Printf.printf \"epoch %d...\\n\" i; "
         )?;
         self.main.dump_ml(f, &self.ctx)?;
-        writeln!(f, ") done")
+        writeln!(f, ") done; Printf.printf \"{}\"", super::FAIL_STRING)
     }
     fn dump_library_func<W: Write>(&self, f: &mut W) -> Result<(), fmt::Error> {
         writeln!(f, "{}", LIBRARY)

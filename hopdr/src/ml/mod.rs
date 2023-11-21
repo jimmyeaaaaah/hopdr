@@ -4,6 +4,7 @@ pub mod syntax;
 pub mod ty;
 
 use crate::formula::Ident;
+pub use printer::FAIL_STRING;
 pub use syntax::{Expr, ExprKind, Function, Program, Range};
 pub use ty::{Type, TypeKind};
 
