@@ -195,7 +195,7 @@ impl<'a> Translator<'a> {
         }
     }
     fn translate(&self, problem: Problem<Constraint>) -> Program {
-        let functions = problem
+        let functions: Vec<_> = problem
             .clauses
             .iter()
             .map(|c| {
@@ -219,6 +219,7 @@ pub fn run(problem: Problem<Constraint>, config: Config) {
     println!("{problem}");
     let trans = Translator::new(config);
     let prog = trans.translate(problem);
+    println!("{}", prog.dump_ml());
     let prog = optimize(prog);
     let s = prog.dump_ml();
     println!("{s}");

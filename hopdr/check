@@ -4,6 +4,6 @@ d=`realpath $d`
 echo $d
 export PATH=$d/bin:$PATH
 
-hopdr-check-runner
+#hopdr-check-runner
 
 cargo run --bin check -- --input $@

@@ -161,11 +161,11 @@ impl DumpML for Op {
             crate::formula::OpExpr::ITE(c, x, y) => {
                 write!(f, "if ")?;
                 c.dump_ml(f, ctx)?;
-                write!(f, " then begin")?;
+                write!(f, " then begin ")?;
                 x.dump_ml(f, ctx)?;
-                write!(f, "end else begin")?;
+                write!(f, " end else begin ")?;
                 y.dump_ml(f, ctx)?;
-                write!(f, "end")
+                write!(f, " end")
             }
             crate::formula::OpExpr::Ptr(_, g) => g.dump_ml(f, ctx),
         }
@@ -222,11 +222,11 @@ impl DumpML for Expr {
             ExprKind::If { cond, then, els } => {
                 write!(f, "if ")?;
                 cond.dump_ml(f, ctx)?;
-                write!(f, " then begin")?;
+                write!(f, " then begin ")?;
                 then.dump_ml(f, ctx)?;
-                write!(f, "end else begin")?;
+                write!(f, " end else begin ")?;
                 els.dump_ml(f, ctx)?;
-                write!(f, "end")
+                write!(f, " end")
             }
             ExprKind::LetRand { ident, range, body } => {
                 write!(f, "let ")?;
@@ -243,11 +243,11 @@ impl DumpML for Expr {
             ExprKind::Unit => write!(f, "()"),
             ExprKind::Raise => write!(f, "(raise FalseExc)"),
             ExprKind::TryWith { body, handler } => {
-                write!(f, "try begin")?;
+                write!(f, "try begin ")?;
                 body.dump_ml(f, ctx)?;
-                write!(f, "end with FalseExc -> begin")?;
+                write!(f, " end with FalseExc -> begin ")?;
                 handler.dump_ml(f, ctx)?;
-                write!(f, "end")
+                write!(f, " end ")
             }
             ExprKind::Sequential { lhs, rhs } => {
                 dump_bin_op(f, self.precedence(), ";", lhs, rhs, ctx)
@@ -286,6 +286,7 @@ impl<'a> Program<'a> {
             f.dump_ml(&mut s, &self.ctx).unwrap();
         }
         self.dump_main_ml(&mut s).unwrap();
+        println!("{}", s);
         super::printer::do_format(&s)
     }
 }
