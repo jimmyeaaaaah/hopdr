@@ -634,105 +634,136 @@ fn test_check_the_model_validity() {
 /// this function returns the following CHC:
 ///  (x_1 >= 101 /\ w = x_1 - 10 /\ x_2 = w) \/ (x_1 <= 100 /\  P0(x_4,x_2) ∧ P0(x_1 + 11,x_4)) -> P0(x_1, x_2)
 fn merge_chcs_with_same_head(
-    chcs: Vec<CHC<Atom, Constraint>>,
+    mut chcs: Vec<CHC<Atom, Constraint>>,
 ) -> (
-    Vec<(CHCBody<Atom, Constraint>, Constraint)>,
+    Vec<CHCBody<Atom, Constraint>>,
     HashMap<Ident, Vec<(Atom, CHCBody<Atom, Constraint>)>>,
 ) {
     // 2. group chcs that have the same head
     let mut map = HashMap::new();
     let mut constraints = Vec::new();
-    chcs.into_iter().for_each(|chc| match chc.head {
-        CHCHead::Constraint(c) => constraints.push((chc.body, c)),
-        CHCHead::Predicate(ref p) => map
-            .entry(p.predicate)
-            .or_insert(Vec::new())
-            .push((p.clone(), chc.body)),
+
+    let mut arguments: HashMap<Ident, Vec<Ident>> = HashMap::new();
+    chcs.iter_mut().for_each(|chc| match &chc.head {
+        CHCHead::Constraint(c) => {
+            chc.body.constraint =
+                Constraint::mk_conj(chc.body.constraint.clone(), c.negate().unwrap());
+            chc.head = CHCHead::Constraint(Constraint::mk_false());
+        }
+        CHCHead::Predicate(p) => {
+            arguments
+                .entry(p.predicate)
+                .or_insert((0..p.args.len()).map(|_| Ident::fresh()).collect());
+        }
     });
     // 2. normalize the head (e.g. ... => P(x, y + 1)  ---> ... /\ y + 1 = w => P(x, w))
     // 3. rename vairables so that all the chcs have the same (non-free) variables
-    for (k, chcs) in map.iter_mut() {
-        let nargs = chcs[0].0.args.len();
-        let varnames = (0..nargs).map(|_| Ident::fresh()).collect::<Vec<_>>();
-        for (atom, body) in chcs.iter_mut() {
-            let mut eqs: Vec<_> = atom
-                .args
-                .iter()
-                .zip(varnames.iter())
-                .map(|(a, x)| (Op::mk_var(*x), a.clone()))
-                .collect();
-            let constraint = body.constraint.clone();
+    for chc in chcs {
+        let fvs = chc.fv();
+        let mut eqs = match &chc.head {
+            CHCHead::Constraint(_) => Vec::new(),
+            CHCHead::Predicate(atom) => {
+                let varnames = arguments.get(&atom.predicate).unwrap();
+                atom.args
+                    .iter()
+                    .zip(varnames.iter())
+                    .map(|(a, x)| (Op::mk_var(*x), a.clone()))
+                    .collect()
+            }
+        };
 
-            let cnf = constraint.to_cnf();
-            let mut constrs = Vec::new();
-            for c in cnf {
-                match c.kind() {
-                    crate::formula::ConstraintExpr::Pred(p, l)
-                        if l.len() == 2 && *p == PredKind::Eq =>
-                    {
-                        let x = &l[0];
-                        let y = &l[1];
-                        eqs.push((x.clone(), y.clone()));
-                    }
-                    _ => constrs.push(c),
+        let constraint = chc.body.constraint.clone();
+
+        let cnf = constraint.to_cnf();
+        let mut constrs = Vec::new();
+        for c in cnf {
+            match c.kind() {
+                crate::formula::ConstraintExpr::Pred(p, l)
+                    if l.len() == 2 && *p == PredKind::Eq =>
+                {
+                    let x = &l[0];
+                    let y = &l[1];
+                    eqs.push((x.clone(), y.clone()));
                 }
-            }
-            let mut constraint = constrs
-                .into_iter()
-                .fold(Constraint::mk_true(), |c, x| Constraint::mk_conj(c, x));
-            let mut predicates = body.predicates.clone();
-
-            let mut fvs = body.fv();
-            atom.fv_with_vec(&mut fvs);
-
-            // remove fvs as much as possible
-            for fv in fvs.iter() {
-                let r = eqs.iter().enumerate().find_map(|(i, (o1, o2))| {
-                    let mut fvs = o1.fv();
-                    o2.fv_with_vec(&mut fvs);
-                    if fvs.contains(fv) {
-                        Op::solve_for(fv, o1, o2).map(|x| (i, x))
-                    } else {
-                        None
-                    }
-                });
-                match r {
-                    Some((idx, replace)) => {
-                        let mut new_eqs = Vec::new();
-                        for (i, (o1, o2)) in eqs.into_iter().enumerate() {
-                            if i == idx {
-                                continue;
-                            }
-                            let o1 = o1.subst(fv, &replace);
-                            let o2 = o2.subst(fv, &replace);
-                            new_eqs.push((o1, o2));
-                        }
-                        // replace predicates
-                        constraint = constraint.subst(fv, &replace);
-                        predicates = predicates
-                            .into_iter()
-                            .map(|p| Atom {
-                                args: p.args.into_iter().map(|a| a.subst(fv, &replace)).collect(),
-                                ..p
-                            })
-                            .collect();
-                        eqs = new_eqs;
-                    }
-                    None => (),
-                }
-            }
-            for (o1, o2) in eqs {
-                constraint = Constraint::mk_conj(constraint, Constraint::mk_eq(o1, o2));
-            }
-            *body = CHCBody {
-                constraint,
-                predicates,
-            };
-            *atom = Atom {
-                predicate: *k,
-                args: varnames.iter().map(|x| Op::mk_var(*x)).collect(),
+                _ => constrs.push(c),
             }
         }
+        let mut constraint = constrs
+            .into_iter()
+            .fold(Constraint::mk_true(), |c, x| Constraint::mk_conj(c, x));
+        let mut predicates = chc.body.predicates.clone();
+
+        // remove fvs as much as possible
+        for fv in fvs.iter() {
+            let r = eqs.iter().enumerate().find_map(|(i, (o1, o2))| {
+                let mut fvs = o1.fv();
+                o2.fv_with_vec(&mut fvs);
+                if fvs.contains(fv) {
+                    Op::solve_for(fv, o1, o2).map(|x| (i, x))
+                } else {
+                    None
+                }
+            });
+            match r {
+                Some((idx, replace)) => {
+                    let mut new_eqs = Vec::new();
+                    for (i, (o1, o2)) in eqs.into_iter().enumerate() {
+                        if i == idx {
+                            continue;
+                        }
+                        let o1 = o1.subst(fv, &replace);
+                        let o2 = o2.subst(fv, &replace);
+                        new_eqs.push((o1, o2));
+                    }
+                    // replace predicates
+                    constraint = constraint.subst(fv, &replace);
+                    predicates = predicates
+                        .into_iter()
+                        .map(|p| Atom {
+                            args: p.args.into_iter().map(|a| a.subst(fv, &replace)).collect(),
+                            ..p
+                        })
+                        .collect();
+                    eqs = new_eqs;
+                }
+                None => (),
+            }
+        }
+        for (o1, o2) in eqs {
+            constraint = Constraint::mk_conj(constraint, Constraint::mk_eq(o1, o2));
+        }
+        let constraint = constraint.flatten().simplify();
+        let predicates = predicates
+            .iter()
+            .map(|atom| {
+                let args = atom.args.iter().map(|x| x.flatten().simplify()).collect();
+                Atom {
+                    args,
+                    ..atom.clone()
+                }
+            })
+            .collect();
+        let body = CHCBody {
+            constraint,
+            predicates,
+        };
+        match chc.head {
+            CHCHead::Constraint(_) => constraints.push(body),
+            CHCHead::Predicate(a) => {
+                let atom = Atom {
+                    predicate: a.predicate,
+                    args: arguments
+                        .get(&a.predicate)
+                        .unwrap()
+                        .iter()
+                        .map(|x| Op::mk_var(*x))
+                        .collect(),
+                };
+                map.entry(atom.predicate)
+                    .or_insert(vec![])
+                    .push((atom, body));
+            }
+        };
     }
     (constraints, map)
 }
@@ -773,9 +804,8 @@ pub fn translate_to_hes(
     let clause_names = map.keys().cloned().collect::<HashSet<_>>();
 
     let mut top = Goal::mk_true();
-    for (body, head) in toplevel {
+    for body in toplevel {
         let c = Goal::mk_constr(body.constraint.negate().unwrap());
-        let c = Goal::mk_conj_opt(c, Goal::mk_constr(head.negate().unwrap()));
         let c = translate_predicates(body.predicates, c);
         let c = quantify(c, &clause_names, &HashSet::new());
         top = Goal::mk_conj_opt(top, c);
