@@ -142,6 +142,13 @@ fn translate_rterm_op(t: &RTerm) -> Op {
                 term::Op::Div => todo!(),
                 term::Op::Rem => OpKind::Mod,
                 term::Op::Mod => todo!(),
+                term::Op::Ite => {
+                    assert_eq!(args.len(), 3);
+                    let c = translate_rterm_top(&args[0]);
+                    let x = translate_rterm_op(&args[1]);
+                    let y = translate_rterm_op(&args[2]);
+                    return Op::mk_ite(c, x, y);
+                }
                 term::Op::Gt
                 | term::Op::Ge
                 | term::Op::Le
@@ -150,8 +157,7 @@ fn translate_rterm_op(t: &RTerm) -> Op {
                 | term::Op::Eql
                 | term::Op::Not
                 | term::Op::And
-                | term::Op::Or
-                | term::Op::Ite => panic!("program error"),
+                | term::Op::Or => unimplemented!(),
                 term::Op::Distinct => todo!(),
                 term::Op::ToInt => todo!(),
                 term::Op::ToReal => todo!(),

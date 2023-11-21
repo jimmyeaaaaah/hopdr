@@ -44,6 +44,7 @@ fn op_to_csisat(o: &Op) -> String {
         }
         OpExpr::Var(v) => v.to_string(),
         OpExpr::Const(c) => c.to_string(),
+        OpExpr::ITE(_, _, _) => unimplemented!(),
         OpExpr::Ptr(_, o) => op_to_csisat(o),
     }
 }
