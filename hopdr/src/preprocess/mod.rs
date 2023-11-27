@@ -4,6 +4,7 @@ mod extravar;
 mod forall_pass;
 pub mod hes;
 pub mod hfl_preprocessor;
+mod ite_expand;
 mod safety;
 mod transform;
 mod typing;

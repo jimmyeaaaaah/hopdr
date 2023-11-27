@@ -97,11 +97,6 @@ fn main() {
             println!("{}", chc);
         }
 
-        let chcs = crate::formula::chc::expand_ite(chcs);
-        println!("translated");
-        for chc in chcs.iter() {
-            println!("{}", chc);
-        }
         let problem = crate::formula::chc::translate_to_hes(chcs);
         let problem = crate::preprocess::hes::preprocess_for_typed_problem(problem);
         (problem, hopdr::preprocess::Context::empty())

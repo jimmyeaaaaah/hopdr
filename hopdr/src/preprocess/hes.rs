@@ -3,6 +3,7 @@ use super::eta;
 #[allow(unused_imports)]
 use super::extravar;
 use super::forall_pass;
+use super::ite_expand;
 use super::safety;
 use super::transform::transform;
 use super::typing::typing;
@@ -178,6 +179,7 @@ pub fn preprocess_for_typed_problem(
     debug!("[safety::transform]\n{}\n", problem);
     let problem = eta::transform(problem);
     let problem = forall_pass::transform(problem);
+    let problem = ite_expand::transform(problem);
     problem
 }
 
