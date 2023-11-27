@@ -152,35 +152,37 @@ impl<'a> Translator<'a> {
                 }
             }
             //
-            GoalKind::Conj(g1_fml, g2_fml) => Self::gen_prop(|p| {
-                match (g1_fml.kind(), g2_fml.kind()) {
-                    (GoalKind::Disj(g11, g12), GoalKind::Disj(g21, g22)) => {
-                        match self.handle_conj_disj(g11, g12, g21, g22) {
-                            Some(x) => return x,
-                            _ => (),
+            GoalKind::Conj(g1_fml, g2_fml) => {
+                Self::gen_prop(|p| {
+                    match (g1_fml.kind(), g2_fml.kind()) {
+                        (GoalKind::Disj(g11, g12), GoalKind::Disj(g21, g22)) => {
+                            match self.handle_conj_disj(g11, g12, g21, g22) {
+                                Some(x) => return x,
+                                _ => (),
+                            }
                         }
+                        _ => (),
+                    };
+
+                    let g1 = self.translate_goal(g1_fml.clone());
+                    let g1 = Expr::mk_app(g1, Expr::mk_var(p));
+                    let g2 = self.translate_goal(g2_fml.clone());
+                    let g2 = Expr::mk_app(g2, Expr::mk_var(p));
+                    let ident = Ident::fresh();
+                    let c = Constraint::mk_eq(Op::mk_var(ident), Op::zero());
+
+                    //[θ /\ Ψ2] = fun p -> [θ] p; [Ψ2]p
+                    //[Ψ1 /\ θ] = fun p -> [θ] p; [Ψ1]p
+                    if Into::<Option<Constraint>>::into(g1_fml.clone()).is_some() {
+                        Expr::mk_sequential(g1, g2)
+                    } else if Into::<Option<Constraint>>::into(g2_fml.clone()).is_some() {
+                        Expr::mk_sequential(g2, g1)
+                    } else {
+                        let body = Expr::mk_if(Expr::mk_constraint(c), g1, g2);
+                        Expr::mk_let_bool_rand(ident, body)
                     }
-                    _ => (),
-                };
-
-                let g1 = self.translate_goal(g1_fml.clone());
-                let g1 = Expr::mk_app(g1, Expr::mk_var(p));
-                let g2 = self.translate_goal(g2_fml.clone());
-                let g2 = Expr::mk_app(g2, Expr::mk_var(p));
-                let ident = Ident::fresh();
-                let c = Constraint::mk_eq(Op::mk_var(ident), Op::zero());
-
-                //[θ /\ Ψ2] = fun p -> [θ] p; [Ψ2]p
-                //[Ψ1 /\ θ] = fun p -> [θ] p; [Ψ1]p
-                if Into::<Option<Constraint>>::into(g1_fml.clone()).is_some() {
-                    Expr::mk_sequential(g1, g2)
-                } else if Into::<Option<Constraint>>::into(g2_fml.clone()).is_some() {
-                    Expr::mk_sequential(g2, g1)
-                } else {
-                    let body = Expr::mk_if(Expr::mk_constraint(c), g1, g2);
-                    Expr::mk_let_bool_rand(ident, body)
-                }
-            }),
+                })
+            }
             GoalKind::Disj(g1, g2) => Self::gen_prop(|p| {
                 let g1 = Expr::mk_app(self.translate_goal(g1.clone()), Expr::mk_var(p));
                 let g2 = Expr::mk_app(self.translate_goal(g2.clone()), Expr::mk_var(p));
