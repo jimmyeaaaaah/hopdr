@@ -98,10 +98,9 @@ fn main() {
         }
 
         let chcs = crate::formula::chc::expand_ite(chcs);
-        (
-            crate::formula::chc::translate_to_hes(chcs),
-            hopdr::preprocess::Context::empty(),
-        )
+        let problem = crate::formula::chc::translate_to_hes(chcs);
+        let problem = crate::preprocess::hes::preprocess_for_typed_problem(problem);
+        (problem, hopdr::preprocess::Context::empty())
     } else {
         get_problem(&args.input, &config)
     };

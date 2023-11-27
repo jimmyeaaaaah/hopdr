@@ -170,19 +170,26 @@ fn quantify_validity_checking(vc: NuHFLzValidityChecking) -> NuHFLzValidityCheck
     NuHFLzValidityChecking { formulas, toplevel }
 }
 
+pub fn preprocess_for_typed_problem(
+    problem: hes::Problem<formula::Constraint>,
+) -> hes::Problem<formula::Constraint> {
+    debug!("[problem]\n{}\n", problem);
+    let problem = safety::transform(problem);
+    debug!("[safety::transform]\n{}\n", problem);
+    let problem = eta::transform(problem);
+    let problem = forall_pass::transform(problem);
+    problem
+}
+
 pub fn preprocess(vc: parse::Problem) -> (hes::Problem<formula::Constraint>, Context) {
     match vc {
         parse::Problem::NuHFLZValidityChecking(vc) => {
             let vc = quantify_validity_checking(vc);
             let problem = typing(vc.formulas, vc.toplevel);
             let (problem, ctx) = alpha_renaming(problem);
-            let problem = transform(problem);
-            debug!("[problem]\n{}\n", problem);
-            let problem = safety::transform(problem);
-            debug!("[safety::transform]\n{}\n", problem);
-            let problem = eta::transform(problem);
-            let problem = forall_pass::transform(problem);
             // let problem = extravar::transform(problem);
+            let problem = transform(problem);
+            let problem = preprocess_for_typed_problem(problem);
             (problem, ctx)
         }
     }
