@@ -425,6 +425,19 @@ impl CHC<Atom, Constraint> {
     }
 }
 
+pub fn nonliniality<'a, A, C, I>(itr: I) -> usize
+where
+    A: 'a,
+    C: 'a,
+    I: 'a + Iterator<Item = &'a CHC<A, C>>,
+{
+    let mut n = 0;
+    for chc in itr {
+        n = usize::max(chc.body.predicates.len(), n);
+    }
+    n
+}
+
 #[cfg(test)]
 /// ### clause
 /// P(x + 1, y) /\ Q(y) /\ x < 0 => P(x, y)
@@ -855,4 +868,133 @@ fn test_translation() {
     println!("Translated HES");
     let hes = translate_to_hes(chcs);
     println!("{}", hes);
+}
+
+fn expand_ite_op(op: &Op) -> Option<(Constraint, Op, Op)> {
+    match op.kind() {
+        crate::formula::OpExpr::ITE(c, x, y) => Some((c.clone(), x.clone(), y.clone())),
+        super::OpExpr::Op(o, o1, o2) => match expand_ite_op(o1) {
+            Some((c, x, y)) => Some((
+                c,
+                Op::mk_bin_op(*o, x, o2.clone()),
+                Op::mk_bin_op(*o, y, o2.clone()),
+            )),
+            None => {
+                let (c, x, y) = expand_ite_op(o2)?;
+                Some((
+                    c,
+                    Op::mk_bin_op(*o, x, o2.clone()),
+                    Op::mk_bin_op(*o, y, o2.clone()),
+                ))
+            }
+        },
+        super::OpExpr::Var(_) | super::OpExpr::Const(_) => None,
+        super::OpExpr::Ptr(_, _) => panic!("program error"),
+    }
+}
+
+// just expand ite -> disjunction normal form?
+fn expand_ite_constr(c: &Constraint) -> Constraint {
+    match c.kind() {
+        super::ConstraintExpr::True | super::ConstraintExpr::False => c.clone(),
+        super::ConstraintExpr::Pred(p, l) => {
+            for (i, o) in l.iter().enumerate() {
+                if let Some((c, x, y)) = expand_ite_op(o) {
+                    let mut l1 = l.clone();
+                    l1[i] = x;
+                    let c1 = Constraint::mk_conj(c.clone(), Constraint::mk_pred(*p, l1));
+
+                    let mut l2 = l.clone();
+                    l2[i] = y;
+                    let c2 = Constraint::mk_conj(c.negate().unwrap(), Constraint::mk_pred(*p, l2));
+                    return Constraint::mk_disj(c1, c2);
+                }
+            }
+            c.clone()
+        }
+        super::ConstraintExpr::Conj(c1, c2) => {
+            let c1 = expand_ite_constr(c1);
+            let c2 = expand_ite_constr(c2);
+            Constraint::mk_conj(c1, c2)
+        }
+        super::ConstraintExpr::Disj(c1, c2) => {
+            let c1 = expand_ite_constr(c1);
+            let c2 = expand_ite_constr(c2);
+            Constraint::mk_disj(c1, c2)
+        }
+        super::ConstraintExpr::Quantifier(q, v, c) => {
+            let c = expand_ite_constr(c);
+            Constraint::mk_quantifier(*q, v.clone(), c)
+        }
+    }
+}
+
+fn expand_ite_inner(chc: &CHC<Atom, Constraint>, res: &mut Vec<CHC<Atom, Constraint>>) {
+    let mut c = chc.body.constraint.clone();
+    let c = loop {
+        let c2 = expand_ite_constr(&c);
+        if c == c2 {
+            break c;
+        } else {
+            c = c2;
+        }
+    };
+    for c in c.to_dnf() {
+        let mut chc = chc.clone();
+        chc.body.constraint = c;
+        res.push(chc);
+    }
+}
+
+pub fn expand_ite(chcs: Vec<CHC<Atom, Constraint>>) -> Vec<CHC<Atom, Constraint>> {
+    let mut res = Vec::new();
+    for chc in chcs {
+        expand_ite_inner(&chc, &mut res);
+    }
+    res
+}
+
+/*
+ (let ((a!1 (and (inv x0 y0)
+                  (= x1 (+ x0 1))
+                  (= y1 (ite (>= x0 5000) (+ y0 1) y0)))))
+    (=> a!1 (inv x1 y1)))))
+*/
+#[test]
+fn test_expand_ite() {
+    let inv = Ident::fresh();
+    let x0 = Ident::fresh();
+    let y0 = Ident::fresh();
+    let x1 = Ident::fresh();
+    let y1 = Ident::fresh();
+    let c1 = Constraint::mk_eq(Op::mk_var(x1), Op::mk_add(Op::mk_var(x0), Op::mk_const(1)));
+    let c2 = Constraint::mk_eq(
+        Op::mk_var(y1),
+        Op::mk_ite(
+            Constraint::mk_geq(Op::mk_var(x0), Op::mk_const(5000)),
+            Op::mk_add(Op::mk_var(y0), Op::mk_const(1)),
+            Op::mk_var(y0),
+        ),
+    );
+    let predicates = vec![Atom {
+        predicate: inv,
+        args: vec![Op::mk_var(x0), Op::mk_var(y0)],
+    }];
+    let head = CHCHead::Predicate(Atom {
+        predicate: inv,
+        args: vec![Op::mk_var(x1), Op::mk_var(y1)],
+    });
+    let chc = CHC {
+        body: CHCBody {
+            constraint: Constraint::mk_conj(c1, c2),
+            predicates,
+        },
+        head,
+    };
+    let chcs = vec![chc];
+    let chcs = expand_ite(chcs);
+    for chc in chcs.iter() {
+        println!("{}", chc);
+    }
+    assert_eq!(chcs.len(), 2);
 }

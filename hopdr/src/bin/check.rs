@@ -89,9 +89,15 @@ fn main() {
         let data = std::fs::read_to_string(&args.input).unwrap();
         let chcs = parse::parse_chc(&data).unwrap();
         println!("CHCs");
+        println!(
+            "linearity check {}",
+            crate::formula::chc::nonliniality(chcs.iter())
+        );
         for chc in chcs.iter() {
             println!("{}", chc);
         }
+
+        let chcs = crate::formula::chc::expand_ite(chcs);
         (
             crate::formula::chc::translate_to_hes(chcs),
             hopdr::preprocess::Context::empty(),
