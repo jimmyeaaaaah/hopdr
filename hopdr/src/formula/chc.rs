@@ -883,8 +883,8 @@ fn expand_ite_op(op: &Op) -> Option<(Constraint, Op, Op)> {
                 let (c, x, y) = expand_ite_op(o2)?;
                 Some((
                     c,
-                    Op::mk_bin_op(*o, x, o2.clone()),
-                    Op::mk_bin_op(*o, y, o2.clone()),
+                    Op::mk_bin_op(*o, o1.clone(), x),
+                    Op::mk_bin_op(*o, o1.clone(), y),
                 ))
             }
         },
@@ -936,6 +936,8 @@ fn expand_ite_inner(chc: &CHC<Atom, Constraint>, res: &mut Vec<CHC<Atom, Constra
         if c == c2 {
             break c;
         } else {
+            println!("{} ==> {}", c, c2);
+            crate::util::wait_for_line();
             c = c2;
         }
     };
