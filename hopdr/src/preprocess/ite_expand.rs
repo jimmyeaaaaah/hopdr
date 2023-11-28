@@ -2,32 +2,28 @@
 /// This module expands if-then-else expressions in Op.
 /// For example, `y = if x > 0 then 1 else 0` is expaneded to if x > 0 then y = 1 else y = 0.
 use crate::formula;
-use crate::formula::hes;
-use crate::formula::Constraint;
+use crate::formula::{hes, Logic};
 
 fn transform_goal(goal: &hes::Goal<formula::Constraint>) -> hes::Goal<formula::Constraint> {
-    use formula::Op;
     use hes::GoalKind;
 
     type Goal = hes::Goal<formula::Constraint>;
 
-    fn translate_op(o: &Op) -> Op {
-        unimplemented!()
-    }
-
-    fn translate_constr(c: &Constraint) -> Constraint {
-        unimplemented!()
-    }
-
     fn translate(goal: &Goal) -> Goal {
         match goal.kind() {
-            GoalKind::Constr(c) => Goal::mk_constr(translate_constr(c)),
-            hes::GoalKind::Op(_) | GoalKind::Var(_) => goal.clone(),
-            GoalKind::Abs(x, g) => {
+            GoalKind::Constr(c) => Goal::mk_constr(formula::expand_ite_constr_once(c)),
+            hes::GoalKind::Op(_) => {
                 unimplemented!()
             }
+            GoalKind::Var(_) => goal.clone(),
+            GoalKind::Abs(x, g) => {
+                let g = translate(g);
+                Goal::mk_abs(x.clone(), g)
+            }
             GoalKind::App(g1, g2) => {
-                unimplemented!()
+                let g1 = translate(g1);
+                let g2 = translate(g2);
+                Goal::mk_app(g1, g2)
             }
             GoalKind::Univ(x, g) => Goal::mk_univ(x.clone(), translate(g)),
             GoalKind::Conj(g1, g2) => Goal::mk_conj(translate(g1), translate(g2)),

@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
-
 use std::vec;
 
+use crate::formula;
 use crate::formula::Type;
 use crate::pdr::rtype::Refinement;
 use crate::util::Pretty;
@@ -870,77 +870,9 @@ fn test_translation() {
     println!("{}", hes);
 }
 
-fn expand_ite_op(op: &Op) -> Option<(Constraint, Op, Op)> {
-    match op.kind() {
-        crate::formula::OpExpr::ITE(c, x, y) => Some((c.clone(), x.clone(), y.clone())),
-        super::OpExpr::Op(o, o1, o2) => match expand_ite_op(o1) {
-            Some((c, x, y)) => Some((
-                c,
-                Op::mk_bin_op(*o, x, o2.clone()),
-                Op::mk_bin_op(*o, y, o2.clone()),
-            )),
-            None => {
-                let (c, x, y) = expand_ite_op(o2)?;
-                Some((
-                    c,
-                    Op::mk_bin_op(*o, o1.clone(), x),
-                    Op::mk_bin_op(*o, o1.clone(), y),
-                ))
-            }
-        },
-        super::OpExpr::Var(_) | super::OpExpr::Const(_) => None,
-        super::OpExpr::Ptr(_, _) => panic!("program error"),
-    }
-}
-
-// just expand ite -> disjunction normal form?
-fn expand_ite_constr(c: &Constraint) -> Constraint {
-    match c.kind() {
-        super::ConstraintExpr::True | super::ConstraintExpr::False => c.clone(),
-        super::ConstraintExpr::Pred(p, l) => {
-            for (i, o) in l.iter().enumerate() {
-                if let Some((c, x, y)) = expand_ite_op(o) {
-                    let mut l1 = l.clone();
-                    l1[i] = x;
-                    let c1 = Constraint::mk_conj(c.clone(), Constraint::mk_pred(*p, l1));
-
-                    let mut l2 = l.clone();
-                    l2[i] = y;
-                    let c2 = Constraint::mk_conj(c.negate().unwrap(), Constraint::mk_pred(*p, l2));
-                    return Constraint::mk_disj(c1, c2);
-                }
-            }
-            c.clone()
-        }
-        super::ConstraintExpr::Conj(c1, c2) => {
-            let c1 = expand_ite_constr(c1);
-            let c2 = expand_ite_constr(c2);
-            Constraint::mk_conj(c1, c2)
-        }
-        super::ConstraintExpr::Disj(c1, c2) => {
-            let c1 = expand_ite_constr(c1);
-            let c2 = expand_ite_constr(c2);
-            Constraint::mk_disj(c1, c2)
-        }
-        super::ConstraintExpr::Quantifier(q, v, c) => {
-            let c = expand_ite_constr(c);
-            Constraint::mk_quantifier(*q, v.clone(), c)
-        }
-    }
-}
-
 fn expand_ite_inner(chc: &CHC<Atom, Constraint>, res: &mut Vec<CHC<Atom, Constraint>>) {
-    let mut c = chc.body.constraint.clone();
-    let c = loop {
-        let c2 = expand_ite_constr(&c);
-        if c == c2 {
-            break c;
-        } else {
-            println!("{} ==> {}", c, c2);
-            crate::util::wait_for_line();
-            c = c2;
-        }
-    };
+    let c = chc.body.constraint.clone();
+    let c = formula::expand_ite_constr(c);
     for c in c.to_dnf() {
         let mut chc = chc.clone();
         chc.body.constraint = c;

@@ -2443,3 +2443,76 @@ impl Precedence for Constraint {
         }
     }
 }
+
+////// expand ite
+/// x = if y > 0 then 1 else 0 ===> (y > 0 /\ x = 1) \/ (y <= 0 /\ x = 0)
+pub fn expand_ite_op(op: &Op) -> Option<(Constraint, Op, Op)> {
+    match op.kind() {
+        crate::formula::OpExpr::ITE(c, x, y) => Some((c.clone(), x.clone(), y.clone())),
+        OpExpr::Op(o, o1, o2) => match expand_ite_op(o1) {
+            Some((c, x, y)) => Some((
+                c,
+                Op::mk_bin_op(*o, x, o2.clone()),
+                Op::mk_bin_op(*o, y, o2.clone()),
+            )),
+            None => {
+                let (c, x, y) = expand_ite_op(o2)?;
+                Some((
+                    c,
+                    Op::mk_bin_op(*o, o1.clone(), x),
+                    Op::mk_bin_op(*o, o1.clone(), y),
+                ))
+            }
+        },
+        OpExpr::Var(_) | OpExpr::Const(_) => None,
+        OpExpr::Ptr(_, _) => panic!("program error"),
+    }
+}
+
+pub fn expand_ite_constr_once(c: &Constraint) -> Constraint {
+    match c.kind() {
+        ConstraintExpr::True | ConstraintExpr::False => c.clone(),
+        ConstraintExpr::Pred(p, l) => {
+            for (i, o) in l.iter().enumerate() {
+                if let Some((c, x, y)) = expand_ite_op(o) {
+                    let mut l1 = l.clone();
+                    l1[i] = x;
+                    let c1 = Constraint::mk_conj(c.clone(), Constraint::mk_pred(*p, l1));
+
+                    let mut l2 = l.clone();
+                    l2[i] = y;
+                    let c2 = Constraint::mk_conj(c.negate().unwrap(), Constraint::mk_pred(*p, l2));
+                    return Constraint::mk_disj(c1, c2);
+                }
+            }
+            c.clone()
+        }
+        ConstraintExpr::Conj(c1, c2) => {
+            let c1 = expand_ite_constr_once(c1);
+            let c2 = expand_ite_constr_once(c2);
+            Constraint::mk_conj(c1, c2)
+        }
+        ConstraintExpr::Disj(c1, c2) => {
+            let c1 = expand_ite_constr_once(c1);
+            let c2 = expand_ite_constr_once(c2);
+            Constraint::mk_disj(c1, c2)
+        }
+        ConstraintExpr::Quantifier(q, v, c) => {
+            let c = expand_ite_constr_once(c);
+            Constraint::mk_quantifier(*q, v.clone(), c)
+        }
+    }
+}
+
+pub fn expand_ite_constr(mut c: Constraint) -> Constraint {
+    loop {
+        let c2 = expand_ite_constr_once(&c);
+        if c == c2 {
+            break c;
+        } else {
+            println!("{} ==> {}", c, c2);
+            crate::util::wait_for_line();
+            c = c2;
+        }
+    }
+}
