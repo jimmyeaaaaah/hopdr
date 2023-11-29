@@ -216,6 +216,9 @@ impl<C, T: Default> GoalBase<C, T> {
     pub fn mk_disj(lhs: GoalBase<C, T>, rhs: GoalBase<C, T>) -> GoalBase<C, T> {
         GoalBase::mk_disj_t(lhs, rhs, T::default())
     }
+    pub fn is_op(&self) -> bool {
+        matches!(self.kind(), GoalKind::Op(_))
+    }
 }
 impl<C, T> GoalBase<C, T> {
     pub fn mk_constr_t(x: C, aux: T) -> GoalBase<C, T> {
