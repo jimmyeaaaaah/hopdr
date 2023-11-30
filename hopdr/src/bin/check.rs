@@ -87,6 +87,8 @@ fn main() {
 
     let (vc, ctx) = if args.chc {
         let data = std::fs::read_to_string(&args.input).unwrap();
+        println!("data");
+        println!("{data}");
         let chcs = parse::parse_chc(&data).unwrap();
         println!("CHCs");
         println!(

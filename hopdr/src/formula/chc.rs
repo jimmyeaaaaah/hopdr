@@ -848,7 +848,7 @@ pub fn translate_to_hes(
         }
 
         // TODO: append abs
-        for x in args {
+        for x in args.into_iter().rev() {
             form = Goal::mk_abs(Variable::mk(x, Type::mk_type_int()), form);
         }
         clauses.push(Clause {
