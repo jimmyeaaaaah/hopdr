@@ -5,6 +5,7 @@ mod forall_pass;
 pub mod hes;
 pub mod hfl_preprocessor;
 mod ite_expand;
+mod reorder_conj;
 mod safety;
 mod transform;
 mod typing;
@@ -41,5 +42,39 @@ impl Context {
             inverse_map: HashMap::new(),
             original: None,
         }
+    }
+}
+
+pub trait TypedPreprocessor {
+    /// API for transforming a goal
+    fn transform_goal(
+        &self,
+        goal: &formula::hes::Goal<formula::Constraint>,
+        t: &formula::Type,
+        env: &mut formula::TyEnv,
+    ) -> formula::hes::Goal<formula::Constraint>;
+
+    fn transform_clause(
+        &self,
+        clause: formula::hes::Clause<formula::Constraint>,
+        env: &mut formula::TyEnv,
+    ) -> formula::hes::Clause<formula::Constraint> {
+        let body = self.transform_goal(&clause.body, &clause.head.ty, env);
+        formula::hes::Clause { body, ..clause }
+    }
+
+    /// API for transforming a problem
+    fn transform(
+        &self,
+        problem: formula::hes::Problem<formula::Constraint>,
+    ) -> formula::hes::Problem<formula::Constraint> {
+        let mut env = formula::generate_global_environment(&problem.clauses);
+        let clauses = problem
+            .clauses
+            .into_iter()
+            .map(|c| self.transform_clause(c, &mut env))
+            .collect();
+        let top = self.transform_goal(&problem.top, &formula::Type::mk_type_prop(), &mut env);
+        formula::hes::Problem { top, clauses }
     }
 }

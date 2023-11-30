@@ -97,6 +97,7 @@ fn transform_clause(clause: hes::Clause<formula::Constraint>) -> hes::Clause<for
     hes::Clause { body, ..clause }
 }
 
+#[allow(dead_code)]
 pub fn transform(problem: hes::Problem<formula::Constraint>) -> hes::Problem<formula::Constraint> {
     let clauses = problem
         .clauses
