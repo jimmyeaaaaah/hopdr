@@ -2511,7 +2511,6 @@ pub fn expand_ite_constr(mut c: Constraint) -> Constraint {
             break c;
         } else {
             println!("{} ==> {}", c, c2);
-            crate::util::wait_for_line();
             c = c2;
         }
     }
