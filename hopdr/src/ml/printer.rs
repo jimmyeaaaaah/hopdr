@@ -287,7 +287,6 @@ impl<'a> Program<'a> {
             f.dump_ml(&mut s, &self.ctx).unwrap();
         }
         self.dump_main_ml(&mut s).unwrap();
-        println!("{}", s);
         super::printer::do_format(&s)
     }
 }

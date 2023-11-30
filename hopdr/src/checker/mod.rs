@@ -110,7 +110,7 @@ impl<'a> Translator<'a> {
                 let g2 = self.translate_goal(g2.clone());
                 let g1 = Expr::mk_app(g1.clone(), Expr::mk_var(p));
                 let g2 = Expr::mk_app(g2.clone(), Expr::mk_var(p));
-                Expr::mk_if(self.translate_constraint(&c2), g1, g2)
+                Expr::mk_if(Expr::mk_constraint(c2), g1, g2)
             }))
         } else {
             None
@@ -157,7 +157,7 @@ impl<'a> Translator<'a> {
                     match (g1_fml.kind(), g2_fml.kind()) {
                         (GoalKind::Disj(g11, g12), GoalKind::Disj(g21, g22)) => {
                             match self.handle_conj_disj(g11, g12, g21, g22) {
-                                Some(x) => return x,
+                                Some(x) => return Expr::mk_app(x, Expr::mk_var(p)),
                                 _ => (),
                             }
                         }
@@ -222,6 +222,8 @@ pub fn run(problem: Problem<Constraint>, config: Config) {
     println!("{problem}");
     let trans = Translator::new(config);
     let prog = trans.translate(problem);
+    println!("UnOptimized Program");
+    println!("{}", prog.dump_ml());
     let prog = optimize(prog);
     let s = prog.dump_ml();
     println!("Generated Program");
