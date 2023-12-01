@@ -105,7 +105,12 @@ fn main() {
             println!("{}", chc);
         }
 
-        let problem = crate::formula::chc::translate_to_hes(chcs);
+        let problem = if crate::formula::chc::is_linear(chcs.iter()) {
+            crate::formula::chc::translate_to_hes_linear
+        } else {
+            crate::formula::chc::translate_to_hes
+        }(chcs);
+
         let problem = crate::preprocess::hes::preprocess_for_typed_problem(problem);
         (problem, hopdr::preprocess::Context::empty())
     } else {

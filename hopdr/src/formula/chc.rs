@@ -438,6 +438,15 @@ where
     n
 }
 
+pub fn is_linear<'a, A, C, I>(itr: I) -> bool
+where
+    A: 'a,
+    C: 'a,
+    I: 'a + Iterator<Item = &'a CHC<A, C>>,
+{
+    nonliniality(itr) == 1
+}
+
 #[cfg(test)]
 /// ### clause
 /// P(x + 1, y) /\ Q(y) /\ x < 0 => P(x, y)
@@ -638,6 +647,37 @@ fn test_check_the_model_validity() {
     assert!(check_the_model_validity(&model, &vec![chc]))
 }
 
+fn translate_predicates(
+    predicates: Vec<Atom>,
+    mut constraint: crate::formula::hes::Goal<Constraint>,
+) -> crate::formula::hes::Goal<Constraint> {
+    use crate::formula::hes::*;
+    for p in predicates {
+        let pred = Goal::mk_var(p.predicate);
+        let app = p
+            .args
+            .into_iter()
+            .fold(pred, |a, x| Goal::mk_app(a, Goal::mk_op(x.clone())));
+        constraint = Goal::mk_disj_opt(constraint, app);
+    }
+    constraint
+}
+fn quantify(
+    mut c: crate::formula::hes::Goal<Constraint>,
+    clause_names: &HashSet<Ident>,
+    defined: &HashSet<Ident>,
+) -> crate::formula::hes::Goal<Constraint> {
+    use crate::formula::hes::*;
+    use crate::formula::*;
+
+    let fvs = c.fv();
+    for v in fvs.difference(&defined) {
+        if !clause_names.contains(v) {
+            c = Goal::mk_univ(Variable::mk(*v, Type::mk_type_int()), c);
+        }
+    }
+    c
+}
 /// Merge CHCs that have the same head predicate.
 /// Divide goal formulas and clauses
 ///
@@ -781,38 +821,224 @@ fn merge_chcs_with_same_head(
     (constraints, map)
 }
 
+fn get_hfl_atom_info_from_atom(a: &Atom) -> (crate::formula::Type, Vec<Ident>) {
+    let args: Vec<Ident> = a
+        .args
+        .iter()
+        .map(|x| match x.kind() {
+            crate::formula::OpExpr::Var(v) => *v,
+            _ => panic!("error"),
+        })
+        .collect();
+    let mut ty = Type::mk_type_prop();
+    for _ in args.iter() {
+        ty = Type::mk_type_arrow(Type::mk_type_int(), ty);
+    }
+    (ty, args)
+}
+
+fn gen_clause(
+    pred_name: Ident,
+    ty: Type,
+    mut form: crate::formula::hes::Goal<Constraint>,
+    args: Vec<Ident>,
+) -> crate::formula::hes::Clause<Constraint> {
+    use crate::formula::hes::*;
+    use crate::formula::*;
+    for x in args.into_iter().rev() {
+        form = Goal::mk_abs(Variable::mk(x, Type::mk_type_int()), form);
+    }
+    Clause {
+        head: Variable::mk(pred_name, ty),
+        body: form,
+    }
+}
+
 pub fn translate_to_hes(
     chcs: Vec<CHC<Atom, Constraint>>,
 ) -> crate::formula::hes::Problem<Constraint> {
     use crate::formula::hes::*;
-    use crate::formula::Variable;
-    fn translate_predicates(
-        predicates: Vec<Atom>,
-        mut constraint: Goal<Constraint>,
-    ) -> Goal<Constraint> {
-        for p in predicates {
-            let pred = Goal::mk_var(p.predicate);
-            let app = p
-                .args
-                .into_iter()
-                .fold(pred, |a, x| Goal::mk_app(a, Goal::mk_op(x.clone())));
-            constraint = Goal::mk_disj_opt(constraint, app);
-        }
-        constraint
-    }
-    fn quantify(
-        mut c: Goal<Constraint>,
+    fn handle_body(
+        body: CHCBody<Atom, Constraint>,
         clause_names: &HashSet<Ident>,
         defined: &HashSet<Ident>,
     ) -> Goal<Constraint> {
-        let fvs = c.fv();
-        for v in fvs.difference(&defined) {
-            if !clause_names.contains(v) {
-                c = Goal::mk_univ(Variable::mk(*v, Type::mk_type_int()), c);
-            }
-        }
+        let c = Goal::mk_constr(body.constraint.negate().unwrap());
+        let c = translate_predicates(body.predicates, c);
+        let c = quantify(c, &clause_names, defined);
         c
     }
+    let (toplevel, map) = merge_chcs_with_same_head(chcs);
+    let clause_names = map.keys().cloned().collect::<HashSet<_>>();
+
+    let mut top = Goal::mk_true();
+    for body in toplevel {
+        top = Goal::mk_conj_opt(top, handle_body(body, &clause_names, &HashSet::new()));
+    }
+
+    let mut clauses = Vec::new();
+    for (k, chcs) in map {
+        let (ty, args) = get_hfl_atom_info_from_atom(&chcs[0].0);
+        let defined = chcs[0].0.fv();
+        let form = chcs.into_iter().fold(Goal::mk_true(), |form, (_, body)| {
+            Goal::mk_conj_opt(form, handle_body(body, &clause_names, &defined))
+        });
+        clauses.push(gen_clause(k, ty, form, args));
+    }
+    Problem { clauses, top }
+}
+
+/// I didn't come up with the way to merge the following linear-case and non-linear case
+/// So I wrote two different functions, but essentially they do the same thing.
+
+/// Merge CHCs that have the same head predicate.
+/// Divide goal formulas and clauses
+///
+/// For example, if we have the following CHCs:
+/// - x_1 >= 101 -> P0(x_1,x_1 - 10)
+/// - x_2 <= 100 ∧ P0(x_4,x_3) ∧ P0(x_2 + 11,x_4) -> P0(x_2,x_3)
+/// this function returns the following CHC:
+///  (x_1 >= 101 /\ w = x_1 - 10 /\ x_2 = w) \/ (x_1 <= 100 /\  P0(x_4,x_2) ∧ P0(x_1 + 11,x_4)) -> P0(x_1, x_2)
+fn merge_chcs_with_same_head_linear(
+    mut chcs: Vec<CHC<Atom, Constraint>>,
+) -> (
+    Vec<CHCBody<Atom, Constraint>>,
+    HashMap<Ident, Vec<(Atom, CHCBody<Atom, Constraint>)>>,
+) {
+    // 2. group chcs that have the same head
+    let mut map = HashMap::new();
+    let mut constraints = Vec::new();
+
+    let mut arguments: HashMap<Ident, Vec<Ident>> = HashMap::new();
+    chcs.iter_mut().for_each(|chc| match &chc.head {
+        CHCHead::Constraint(c) => {
+            chc.body.constraint =
+                Constraint::mk_conj(chc.body.constraint.clone(), c.negate().unwrap());
+            chc.head = CHCHead::Constraint(Constraint::mk_false());
+        }
+        CHCHead::Predicate(p) => {
+            arguments
+                .entry(p.predicate)
+                .or_insert((0..p.args.len()).map(|_| Ident::fresh()).collect());
+        }
+    });
+    // 2. normalize the head (e.g. ... => P(x, y + 1)  ---> ... /\ y + 1 = w => P(x, w))
+    // 3. rename vairables so that all the chcs have the same (non-free) variables
+    for chc in chcs {
+        let fvs = chc.fv();
+        let mut eqs = match &chc.head {
+            CHCHead::Constraint(_) => Vec::new(),
+            CHCHead::Predicate(atom) => {
+                let varnames = arguments.get(&atom.predicate).unwrap();
+                atom.args
+                    .iter()
+                    .zip(varnames.iter())
+                    .map(|(a, x)| (Op::mk_var(*x), a.clone()))
+                    .collect()
+            }
+        };
+
+        let constraint = chc.body.constraint.clone();
+
+        let cnf = constraint.to_cnf();
+        let mut constrs = Vec::new();
+        for c in cnf {
+            match c.kind() {
+                crate::formula::ConstraintExpr::Pred(p, l)
+                    if l.len() == 2 && *p == PredKind::Eq =>
+                {
+                    let x = &l[0];
+                    let y = &l[1];
+                    eqs.push((x.clone(), y.clone()));
+                }
+                _ => constrs.push(c),
+            }
+        }
+        let mut constraint = constrs
+            .into_iter()
+            .fold(Constraint::mk_true(), |c, x| Constraint::mk_conj(c, x));
+        let mut predicates = chc.body.predicates.clone();
+
+        // remove fvs as much as possible
+        for fv in fvs.iter() {
+            let r = eqs.iter().enumerate().find_map(|(i, (o1, o2))| {
+                let mut fvs = o1.fv();
+                o2.fv_with_vec(&mut fvs);
+                if fvs.contains(fv) {
+                    Op::solve_for(fv, o1, o2).map(|x| (i, x))
+                } else {
+                    None
+                }
+            });
+            match r {
+                Some((idx, replace)) => {
+                    let mut new_eqs = Vec::new();
+                    for (i, (o1, o2)) in eqs.into_iter().enumerate() {
+                        if i == idx {
+                            continue;
+                        }
+                        let o1 = o1.subst(fv, &replace);
+                        let o2 = o2.subst(fv, &replace);
+                        new_eqs.push((o1, o2));
+                    }
+                    // replace predicates
+                    constraint = constraint.subst(fv, &replace);
+                    predicates = predicates
+                        .into_iter()
+                        .map(|p| Atom {
+                            args: p.args.into_iter().map(|a| a.subst(fv, &replace)).collect(),
+                            ..p
+                        })
+                        .collect();
+                    eqs = new_eqs;
+                }
+                None => (),
+            }
+        }
+        for (o1, o2) in eqs {
+            constraint = Constraint::mk_conj(constraint, Constraint::mk_eq(o1, o2));
+        }
+        let constraint = constraint.flatten().simplify();
+        let predicates = predicates
+            .iter()
+            .map(|atom| {
+                let args = atom.args.iter().map(|x| x.flatten().simplify()).collect();
+                Atom {
+                    args,
+                    ..atom.clone()
+                }
+            })
+            .collect();
+        let body = CHCBody {
+            constraint,
+            predicates,
+        };
+        match chc.head {
+            CHCHead::Constraint(_) => constraints.push(body),
+            CHCHead::Predicate(a) => {
+                let atom = Atom {
+                    predicate: a.predicate,
+                    args: arguments
+                        .get(&a.predicate)
+                        .unwrap()
+                        .iter()
+                        .map(|x| Op::mk_var(*x))
+                        .collect(),
+                };
+                map.entry(atom.predicate)
+                    .or_insert(vec![])
+                    .push((atom, body));
+            }
+        };
+    }
+    (constraints, map)
+}
+
+pub fn translate_to_hes_linear(
+    chcs: Vec<CHC<Atom, Constraint>>,
+) -> crate::formula::hes::Problem<Constraint> {
+    use crate::formula::hes::*;
+    use crate::formula::Variable;
     let (toplevel, map) = merge_chcs_with_same_head(chcs);
     let clause_names = map.keys().cloned().collect::<HashSet<_>>();
 
@@ -847,7 +1073,6 @@ pub fn translate_to_hes(
             form = Goal::mk_conj_opt(form, c);
         }
 
-        // TODO: append abs
         for x in args.into_iter().rev() {
             form = Goal::mk_abs(Variable::mk(x, Type::mk_type_int()), form);
         }
