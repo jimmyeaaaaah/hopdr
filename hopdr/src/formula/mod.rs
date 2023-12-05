@@ -271,6 +271,14 @@ impl Op {
         }
     }
 
+    pub fn mk_div(x: Op, y: Op) -> Op {
+        if y.check_const(1) {
+            x
+        } else {
+            Op::mk_bin_op_raw(OpKind::Div, x, y)
+        }
+    }
+
     pub fn mk_ite(c: Constraint, x: Op, y: Op) -> Op {
         if x == y {
             x
@@ -490,9 +498,40 @@ impl Op {
             None
         }
     }
+    fn solve_peephole(target: &Ident, o1: &Self, o2: &Self) -> Option<Op> {
+        fn handle_sub(target: &Ident, o: &Op) -> Option<Op> {
+            match o.kind() {
+                OpExpr::Op(OpKind::Sub, x, y) => {
+                    match x.kind() {
+                        OpExpr::Var(id) if id == target => return Some(y.clone()),
+                        _ => (),
+                    }
+                    match y.kind() {
+                        OpExpr::Var(id) if id == target => Some(x.clone()),
+                        _ => None,
+                    }
+                }
+                _ => None,
+            }
+        }
+        if o2.eval_with_empty_env() == Some(0) {
+            handle_sub(target, o1)
+        } else if o1.eval_with_empty_env() == Some(0) {
+            handle_sub(target, o2)
+        } else {
+            match (o1.kind(), o2.kind()) {
+                (OpExpr::Var(x), _) if x == target => Some(o2.clone()),
+                (_, OpExpr::Var(x)) if x == target => Some(o1.clone()),
+                (_, _) => None,
+            }
+        }
+    }
     pub fn solve_for(x: &Ident, o1: &Self, o2: &Self) -> Option<Op> {
-        let (_, o) = Self::solve_for_with_sign(x, o1, o2)?;
-        Some(o)
+        match Self::solve_for_with_sign(x, o1, o2) {
+            Some((_, o)) => return Some(o),
+            None => (),
+        }
+        Self::solve_peephole(x, o1, o2)
     }
 }
 #[test]
@@ -552,6 +591,26 @@ fn test_solve_for() {
     let r = Op::solve_for(&z, &o5, &Op::mk_var(y));
     assert!(r.is_some());
     println!("{}", r.unwrap());
+}
+
+#[test]
+fn test_solve_for_peephole() {
+    // x - y / 4 = 0
+    let x = Ident::fresh();
+    let y = Ident::fresh();
+    let o0 = Op::mk_div(Op::mk_var(y), Op::mk_const(4));
+    let o1 = Op::mk_sub(Op::mk_var(x), o0.clone());
+    let o2 = Op::mk_const(0);
+    let r = Op::solve_for(&x, &o1, &o2).unwrap();
+    assert_eq!(r, o0);
+
+    let o3 = Op::mk_sub(o0.clone(), Op::mk_var(x));
+    let r = Op::solve_for(&x, &o2, &o3).unwrap();
+    assert_eq!(r, o0);
+    let r = Op::solve_for(&x, &Op::mk_var(x), &o0).unwrap();
+    assert_eq!(r, o0);
+    let r = Op::solve_for(&x, &o0, &Op::mk_var(x)).unwrap();
+    assert_eq!(r, o0);
 }
 
 impl DerefPtr for Op {
