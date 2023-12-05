@@ -1502,6 +1502,36 @@ impl Op {
             OpExpr::Op(o, x, y) => {
                 let x = x.simplify();
                 let y = y.simplify();
+                // handle (d - (-c * y))
+                if o == &OpKind::Sub {
+                    match y.kind() {
+                        OpExpr::Op(OpKind::Mul, a, b) => {
+                            match a.eval_with_empty_env() {
+                                Some(v) if v < 0 => {
+                                    let v = -v;
+                                    return Op::mk_bin_op(
+                                        OpKind::Add,
+                                        x,
+                                        Op::mk_bin_op(OpKind::Mul, Op::mk_const(v), b.clone()),
+                                    );
+                                }
+                                _ => (),
+                            };
+                            match b.eval_with_empty_env() {
+                                Some(v) if v < 0 => {
+                                    let v = -v;
+                                    return Op::mk_bin_op(
+                                        OpKind::Add,
+                                        x,
+                                        Op::mk_bin_op(OpKind::Mul, Op::mk_const(v), a.clone()),
+                                    );
+                                }
+                                _ => (),
+                            };
+                        }
+                        _ => (),
+                    }
+                }
                 Op::mk_bin_op(*o, x, y)
             }
             OpExpr::ITE(c, x, y) => {
