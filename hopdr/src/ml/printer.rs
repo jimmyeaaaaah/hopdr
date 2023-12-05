@@ -158,7 +158,9 @@ impl DumpML for Op {
                 dump_bin_op(f, o.precedence(), &op, x, y, ctx)
             }
             crate::formula::OpExpr::Var(x) => x.dump_ml(f, ctx),
-            crate::formula::OpExpr::Const(c) => write!(f, "{}", c),
+            crate::formula::OpExpr::Const(c) => {
+                write!(f, "{}", c)
+            }
             crate::formula::OpExpr::ITE(c, x, y) => {
                 write!(f, "if ")?;
                 c.dump_ml(f, ctx)?;

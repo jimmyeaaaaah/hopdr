@@ -2514,6 +2514,7 @@ impl Precedence for Op {
     fn precedence(&self) -> PrecedenceKind {
         match self.kind() {
             OpExpr::Op(opkind, _, _) => opkind.precedence(),
+            OpExpr::Const(c) if *c < 0 => PrecedenceKind::Add,
             OpExpr::Var(_) | OpExpr::Const(_) => PrecedenceKind::Atom,
             OpExpr::ITE(_, _, _) => PrecedenceKind::If,
             OpExpr::Ptr(_, o) => o.precedence(),
