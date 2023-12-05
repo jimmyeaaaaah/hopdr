@@ -1009,9 +1009,10 @@ fn translate_predicate_linear(
     constraint: crate::formula::hes::Goal<Constraint>,
 ) -> crate::formula::hes::Goal<Constraint> {
     let app = translate_predciate(atom);
-    crate::formula::hes::Goal::mk_conj_opt(constraint, app)
+    crate::formula::hes::Goal::mk_disj_opt(constraint, app)
 }
 
+/// Interprets the CHC in a style of greatest fixpoint.
 pub fn translate_to_hes_linear(
     chcs: Vec<CHC<Atom, Constraint>>,
 ) -> crate::formula::hes::Problem<Constraint> {
@@ -1034,7 +1035,7 @@ pub fn translate_to_hes_linear(
     let mut top = Goal::mk_false();
     for chc in toplevel {
         assert_eq!(chc.body.predicates.len(), 0);
-        top = Goal::mk_disj_opt(top, handle_chc(chc, &clause_names, &HashSet::new()));
+        top = Goal::mk_conj_opt(top, handle_chc(chc, &clause_names, &HashSet::new()));
     }
 
     let mut clauses = Vec::new();
@@ -1042,10 +1043,10 @@ pub fn translate_to_hes_linear(
         let p = &chcs[0].body.predicates[0];
         let (ty, args) = get_hfl_atom_info_from_atom(p);
         let defined = p.fv();
-        let form = chcs.into_iter().fold(Goal::mk_false(), |form, chc| {
+        let form = chcs.into_iter().fold(Goal::mk_true(), |form, chc| {
             assert_eq!(chc.body.predicates.len(), 1);
             assert_eq!(chc.body.predicates[0].predicate, k);
-            Goal::mk_disj_opt(form, handle_chc(chc, &clause_names, &defined))
+            Goal::mk_conj_opt(form, handle_chc(chc, &clause_names, &defined))
         });
         clauses.push(gen_clause(k, ty, form, args));
     }
