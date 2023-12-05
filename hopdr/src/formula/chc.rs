@@ -1022,9 +1022,9 @@ pub fn translate_to_hes_linear(
         clause_names: &HashSet<Ident>,
         defined: &HashSet<Ident>,
     ) -> Goal<Constraint> {
-        let constraint = chc.body.constraint.clone();
+        let constraint = chc.body.constraint.clone().negate().unwrap();
         let g = match chc.head {
-            CHCHead::Constraint(c) => Goal::mk_constr(Constraint::mk_implies(constraint, c)),
+            CHCHead::Constraint(c) => Goal::mk_constr(Constraint::mk_disj(constraint, c)),
             CHCHead::Predicate(p) => translate_predicate_linear(p, Goal::mk_constr(constraint)),
         };
         quantify(g, &clause_names, defined)
@@ -1032,7 +1032,7 @@ pub fn translate_to_hes_linear(
     let (toplevel, map) = merge_chcs_with_same_head_linear(chcs);
     let clause_names = map.keys().cloned().collect::<HashSet<_>>();
 
-    let mut top = Goal::mk_false();
+    let mut top = Goal::mk_true();
     for chc in toplevel {
         assert_eq!(chc.body.predicates.len(), 0);
         top = Goal::mk_conj_opt(top, handle_chc(chc, &clause_names, &HashSet::new()));
