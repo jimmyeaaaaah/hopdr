@@ -3,8 +3,6 @@ use std::collections::HashSet;
 use std::fmt;
 use std::vec;
 
-use hoice::data::constraint;
-
 use crate::formula;
 use crate::formula::Type;
 use crate::pdr::rtype::Refinement;
@@ -651,18 +649,21 @@ fn test_check_the_model_validity() {
 
 ////// Implementation for translating CHCs to HES.
 ////// Here are some auxiliary functions for that.
+fn translate_predciate(atom: Atom) -> crate::formula::hes::Goal<Constraint> {
+    use crate::formula::hes::*;
+    let pred = Goal::mk_var(atom.predicate);
+    atom.args
+        .into_iter()
+        .fold(pred, |a, x| Goal::mk_app(a, Goal::mk_op(x.clone())))
+}
 
 fn translate_predicates(
     predicates: Vec<Atom>,
     mut constraint: crate::formula::hes::Goal<Constraint>,
 ) -> crate::formula::hes::Goal<Constraint> {
     use crate::formula::hes::*;
-    for p in predicates {
-        let pred = Goal::mk_var(p.predicate);
-        let app = p
-            .args
-            .into_iter()
-            .fold(pred, |a, x| Goal::mk_app(a, Goal::mk_op(x.clone())));
+    for atom in predicates {
+        let app = translate_predciate(atom);
         constraint = Goal::mk_disj_opt(constraint, app);
     }
     constraint
@@ -934,30 +935,38 @@ pub fn translate_to_hes(
 fn merge_chcs_with_same_head_linear(
     mut chcs: Vec<CHC<Atom, Constraint>>,
 ) -> (
-    Vec<CHCBody<Atom, Constraint>>,
-    HashMap<Ident, Vec<(Atom, CHCBody<Atom, Constraint>)>>,
+    Vec<CHC<Atom, Constraint>>,
+    HashMap<Ident, Vec<CHC<Atom, Constraint>>>,
 ) {
     // 2. group chcs that have the same head
     let mut map = HashMap::new();
     let mut constraints = Vec::new();
 
-    let mut arguments: HashMap<Ident, Vec<Ident>> =
+    let arguments: HashMap<Ident, Vec<Ident>> =
         normalize_constraint_and_generate_new_args(&mut chcs);
 
     // 2. normalize the head (e.g. ... => P(x, y + 1)  ---> ... /\ y + 1 = w => P(x, w))
     // 3. rename vairables so that all the chcs have the same (non-free) variables
     for chc in chcs {
         let fvs = chc.fv();
-        let mut eqs = if chc.body.predicates.len() == 1 {
+        let (mut eqs, body_predicates) = if chc.body.predicates.len() == 1 {
             let atom = &chc.body.predicates[0];
             let varnames = arguments.get(&atom.predicate).unwrap();
-            atom.args
+            let eqs = atom
+                .args
                 .iter()
                 .zip(varnames.iter())
                 .map(|(a, x)| (Op::mk_var(*x), a.clone()))
-                .collect()
+                .collect();
+            (
+                eqs,
+                vec![Atom {
+                    predicate: atom.predicate,
+                    args: varnames.iter().map(|x| Op::mk_var(*x)).collect(),
+                }],
+            )
         } else {
-            Vec::new()
+            (Vec::new(), Vec::new())
         };
 
         let mut constraint = group_eq_constrs(&chc.body.constraint, &mut eqs);
@@ -972,39 +981,71 @@ fn merge_chcs_with_same_head_linear(
             replace_by_eq(&mut constraint, &mut predicates, &mut eqs, fv)
         }
         let (constraint, predicates) = finalize_replacement(eqs, constraint, predicates);
-        unimplemented!()
+        let body = CHCBody {
+            constraint,
+            predicates: body_predicates,
+        };
+        let head = if predicates.len() == 1 {
+            CHCHead::Predicate(predicates[0].clone())
+        } else {
+            assert_eq!(predicates.len(), 0);
+            CHCHead::Constraint(Constraint::mk_false())
+        };
+        let chc = CHC { head, body };
+
+        if chc.body.predicates.len() == 0 {
+            constraints.push(chc);
+        } else {
+            map.entry(chc.body.predicates[0].predicate)
+                .or_insert(vec![])
+                .push(chc);
+        }
     }
     (constraints, map)
+}
+
+fn translate_predicate_linear(
+    atom: Atom,
+    constraint: crate::formula::hes::Goal<Constraint>,
+) -> crate::formula::hes::Goal<Constraint> {
+    let app = translate_predciate(atom);
+    crate::formula::hes::Goal::mk_conj_opt(constraint, app)
 }
 
 pub fn translate_to_hes_linear(
     chcs: Vec<CHC<Atom, Constraint>>,
 ) -> crate::formula::hes::Problem<Constraint> {
     use crate::formula::hes::*;
-    fn handle_body(
-        body: CHCBody<Atom, Constraint>,
+    fn handle_chc(
+        chc: CHC<Atom, Constraint>,
         clause_names: &HashSet<Ident>,
         defined: &HashSet<Ident>,
     ) -> Goal<Constraint> {
-        let c = Goal::mk_constr(body.constraint.negate().unwrap());
-        let c = translate_predicates(body.predicates, c);
-        let c = quantify(c, &clause_names, defined);
-        c
+        let constraint = chc.body.constraint.clone();
+        let g = match chc.head {
+            CHCHead::Constraint(c) => Goal::mk_constr(Constraint::mk_implies(constraint, c)),
+            CHCHead::Predicate(p) => translate_predicate_linear(p, Goal::mk_constr(constraint)),
+        };
+        quantify(g, &clause_names, defined)
     }
     let (toplevel, map) = merge_chcs_with_same_head_linear(chcs);
     let clause_names = map.keys().cloned().collect::<HashSet<_>>();
 
-    let mut top = Goal::mk_true();
-    for body in toplevel {
-        top = Goal::mk_conj_opt(top, handle_body(body, &clause_names, &HashSet::new()));
+    let mut top = Goal::mk_false();
+    for chc in toplevel {
+        assert_eq!(chc.body.predicates.len(), 0);
+        top = Goal::mk_disj_opt(top, handle_chc(chc, &clause_names, &HashSet::new()));
     }
 
     let mut clauses = Vec::new();
     for (k, chcs) in map {
-        let (ty, args) = get_hfl_atom_info_from_atom(&chcs[0].0);
-        let defined = chcs[0].0.fv();
-        let form = chcs.into_iter().fold(Goal::mk_true(), |form, (_, body)| {
-            Goal::mk_conj_opt(form, handle_body(body, &clause_names, &defined))
+        let p = &chcs[0].body.predicates[0];
+        let (ty, args) = get_hfl_atom_info_from_atom(p);
+        let defined = p.fv();
+        let form = chcs.into_iter().fold(Goal::mk_false(), |form, chc| {
+            assert_eq!(chc.body.predicates.len(), 1);
+            assert_eq!(chc.body.predicates[0].predicate, k);
+            Goal::mk_disj_opt(form, handle_chc(chc, &clause_names, &defined))
         });
         clauses.push(gen_clause(k, ty, form, args));
     }
@@ -1019,6 +1060,18 @@ fn test_translation() {
 
     println!("Translated HES");
     let hes = translate_to_hes(chcs);
+    println!("{}", hes);
+}
+
+#[test]
+fn test_translation_linear() {
+    let chcs = crate::parse::get_linear();
+
+    println!("Target CHC");
+    chcs.iter().for_each(|c| println!("{c}"));
+
+    println!("Translated HES");
+    let hes = translate_to_hes_linear(chcs);
     println!("{}", hes);
 }
 

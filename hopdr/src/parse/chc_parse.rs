@@ -358,6 +358,16 @@ pub fn get_mc91() -> Vec<chc::CHC<chc::Atom, Constraint>> {
     parse_chc(input).unwrap()
 }
 
+pub fn get_linear() -> Vec<chc::CHC<chc::Atom, Constraint>> {
+    let input = "(set-logic HORN)
+    (declare-fun P (Int) Bool)
+    (assert (forall ((x Int)) (P 0)))
+    (assert (forall ((x Int) ) (=> (and (< x 10000) (P x)) (P (+ x 1)))))
+    (assert (forall ((x Int) ) (=> (and (>= x 10000) (P x)) (> x 10000))))
+    (check-sat)";
+    parse_chc(input).unwrap()
+}
+
 #[test]
 fn test_parse_file() {
     use crate::util::Pretty;
