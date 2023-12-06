@@ -397,6 +397,17 @@ impl<C: Bot + Top> Goal<C> {
             Goal::mk_disj(lhs, rhs)
         }
     }
+
+    /// This returns a formula that is equivalent to the universal quantification of `x` in `g`.
+    pub fn mk_univ_opt(x: Variable, g: Goal<C>) -> Goal<C> {
+        if g.is_true() {
+            GoalBase::mk_true()
+        } else if g.is_false() {
+            GoalBase::mk_false()
+        } else {
+            GoalBase::mk_univ(x, g)
+        }
+    }
 }
 
 impl<C: Negation, T: Default> GoalBase<C, T> {

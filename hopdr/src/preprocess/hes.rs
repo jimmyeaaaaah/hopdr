@@ -5,6 +5,7 @@ use super::extravar;
 use super::forall_pass;
 use super::reorder_conj;
 use super::safety;
+use super::simplify_constr_op;
 use super::transform::transform;
 use super::typing::typing;
 use super::Context;
@@ -180,6 +181,7 @@ pub fn preprocess_for_typed_problem(
     let problem = eta::transform(problem);
     let problem = forall_pass::transform(problem);
     let problem = reorder_conj::transform(problem);
+    //let problem = simplify_constr_op::transform(problem);
     //let problem = ite_expand::transform(problem);
     problem
 }

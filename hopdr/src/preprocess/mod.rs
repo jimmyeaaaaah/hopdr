@@ -7,6 +7,7 @@ pub mod hfl_preprocessor;
 mod ite_expand;
 mod reorder_conj;
 mod safety;
+mod simplify_constr_op;
 mod transform;
 mod typing;
 
