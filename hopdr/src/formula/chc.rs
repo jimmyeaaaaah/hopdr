@@ -770,16 +770,12 @@ fn finalize_replacement(
     for (o1, o2) in eqs {
         constraint = Constraint::mk_conj(constraint, Constraint::mk_eq(o1, o2));
     }
-    let constraint = constraint.flatten().simplify();
 
     let predicates = predicates
         .iter()
-        .map(|atom| {
-            let args = atom.args.iter().map(|x| x.flatten().simplify()).collect();
-            Atom {
-                args,
-                ..atom.clone()
-            }
+        .map(|atom| Atom {
+            args: atom.args.clone(),
+            ..atom.clone()
         })
         .collect();
     (constraint, predicates)
