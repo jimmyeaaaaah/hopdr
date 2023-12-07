@@ -2016,12 +2016,19 @@ impl Constraint {
         result_constraint
     }
     pub fn simplify(&self) -> Self {
+        debug!("simplify {self}");
         let c = self.simplify_trivial();
+        debug!("simplify_trivial {c}");
         let c = c.simplify_geq_geq();
+        debug!("simplify_geq_geq {c}");
         // skip if it fails
+        #[cfg(not(feature = "no_simplify_by_finding_eq"))]
         let c = c.simplify_by_finding_eq().unwrap_or(c.clone());
+        debug!("simplify_by_finding_eq {c}");
         let c = c.simplify_trivial();
+        debug!("simplify_trivial {c}");
         let c = c.simplify_same_clause();
+        debug!("simplify_same_clause {c}");
         c
     }
 }

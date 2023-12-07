@@ -29,7 +29,7 @@ impl TypedPreprocessor for SimplifyConstrOpTransform {
             hes::GoalKind::Conj(g1, g2) => {
                 let g1 = self.transform_goal(g1, t, env);
                 let g2 = self.transform_goal(g2, t, env);
-                hes::Goal::mk_disj_opt(g1, g2)
+                hes::Goal::mk_conj_opt(g1, g2)
             }
             hes::GoalKind::Disj(g1, g2) => {
                 let g1 = self.transform_goal(g1, t, env);
@@ -44,6 +44,7 @@ impl TypedPreprocessor for SimplifyConstrOpTransform {
     }
 }
 
+#[allow(dead_code)]
 pub fn transform(problem: hes::Problem<formula::Constraint>) -> hes::Problem<formula::Constraint> {
     let t = SimplifyConstrOpTransform {};
     t.transform(problem)
