@@ -19,7 +19,7 @@ cfg = None
 
 
 def pre_cmd():
-    return 'cargo build --release'
+    return 'cargo build --features "no_simplify_by_finding_eq" --bin check --release'
 
 
 def config(c):
