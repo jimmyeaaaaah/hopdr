@@ -5,6 +5,7 @@ mod forall_pass;
 pub mod hes;
 pub mod hfl_preprocessor;
 mod ite_expand;
+mod remove_tmp_var;
 mod reorder_conj;
 mod safety;
 mod simplify_constr_op;

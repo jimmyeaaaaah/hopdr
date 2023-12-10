@@ -99,11 +99,11 @@ fn main() {
             println!("{}", chc);
         }
 
-        let chcs = crate::formula::chc::expand_ite(chcs);
-        println!("translated:");
-        for chc in chcs.iter() {
-            println!("{}", chc);
-        }
+        //let chcs = crate::formula::chc::expand_ite(chcs);
+        //println!("translated:");
+        //for chc in chcs.iter() {
+        //    println!("{}", chc);
+        //}
 
         let problem = if crate::formula::chc::is_linear(chcs.iter()) {
             crate::formula::chc::translate_to_hes_linear
