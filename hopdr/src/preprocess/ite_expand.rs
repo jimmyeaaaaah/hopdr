@@ -79,10 +79,13 @@ fn transform_goal(goal: &hes::Goal<formula::Constraint>) -> hes::Goal<formula::C
             }
         }
     }
-    match translate(goal) {
+    debug!("transform_goal: {goal}");
+    let g = match translate(goal) {
         Either::Left(g) => g,
         Either::Right((c, g1, g2)) => merge(c, g1, g2),
-    }
+    };
+    debug!("transform_goal: {g}");
+    g
 }
 
 fn transform_clause(clause: hes::Clause<formula::Constraint>) -> hes::Clause<formula::Constraint> {
@@ -99,6 +102,7 @@ fn transform_clause(clause: hes::Clause<formula::Constraint>) -> hes::Clause<for
 
 #[allow(dead_code)]
 pub fn transform(problem: hes::Problem<formula::Constraint>) -> hes::Problem<formula::Constraint> {
+    crate::title!("remove_tmp_vars");
     let clauses = problem
         .clauses
         .into_iter()

@@ -2566,9 +2566,12 @@ pub fn expand_ite_op(op: &Op) -> Option<(Constraint, Op, Op)> {
     }
 }
 
-pub fn expand_ite_constr_once(c: &Constraint) -> Constraint {
+pub fn expand_ite_constr_once(
+    c: &Constraint,
+) -> either::Either<(Constraint, Constraint), Constraint> {
+    use either::Either::{Left, Right};
     match c.kind() {
-        ConstraintExpr::True | ConstraintExpr::False => c.clone(),
+        ConstraintExpr::True | ConstraintExpr::False => Right(c.clone()),
         ConstraintExpr::Pred(p, l) => {
             for (i, o) in l.iter().enumerate() {
                 if let Some((c, x, y)) = expand_ite_op(o) {
@@ -2579,24 +2582,64 @@ pub fn expand_ite_constr_once(c: &Constraint) -> Constraint {
                     let mut l2 = l.clone();
                     l2[i] = y;
                     let c2 = Constraint::mk_conj(c.negate().unwrap(), Constraint::mk_pred(*p, l2));
-                    return Constraint::mk_disj(c1, c2);
+                    return Left((c1, c2));
                 }
             }
-            c.clone()
+            Right(c.clone())
         }
         ConstraintExpr::Conj(c1, c2) => {
-            let c1 = expand_ite_constr_once(c1);
-            let c2 = expand_ite_constr_once(c2);
-            Constraint::mk_conj(c1, c2)
+            let c1 = match expand_ite_constr_once(c1) {
+                Left((x, y)) => {
+                    return Left((
+                        Constraint::mk_conj(x, c.clone()),
+                        Constraint::mk_conj(y, c2.clone()),
+                    ))
+                }
+
+                Right(c1) => c1,
+            };
+            let c2 = match expand_ite_constr_once(c2) {
+                Left((x, y)) => {
+                    return Left((
+                        Constraint::mk_conj(c.clone(), x),
+                        Constraint::mk_conj(c1.clone(), y),
+                    ))
+                }
+                Right(c2) => c2,
+            };
+            Right(Constraint::mk_conj(c1, c2))
         }
         ConstraintExpr::Disj(c1, c2) => {
-            let c1 = expand_ite_constr_once(c1);
-            let c2 = expand_ite_constr_once(c2);
-            Constraint::mk_disj(c1, c2)
+            let c1 = match expand_ite_constr_once(c1) {
+                Left((x, y)) => {
+                    return Left((
+                        Constraint::mk_disj(x, c.clone()),
+                        Constraint::mk_disj(y, c2.clone()),
+                    ))
+                }
+
+                Right(c1) => c1,
+            };
+            let c2 = match expand_ite_constr_once(c2) {
+                Left((x, y)) => {
+                    return Left((
+                        Constraint::mk_disj(c.clone(), x),
+                        Constraint::mk_disj(c1.clone(), y),
+                    ))
+                }
+                Right(c2) => c2,
+            };
+            Right(Constraint::mk_disj(c1, c2))
         }
         ConstraintExpr::Quantifier(q, v, c) => {
             let c = expand_ite_constr_once(c);
-            Constraint::mk_quantifier(*q, v.clone(), c)
+            match c {
+                Left((c1, c2)) => Left((
+                    Constraint::mk_quantifier(*q, v.clone(), c1),
+                    Constraint::mk_quantifier(*q, v.clone(), c2),
+                )),
+                Right(c) => Right(Constraint::mk_quantifier(*q, v.clone(), c)),
+            }
         }
     }
 }
@@ -2607,7 +2650,6 @@ pub fn expand_ite_constr(mut c: Constraint) -> Constraint {
         if c == c2 {
             break c;
         } else {
-            println!("{} ==> {}", c, c2);
             c = c2;
         }
     }

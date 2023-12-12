@@ -2,7 +2,7 @@
 /// For example, a formula ∀x. x != 0 \/ P(x, y) can be translated to P(0, y).
 use super::TypedPreprocessor;
 use crate::formula::hes::{self, GoalKind};
-use crate::formula::{self, Bot, Constraint, Fv, Ident, Logic, Op};
+use crate::formula::{self, Constraint, Fv, Ident, Logic, Op, Top};
 
 use std::collections::HashSet;
 
@@ -27,8 +27,9 @@ fn handle_constraint(
                     if fv.contains(target) {
                         match Op::solve_for(target, x, y) {
                             Some(o) => {
+                                let o = o.simplify();
                                 eqs.push((target.clone(), o));
-                                return Constraint::mk_false();
+                                return Constraint::mk_true();
                             }
                             None => (),
                         }
@@ -124,12 +125,16 @@ impl TypedPreprocessor for RemoveTmpVarTransform {
         _t: &formula::Type,
         _env: &mut formula::TyEnv,
     ) -> formula::hes::Goal<formula::Constraint> {
+        debug!("transform_goal: {goal}");
         let (g, eqs) = f(goal, &mut HashSet::new());
-        app_eqs(g, eqs)
+        let g = app_eqs(g, eqs);
+        debug!("translated: {g}");
+        g
     }
 }
 
 pub fn transform(problem: hes::Problem<formula::Constraint>) -> hes::Problem<formula::Constraint> {
+    crate::title!("remove_tmp_vars");
     let t = RemoveTmpVarTransform {};
     t.transform(problem)
 }
