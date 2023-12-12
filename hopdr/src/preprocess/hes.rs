@@ -4,6 +4,7 @@ use super::eta;
 use super::extravar;
 use super::forall_pass;
 use super::ite_expand;
+use super::remove_tmp_var;
 use super::reorder_conj;
 use super::safety;
 use super::simplify_constr_op;
@@ -184,6 +185,7 @@ pub fn preprocess_for_typed_problem(
     let problem = reorder_conj::transform(problem);
     let problem = simplify_constr_op::transform(problem);
     let problem = ite_expand::transform(problem);
+    let problem = remove_tmp_var::transform(problem);
     problem
 }
 
