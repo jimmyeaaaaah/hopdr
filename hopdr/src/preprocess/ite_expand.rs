@@ -3,12 +3,8 @@
 /// This module expands if-then-else expressions in Op.
 /// For example, `y = if x > 0 then 1 else 0` is expaneded to if x > 0 then y = 1 else y = 0.
 use crate::formula;
-use crate::formula::hes::Goal;
-use crate::formula::Constraint;
 use crate::formula::ExpandITEState;
-use crate::formula::{hes, Logic, Negation};
-
-use either::Either;
+use crate::formula::{hes, Logic};
 
 fn transform_goal(goal: &hes::Goal<formula::Constraint>) -> hes::Goal<formula::Constraint> {
     use hes::GoalKind;

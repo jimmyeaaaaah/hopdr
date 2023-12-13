@@ -2562,7 +2562,7 @@ pub fn expand_ite_op(op: &Op) -> Option<(Constraint, Op, Op)> {
             }
         },
         OpExpr::Var(_) | OpExpr::Const(_) => None,
-        OpExpr::Ptr(_, _) => panic!("program error"),
+        OpExpr::Ptr(_, o) => expand_ite_op(o),
     }
 }
 
@@ -2596,9 +2596,9 @@ impl<C: Clone + Logic> ExpandITEState<C> {
         g: impl Fn(&C) -> ExpandITEState<C>,
     ) -> ExpandITEState<C> {
         use ExpandITEState::*;
-        let c1 = match g(&c1).map(|c| f(c, c2.clone())) {
+        let c1 = match g(&c1) {
             NotModified(c) => c,
-            x => return x,
+            x => return x.map(|c| f(c, c2.clone())),
         };
         g(&c2).map(|c| f(c1.clone(), c))
     }
