@@ -35,8 +35,29 @@ fn transform_goal(goal: &hes::Goal<formula::Constraint>) -> hes::Goal<formula::C
                 let g = translate(g).finalize_goal();
                 ExpandITEState::id(Goal::mk_univ(x.clone(), g))
             }
-            GoalKind::Conj(g1, g2) => {
-                ExpandITEState::handle_two(g1.clone(), g2.clone(), Goal::mk_conj, translate)
+            GoalKind::Conj(c1, c2) => {
+                let c1 = match translate(c1) {
+                    ExpandITEState::NotModified(c) => c,
+                    ExpandITEState::Modified(c) => {
+                        return ExpandITEState::Modified(Goal::mk_conj(c, c2.clone()))
+                    }
+                    x => {
+                        let c1 = x.finalize_goal();
+                        let c2 = c2.clone();
+                        return ExpandITEState::Modified(Goal::mk_conj(c1, c2));
+                    }
+                };
+
+                match translate(c2) {
+                    ExpandITEState::NotModified(c2) => {
+                        ExpandITEState::NotModified(Goal::mk_conj(c1, c2))
+                    }
+                    ExpandITEState::Modified(c2) => ExpandITEState::Modified(Goal::mk_conj(c1, c2)),
+                    x => {
+                        let c2 = x.finalize_goal();
+                        ExpandITEState::Modified(Goal::mk_conj(c1, c2))
+                    }
+                }
             }
             GoalKind::Disj(g1, g2) => {
                 ExpandITEState::handle_two(g1.clone(), g2.clone(), Goal::mk_disj, translate)
@@ -45,7 +66,7 @@ fn transform_goal(goal: &hes::Goal<formula::Constraint>) -> hes::Goal<formula::C
     }
     debug!("transform_goal: {goal}");
     let g = translate(goal).finalize_goal();
-    debug!("transform_goal: {g}");
+    debug!("transform_goal_after: {g}");
     g
 }
 

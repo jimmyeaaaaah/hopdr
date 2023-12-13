@@ -2,7 +2,7 @@
 /// For example, a formula ∀x. x != 0 \/ P(x, y) can be translated to P(0, y).
 use super::TypedPreprocessor;
 use crate::formula::hes::{self, GoalKind};
-use crate::formula::{self, Constraint, Fv, Ident, Logic, Op, Top};
+use crate::formula::{self, Bot, Constraint, Fv, Ident, Logic, Op};
 
 use std::collections::HashSet;
 
@@ -29,7 +29,7 @@ fn handle_constraint(
                             Some(o) => {
                                 let o = o.simplify();
                                 eqs.push((target.clone(), o));
-                                return Constraint::mk_true();
+                                return Constraint::mk_false();
                             }
                             None => (),
                         }

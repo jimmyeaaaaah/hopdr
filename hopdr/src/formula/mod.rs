@@ -2649,16 +2649,36 @@ pub fn expand_ite_constr_once(c: &Constraint) -> ExpandITEState<Constraint> {
             }
             ExpandITEState::id(c.clone())
         }
-        ConstraintExpr::Conj(c1, c2) => ExpandITEState::handle_two(
-            c1.clone(),
-            c2.clone(),
-            Constraint::mk_conj,
-            expand_ite_constr_once,
-        ),
+        ConstraintExpr::Conj(c1, c2) => {
+            let c1 = match expand_ite_constr_once(c1) {
+                ExpandITEState::NotModified(c) => c,
+                ExpandITEState::Modified(c) => {
+                    return ExpandITEState::Modified(Constraint::mk_conj(c, c2.clone()))
+                }
+                x => {
+                    let c1 = x.finalize_constraint();
+                    let c2 = c2.clone();
+                    return ExpandITEState::Modified(Constraint::mk_conj(c1, c2));
+                }
+            };
+
+            match expand_ite_constr_once(c2) {
+                ExpandITEState::NotModified(c2) => {
+                    ExpandITEState::NotModified(Constraint::mk_conj(c1, c2))
+                }
+                ExpandITEState::Modified(c2) => {
+                    ExpandITEState::Modified(Constraint::mk_conj(c1, c2))
+                }
+                x => {
+                    let c2 = x.finalize_constraint();
+                    ExpandITEState::Modified(Constraint::mk_conj(c1, c2))
+                }
+            }
+        }
         ConstraintExpr::Disj(c1, c2) => ExpandITEState::handle_two(
             c1.clone(),
             c2.clone(),
-            Constraint::mk_conj,
+            Constraint::mk_disj,
             expand_ite_constr_once,
         ),
         ConstraintExpr::Quantifier(q, v, c) => match expand_ite_constr_once(c) {
