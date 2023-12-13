@@ -210,14 +210,32 @@ impl<C, T: Default> GoalBase<C, T> {
     pub fn mk_op(op: Op) -> GoalBase<C, T> {
         GoalBase::mk_op_t(op, T::default())
     }
-    pub fn mk_conj(lhs: GoalBase<C, T>, rhs: GoalBase<C, T>) -> GoalBase<C, T> {
-        GoalBase::mk_conj_t(lhs, rhs, T::default())
-    }
-    pub fn mk_disj(lhs: GoalBase<C, T>, rhs: GoalBase<C, T>) -> GoalBase<C, T> {
-        GoalBase::mk_disj_t(lhs, rhs, T::default())
-    }
     pub fn is_op(&self) -> bool {
         matches!(self.kind(), GoalKind::Op(_))
+    }
+}
+
+impl<C: Bot + Top, T: Clone + Default> Logic for GoalBase<C, T> {
+    fn mk_conj(lhs: GoalBase<C, T>, rhs: GoalBase<C, T>) -> GoalBase<C, T> {
+        GoalBase::mk_conj_t(lhs, rhs, T::default())
+    }
+
+    fn mk_disj(lhs: GoalBase<C, T>, rhs: GoalBase<C, T>) -> GoalBase<C, T> {
+        GoalBase::mk_disj_t(lhs, rhs, T::default())
+    }
+
+    fn is_conj(&self) -> Option<(&Self, &Self)> {
+        match self.kind() {
+            GoalKind::Conj(g1, g2) => Some((g1, g2)),
+            _ => None,
+        }
+    }
+
+    fn is_disj(&self) -> Option<(&Self, &Self)> {
+        match self.kind() {
+            GoalKind::Disj(g1, g2) => Some((g1, g2)),
+            _ => None,
+        }
     }
 }
 impl<C, T> GoalBase<C, T> {
@@ -339,7 +357,7 @@ impl<C, T> GoalBase<C, T> {
         matches!(self.kind(), GoalKind::Disj(_, _))
     }
 }
-impl<C: Bot + Top> Goal<C> {
+impl<C: Bot + Top + Logic> Goal<C> {
     pub fn mk_ho_disj(fmls: &[Goal<C>], mut sty: Type) -> Goal<C> {
         let mut vs = Vec::new();
         loop {
@@ -990,7 +1008,7 @@ impl<C: TeXFormat> TeXFormat for Problem<C> {
     }
 }
 
-impl<C: Rename> Problem<C> {
+impl<C: Rename + Bot + Top> Problem<C> {
     // [ψ₁/F₁, ψ₂/F₂ … ]ψ
     pub fn eval(&self, target: &Goal<C>) -> Goal<C> {
         match target.kind() {

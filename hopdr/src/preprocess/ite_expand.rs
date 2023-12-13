@@ -3,87 +3,52 @@
 /// This module expands if-then-else expressions in Op.
 /// For example, `y = if x > 0 then 1 else 0` is expaneded to if x > 0 then y = 1 else y = 0.
 use crate::formula;
+use crate::formula::hes::Goal;
 use crate::formula::Constraint;
-use crate::formula::{hes, Negation};
+use crate::formula::ExpandITEState;
+use crate::formula::{hes, Logic, Negation};
 
 use either::Either;
 
 fn transform_goal(goal: &hes::Goal<formula::Constraint>) -> hes::Goal<formula::Constraint> {
     use hes::GoalKind;
     type Goal = hes::Goal<formula::Constraint>;
-    fn merge(c: Constraint, g1: Goal, g2: Goal) -> Goal {
-        let g1 = Goal::mk_disj(Goal::mk_constr(c.clone().negate().unwrap()), g1);
-        let g2 = Goal::mk_disj(Goal::mk_constr(c.clone()), g2);
-        Goal::mk_conj(g1, g2)
-    }
-    fn translate(goal: &Goal) -> Either<Goal, (Constraint, Goal, Goal)> {
+    fn translate(goal: &Goal) -> ExpandITEState<hes::Goal<formula::Constraint>> {
         match goal.kind() {
-            GoalKind::Constr(c) => {
-                Either::Left(Goal::mk_constr(formula::expand_ite_constr(c.clone())))
-            }
+            GoalKind::Constr(c) => formula::expand_ite_constr_once(c).map(|c| Goal::mk_constr(c)),
             hes::GoalKind::Op(o) => match formula::expand_ite_op(o) {
-                Some((c, o1, o2)) => return Either::Right((c, Goal::mk_op(o1), Goal::mk_op(o2))),
-                None => Either::Left(goal.clone()),
+                Some((c, o1, o2)) => {
+                    return ExpandITEState::in_progress(c, Goal::mk_op(o1), Goal::mk_op(o2))
+                }
+                None => ExpandITEState::id(goal.clone()),
             },
-            GoalKind::Var(_) => Either::Left(goal.clone()),
+            GoalKind::Var(_) => ExpandITEState::id(goal.clone()),
             GoalKind::Abs(x, g) => {
-                let g = translate(g);
-                let g = match g {
-                    Either::Left(g) => g,
-                    Either::Right((c, g1, g2)) => merge(c, g1, g2),
-                };
-                Either::Left(Goal::mk_abs(x.clone(), g))
+                let g = translate(g).finalize_goal();
+                ExpandITEState::id(Goal::mk_abs(x.clone(), g))
             }
             GoalKind::App(g1, g2) => {
-                let g1 = translate(g1).unwrap_left();
-                let g2 = translate(g2);
-                let g2 = match g2 {
-                    Either::Left(g2) => g2,
-                    Either::Right((c, g21, g22)) => merge(c, g21, g22),
+                let g1 = match translate(g1) {
+                    ExpandITEState::Modified(g) | ExpandITEState::NotModified(g) => g,
+                    _ => panic!("program error"),
                 };
-                Either::Left(Goal::mk_app(g1, g2))
+                let g2 = translate(g2).finalize_goal();
+                ExpandITEState::id(Goal::mk_app(g1, g2))
             }
             GoalKind::Univ(x, g) => {
-                let g = translate(g);
-                let g = match g {
-                    Either::Left(g) => g,
-                    Either::Right((c, g1, g2)) => merge(c, g1, g2),
-                };
-                Either::Left(Goal::mk_univ(x.clone(), g))
+                let g = translate(g).finalize_goal();
+                ExpandITEState::id(Goal::mk_univ(x.clone(), g))
             }
             GoalKind::Conj(g1, g2) => {
-                let g1 = translate(g1);
-                let g1 = match g1 {
-                    Either::Left(g1) => g1,
-                    Either::Right((c, g11, g12)) => merge(c, g11, g12),
-                };
-                let g2 = translate(g2);
-                let g2 = match g2 {
-                    Either::Left(g2) => g2,
-                    Either::Right((c, g21, g22)) => merge(c, g21, g22),
-                };
-                Either::Left(Goal::mk_conj(g1, g2))
+                ExpandITEState::handle_two(g1.clone(), g2.clone(), Goal::mk_conj, translate)
             }
             GoalKind::Disj(g1, g2) => {
-                let g1 = translate(g1);
-                let g1 = match g1 {
-                    Either::Left(g1) => g1,
-                    Either::Right((c, g11, g12)) => merge(c, g11, g12),
-                };
-                let g2 = translate(g2);
-                let g2 = match g2 {
-                    Either::Left(g2) => g2,
-                    Either::Right((c, g21, g22)) => merge(c, g21, g22),
-                };
-                Either::Left(Goal::mk_disj(g1, g2))
+                ExpandITEState::handle_two(g1.clone(), g2.clone(), Goal::mk_disj, translate)
             }
         }
     }
     debug!("transform_goal: {goal}");
-    let g = match translate(goal) {
-        Either::Left(g) => g,
-        Either::Right((c, g1, g2)) => merge(c, g1, g2),
-    };
+    let g = translate(goal).finalize_goal();
     debug!("transform_goal: {g}");
     g
 }

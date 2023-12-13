@@ -2566,91 +2566,112 @@ pub fn expand_ite_op(op: &Op) -> Option<(Constraint, Op, Op)> {
     }
 }
 
-pub fn expand_ite_constr_once(
-    c: &Constraint,
-) -> either::Either<(Constraint, Constraint), Constraint> {
-    use either::Either::{Left, Right};
-    match c.kind() {
-        ConstraintExpr::True | ConstraintExpr::False => Right(c.clone()),
-        ConstraintExpr::Pred(p, l) => {
-            for (i, o) in l.iter().enumerate() {
-                if let Some((c, x, y)) = expand_ite_op(o) {
-                    let mut l1 = l.clone();
-                    l1[i] = x;
-                    let c1 = Constraint::mk_conj(c.clone(), Constraint::mk_pred(*p, l1));
+pub enum ExpandITEState<C> {
+    NotModified(C),
+    Modified(C),
+    InProgress { cond: Constraint, left: C, right: C },
+}
+impl<C: Clone + Logic> ExpandITEState<C> {
+    pub fn id(c: C) -> ExpandITEState<C> {
+        ExpandITEState::NotModified(c)
+    }
+    pub fn in_progress(cond: Constraint, left: C, right: C) -> ExpandITEState<C> {
+        ExpandITEState::InProgress { cond, left, right }
+    }
+    pub fn map<D>(self, f: impl Fn(C) -> D) -> ExpandITEState<D> {
+        match self {
+            ExpandITEState::NotModified(c) => ExpandITEState::NotModified(f(c)),
+            ExpandITEState::Modified(c) => ExpandITEState::Modified(f(c)),
+            ExpandITEState::InProgress { cond, left, right } => ExpandITEState::InProgress {
+                cond,
+                left: f(left),
+                right: f(right),
+            },
+        }
+    }
+    pub fn handle_two(
+        c1: C,
+        c2: C,
+        f: impl Fn(C, C) -> C,
+        g: impl Fn(&C) -> ExpandITEState<C>,
+    ) -> ExpandITEState<C> {
+        use ExpandITEState::*;
+        let c1 = match g(&c1).map(|c| f(c, c2.clone())) {
+            NotModified(c) => c,
+            x => return x,
+        };
+        g(&c2).map(|c| f(c1.clone(), c))
+    }
+}
 
-                    let mut l2 = l.clone();
-                    l2[i] = y;
-                    let c2 = Constraint::mk_conj(c.negate().unwrap(), Constraint::mk_pred(*p, l2));
-                    return Left((c1, c2));
-                }
+impl ExpandITEState<Constraint> {
+    pub fn finalize_constraint(self) -> Constraint {
+        match self {
+            ExpandITEState::NotModified(c) => c,
+            ExpandITEState::Modified(c) => c,
+            ExpandITEState::InProgress { cond, left, right } => {
+                let c1 = Constraint::mk_disj(cond.negate().unwrap(), left);
+                let c2 = Constraint::mk_disj(cond, right);
+                Constraint::mk_conj(c1, c2)
             }
-            Right(c.clone())
         }
-        ConstraintExpr::Conj(c1, c2) => {
-            let c1 = match expand_ite_constr_once(c1) {
-                Left((x, y)) => {
-                    return Left((
-                        Constraint::mk_conj(x, c.clone()),
-                        Constraint::mk_conj(y, c2.clone()),
-                    ))
-                }
-
-                Right(c1) => c1,
-            };
-            let c2 = match expand_ite_constr_once(c2) {
-                Left((x, y)) => {
-                    return Left((
-                        Constraint::mk_conj(c.clone(), x),
-                        Constraint::mk_conj(c1.clone(), y),
-                    ))
-                }
-                Right(c2) => c2,
-            };
-            Right(Constraint::mk_conj(c1, c2))
-        }
-        ConstraintExpr::Disj(c1, c2) => {
-            let c1 = match expand_ite_constr_once(c1) {
-                Left((x, y)) => {
-                    return Left((
-                        Constraint::mk_disj(x, c.clone()),
-                        Constraint::mk_disj(y, c2.clone()),
-                    ))
-                }
-
-                Right(c1) => c1,
-            };
-            let c2 = match expand_ite_constr_once(c2) {
-                Left((x, y)) => {
-                    return Left((
-                        Constraint::mk_disj(c.clone(), x),
-                        Constraint::mk_disj(c1.clone(), y),
-                    ))
-                }
-                Right(c2) => c2,
-            };
-            Right(Constraint::mk_disj(c1, c2))
-        }
-        ConstraintExpr::Quantifier(q, v, c) => {
-            let c = expand_ite_constr_once(c);
-            match c {
-                Left((c1, c2)) => Left((
-                    Constraint::mk_quantifier(*q, v.clone(), c1),
-                    Constraint::mk_quantifier(*q, v.clone(), c2),
-                )),
-                Right(c) => Right(Constraint::mk_quantifier(*q, v.clone(), c)),
+    }
+}
+impl ExpandITEState<hes::Goal<Constraint>> {
+    pub fn finalize_goal(self) -> hes::Goal<Constraint> {
+        match self {
+            ExpandITEState::NotModified(c) => c,
+            ExpandITEState::Modified(c) => c,
+            ExpandITEState::InProgress { cond, left, right } => {
+                let c1 = hes::Goal::mk_disj(hes::Goal::mk_constr(cond.negate().unwrap()), left);
+                let c2 = hes::Goal::mk_disj(hes::Goal::mk_constr(cond), right);
+                hes::Goal::mk_conj(c1, c2)
             }
         }
     }
 }
 
-pub fn expand_ite_constr(mut c: Constraint) -> Constraint {
-    loop {
-        let c2 = expand_ite_constr_once(&c);
-        if c == c2 {
-            break c;
-        } else {
-            c = c2;
+pub fn expand_ite_constr_once(c: &Constraint) -> ExpandITEState<Constraint> {
+    match c.kind() {
+        ConstraintExpr::True | ConstraintExpr::False => ExpandITEState::id(c.clone()),
+        ConstraintExpr::Pred(p, l) => {
+            for (i, o) in l.iter().enumerate() {
+                if let Some((c, x, y)) = expand_ite_op(o) {
+                    let mut l1 = l.clone();
+                    l1[i] = x;
+                    let c1 = Constraint::mk_pred(*p, l1);
+
+                    let mut l2 = l.clone();
+                    l2[i] = y;
+                    let c2 = Constraint::mk_pred(*p, l2);
+                    return ExpandITEState::in_progress(c, c1, c2);
+                }
+            }
+            ExpandITEState::id(c.clone())
         }
+        ConstraintExpr::Conj(c1, c2) => ExpandITEState::handle_two(
+            c1.clone(),
+            c2.clone(),
+            Constraint::mk_conj,
+            expand_ite_constr_once,
+        ),
+        ConstraintExpr::Disj(c1, c2) => ExpandITEState::handle_two(
+            c1.clone(),
+            c2.clone(),
+            Constraint::mk_conj,
+            expand_ite_constr_once,
+        ),
+        ConstraintExpr::Quantifier(q, v, c) => match expand_ite_constr_once(c) {
+            ExpandITEState::InProgress { cond, left, right } => {
+                let c1 = Constraint::mk_disj(cond.negate().unwrap(), left);
+                let c2 = Constraint::mk_disj(cond, right);
+                ExpandITEState::Modified(Constraint::mk_quantifier(
+                    *q,
+                    v.clone(),
+                    Constraint::mk_conj(c1, c2),
+                ))
+            }
+            x => x.map(|c| Constraint::mk_quantifier(*q, v.clone(), c)),
+        },
     }
 }

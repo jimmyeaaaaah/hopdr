@@ -1072,9 +1072,19 @@ fn test_translation_linear() {
     println!("{}", hes);
 }
 
+fn expand_ite_constr(mut c: Constraint) -> Constraint {
+    loop {
+        let c2 = formula::expand_ite_constr_once(&c).finalize_constraint();
+        if c == c2 {
+            return c;
+        }
+        c = c2;
+    }
+}
+
 fn expand_ite_inner(chc: &CHC<Atom, Constraint>, res: &mut Vec<CHC<Atom, Constraint>>) {
     let c = chc.body.constraint.clone();
-    let c = formula::expand_ite_constr(c);
+    let c = expand_ite_constr(c);
     for c in c.to_dnf() {
         let mut chc = chc.clone();
         chc.body.constraint = c;

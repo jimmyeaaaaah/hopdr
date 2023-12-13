@@ -6,6 +6,7 @@
 
 use crate::formula;
 use crate::formula::hes;
+use crate::formula::Logic;
 
 fn transform_goal(goal: &hes::Goal<formula::Constraint>) -> hes::Goal<formula::Constraint> {
     use crate::formula::Negation;

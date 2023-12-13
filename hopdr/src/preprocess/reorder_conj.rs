@@ -1,6 +1,6 @@
 use super::TypedPreprocessor;
 use crate::formula::hes::{self, GoalKind};
-use crate::formula::{self, Negation, Top};
+use crate::formula::{self, Logic, Negation, Top};
 
 pub struct ReorderConjTransform {}
 

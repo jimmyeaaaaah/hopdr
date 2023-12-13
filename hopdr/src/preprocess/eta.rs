@@ -3,6 +3,7 @@
 use super::TypedPreprocessor;
 use crate::formula;
 use crate::formula::hes;
+use crate::formula::Logic;
 
 struct EtaTransform {}
 
