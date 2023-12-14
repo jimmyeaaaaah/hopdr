@@ -359,11 +359,14 @@ impl Op {
                 OpExpr::Const(-1) => o2.clone(),
                 _ => Op::mk_mul(Op::mk_const(-1), self.clone()),
             },
-            OpExpr::Op(_, _, _)
-            | OpExpr::Var(_)
-            | OpExpr::Const(_)
-            | OpExpr::Ptr(_, _)
-            | OpExpr::ITE(_, _, _) => Op::mk_mul(Op::mk_const(-1), self.clone()),
+            OpExpr::ITE(c, o1, o2) => {
+                let o1 = o1.negate();
+                let o2 = o2.negate();
+                Op::mk_ite(c.clone(), o1, o2)
+            }
+            OpExpr::Op(_, _, _) | OpExpr::Var(_) | OpExpr::Const(_) | OpExpr::Ptr(_, _) => {
+                Op::mk_mul(Op::mk_const(-1), self.clone())
+            }
         }
     }
     // expand to term vectors which can be reduced to op by `add`.
@@ -514,10 +517,28 @@ impl Op {
                 _ => None,
             }
         }
+        fn handle_add(target: &Ident, o: &Op) -> Option<Op> {
+            match o.kind() {
+                OpExpr::Op(OpKind::Add, x, y) => {
+                    match x.kind() {
+                        OpExpr::Var(id) if id == target => return Some(Op::negate(y)),
+                        _ => (),
+                    }
+                    match y.kind() {
+                        OpExpr::Var(id) if id == target => Some(Op::negate(x)),
+                        _ => None,
+                    }
+                }
+                _ => None,
+            }
+        }
+        fn handle_zero(target: &Ident, o: &Op) -> Option<Op> {
+            handle_sub(target, o).or_else(|| handle_add(target, o))
+        }
         if o2.eval_with_empty_env() == Some(0) {
-            handle_sub(target, o1)
+            handle_zero(target, o1)
         } else if o1.eval_with_empty_env() == Some(0) {
-            handle_sub(target, o2)
+            handle_zero(target, o2)
         } else {
             match (o1.kind(), o2.kind()) {
                 (OpExpr::Var(x), _) if x == target => Some(o2.clone()),

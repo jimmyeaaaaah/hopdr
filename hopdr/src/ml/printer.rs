@@ -24,6 +24,7 @@ let rand_int (x, y) =
     | None -> check_mx
   in 
     Random.int (mx - mn) + mn
+let (mod) x y = let r = x mod y in if r >= 0 then r else r + y
 "#;
 pub const FAIL_STRING: &str = "Failed to find a counterexample";
 
