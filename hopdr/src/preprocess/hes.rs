@@ -3,7 +3,6 @@ use super::eta;
 #[allow(unused_imports)]
 use super::extravar;
 use super::forall_pass;
-use super::ite_expand;
 use super::remove_tmp_var;
 use super::reorder_conj;
 use super::safety;

@@ -13,8 +13,10 @@ fn translate_rterm_top(t: &RTerm) -> Constraint {
         RTerm::CArray { .. }
         | RTerm::DTypNew { .. }
         | RTerm::DTypSlc { .. }
-        | RTerm::DTypTst { .. }
-        | RTerm::Var(_, _) => panic!("program error"),
+        | RTerm::DTypTst { .. } => panic!("program error"),
+        RTerm::Var(_, _) => {
+            unimplemented!()
+        }
         RTerm::Cst(c) => match c.get() {
             val::RVal::B(x) if *x => Constraint::mk_true(),
             val::RVal::B(_) => Constraint::mk_false(),
