@@ -2,4 +2,4 @@
 
 target=$1.exe
 
-cp $1 $1.ml && ocamlc $1.ml -o $target && $target 2>&1 && rm $target && rm $1.ml
+cp $1 $1.ml && ocamlopt $1.ml -o $target && $target 2>&1 && rm $target && rm $1.ml
