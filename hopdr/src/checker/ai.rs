@@ -344,6 +344,9 @@ fn analyze_inner(x: Ident, g: &Goal<Constraint>) -> Domain {
 pub fn analyze(x: Ident, g: &Goal<Constraint>) -> Range {
     let d = analyze_inner(x, g);
     let mut r = Range::new();
+    if d.is_bot() {
+        return r;
+    }
     match d.lb {
         Some(x) => r = r.lb(x),
         None => (),

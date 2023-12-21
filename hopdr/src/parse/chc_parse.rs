@@ -127,6 +127,27 @@ fn translate_varidx(v: &VarIdx) -> Ident {
     Ident::from(x as u64)
 }
 
+fn decode_op2constr(x: Op) -> Constraint {
+    match x.kind() {
+        crate::formula::OpExpr::Var(x) => bool_variable_encoding(*x),
+        crate::formula::OpExpr::ITE(c, x, y)
+            if x.eval_with_empty_env() == Some(1) && y.eval_with_empty_env() == Some(0) =>
+        {
+            c.clone()
+        }
+        _ => panic!("program error"),
+    }
+}
+fn encode_constr2op(c: Constraint) -> Op {
+    Op::mk_ite(c, Op::one(), Op::zero())
+}
+fn handle_bin_bool_op(x: Op, y: Op, f: impl Fn(Constraint, Constraint) -> Constraint) -> Op {
+    let c1 = decode_op2constr(x);
+    let c2 = decode_op2constr(y);
+    let c = f(c1, c2);
+    encode_constr2op(c)
+}
+
 fn translate_rterm_op(t: &RTerm) -> Op {
     match t {
         RTerm::Var(ty, y) => {
@@ -184,10 +205,37 @@ fn translate_rterm_op(t: &RTerm) -> Op {
                 }
                 term::Op::Gt | term::Op::Ge | term::Op::Le | term::Op::Lt | term::Op::Eql => {
                     let c = handle_atomic_predicate(op, args.iter().map(|x| &**x));
-                    return Op::mk_ite(c, Op::one(), Op::zero());
+                    return encode_constr2op(c);
                 }
-                term::Op::Impl | term::Op::Not | term::Op::And | term::Op::Or => {
-                    panic!("failed to handle: {}", op)
+                term::Op::And => {
+                    assert!(args.len() >= 2);
+                    let mut c = translate_rterm_op(&args[0]);
+                    for z in args.iter().skip(1) {
+                        let z: crate::formula::P<crate::formula::OpExpr> = translate_rterm_op(z);
+                        c = handle_bin_bool_op(c, z, Constraint::mk_conj)
+                    }
+                    return c;
+                }
+                term::Op::Or => {
+                    assert!(args.len() >= 2);
+                    let mut c = translate_rterm_op(&args[0]);
+                    for z in args.iter().skip(1) {
+                        let z: crate::formula::P<crate::formula::OpExpr> = translate_rterm_op(z);
+                        c = handle_bin_bool_op(c, z, Constraint::mk_disj)
+                    }
+                    return c;
+                }
+                term::Op::Not => {
+                    assert_eq!(args.len(), 1);
+                    let o = translate_rterm_op(&args[0]);
+                    let c = decode_op2constr(o);
+                    return encode_constr2op(c.negate().unwrap());
+                }
+                term::Op::Impl => {
+                    assert_eq!(args.len(), 2);
+                    let x = translate_rterm_op(&args[0]);
+                    let y = translate_rterm_op(&args[1]);
+                    return handle_bin_bool_op(x, y, Constraint::mk_implies);
                 }
                 term::Op::Distinct => todo!(),
                 term::Op::ToInt => todo!(),
