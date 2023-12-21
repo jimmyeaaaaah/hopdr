@@ -279,6 +279,14 @@ impl Op {
         }
     }
 
+    pub fn mk_mod(x: Op, y: Op) -> Op {
+        if y.check_const(1) {
+            Op::mk_const(0)
+        } else {
+            Op::mk_bin_op_raw(OpKind::Mod, x, y)
+        }
+    }
+
     pub fn mk_ite(c: Constraint, x: Op, y: Op) -> Op {
         if x == y {
             x

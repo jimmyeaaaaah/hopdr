@@ -1,6 +1,7 @@
 use crate::formula::chc::CHCHead;
 use crate::formula::{chc, Logic};
 use crate::formula::{Bot, Constraint, Ident, Negation, Op, OpKind, PredKind, Top};
+use crate::util::P;
 use hoice::common::*;
 use hoice::instance::Clause;
 use hoice::instance::Instance;
@@ -8,14 +9,43 @@ use hoice::parse;
 use hoice::term::RTerm;
 type CHC = chc::CHC<chc::Atom, Constraint>;
 
+// during parsing, we encode boolean as integer (1 or 0).
+
+fn handle_atomic_predicate<'a>(
+    op: &term::Op,
+    mut args: impl Iterator<Item = &'a RTerm> + 'a,
+) -> Constraint {
+    match op {
+        term::Op::Gt | term::Op::Ge | term::Op::Le | term::Op::Lt | term::Op::Eql => {
+            let x = translate_rterm_op(args.next().unwrap());
+            let y = translate_rterm_op(args.next().unwrap());
+            let p = match op {
+                term::Op::Gt => PredKind::Gt,
+                term::Op::Ge => PredKind::Geq,
+                term::Op::Le => PredKind::Leq,
+                term::Op::Lt => PredKind::Lt,
+                term::Op::Eql => PredKind::Eq,
+                _ => unreachable!(),
+            };
+            Constraint::mk_bin_pred(p, x, y)
+        }
+        _ => panic!("program error"),
+    }
+}
+
+fn bool_variable_encoding(id: Ident) -> Constraint {
+    Constraint::mk_eq(Op::mk_mod(Op::mk_var(id), Op::mk_const(2)), Op::mk_const(1))
+}
+
 fn translate_rterm_top(t: &RTerm) -> Constraint {
     match t {
         RTerm::CArray { .. }
         | RTerm::DTypNew { .. }
         | RTerm::DTypSlc { .. }
         | RTerm::DTypTst { .. } => panic!("program error"),
-        RTerm::Var(_, _) => {
-            unimplemented!()
+        RTerm::Var(ty, x) => {
+            assert!(ty.is_bool());
+            bool_variable_encoding(translate_varidx(x))
         }
         RTerm::Cst(c) => match c.get() {
             val::RVal::B(x) if *x => Constraint::mk_true(),
@@ -41,17 +71,7 @@ fn translate_rterm_top(t: &RTerm) -> Constraint {
             | term::Op::Mod => panic!("program error"),
             term::Op::Gt | term::Op::Ge | term::Op::Le | term::Op::Lt | term::Op::Eql => {
                 assert_eq!(args.len(), 2);
-                let x = translate_rterm_op(&args[0]);
-                let y = translate_rterm_op(&args[1]);
-                let p = match op {
-                    term::Op::Gt => PredKind::Gt,
-                    term::Op::Ge => PredKind::Geq,
-                    term::Op::Le => PredKind::Leq,
-                    term::Op::Lt => PredKind::Lt,
-                    term::Op::Eql => PredKind::Eq,
-                    _ => unreachable!(),
-                };
-                Constraint::mk_bin_pred(p, x, y)
+                handle_atomic_predicate(op, args.iter().map(|x| &**x))
             }
             term::Op::Impl => {
                 assert_eq!(args.len(), 2);
@@ -65,16 +85,26 @@ fn translate_rterm_top(t: &RTerm) -> Constraint {
                 x.negate().unwrap()
             }
             term::Op::And => {
-                assert_eq!(args.len(), 2);
+                assert!(args.len() >= 2);
                 let x = translate_rterm_top(&args[0]);
                 let y = translate_rterm_top(&args[1]);
-                Constraint::mk_conj(x, y)
+                let mut c = Constraint::mk_conj(x, y);
+                for z in args.iter().skip(2) {
+                    let z = translate_rterm_top(z);
+                    c = Constraint::mk_conj(c, z);
+                }
+                c
             }
             term::Op::Or => {
-                assert_eq!(args.len(), 2);
+                assert!(args.len() >= 2);
                 let x = translate_rterm_top(&args[0]);
                 let y = translate_rterm_top(&args[1]);
-                Constraint::mk_disj(x, y)
+                let mut c = Constraint::mk_disj(x, y);
+                for z in args.iter().skip(2) {
+                    let z = translate_rterm_top(z);
+                    c = Constraint::mk_disj(c, z);
+                }
+                c
             }
             term::Op::Ite => {
                 assert_eq!(args.len(), 3);
@@ -101,8 +131,11 @@ fn translate_varidx(v: &VarIdx) -> Ident {
 fn translate_rterm_op(t: &RTerm) -> Op {
     match t {
         RTerm::Var(ty, y) => {
-            assert!(ty.is_int());
-            Op::mk_var(translate_varidx(y))
+            if ty.is_int() || ty.is_bool() {
+                Op::mk_var(translate_varidx(y))
+            } else {
+                panic!("program error")
+            }
         }
         RTerm::Cst(x) => {
             let v = x.get();
@@ -150,15 +183,13 @@ fn translate_rterm_op(t: &RTerm) -> Op {
                     let y = translate_rterm_op(&args[2]);
                     return Op::mk_ite(c, x, y);
                 }
-                term::Op::Gt
-                | term::Op::Ge
-                | term::Op::Le
-                | term::Op::Lt
-                | term::Op::Impl
-                | term::Op::Eql
-                | term::Op::Not
-                | term::Op::And
-                | term::Op::Or => unimplemented!(),
+                term::Op::Gt | term::Op::Ge | term::Op::Le | term::Op::Lt | term::Op::Eql => {
+                    let c = handle_atomic_predicate(op, args.iter().map(|x| &**x));
+                    return Op::mk_ite(c, Op::one(), Op::zero());
+                }
+                term::Op::Impl | term::Op::Not | term::Op::And | term::Op::Or => {
+                    panic!("failed to handle: {}", op)
+                }
                 term::Op::Distinct => todo!(),
                 term::Op::ToInt => todo!(),
                 term::Op::ToReal => todo!(),
