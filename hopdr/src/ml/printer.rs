@@ -262,7 +262,6 @@ impl DumpML for Expr {
 
 impl DumpML for Function {
     fn dump_ml<W: Write>(&self, f: &mut W, ctx: &Context) -> Result<(), fmt::Error> {
-        write!(f, "let rec ")?;
         self.name.dump_ml(f, ctx)?;
         write!(f, " = ")?;
         self.body.dump_ml(f, ctx)?;
@@ -286,7 +285,14 @@ impl<'a> Program<'a> {
         let mut s = String::new();
 
         self.dump_library_func(&mut s).unwrap();
+        s += "let rec ";
+        let mut first = true;
         for f in self.functions.iter() {
+            if first {
+                first = false;
+            } else {
+                s += "and ";
+            }
             f.dump_ml(&mut s, &self.ctx).unwrap();
         }
         self.dump_main_ml(&mut s).unwrap();

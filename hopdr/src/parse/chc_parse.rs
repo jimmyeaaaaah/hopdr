@@ -1,7 +1,6 @@
 use crate::formula::chc::CHCHead;
 use crate::formula::{chc, Logic};
 use crate::formula::{Bot, Constraint, Ident, Negation, Op, OpKind, PredKind, Top};
-use crate::util::P;
 use hoice::common::*;
 use hoice::instance::Clause;
 use hoice::instance::Instance;
