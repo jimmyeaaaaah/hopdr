@@ -12,6 +12,7 @@ use std::time::Duration;
 
 const LIBRARY: &str = r#"
 exception FalseExc
+exception IntegerOverflow 
 let check_mx = 1000000
 let check_mn = -1000000
 let rand_int (x, y) = 
@@ -24,6 +25,13 @@ let rand_int (x, y) =
     | None -> check_mx
   in 
     Random.int (mx - mn) + mn
+let check_overflow r = 
+  if r > check_mx then raise IntegerOverflow else
+  if r < check_mn then raise IntegerOverflow else
+  r
+let ( + ) x y = x + y |> check_overflow
+let ( - ) x y = x - y |> check_overflow
+let ( * ) x y = x * y |> check_overflow
 let (mod) x y = let r = x mod y in if r >= 0 then r else r + y
 "#;
 pub const FAIL_STRING: &str = "Failed to find a counterexample";
@@ -273,9 +281,13 @@ impl<'a> Program<'a> {
     fn dump_main_ml<W: Write>(&self, f: &mut W) -> Result<(), fmt::Error> {
         write!(
             f,
-            "let () = for i = 1 to 1000 do (Printf.printf \"epoch %d...\\n\" i; "
+            "let () = for i = 1 to 1000 do (Printf.printf \"epoch %d...\\n\" i; try "
         )?;
         self.main.dump_ml(f, &self.ctx)?;
+        write!(
+            f,
+            " with IntegerOverflow -> Printf.printf \"int overflow\n\""
+        )?;
         writeln!(f, ") done; Printf.printf \"{}\"", super::FAIL_STRING)
     }
     fn dump_library_func<W: Write>(&self, f: &mut W) -> Result<(), fmt::Error> {
