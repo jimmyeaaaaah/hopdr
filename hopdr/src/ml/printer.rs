@@ -13,8 +13,8 @@ use std::time::Duration;
 const LIBRARY: &str = r#"
 exception FalseExc
 exception IntegerOverflow
-let check_mx = ref 10000000
-let check_mn = ref (-10000000)
+let check_mx = ref 100000
+let check_mn = ref (-100000)
 let rand_int (x, y) = 
   let mn = match x with 
     | Some(x) -> x
