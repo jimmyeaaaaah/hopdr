@@ -12,27 +12,54 @@ use std::time::Duration;
 
 const LIBRARY: &str = r#"
 exception FalseExc
-exception IntegerOverflow 
-let check_mx = 100000000
-let check_mn = -100000000
+exception IntegerOverflow
+let check_mx = ref 10000000
+let check_mn = ref (-10000000)
 let rand_int (x, y) = 
   let mn = match x with 
     | Some(x) -> x
-    | None -> check_mn
+    | None -> !check_mn
   in
   let mx = match y with
     | Some(x) -> x
-    | None -> check_mx
+    | None -> !check_mx
   in 
     Random.int (mx - mn) + mn
-let check_overflow r = 
-  if r > check_mx then raise IntegerOverflow else
-  if r < check_mn then raise IntegerOverflow else
-  r
-let ( + ) x y = x + y |> check_overflow
-let ( - ) x y = x - y |> check_overflow
-let ( * ) x y = x * y |> check_overflow
-let (mod) x y = let r = x mod y in if r >= 0 then r else r + y
+let check_overflow f x y = try f x y with Invalid_argument _ -> raise IntegerOverflow
+
+let ( + ) a b = 
+  if a > 0 && b > 0 && a > max_int - b then
+    raise IntegerOverflow
+  else if a < 0 && b < 0 && a < min_int - b then
+    raise IntegerOverflow
+  else
+    a + b
+
+let ( - ) a b = 
+  if b > 0 && a < min_int + b then
+    raise IntegerOverflow
+  else if b < 0 && a > max_int + b then
+    raise IntegerOverflow
+  else
+    a - b
+    
+let ( * ) a b =
+  if a = 0 || b = 0 then
+    0
+  else if a = -1 && b = min_int then
+    raise IntegerOverflow
+  else if b = -1 && a = min_int then
+    raise IntegerOverflow
+  else if a > 0 && b > 0 && a > max_int / b then
+    raise IntegerOverflow
+  else if a < 0 && b < 0 && a < max_int / b then
+    raise IntegerOverflow
+  else if a > 0 && b < 0 && b < min_int / a then
+    raise IntegerOverflow
+  else if a < 0 && b > 0 && a < min_int / b then
+    raise IntegerOverflow
+  else
+    a * b
 "#;
 pub const FAIL_STRING: &str = "Failed to find a counterexample";
 
@@ -286,7 +313,13 @@ impl<'a> Program<'a> {
         self.main.dump_ml(f, &self.ctx)?;
         write!(
             f,
-            " with IntegerOverflow -> Printf.printf \"int overflow\n\""
+            " with IntegerOverflow -> begin\n
+                Printf.printf \"int overflow\n\";
+                if !check_mx > 10 then\n
+                    check_mx := !check_mx / 2;\n
+                if !check_mn < -10 then\n
+                    check_mn := !check_mn / 2;\n
+              end"
         )?;
         writeln!(f, ") done; Printf.printf \"{}\"", super::FAIL_STRING)
     }
