@@ -455,6 +455,22 @@ impl Pretty for Op {
             }
             Var(i) => al.text(format!("{}", i)),
             Const(c) => al.text(format!("{}", c)),
+            ITE(c, x, y) => {
+                let c = paren(al, config, PrecedenceKind::If, c);
+                let x = paren(al, config, PrecedenceKind::If, x);
+                let y = paren(al, config, PrecedenceKind::If, y);
+                al.text("if")
+                    .append(al.space())
+                    .append(c)
+                    .append(al.space())
+                    .append(al.text("then"))
+                    .append(al.space())
+                    .append(x)
+                    .append(al.space())
+                    .append(al.text("else"))
+                    .append(al.space())
+                    .append(y)
+            }
             Ptr(_, o) => o.pretty(al, config),
         }
     }

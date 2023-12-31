@@ -11,14 +11,12 @@
 
 use crate::formula::chc;
 use crate::formula::chc::Model;
-use crate::formula::hes::Const;
 use crate::formula::Fv;
 use crate::formula::Op;
 use crate::formula::Subst;
 use crate::formula::{Bot, Constraint, FirstOrderLogic, Ident, Logic, Negation, Top};
 use crate::solver;
 use crate::solver::chc::CHCStyle;
-use crate::solver::interpolation::InterpolationSolver::SMTInterpol;
 use crate::solver::smt::ident_2_smt2;
 use crate::solver::util;
 use crate::solver::{smt, SMTSolverType};

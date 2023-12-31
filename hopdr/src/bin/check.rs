@@ -87,11 +87,32 @@ fn main() {
 
     let (vc, ctx) = if args.chc {
         let data = std::fs::read_to_string(&args.input).unwrap();
+        println!("data");
+        println!("{data}");
         let chcs = parse::parse_chc(&data).unwrap();
-        (
-            crate::formula::chc::translate_to_hes(chcs),
-            hopdr::preprocess::Context::empty(),
-        )
+        println!("CHCs");
+        println!(
+            "linearity check {}",
+            crate::formula::chc::nonliniality(chcs.iter())
+        );
+        for chc in chcs.iter() {
+            println!("{}", chc);
+        }
+
+        //let chcs = crate::formula::chc::expand_ite(chcs);
+        //println!("translated:");
+        //for chc in chcs.iter() {
+        //    println!("{}", chc);
+        //}
+
+        let problem = if crate::formula::chc::is_linear(chcs.iter()) {
+            crate::formula::chc::translate_to_hes_linear
+        } else {
+            crate::formula::chc::translate_to_hes
+        }(chcs);
+
+        let problem = crate::preprocess::hes::preprocess_for_typed_problem(problem);
+        (problem, hopdr::preprocess::Context::empty())
     } else {
         get_problem(&args.input, &config)
     };

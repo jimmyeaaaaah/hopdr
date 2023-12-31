@@ -238,6 +238,12 @@ impl SATSolver {
                 let k = self.opkind_2_smt2(opkind);
                 format!("({} {} {})", k, o1, o2)
             }
+            OpExpr::ITE(c, x, y) => {
+                let c = self.constraint_to_smt2_inner(c);
+                let o1 = self.op_to_smt2(x);
+                let o2 = self.op_to_smt2(y);
+                format!("(ite {} {} {})", c, o1, o2)
+            }
             OpExpr::Var(x) => ident_2_smt2(x),
             OpExpr::Const(c) => self.int_2_smt2(*c),
             OpExpr::Ptr(_, o) => self.op_to_smt2(o),

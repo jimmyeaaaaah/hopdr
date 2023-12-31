@@ -750,7 +750,7 @@ impl Tau<fofml::Atom> {
                 fvs.remove(x);
                 Tau::mk_iarrow(*x, t_temp)
             }
-            TauKind::PTy(x, t) => t.clone_with_rty_template(constraint, fvs),
+            TauKind::PTy(_x, t) => t.clone_with_rty_template(constraint, fvs),
             TauKind::Arrow(ts, t) => {
                 let t = t.clone_with_rty_template(constraint, fvs);
                 Tau::mk_arrow(ts.clone(), t)
@@ -825,7 +825,7 @@ impl<C> Tau<C> {
         let mut ty = self;
         loop {
             match ty.kind() {
-                TauKind::PTy(x, t) => {
+                TauKind::PTy(_x, t) => {
                     ty = t;
                 }
                 _ => break ty.clone(),
@@ -1207,7 +1207,7 @@ fn test_generate_arithmetic_template() {
 fn preprocess_eq(left: &Op, right: &Op, vars: &HashSet<Ident>) -> Option<(Ident, Op)> {
     // 0 = right - left
     let right = Op::mk_sub(right.clone(), left.clone());
-    let additions = right.expand_expr_to_vec();
+    let additions = right.expand_expr_to_vec()?;
     let mut result_ops = Op::mk_const(0);
     let mut already_found = None; // Option<(ident, is_neg)>
     fn check(c: &Op, o: &Op) -> Option<(Ident, bool)> {
@@ -1217,10 +1217,12 @@ fn preprocess_eq(left: &Op, right: &Op, vars: &HashSet<Ident>) -> Option<(Ident,
             OpExpr::Const(_) | OpExpr::Op(_, _, _) | OpExpr::Var(_) | OpExpr::Ptr(_, _) => {
                 return None
             }
+            OpExpr::ITE(_, _, _) => unimplemented!(),
         };
         match o.kind() {
             OpExpr::Var(x) => Some((*x, is_neg)),
             OpExpr::Op(_, _, _) | OpExpr::Const(_) | OpExpr::Ptr(_, _) => None,
+            OpExpr::ITE(_, _, _) => unimplemented!(),
         }
     }
     for v in additions {
@@ -1238,6 +1240,7 @@ fn preprocess_eq(left: &Op, right: &Op, vars: &HashSet<Ident>) -> Option<(Ident,
                 result_ops = Op::mk_add(result_ops, v.clone())
             }
             OpExpr::Ptr(_, _) => panic!("assumption violated: ptrs are flattened"),
+            OpExpr::ITE(_, _, _) => unimplemented!(),
         }
     }
     already_found.map(|(ident, is_neg)| {
@@ -2115,7 +2118,7 @@ fn types<C: Refinement>(fml: Goal<C>, t: Tau<C>) -> Goal<C> {
             let c = c.clone().negate().unwrap().into();
             Goal::mk_disj(c, fml)
         }
-        TauKind::PTy(x, t) => {
+        TauKind::PTy(_, _) => {
             panic!("program error")
         }
         TauKind::IArrow(x, t) => {

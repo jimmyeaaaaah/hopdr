@@ -184,18 +184,24 @@ pub(super) fn ident_2_smt2(ident: &Ident) -> String {
     encode_ident(ident)
 }
 
-pub(super) fn op_to_smt2(op: &Op) -> String {
+pub(super) fn op_to_smt2(op: &Op, style: SMTSolverType) -> String {
     match op.kind() {
         OpExpr::Op(opkind, o1, o2) => {
-            let o1 = op_to_smt2(o1);
-            let o2 = op_to_smt2(o2);
+            let o1 = op_to_smt2(o1, style);
+            let o2 = op_to_smt2(o2, style);
             let k = opkind_2_smt2(opkind);
             format!("({} {} {})", k, o1, o2)
+        }
+        OpExpr::ITE(c, x, y) => {
+            let c = constraint_to_smt2_inner(c, style);
+            let o1 = op_to_smt2(x, style);
+            let o2 = op_to_smt2(y, style);
+            format!("(ite {} {} {})", c, o1, o2)
         }
         OpExpr::Var(x) => ident_2_smt2(x),
         OpExpr::Const(c) if *c >= 0 => format!("{}", c),
         OpExpr::Const(c) => format!("(- {})", -c),
-        OpExpr::Ptr(_, o) => op_to_smt2(o),
+        OpExpr::Ptr(_, o) => op_to_smt2(o, style),
     }
 }
 
@@ -212,7 +218,7 @@ pub(super) fn constraint_to_smt2_inner(c: &Constraint, style: SMTSolverType) -> 
         ConstraintExpr::True => "true".to_string(),
         ConstraintExpr::False => "false".to_string(),
         ConstraintExpr::Pred(p, l) => {
-            let args = l.iter().map(op_to_smt2).collect::<Vec<_>>();
+            let args = l.iter().map(|x| op_to_smt2(x, style)).collect::<Vec<_>>();
             pred_to_smt2(p, &args)
         }
         ConstraintExpr::Conj(c1, c2) => format!("(and {} {})", f(c1, style), f(c2, style)),

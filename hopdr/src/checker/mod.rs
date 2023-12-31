@@ -1,9 +1,10 @@
 mod ai;
 mod executor;
+mod mode;
 
 use crate::formula::hes::{Goal, GoalKind, Problem};
 use crate::formula::{Constraint, Ident, Logic, Negation, Op, Type as HFLType};
-use crate::ml::{optimize, Expr, Function, Program, Range, Type as SType, Variable};
+use crate::ml::{optimize, Expr, Function, Program, Type as SType, Variable};
 use crate::preprocess::Context;
 
 pub struct Config<'a> {
@@ -110,7 +111,7 @@ impl<'a> Translator<'a> {
                 let g2 = self.translate_goal(g2.clone());
                 let g1 = Expr::mk_app(g1.clone(), Expr::mk_var(p));
                 let g2 = Expr::mk_app(g2.clone(), Expr::mk_var(p));
-                Expr::mk_if(self.translate_constraint(&c2), g1, g2)
+                Expr::mk_if(Expr::mk_constraint(c2), g1, g2)
             }))
         } else {
             None
@@ -152,35 +153,37 @@ impl<'a> Translator<'a> {
                 }
             }
             //
-            GoalKind::Conj(g1_fml, g2_fml) => Self::gen_prop(|p| {
-                match (g1_fml.kind(), g2_fml.kind()) {
-                    (GoalKind::Disj(g11, g12), GoalKind::Disj(g21, g22)) => {
-                        match self.handle_conj_disj(g11, g12, g21, g22) {
-                            Some(x) => return x,
-                            _ => (),
+            GoalKind::Conj(g1_fml, g2_fml) => {
+                Self::gen_prop(|p| {
+                    match (g1_fml.kind(), g2_fml.kind()) {
+                        (GoalKind::Disj(g11, g12), GoalKind::Disj(g21, g22)) => {
+                            match self.handle_conj_disj(g11, g12, g21, g22) {
+                                Some(x) => return Expr::mk_app(x, Expr::mk_var(p)),
+                                _ => (),
+                            }
                         }
+                        _ => (),
+                    };
+
+                    let g1 = self.translate_goal(g1_fml.clone());
+                    let g1 = Expr::mk_app(g1, Expr::mk_var(p));
+                    let g2 = self.translate_goal(g2_fml.clone());
+                    let g2 = Expr::mk_app(g2, Expr::mk_var(p));
+                    let ident = Ident::fresh();
+                    let c = Constraint::mk_eq(Op::mk_var(ident), Op::zero());
+
+                    //[θ /\ Ψ2] = fun p -> [θ] p; [Ψ2]p
+                    //[Ψ1 /\ θ] = fun p -> [θ] p; [Ψ1]p
+                    if Into::<Option<Constraint>>::into(g1_fml.clone()).is_some() {
+                        Expr::mk_sequential(g1, g2)
+                    } else if Into::<Option<Constraint>>::into(g2_fml.clone()).is_some() {
+                        Expr::mk_sequential(g2, g1)
+                    } else {
+                        let body = Expr::mk_if(Expr::mk_constraint(c), g1, g2);
+                        Expr::mk_let_bool_rand(ident, body)
                     }
-                    _ => (),
-                };
-
-                let g1 = self.translate_goal(g1_fml.clone());
-                let g1 = Expr::mk_app(g1, Expr::mk_var(p));
-                let g2 = self.translate_goal(g2_fml.clone());
-                let g2 = Expr::mk_app(g2, Expr::mk_var(p));
-                let ident = Ident::fresh();
-                let c = Constraint::mk_geq(Op::mk_var(ident), Op::zero());
-
-                //[θ /\ Ψ2] = fun p -> [θ] p; [Ψ2]p
-                //[Ψ1 /\ θ] = fun p -> [θ] p; [Ψ1]p
-                if Into::<Option<Constraint>>::into(g1_fml.clone()).is_some() {
-                    Expr::mk_sequential(g1, g2)
-                } else if Into::<Option<Constraint>>::into(g2_fml.clone()).is_some() {
-                    Expr::mk_sequential(g2, g1)
-                } else {
-                    let body = Expr::mk_if(Expr::mk_constraint(c), g1, g2);
-                    Expr::mk_let_bool_rand(ident, body)
-                }
-            }),
+                })
+            }
             GoalKind::Disj(g1, g2) => Self::gen_prop(|p| {
                 let g1 = Expr::mk_app(self.translate_goal(g1.clone()), Expr::mk_var(p));
                 let g2 = Expr::mk_app(self.translate_goal(g2.clone()), Expr::mk_var(p));
@@ -195,7 +198,7 @@ impl<'a> Translator<'a> {
         }
     }
     fn translate(&self, problem: Problem<Constraint>) -> Program {
-        let functions = problem
+        let functions: Vec<_> = problem
             .clauses
             .iter()
             .map(|c| {
@@ -216,14 +219,20 @@ impl<'a> Translator<'a> {
 }
 
 pub fn run(problem: Problem<Constraint>, config: Config) {
+    println!("translated nu hflz");
+    println!("{problem}");
     let trans = Translator::new(config);
     let prog = trans.translate(problem);
+    println!("UnOptimized Program");
+    println!("{}", prog.dump_ml());
     let prog = optimize(prog);
     let s = prog.dump_ml();
+    println!("Generated Program");
     println!("{s}");
 
     match executor::executor(s) {
         executor::ExecResult::Unknown => println!("Unknown"),
         executor::ExecResult::Invalid => println!("Invalid"),
+        executor::ExecResult::Fail(s) => println!("Fail\nReason: {s}"),
     }
 }

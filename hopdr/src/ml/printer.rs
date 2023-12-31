@@ -10,6 +10,10 @@ use std::fmt;
 use std::fmt::Write;
 use std::time::Duration;
 
+const LIBRARY: &str = include_str!("library.ml");
+
+pub const FAIL_STRING: &str = "Failed to find a counterexample";
+
 pub fn do_format(input: &str) -> String {
     // ocamlformat  --impl -
     let args = vec!["--impl", "-"];
@@ -104,7 +108,7 @@ impl DumpML for Constraint {
                 dump_bin_op(f, self.precedence(), "&&", c1, c2, ctx)
             }
             crate::formula::ConstraintExpr::Disj(c1, c2) => {
-                dump_bin_op(f, self.precedence(), "&&", c1, c2, ctx)
+                dump_bin_op(f, self.precedence(), "||", c1, c2, ctx)
             }
             crate::formula::ConstraintExpr::Quantifier(q, x, g) => {
                 assert!(q.is_universal());
@@ -127,7 +131,7 @@ impl OpKind {
             OpKind::Sub => "-",
             OpKind::Mul => "*",
             OpKind::Div => "/",
-            OpKind::Mod => "%",
+            OpKind::Mod => "mod",
         }
         .to_string()
     }
@@ -141,7 +145,18 @@ impl DumpML for Op {
                 dump_bin_op(f, o.precedence(), &op, x, y, ctx)
             }
             crate::formula::OpExpr::Var(x) => x.dump_ml(f, ctx),
-            crate::formula::OpExpr::Const(c) => write!(f, "{}", c),
+            crate::formula::OpExpr::Const(c) => {
+                write!(f, "{}", c)
+            }
+            crate::formula::OpExpr::ITE(c, x, y) => {
+                write!(f, "if ")?;
+                c.dump_ml(f, ctx)?;
+                write!(f, " then begin ")?;
+                x.dump_ml(f, ctx)?;
+                write!(f, " end else begin ")?;
+                y.dump_ml(f, ctx)?;
+                write!(f, " end")
+            }
             crate::formula::OpExpr::Ptr(_, g) => g.dump_ml(f, ctx),
         }
     }
@@ -192,15 +207,16 @@ impl DumpML for Expr {
                 write!(f, "fun ")?;
                 ident.ident.dump_ml(f, ctx)?;
                 write!(f, " -> ")?;
-                body.dump_ml(f, ctx)
+                paren(f, self.precedence(), body, ctx)
             }
             ExprKind::If { cond, then, els } => {
                 write!(f, "if ")?;
                 cond.dump_ml(f, ctx)?;
-                write!(f, " then ")?;
+                write!(f, " then begin ")?;
                 then.dump_ml(f, ctx)?;
-                write!(f, " else ")?;
-                els.dump_ml(f, ctx)
+                write!(f, " end else begin ")?;
+                els.dump_ml(f, ctx)?;
+                write!(f, " end")
             }
             ExprKind::LetRand { ident, range, body } => {
                 write!(f, "let ")?;
@@ -212,20 +228,19 @@ impl DumpML for Expr {
             }
             ExprKind::Assert(c) => {
                 write!(f, "assert ")?;
-                c.dump_ml(f, ctx)
+                paren(f, self.precedence(), c, ctx)
             }
             ExprKind::Unit => write!(f, "()"),
             ExprKind::Raise => write!(f, "(raise FalseExc)"),
             ExprKind::TryWith { body, handler } => {
-                write!(f, "try ")?;
+                write!(f, "try begin ")?;
                 body.dump_ml(f, ctx)?;
-                write!(f, " with FalseExc -> ")?;
-                handler.dump_ml(f, ctx)
+                write!(f, " end with FalseExc -> begin ")?;
+                handler.dump_ml(f, ctx)?;
+                write!(f, " end ")
             }
             ExprKind::Sequential { lhs, rhs } => {
-                lhs.dump_ml(f, ctx)?;
-                write!(f, "; ")?;
-                rhs.dump_ml(f, ctx)
+                dump_bin_op(f, self.precedence(), ";", lhs, rhs, ctx)
             }
         }
     }
@@ -233,7 +248,6 @@ impl DumpML for Expr {
 
 impl DumpML for Function {
     fn dump_ml<W: Write>(&self, f: &mut W, ctx: &Context) -> Result<(), fmt::Error> {
-        write!(f, "let rec ")?;
         self.name.dump_ml(f, ctx)?;
         write!(f, " = ")?;
         self.body.dump_ml(f, ctx)?;
@@ -245,23 +259,38 @@ impl<'a> Program<'a> {
     fn dump_main_ml<W: Write>(&self, f: &mut W) -> Result<(), fmt::Error> {
         write!(
             f,
-            "let () = for i = 1 to 1000 do (Printf.printf \"epoch %d...\\n\" i; "
+            "let () = for i = 1 to 1000 do (Printf.printf \"epoch %d...\\n\" i; try "
         )?;
         self.main.dump_ml(f, &self.ctx)?;
-        writeln!(f, ") done")
+        write!(
+            f,
+            " with IntegerOverflow -> begin\n
+                Printf.printf \"int overflow\n\";
+                event_integer_overflow ()
+              end"
+        )?;
+        writeln!(f, ") done; Printf.printf \"{}\"", super::FAIL_STRING)
     }
     fn dump_library_func<W: Write>(&self, f: &mut W) -> Result<(), fmt::Error> {
-        writeln!(f, "let rand_int () = Random.int 10000000 - 5000000\n")?;
-        writeln!(f, "exception FalseExc\n")
+        writeln!(f, "{}", LIBRARY)
     }
     pub fn dump_ml(&self) -> String {
         let mut s = String::new();
 
         self.dump_library_func(&mut s).unwrap();
+        s += "let rec ";
+        let mut first = true;
         for f in self.functions.iter() {
+            if first {
+                first = false;
+            } else {
+                s += "and ";
+            }
             f.dump_ml(&mut s, &self.ctx).unwrap();
         }
         self.dump_main_ml(&mut s).unwrap();
+        crate::title!("printer");
+        debug!("{s}");
         super::printer::do_format(&s)
     }
 }

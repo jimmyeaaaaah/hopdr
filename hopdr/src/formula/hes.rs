@@ -210,11 +210,32 @@ impl<C, T: Default> GoalBase<C, T> {
     pub fn mk_op(op: Op) -> GoalBase<C, T> {
         GoalBase::mk_op_t(op, T::default())
     }
-    pub fn mk_conj(lhs: GoalBase<C, T>, rhs: GoalBase<C, T>) -> GoalBase<C, T> {
+    pub fn is_op(&self) -> bool {
+        matches!(self.kind(), GoalKind::Op(_))
+    }
+}
+
+impl<C: Bot + Top, T: Clone + Default> Logic for GoalBase<C, T> {
+    fn mk_conj(lhs: GoalBase<C, T>, rhs: GoalBase<C, T>) -> GoalBase<C, T> {
         GoalBase::mk_conj_t(lhs, rhs, T::default())
     }
-    pub fn mk_disj(lhs: GoalBase<C, T>, rhs: GoalBase<C, T>) -> GoalBase<C, T> {
+
+    fn mk_disj(lhs: GoalBase<C, T>, rhs: GoalBase<C, T>) -> GoalBase<C, T> {
         GoalBase::mk_disj_t(lhs, rhs, T::default())
+    }
+
+    fn is_conj(&self) -> Option<(&Self, &Self)> {
+        match self.kind() {
+            GoalKind::Conj(g1, g2) => Some((g1, g2)),
+            _ => None,
+        }
+    }
+
+    fn is_disj(&self) -> Option<(&Self, &Self)> {
+        match self.kind() {
+            GoalKind::Disj(g1, g2) => Some((g1, g2)),
+            _ => None,
+        }
     }
 }
 impl<C, T> GoalBase<C, T> {
@@ -284,6 +305,19 @@ impl<C, T> GoalBase<C, T> {
             _ => panic!("the given expr is not disj"),
         }
     }
+    /// Returns Left value of a tuple of Constraint and Goal if the given formula is disjunction g1 \/ g2,
+    /// and one of them is a constraint. Otherwise, returns Right value of a tuple of Goal and Goal.
+    pub fn disj_constr<'a>(&'a self) -> either::Either<(&'a C, &'a Self), (&'a Self, &'a Self)> {
+        let (g1, g2) = match self.kind() {
+            GoalKind::Disj(g1, g2) => (g1, g2),
+            _ => panic!("the given expr is not disj"),
+        };
+        match (g1.kind(), g2.kind()) {
+            (GoalKind::Constr(c), _) => either::Left((c, g2)),
+            (_, GoalKind::Constr(c)) => either::Left((c, g1)),
+            _ => either::Right((g1, g2)),
+        }
+    }
     pub fn univ<'a>(&'a self) -> (&'a Variable, &'a Self) {
         match self.kind() {
             GoalKind::Univ(x, g) => (x, g),
@@ -323,7 +357,7 @@ impl<C, T> GoalBase<C, T> {
         matches!(self.kind(), GoalKind::Disj(_, _))
     }
 }
-impl<C: Bot + Top> Goal<C> {
+impl<C: Bot + Top + Logic> Goal<C> {
     pub fn mk_ho_disj(fmls: &[Goal<C>], mut sty: Type) -> Goal<C> {
         let mut vs = Vec::new();
         loop {
@@ -394,6 +428,17 @@ impl<C: Bot + Top> Goal<C> {
             Goal::mk_disj(lhs, rhs)
         }
     }
+
+    /// This returns a formula that is equivalent to the universal quantification of `x` in `g`.
+    pub fn mk_univ_opt(x: Variable, g: Goal<C>) -> Goal<C> {
+        if g.is_true() {
+            GoalBase::mk_true()
+        } else if g.is_false() {
+            GoalBase::mk_false()
+        } else {
+            GoalBase::mk_univ(x, g)
+        }
+    }
 }
 
 impl<C: Negation, T: Default> GoalBase<C, T> {
@@ -460,6 +505,47 @@ impl<C: Rename, T: Clone> Rename for GoalBase<C, T> {
         }
     }
 }
+
+impl<
+        C: Subst<Item = Op, Id = Ident> + Rename + Fv<Id = Ident> + Precedence + Pretty,
+        T: Clone + Default,
+    > GoalBase<C, T>
+{
+    pub fn isubst(&self, x: &Ident, v: &Op) -> GoalBase<C, T> {
+        match self.kind() {
+            GoalKind::Constr(c) => Self::mk_constr_t(c.subst(x, v), self.aux.clone()),
+            GoalKind::Op(o) => Self::mk_op_t(o.subst(x, v), self.aux.clone()),
+            GoalKind::Var(y) if x == y => Self::mk_op(v.clone()),
+            GoalKind::Var(_) => self.clone(),
+            GoalKind::Abs(y, _) if x == &y.id => self.clone(),
+            GoalKind::Abs(y, g) => {
+                let g = g.isubst(x, v);
+                Self::mk_abs_t(y.clone(), g, self.aux.clone())
+            }
+            GoalKind::App(g1, g2) => {
+                let g1 = g1.isubst(x, v);
+                let g2 = g2.isubst(x, v);
+                Self::mk_app_t(g1, g2, self.aux.clone())
+            }
+            GoalKind::Conj(g1, g2) => {
+                let g1 = g1.isubst(x, v);
+                let g2 = g2.isubst(x, v);
+                Self::mk_conj_t(g1, g2, self.aux.clone())
+            }
+            GoalKind::Disj(g1, g2) => {
+                let g1 = g1.isubst(x, v);
+                let g2 = g2.isubst(x, v);
+                Self::mk_disj_t(g1, g2, self.aux.clone())
+            }
+            GoalKind::Univ(y, _) if &y.id == x => self.clone(),
+            GoalKind::Univ(y, g) => {
+                let g = g.isubst(x, v);
+                Self::mk_univ_t(y.clone(), g, self.aux.clone())
+            }
+        }
+    }
+}
+
 impl<C: Subst<Item = Op, Id = Ident> + Rename + Fv<Id = Ident> + Precedence + Pretty, T: Clone>
     Subst for GoalBase<C, T>
 {
@@ -922,7 +1008,7 @@ impl<C: TeXFormat> TeXFormat for Problem<C> {
     }
 }
 
-impl<C: Rename> Problem<C> {
+impl<C: Rename + Bot + Top> Problem<C> {
     // [ψ₁/F₁, ψ₂/F₂ … ]ψ
     pub fn eval(&self, target: &Goal<C>) -> Goal<C> {
         match target.kind() {

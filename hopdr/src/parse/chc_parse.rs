@@ -1,7 +1,6 @@
 use crate::formula::chc::CHCHead;
 use crate::formula::{chc, Logic};
 use crate::formula::{Bot, Constraint, Ident, Negation, Op, OpKind, PredKind, Top};
-use crate::util::Pretty;
 use hoice::common::*;
 use hoice::instance::Clause;
 use hoice::instance::Instance;
@@ -9,13 +8,44 @@ use hoice::parse;
 use hoice::term::RTerm;
 type CHC = chc::CHC<chc::Atom, Constraint>;
 
+// during parsing, we encode boolean as integer (1 or 0).
+
+fn handle_atomic_predicate<'a>(
+    op: &term::Op,
+    mut args: impl Iterator<Item = &'a RTerm> + 'a,
+) -> Constraint {
+    match op {
+        term::Op::Gt | term::Op::Ge | term::Op::Le | term::Op::Lt | term::Op::Eql => {
+            let x = translate_rterm_op(args.next().unwrap());
+            let y = translate_rterm_op(args.next().unwrap());
+            let p = match op {
+                term::Op::Gt => PredKind::Gt,
+                term::Op::Ge => PredKind::Geq,
+                term::Op::Le => PredKind::Leq,
+                term::Op::Lt => PredKind::Lt,
+                term::Op::Eql => PredKind::Eq,
+                _ => unreachable!(),
+            };
+            Constraint::mk_bin_pred(p, x, y)
+        }
+        _ => panic!("program error"),
+    }
+}
+
+fn bool_variable_encoding(id: Ident) -> Constraint {
+    Constraint::mk_eq(Op::mk_mod(Op::mk_var(id), Op::mk_const(2)), Op::mk_const(1))
+}
+
 fn translate_rterm_top(t: &RTerm) -> Constraint {
     match t {
         RTerm::CArray { .. }
         | RTerm::DTypNew { .. }
         | RTerm::DTypSlc { .. }
-        | RTerm::DTypTst { .. }
-        | RTerm::Var(_, _) => panic!("program error"),
+        | RTerm::DTypTst { .. } => panic!("program error"),
+        RTerm::Var(ty, x) => {
+            assert!(ty.is_bool());
+            bool_variable_encoding(translate_varidx(x))
+        }
         RTerm::Cst(c) => match c.get() {
             val::RVal::B(x) if *x => Constraint::mk_true(),
             val::RVal::B(_) => Constraint::mk_false(),
@@ -40,17 +70,7 @@ fn translate_rterm_top(t: &RTerm) -> Constraint {
             | term::Op::Mod => panic!("program error"),
             term::Op::Gt | term::Op::Ge | term::Op::Le | term::Op::Lt | term::Op::Eql => {
                 assert_eq!(args.len(), 2);
-                let x = translate_rterm_op(&args[0]);
-                let y = translate_rterm_op(&args[1]);
-                let p = match op {
-                    term::Op::Gt => PredKind::Gt,
-                    term::Op::Ge => PredKind::Geq,
-                    term::Op::Le => PredKind::Leq,
-                    term::Op::Lt => PredKind::Lt,
-                    term::Op::Eql => PredKind::Eq,
-                    _ => unreachable!(),
-                };
-                Constraint::mk_bin_pred(p, x, y)
+                handle_atomic_predicate(op, args.iter().map(|x| &**x))
             }
             term::Op::Impl => {
                 assert_eq!(args.len(), 2);
@@ -64,16 +84,26 @@ fn translate_rterm_top(t: &RTerm) -> Constraint {
                 x.negate().unwrap()
             }
             term::Op::And => {
-                assert_eq!(args.len(), 2);
+                assert!(args.len() >= 2);
                 let x = translate_rterm_top(&args[0]);
                 let y = translate_rterm_top(&args[1]);
-                Constraint::mk_conj(x, y)
+                let mut c = Constraint::mk_conj(x, y);
+                for z in args.iter().skip(2) {
+                    let z = translate_rterm_top(z);
+                    c = Constraint::mk_conj(c, z);
+                }
+                c
             }
             term::Op::Or => {
-                assert_eq!(args.len(), 2);
+                assert!(args.len() >= 2);
                 let x = translate_rterm_top(&args[0]);
                 let y = translate_rterm_top(&args[1]);
-                Constraint::mk_disj(x, y)
+                let mut c = Constraint::mk_disj(x, y);
+                for z in args.iter().skip(2) {
+                    let z = translate_rterm_top(z);
+                    c = Constraint::mk_disj(c, z);
+                }
+                c
             }
             term::Op::Ite => {
                 assert_eq!(args.len(), 3);
@@ -97,11 +127,35 @@ fn translate_varidx(v: &VarIdx) -> Ident {
     Ident::from(x as u64)
 }
 
+fn decode_op2constr(x: Op) -> Constraint {
+    match x.kind() {
+        crate::formula::OpExpr::Var(x) => bool_variable_encoding(*x),
+        crate::formula::OpExpr::ITE(c, x, y)
+            if x.eval_with_empty_env() == Some(1) && y.eval_with_empty_env() == Some(0) =>
+        {
+            c.clone()
+        }
+        _ => panic!("program error"),
+    }
+}
+fn encode_constr2op(c: Constraint) -> Op {
+    Op::mk_ite(c, Op::one(), Op::zero())
+}
+fn handle_bin_bool_op(x: Op, y: Op, f: impl Fn(Constraint, Constraint) -> Constraint) -> Op {
+    let c1 = decode_op2constr(x);
+    let c2 = decode_op2constr(y);
+    let c = f(c1, c2);
+    encode_constr2op(c)
+}
+
 fn translate_rterm_op(t: &RTerm) -> Op {
     match t {
         RTerm::Var(ty, y) => {
-            assert!(ty.is_int());
-            Op::mk_var(translate_varidx(y))
+            if ty.is_int() || ty.is_bool() {
+                Op::mk_var(translate_varidx(y))
+            } else {
+                panic!("program error")
+            }
         }
         RTerm::Cst(x) => {
             let v = x.get();
@@ -141,27 +195,67 @@ fn translate_rterm_op(t: &RTerm) -> Op {
                 term::Op::IDiv => OpKind::Div,
                 term::Op::Div => todo!(),
                 term::Op::Rem => OpKind::Mod,
-                term::Op::Mod => todo!(),
-                term::Op::Gt
-                | term::Op::Ge
-                | term::Op::Le
-                | term::Op::Lt
-                | term::Op::Impl
-                | term::Op::Eql
-                | term::Op::Not
-                | term::Op::And
-                | term::Op::Or
-                | term::Op::Ite => panic!("program error"),
+                term::Op::Mod => OpKind::Mod,
+                term::Op::Ite => {
+                    assert_eq!(args.len(), 3);
+                    let c = translate_rterm_top(&args[0]);
+                    let x = translate_rterm_op(&args[1]);
+                    let y = translate_rterm_op(&args[2]);
+                    return Op::mk_ite(c, x, y);
+                }
+                term::Op::Gt | term::Op::Ge | term::Op::Le | term::Op::Lt | term::Op::Eql => {
+                    let c = handle_atomic_predicate(op, args.iter().map(|x| &**x));
+                    return encode_constr2op(c);
+                }
+                term::Op::And => {
+                    assert!(args.len() >= 2);
+                    let mut c = translate_rterm_op(&args[0]);
+                    for z in args.iter().skip(1) {
+                        let z: crate::formula::P<crate::formula::OpExpr> = translate_rterm_op(z);
+                        c = handle_bin_bool_op(c, z, Constraint::mk_conj)
+                    }
+                    return c;
+                }
+                term::Op::Or => {
+                    assert!(args.len() >= 2);
+                    let mut c = translate_rterm_op(&args[0]);
+                    for z in args.iter().skip(1) {
+                        let z: crate::formula::P<crate::formula::OpExpr> = translate_rterm_op(z);
+                        c = handle_bin_bool_op(c, z, Constraint::mk_disj)
+                    }
+                    return c;
+                }
+                term::Op::Not => {
+                    assert_eq!(args.len(), 1);
+                    let o = translate_rterm_op(&args[0]);
+                    let c = decode_op2constr(o);
+                    return encode_constr2op(c.negate().unwrap());
+                }
+                term::Op::Impl => {
+                    assert_eq!(args.len(), 2);
+                    let x = translate_rterm_op(&args[0]);
+                    let y = translate_rterm_op(&args[1]);
+                    return handle_bin_bool_op(x, y, Constraint::mk_implies);
+                }
                 term::Op::Distinct => todo!(),
                 term::Op::ToInt => todo!(),
                 term::Op::ToReal => todo!(),
                 term::Op::Store => todo!(),
                 term::Op::Select => todo!(),
             };
-            assert_eq!(args.len(), 2);
+            assert!(args.len() >= 2);
+
+            if args.len() != 2 {
+                assert!(op == OpKind::Add || op == OpKind::Mul);
+            }
             let x = translate_rterm_op(&args[0]);
             let y = translate_rterm_op(&args[1]);
-            Op::mk_bin_op(op, x, y)
+            let mut o = Op::mk_bin_op(op, x, y);
+            for z in args.iter().skip(2) {
+                let z = translate_rterm_op(z);
+                o = Op::mk_bin_op(op, o, z);
+            }
+            o
         }
         RTerm::DTypNew { .. } => todo!(),
         RTerm::DTypSlc { .. } => todo!(),
@@ -221,6 +315,11 @@ fn rename_op(o: &Op, varmap: &mut HashMap<Ident, Ident>) -> Op {
             }
         },
         crate::formula::OpExpr::Const(x) => Op::mk_const(*x),
+        crate::formula::OpExpr::ITE(c, x, y) => Op::mk_ite(
+            rename_constraint(c, varmap),
+            rename_op(x, varmap),
+            rename_op(y, varmap),
+        ),
         crate::formula::OpExpr::Ptr(_, _) => panic!("program error"),
     }
 }
@@ -296,11 +395,8 @@ fn translate(instance: &Instance, var_map: &mut HashMap<Ident, Ident>) -> Vec<CH
 }
 
 pub fn parse_chc(input: &str) -> Result<Vec<chc::CHC<chc::Atom, Constraint>>, &'static str> {
-    println!("wow");
     let mut instance = Instance::new();
-    println!("nice");
     let mut cxt = parse::ParserCxt::new();
-    println!("hello");
     let res = match cxt
         .parser(input, 0, &hoice::common::Profiler::new())
         .parse(&mut instance)
@@ -342,8 +438,19 @@ pub fn get_mc91() -> Vec<chc::CHC<chc::Atom, Constraint>> {
     parse_chc(input).unwrap()
 }
 
+pub fn get_linear() -> Vec<chc::CHC<chc::Atom, Constraint>> {
+    let input = "(set-logic HORN)
+    (declare-fun P (Int) Bool)
+    (assert (forall ((x Int)) (P 0)))
+    (assert (forall ((x Int) ) (=> (and (< x 10000) (P x)) (P (+ x 1)))))
+    (assert (forall ((x Int) ) (=> (and (>= x 10000) (P x)) (> x 10000))))
+    (check-sat)";
+    parse_chc(input).unwrap()
+}
+
 #[test]
 fn test_parse_file() {
+    use crate::util::Pretty;
     let chc = get_mc91();
     chc.iter().for_each(|c| {
         println!("{}", c.pretty_display());

@@ -20,7 +20,9 @@ pub fn transform(problem: hes::Problem<formula::Constraint>) -> hes::Problem<for
 
 #[test]
 fn test_transform() {
+    use crate::formula::Logic;
     use hes::Goal;
+
     let x = formula::Ident::fresh();
     let g = Goal::mk_disj(Goal::mk_var(x), Goal::mk_var(x));
     let g2 = transform_goal(&g);

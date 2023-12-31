@@ -3,7 +3,7 @@ pub mod tree;
 
 use super::optimizer;
 use super::optimizer::{variable_info, InferenceResult, Optimizer};
-use super::rtype::{TBot, Tau, TauKind, TyEnv, TypeEnvironment};
+use super::rtype::{Tau, TauKind, TyEnv, TypeEnvironment};
 use derive_tree::Derivation;
 
 use crate::formula::chc::Model;
@@ -107,6 +107,7 @@ impl ReductionType {
     fn int() -> ReductionType {
         ReductionType::Int(IntReduction {})
     }
+    #[allow(dead_code)]
     fn is_int(&self) -> bool {
         matches!(self, ReductionType::Int(_))
     }
@@ -139,6 +140,7 @@ impl ReductionInfo {
 
 // perhaps we will attach auxiliary information so we prepare another struct for reduction sequence
 struct Reduction {
+    #[allow(dead_code)]
     app_expr: G,
     // (λx. λy. ψ) arg1 arg2  -> ψ
     predicate: G, //λx. λy. ψ
@@ -154,6 +156,7 @@ struct Reduction {
     result: G,
     // predicate's free variables of type int
     fvints: HashSet<Ident>,
+    #[allow(dead_code)]
     argints: HashSet<Ident>,
     // constraint of the redux where this reduction happens
     constraint: Constraint,
@@ -668,7 +671,7 @@ fn generate_reduction_sequence(goal: &G, optimizer: &mut dyn Optimizer) -> (Vec<
                 args: Stack<G>,
             ) -> Option<(G, Vec<ReductionInfo>)> {
                 match predicate.kind() {
-                    GoalKind::Abs(x, g) => {
+                    GoalKind::Abs(_x, _g) => {
                         Some(reduction(optimizer, level, idents, args, predicate))
                     }
                     _ => None,
@@ -1146,6 +1149,7 @@ fn handle_abs(
 struct TCConfig {
     tc_mode: TCFlag,
     // TODO
+    #[allow(dead_code)]
     construct_derivation: bool,
 }
 
@@ -1244,15 +1248,16 @@ fn handle_app(
                             //      retrieved
                             //   3. ?
                             assert!(ct.len() == 1);
-                            let d = Derivation::rule_var(
-                                cty.clone(),
-                                pred_expr.clone(),
-                                ct[0].clone(),
-                                unimplemented!(),
-                                Stack::new(),
-                                unimplemented!(),
-                            );
-                            vec![d]
+                            unimplemented!()
+                            //let d = Derivation::rule_var(
+                            //    cty.clone(),
+                            //    pred_expr.clone(),
+                            //    ct[0].clone(),
+                            //    unimplemented!(),
+                            //    Stack::new(),
+                            //    unimplemented!(),
+                            //);
+                            //vec![d]
                         }
                     };
                     // we introduce context_ty's information to the predicate's type
@@ -1269,7 +1274,7 @@ fn handle_app(
                 None => PossibleDerivation::empty(),
             },
             formula::hes::GoalKind::App(predg, argg) => {
-                let mut pred_pt = handle_app(config, tenv, ienv, all_coefficients, predg, cty);
+                let pred_pt = handle_app(config, tenv, ienv, all_coefficients, predg, cty);
                 // Case: the argument is integer
                 match argg.check_int_expr(ienv) {
                     // Case: the type of argument is int
@@ -1290,7 +1295,7 @@ fn handle_app(
                 // we calculate the argument's type. we have to enumerate all the possible type of pt1.
 
                 for pred_derivation in pred_pt.types {
-                    let (arg_t, result_t) = match pred_derivation.root_ty().kind() {
+                    let (arg_t, _result_t) = match pred_derivation.root_ty().kind() {
                         TauKind::Arrow(arg, result) => (arg, result),
                         TauKind::PTy(_, _) | TauKind::Proposition(_) | TauKind::IArrow(_, _) => {
                             panic!("fatal")

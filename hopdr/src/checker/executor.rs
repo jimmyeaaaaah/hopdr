@@ -1,11 +1,12 @@
-use std::time::Duration;
-
-use tempfile::NamedTempFile;
-
+use crate::ml::FAIL_STRING;
 use crate::solver::util;
+
+use std::time::Duration;
+use tempfile::NamedTempFile;
 pub enum ExecResult {
     Unknown,
     Invalid,
+    Fail(String),
 }
 
 pub(super) fn save_prog(prog: String) -> NamedTempFile {
@@ -13,10 +14,12 @@ pub(super) fn save_prog(prog: String) -> NamedTempFile {
 }
 
 fn parse(s: &str) -> ExecResult {
-    if s.contains(&"FalseExc") {
+    if s.contains("FalseExc") {
         ExecResult::Invalid
-    } else {
+    } else if s.contains(FAIL_STRING) {
         ExecResult::Unknown
+    } else {
+        ExecResult::Fail(s.to_string())
     }
 }
 

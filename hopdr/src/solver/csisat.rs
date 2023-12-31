@@ -44,6 +44,7 @@ fn op_to_csisat(o: &Op) -> String {
         }
         OpExpr::Var(v) => v.to_string(),
         OpExpr::Const(c) => c.to_string(),
+        OpExpr::ITE(_, _, _) => unimplemented!(),
         OpExpr::Ptr(_, o) => op_to_csisat(o),
     }
 }
@@ -185,5 +186,5 @@ fn parse_csisat() {
     }
 
     let s = " (x_1193 < 0 | -1*x_1194 <= -1)";
-    let c = parse(s).unwrap();
+    let _c = parse(s).unwrap();
 }

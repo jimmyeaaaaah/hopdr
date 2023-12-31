@@ -97,6 +97,7 @@ pub enum OpExpr {
     Op(OpKind, Op, Op),
     Var(Ident),
     Const(i64),
+    ITE(Constraint, Op, Op),
     // for tracking substitution, we memorize the old ident and replaced op
     // also this is a guard for optimization. you don't have to deref ptr to implement
     // optimization (otherwise, derivation procedure will break)
@@ -131,6 +132,11 @@ impl Fv for Op {
             }
             OpExpr::Var(x) => {
                 fvs.insert(*x);
+            }
+            OpExpr::ITE(x, y, z) => {
+                x.fv_with_vec(fvs);
+                y.fv_with_vec(fvs);
+                z.fv_with_vec(fvs);
             }
             OpExpr::Const(_) => {}
             OpExpr::Ptr(_, o) => o.fv_with_vec(fvs),
@@ -210,9 +216,11 @@ impl Op {
                 // this is true if you construct muls with mk_mul
                 OpExpr::Op(OpKind::Mul, y, z) if y.check_const(-1) => Op::mk_sub(x, z.clone()),
                 OpExpr::Const(c) if *c < 0 => Op::mk_sub(x, Op::mk_const(-c)),
-                OpExpr::Op(_, _, _) | OpExpr::Const(_) | OpExpr::Var(_) | OpExpr::Ptr(_, _) => {
-                    Op::mk_bin_op_raw(OpKind::Add, x, y)
-                }
+                OpExpr::Op(_, _, _)
+                | OpExpr::Const(_)
+                | OpExpr::Var(_)
+                | OpExpr::Ptr(_, _)
+                | OpExpr::ITE(_, _, _) => Op::mk_bin_op_raw(OpKind::Add, x, y),
             }
         }
     }
@@ -228,9 +236,11 @@ impl Op {
                 // this is true if you construct muls with mk_mul
                 OpExpr::Op(OpKind::Mul, y, z) if y.check_const(-1) => Op::mk_add(x, z.clone()),
                 OpExpr::Const(c) if *c < 0 => Op::mk_add(x, Op::mk_const(-c)),
-                OpExpr::Op(_, _, _) | OpExpr::Const(_) | OpExpr::Var(_) | OpExpr::Ptr(_, _) => {
-                    Op::mk_bin_op_raw(OpKind::Sub, x, y)
-                }
+                OpExpr::Op(_, _, _)
+                | OpExpr::Const(_)
+                | OpExpr::Var(_)
+                | OpExpr::Ptr(_, _)
+                | OpExpr::ITE(_, _, _) => Op::mk_bin_op_raw(OpKind::Sub, x, y),
             }
         }
     }
@@ -258,6 +268,30 @@ impl Op {
                 }
                 _ => Op::mk_bin_op_raw(OpKind::Mul, x, y),
             }
+        }
+    }
+
+    pub fn mk_div(x: Op, y: Op) -> Op {
+        if y.check_const(1) {
+            x
+        } else {
+            Op::mk_bin_op_raw(OpKind::Div, x, y)
+        }
+    }
+
+    pub fn mk_mod(x: Op, y: Op) -> Op {
+        if y.check_const(1) {
+            Op::mk_const(0)
+        } else {
+            Op::mk_bin_op_raw(OpKind::Mod, x, y)
+        }
+    }
+
+    pub fn mk_ite(c: Constraint, x: Op, y: Op) -> Op {
+        if x == y {
+            x
+        } else {
+            Op::new(OpExpr::ITE(c, x, y))
         }
     }
 
@@ -300,6 +334,12 @@ impl Op {
                 Op::mk_bin_op(*o, x, y)
             }
             OpExpr::Ptr(_, o) => o.flatten(),
+            OpExpr::ITE(x, y, z) => {
+                let x = x.flatten();
+                let y = y.flatten();
+                let z = z.flatten();
+                Op::mk_ite(x, y, z)
+            }
             OpExpr::Const(_) | OpExpr::Var(_) => self.clone(),
         }
     }
@@ -317,6 +357,7 @@ impl Op {
                 format!("{}", c)
             }
             OpExpr::Ptr(_, x) => x.to_hes_format(),
+            OpExpr::ITE(_, _, _) => unimplemented!(),
         }
     }
     pub fn negate(&self) -> Op {
@@ -326,6 +367,11 @@ impl Op {
                 OpExpr::Const(-1) => o2.clone(),
                 _ => Op::mk_mul(Op::mk_const(-1), self.clone()),
             },
+            OpExpr::ITE(c, o1, o2) => {
+                let o1 = o1.negate();
+                let o2 = o2.negate();
+                Op::mk_ite(c.clone(), o1, o2)
+            }
             OpExpr::Op(_, _, _) | OpExpr::Var(_) | OpExpr::Const(_) | OpExpr::Ptr(_, _) => {
                 Op::mk_mul(Op::mk_const(-1), self.clone())
             }
@@ -333,46 +379,46 @@ impl Op {
     }
     // expand to term vectors which can be reduced to op by `add`.
     // that is, given `x + y`, expand_expr_to_vec returns [x, y]
-    pub fn expand_expr_to_vec(&self) -> Vec<Op> {
+    pub fn expand_expr_to_vec(&self) -> Option<Vec<Op>> {
         match self.kind() {
-            OpExpr::Var(_) | OpExpr::Const(_) => vec![self.clone()],
+            OpExpr::Var(_) | OpExpr::Const(_) => Some(vec![self.clone()]),
             OpExpr::Ptr(_, o) => o.expand_expr_to_vec(),
             OpExpr::Op(OpKind::Add, o1, o2) => {
-                let mut v1 = o1.expand_expr_to_vec();
-                let mut v2 = o2.expand_expr_to_vec();
+                let mut v1 = o1.expand_expr_to_vec()?;
+                let mut v2 = o2.expand_expr_to_vec()?;
                 v1.append(&mut v2);
-                v1
+                Some(v1)
             }
             OpExpr::Op(OpKind::Sub, o1, o2) => {
                 let o2 = o2.negate();
-                let mut v1 = o1.expand_expr_to_vec();
-                let mut v2 = o2.expand_expr_to_vec();
+                let mut v1 = o1.expand_expr_to_vec()?;
+                let mut v2 = o2.expand_expr_to_vec()?;
                 v1.append(&mut v2);
-                v1
+                Some(v1)
             }
             OpExpr::Op(OpKind::Mul, o1, o2) => {
-                let v1 = o1.expand_expr_to_vec();
-                let v2 = o2.expand_expr_to_vec();
+                let v1 = o1.expand_expr_to_vec()?;
+                let v2 = o2.expand_expr_to_vec()?;
                 let mut new_v = Vec::new();
                 for o1 in v1.iter() {
                     for o2 in v2.iter() {
                         new_v.push(Op::mk_bin_op(OpKind::Mul, o1.clone(), o2.clone()));
                     }
                 }
-                new_v
+                Some(new_v)
             }
-            OpExpr::Op(o, _, _) => panic!("not supported operator: {}", o),
+            OpExpr::Op(_, _, _) | OpExpr::ITE(_, _, _) => None,
         }
     }
     /// expands the given op (e.g. (4 + 1) * ((2 - 3) + 2) -> (4 + 1) * (2 - 3) + (4 + 1) * 2 -> ((4 + 1) * 2 -  (4 + 1) * 3 + (4 + 1) * 2)
-    pub fn expand_expr(&self) -> Op {
-        let v = self.expand_expr_to_vec();
+    pub fn expand_expr(&self) -> Option<Op> {
+        let v = self.expand_expr_to_vec()?;
         assert!(!v.is_empty());
         let mut o = v[0].clone();
         for o2 in v[1..].iter() {
             o = Op::mk_add(o, o2.clone())
         }
-        o
+        Some(o)
     }
     /// Given an linear op (of type Op) and a vector of variables x₁, …, xₙ,
     /// op.normalize returns a vector of Ops `v`.
@@ -400,7 +446,9 @@ impl Op {
                     Some((o.clone(), None))
                 }
                 crate::formula::OpExpr::Ptr(_, o) => parse_mult(o, m),
-                crate::formula::OpExpr::Op(_, _, _) => panic!("program error"),
+                OpExpr::ITE(_, _, _) | crate::formula::OpExpr::Op(_, _, _) => {
+                    panic!("program error")
+                }
             }
         }
         // assumption v.len() == m.len() + 1
@@ -411,7 +459,7 @@ impl Op {
         for (i, v) in variables.iter().enumerate() {
             m.insert(*v, i);
         }
-        let additions = self.expand_expr_to_vec();
+        let additions = self.expand_expr_to_vec()?;
         let constant_index = variables.len();
         for addition in additions {
             let (coef, v) = parse_mult(&addition, &m)?;
@@ -421,20 +469,28 @@ impl Op {
         debug_assert!(result_vec.len() == variables.len() + 1);
         Some(result_vec)
     }
-    pub fn solve_for(x: &Ident, o1: &Self, o2: &Self) -> Option<Op> {
-        let o = Op::mk_sub(o1.clone(), o2.clone());
-        let mut fv = o.fv();
-        if !fv.contains(x) {
+
+    /// normalize the given op o with respect to the given variable.
+    /// returned vector of variables must starts with the variable
+    fn normalize_with_focus(&self, on: &Ident) -> Option<(Vec<Ident>, Vec<Op>)> {
+        let mut fv = self.fv();
+        if !fv.contains(on) {
             return None;
         }
-        fv.remove(x);
+        fv.remove(on);
 
-        let mut variables = vec![*x];
+        let mut variables = vec![*on];
         for v in fv.into_iter() {
             variables.push(v);
         }
-        let mut v = o.normalize(&variables)?;
-
+        let v = self.normalize(&variables)?;
+        Some((variables, v))
+    }
+    /// This function solves the given linear equation `o1 <op> o2` w.r.t. x.
+    /// To capture the sign of the solution, this function returns a pair of (bool, Op). (so that we can solve -x + 2 < 3, correctly).
+    pub fn solve_for_with_sign(x: &Ident, o1: &Self, o2: &Self) -> Option<(bool, Op)> {
+        let o = Op::mk_sub(o1.clone(), o2.clone());
+        let (variables, mut v) = o.normalize_with_focus(x)?;
         // Of course, we can do more, but for now it's ok (like checking if we can divide "xi" by x_0)
         let coef = v[0].eval_with_empty_env();
         if coef == Some(1) {
@@ -442,16 +498,69 @@ impl Op {
             for (x, o) in variables.into_iter().zip(v.into_iter()).skip(1) {
                 r = Op::mk_sub(r, Op::mk_mul(Op::mk_var(x), o));
             }
-            Some(r)
+            Some((true, r))
         } else if coef == Some(-1) {
             let mut r = v.pop().unwrap();
             for (x, o) in variables.into_iter().zip(v.into_iter()).skip(1) {
                 r = Op::mk_add(r, Op::mk_mul(Op::mk_var(x), o));
             }
-            Some(r)
+            Some((false, r))
         } else {
             None
         }
+    }
+    fn solve_peephole(target: &Ident, o1: &Self, o2: &Self) -> Option<Op> {
+        fn handle_sub(target: &Ident, o: &Op) -> Option<Op> {
+            match o.kind() {
+                OpExpr::Op(OpKind::Sub, x, y) => {
+                    match x.kind() {
+                        OpExpr::Var(id) if id == target => return Some(y.clone()),
+                        _ => (),
+                    }
+                    match y.kind() {
+                        OpExpr::Var(id) if id == target => Some(x.clone()),
+                        _ => None,
+                    }
+                }
+                _ => None,
+            }
+        }
+        fn handle_add(target: &Ident, o: &Op) -> Option<Op> {
+            match o.kind() {
+                OpExpr::Op(OpKind::Add, x, y) => {
+                    match x.kind() {
+                        OpExpr::Var(id) if id == target => return Some(Op::negate(y)),
+                        _ => (),
+                    }
+                    match y.kind() {
+                        OpExpr::Var(id) if id == target => Some(Op::negate(x)),
+                        _ => None,
+                    }
+                }
+                _ => None,
+            }
+        }
+        fn handle_zero(target: &Ident, o: &Op) -> Option<Op> {
+            handle_sub(target, o).or_else(|| handle_add(target, o))
+        }
+        if o2.eval_with_empty_env() == Some(0) {
+            handle_zero(target, o1)
+        } else if o1.eval_with_empty_env() == Some(0) {
+            handle_zero(target, o2)
+        } else {
+            match (o1.kind(), o2.kind()) {
+                (OpExpr::Var(x), _) if x == target => Some(o2.clone()),
+                (_, OpExpr::Var(x)) if x == target => Some(o1.clone()),
+                (_, _) => None,
+            }
+        }
+    }
+    pub fn solve_for(x: &Ident, o1: &Self, o2: &Self) -> Option<Op> {
+        match Self::solve_for_with_sign(x, o1, o2) {
+            Some((_, o)) => return Some(o),
+            None => (),
+        }
+        Self::solve_peephole(x, o1, o2)
     }
 }
 #[test]
@@ -467,7 +576,7 @@ fn test_expansion() {
         Op::mk_bin_op(OpKind::Sub, Op::mk_var(x), Op::mk_var(w)),
     );
     let o = Op::mk_bin_op(OpKind::Mul, o1, o2);
-    let o2 = o.expand_expr();
+    let o2 = o.expand_expr().unwrap();
     println!("{o}");
     println!("{o2}");
 
@@ -513,6 +622,26 @@ fn test_solve_for() {
     println!("{}", r.unwrap());
 }
 
+#[test]
+fn test_solve_for_peephole() {
+    // x - y / 4 = 0
+    let x = Ident::fresh();
+    let y = Ident::fresh();
+    let o0 = Op::mk_div(Op::mk_var(y), Op::mk_const(4));
+    let o1 = Op::mk_sub(Op::mk_var(x), o0.clone());
+    let o2 = Op::mk_const(0);
+    let r = Op::solve_for(&x, &o1, &o2).unwrap();
+    assert_eq!(r, o0);
+
+    let o3 = Op::mk_sub(o0.clone(), Op::mk_var(x));
+    let r = Op::solve_for(&x, &o2, &o3).unwrap();
+    assert_eq!(r, o0);
+    let r = Op::solve_for(&x, &Op::mk_var(x), &o0).unwrap();
+    assert_eq!(r, o0);
+    let r = Op::solve_for(&x, &o0, &Op::mk_var(x)).unwrap();
+    assert_eq!(r, o0);
+}
+
 impl DerefPtr for Op {
     fn deref_ptr(&self, id: &Ident) -> Op {
         match self.kind() {
@@ -520,6 +649,12 @@ impl DerefPtr for Op {
                 let x = x.deref_ptr(id);
                 let y = y.deref_ptr(id);
                 Op::mk_bin_op(*o, x, y)
+            }
+            OpExpr::ITE(c, x, y) => {
+                let c = c.deref_ptr(id);
+                let x = x.deref_ptr(id);
+                let y = y.deref_ptr(id);
+                Op::mk_ite(c, x, y)
             }
             OpExpr::Var(_) | OpExpr::Const(_) => self.clone(),
             OpExpr::Ptr(id2, _o) if id == id2 => Op::mk_var(*id),
@@ -575,7 +710,8 @@ impl Subst for Op {
 
             OpExpr::Var(id2) if id == id2 => Op::mk_ptr(*id, v.clone()),
             OpExpr::Ptr(x, o) => Op::mk_ptr(*x, o.subst(id, v)),
-            _ => self.clone(),
+            OpExpr::ITE(c, x, y) => Op::mk_ite(c.subst(id, v), x.subst(id, v), y.subst(id, v)),
+            OpExpr::Const(_) | OpExpr::Var(_) => self.clone(),
         }
     }
 }
@@ -587,7 +723,10 @@ impl Rename for Op {
 
             OpExpr::Var(id3) if id == id3 => Op::mk_var(*id2),
             OpExpr::Ptr(x, o) => Op::mk_ptr(*x, o.rename(id, id2)),
-            _ => self.clone(),
+            OpExpr::ITE(c, x, y) => {
+                Op::mk_ite(c.rename(id, id2), x.rename(id, id2), y.rename(id, id2))
+            }
+            OpExpr::Const(_) | OpExpr::Var(_) => self.clone(),
         }
     }
 }
@@ -608,6 +747,11 @@ impl AlphaEquivalence for Op {
                 }
             },
             (OpExpr::Const(c1), OpExpr::Const(c2)) => c1 == c2,
+            (OpExpr::ITE(c, x, y), OpExpr::ITE(c2, x2, y2)) => {
+                c.alpha_equiv_map(c2, map)
+                    && x.alpha_equiv_map(x2, map)
+                    && y.alpha_equiv_map(y2, map)
+            }
             (_, _) => false,
         }
     }
@@ -1171,6 +1315,29 @@ impl Constraint {
             ConstraintExpr::Quantifier(_, _, _) => unimplemented!(),
         }
     }
+    pub fn flatten(&self) -> Constraint {
+        match self.kind() {
+            ConstraintExpr::True | ConstraintExpr::False => self.clone(),
+            ConstraintExpr::Pred(p, l) => {
+                let l = l.iter().map(|o| o.flatten()).collect();
+                Constraint::mk_pred(*p, l)
+            }
+            ConstraintExpr::Conj(c1, c2) => {
+                let c1 = c1.flatten();
+                let c2 = c2.flatten();
+                Constraint::mk_conj(c1, c2)
+            }
+            ConstraintExpr::Disj(c1, c2) => {
+                let c1 = c1.flatten();
+                let c2 = c2.flatten();
+                Constraint::mk_disj(c1, c2)
+            }
+            ConstraintExpr::Quantifier(q, x, c) => {
+                let c = c.flatten();
+                Constraint::mk_quantifier(*q, x.clone(), c)
+            }
+        }
+    }
 }
 
 #[test]
@@ -1401,6 +1568,13 @@ impl Op {
             }
             OpExpr::Var(x) => env.map.get(x).cloned(),
             OpExpr::Const(c) => Some(*c),
+            OpExpr::ITE(c, x, y) => {
+                if c.eval(env)? {
+                    x.eval(env)
+                } else {
+                    y.eval(env)
+                }
+            }
             OpExpr::Ptr(_, x) => x.eval(env),
         }
     }
@@ -1416,7 +1590,43 @@ impl Op {
             OpExpr::Op(o, x, y) => {
                 let x = x.simplify();
                 let y = y.simplify();
+                // handle (d - (-c * y))
+                if o == &OpKind::Sub {
+                    match y.kind() {
+                        OpExpr::Op(OpKind::Mul, a, b) => {
+                            match a.eval_with_empty_env() {
+                                Some(v) if v < 0 => {
+                                    let v = -v;
+                                    return Op::mk_bin_op(
+                                        OpKind::Add,
+                                        x,
+                                        Op::mk_bin_op(OpKind::Mul, Op::mk_const(v), b.clone()),
+                                    );
+                                }
+                                _ => (),
+                            };
+                            match b.eval_with_empty_env() {
+                                Some(v) if v < 0 => {
+                                    let v = -v;
+                                    return Op::mk_bin_op(
+                                        OpKind::Add,
+                                        x,
+                                        Op::mk_bin_op(OpKind::Mul, Op::mk_const(v), a.clone()),
+                                    );
+                                }
+                                _ => (),
+                            };
+                        }
+                        _ => (),
+                    }
+                }
                 Op::mk_bin_op(*o, x, y)
+            }
+            OpExpr::ITE(c, x, y) => {
+                let c = c.simplify();
+                let x = x.simplify();
+                let y = y.simplify();
+                Op::mk_ite(c, x, y)
             }
             OpExpr::Ptr(_, x) => x.simplify(),
             OpExpr::Var(_) | OpExpr::Const(_) => self.clone(),
@@ -1652,8 +1862,9 @@ impl Constraint {
         }
         result_constraint
     }
-    // x > 0 /\ x <= 1 -> x = 1
-    pub fn simplify_by_finding_eq(&self) -> Constraint {
+    /// x > 0 /\ x <= 1 -> x = 1
+    /// This function can fail if the given op is not linear.
+    pub fn simplify_by_finding_eq(&self) -> Option<Constraint> {
         fn update(
             pred: PredKind,
             x: Ident,
@@ -1735,9 +1946,8 @@ impl Constraint {
                     ConstraintExpr::Pred(pred, l) if l.len() == 2 => {
                         let left = &l[0];
                         let right = &l[1];
-                        let normalized = Op::mk_sub(left.clone(), right.clone())
-                            .normalize(&vec![target_var])
-                            .unwrap();
+                        let normalized =
+                            Op::mk_sub(left.clone(), right.clone()).normalize(&vec![target_var])?;
 
                         if let (Some(1), Some(x)) = (
                             normalized[0].eval_with_empty_env(),
@@ -1789,7 +1999,7 @@ impl Constraint {
         for (q, v) in qs {
             result_constraint = Constraint::mk_quantifier(q, v, result_constraint);
         }
-        result_constraint
+        Some(result_constraint)
     }
     /// simplifies the same clause in cnf/dnf
     ///
@@ -1835,11 +2045,19 @@ impl Constraint {
         result_constraint
     }
     pub fn simplify(&self) -> Self {
+        debug!("simplify {self}");
         let c = self.simplify_trivial();
+        debug!("simplify_trivial {c}");
         let c = c.simplify_geq_geq();
-        let c = c.simplify_by_finding_eq();
+        debug!("simplify_geq_geq {c}");
+        // skip if it fails
+        #[cfg(not(feature = "no_simplify_by_finding_eq"))]
+        let c = c.simplify_by_finding_eq().unwrap_or(c.clone());
+        debug!("simplify_by_finding_eq {c}");
         let c = c.simplify_trivial();
+        debug!("simplify_trivial {c}");
         let c = c.simplify_same_clause();
+        debug!("simplify_same_clause {c}");
         c
     }
 }
@@ -1895,7 +2113,7 @@ fn test_simplify_by_finding_eq() {
     let yx = Constraint::mk_eq(Op::mk_var(x), Op::mk_var(y));
     let c = Constraint::mk_conj(Constraint::mk_conj(xz, x1), yx);
     println!("before {c}");
-    let c = c.simplify_by_finding_eq();
+    let c = c.simplify_by_finding_eq().unwrap();
     println!("after {c}");
     let c = c.simplify();
     println!("simplified {c}");
@@ -1907,7 +2125,7 @@ fn test_simplify_by_finding_eq() {
     let yx = Constraint::mk_eq(Op::mk_var(x), Op::mk_var(y));
     let c = Constraint::mk_conj(Constraint::mk_conj(xz, x1), yx);
     println!("before {c}");
-    let c = c.simplify_by_finding_eq();
+    let c = c.simplify_by_finding_eq().unwrap();
     println!("after {c}");
     let c = c.simplify();
     println!("simplified {c}");
@@ -1922,7 +2140,7 @@ fn test_simplify_by_finding_eq() {
     let yx = Constraint::mk_eq(Op::mk_var(x), Op::mk_var(y));
     let c = Constraint::mk_conj(Constraint::mk_conj(xz, x1), yx);
     println!("before {c}");
-    let c = c.simplify_by_finding_eq();
+    let c = c.simplify_by_finding_eq().unwrap();
     println!("after {c}");
     let c = c.simplify();
     println!("simplified {c}");
@@ -1934,7 +2152,7 @@ fn test_simplify_by_finding_eq() {
     let yx = Constraint::mk_eq(Op::mk_var(x), Op::mk_var(y));
     let c = Constraint::mk_conj(Constraint::mk_conj(xz, x1), yx);
     println!("before {c}");
-    let c = c.simplify_by_finding_eq();
+    let c = c.simplify_by_finding_eq().unwrap();
     println!("after {c}");
     let c = c.simplify();
     println!("simplified {c}");
@@ -1946,7 +2164,7 @@ fn test_simplify_by_finding_eq() {
     let yx = Constraint::mk_eq(Op::mk_var(x), Op::mk_var(y));
     let c_ = Constraint::mk_conj(Constraint::mk_conj(xz, x1), yx);
     println!("before {c}");
-    let c = c_.simplify_by_finding_eq();
+    let c = c_.simplify_by_finding_eq().unwrap();
     println!("after {c}");
     let c = c.simplify();
     println!("simplified {c}");
@@ -1956,7 +2174,7 @@ fn test_simplify_by_finding_eq() {
     let yx = Constraint::mk_neq(Op::mk_var(x), Op::zero());
     let c = Constraint::mk_conj(c_, yx);
     println!("before {c}");
-    let c = c.simplify_by_finding_eq();
+    let c = c.simplify_by_finding_eq().unwrap();
     println!("after {c}");
     let c = c.simplify();
     println!("simplified {c}");
@@ -2224,6 +2442,7 @@ impl TeXFormat for Op {
                 write!(f, " {c} ")
             }
             OpExpr::Ptr(_, o) => write!(f, "{}", TeXPrinter(o)),
+            OpExpr::ITE(_, _, _) => unimplemented!(),
         }
     }
 }
@@ -2331,7 +2550,9 @@ impl Precedence for Op {
     fn precedence(&self) -> PrecedenceKind {
         match self.kind() {
             OpExpr::Op(opkind, _, _) => opkind.precedence(),
+            OpExpr::Const(c) if *c < 0 => PrecedenceKind::Add,
             OpExpr::Var(_) | OpExpr::Const(_) => PrecedenceKind::Atom,
+            OpExpr::ITE(_, _, _) => PrecedenceKind::If,
             OpExpr::Ptr(_, o) => o.precedence(),
         }
     }
@@ -2346,5 +2567,160 @@ impl Precedence for Constraint {
             ConstraintExpr::Disj(_, _) => PrecedenceKind::Disj,
             ConstraintExpr::Quantifier(_, _, _) => PrecedenceKind::Abs,
         }
+    }
+}
+
+////// expand ite
+/// x = if y > 0 then 1 else 0 ===> (y > 0 /\ x = 1) \/ (y <= 0 /\ x = 0)
+pub fn expand_ite_op(op: &Op) -> Option<(Constraint, Op, Op)> {
+    match op.kind() {
+        crate::formula::OpExpr::ITE(c, x, y) => Some((c.clone(), x.clone(), y.clone())),
+        OpExpr::Op(o, o1, o2) => match expand_ite_op(o1) {
+            Some((c, x, y)) => Some((
+                c,
+                Op::mk_bin_op(*o, x, o2.clone()),
+                Op::mk_bin_op(*o, y, o2.clone()),
+            )),
+            None => {
+                let (c, x, y) = expand_ite_op(o2)?;
+                Some((
+                    c,
+                    Op::mk_bin_op(*o, o1.clone(), x),
+                    Op::mk_bin_op(*o, o1.clone(), y),
+                ))
+            }
+        },
+        OpExpr::Var(_) | OpExpr::Const(_) => None,
+        OpExpr::Ptr(_, o) => expand_ite_op(o),
+    }
+}
+
+pub enum ExpandITEState<C> {
+    NotModified(C),
+    Modified(C),
+    InProgress { cond: Constraint, left: C, right: C },
+}
+impl<C: Clone + Logic> ExpandITEState<C> {
+    pub fn id(c: C) -> ExpandITEState<C> {
+        ExpandITEState::NotModified(c)
+    }
+    pub fn in_progress(cond: Constraint, left: C, right: C) -> ExpandITEState<C> {
+        ExpandITEState::InProgress { cond, left, right }
+    }
+    pub fn map<D>(self, f: impl Fn(C) -> D) -> ExpandITEState<D> {
+        match self {
+            ExpandITEState::NotModified(c) => ExpandITEState::NotModified(f(c)),
+            ExpandITEState::Modified(c) => ExpandITEState::Modified(f(c)),
+            ExpandITEState::InProgress { cond, left, right } => ExpandITEState::InProgress {
+                cond,
+                left: f(left),
+                right: f(right),
+            },
+        }
+    }
+    pub fn handle_two(
+        c1: C,
+        c2: C,
+        f: impl Fn(C, C) -> C,
+        g: impl Fn(&C) -> ExpandITEState<C>,
+    ) -> ExpandITEState<C> {
+        use ExpandITEState::*;
+        let c1 = match g(&c1) {
+            NotModified(c) => c,
+            x => return x.map(|c| f(c, c2.clone())),
+        };
+        g(&c2).map(|c| f(c1.clone(), c))
+    }
+}
+
+impl ExpandITEState<Constraint> {
+    pub fn finalize_constraint(self) -> Constraint {
+        match self {
+            ExpandITEState::NotModified(c) => c,
+            ExpandITEState::Modified(c) => c,
+            ExpandITEState::InProgress { cond, left, right } => {
+                let c1 = Constraint::mk_disj(cond.negate().unwrap(), left);
+                let c2 = Constraint::mk_disj(cond, right);
+                Constraint::mk_conj(c1, c2)
+            }
+        }
+    }
+}
+impl ExpandITEState<hes::Goal<Constraint>> {
+    pub fn finalize_goal(self) -> hes::Goal<Constraint> {
+        match self {
+            ExpandITEState::NotModified(c) => c,
+            ExpandITEState::Modified(c) => c,
+            ExpandITEState::InProgress { cond, left, right } => {
+                let c1 = hes::Goal::mk_disj(hes::Goal::mk_constr(cond.negate().unwrap()), left);
+                let c2 = hes::Goal::mk_disj(hes::Goal::mk_constr(cond), right);
+                hes::Goal::mk_conj(c1, c2)
+            }
+        }
+    }
+}
+
+pub fn expand_ite_constr_once(c: &Constraint) -> ExpandITEState<Constraint> {
+    match c.kind() {
+        ConstraintExpr::True | ConstraintExpr::False => ExpandITEState::id(c.clone()),
+        ConstraintExpr::Pred(p, l) => {
+            for (i, o) in l.iter().enumerate() {
+                if let Some((c, x, y)) = expand_ite_op(o) {
+                    let mut l1 = l.clone();
+                    l1[i] = x;
+                    let c1 = Constraint::mk_pred(*p, l1);
+
+                    let mut l2 = l.clone();
+                    l2[i] = y;
+                    let c2 = Constraint::mk_pred(*p, l2);
+                    return ExpandITEState::in_progress(c, c1, c2);
+                }
+            }
+            ExpandITEState::id(c.clone())
+        }
+        ConstraintExpr::Conj(c1, c2) => {
+            let c1 = match expand_ite_constr_once(c1) {
+                ExpandITEState::NotModified(c) => c,
+                ExpandITEState::Modified(c) => {
+                    return ExpandITEState::Modified(Constraint::mk_conj(c, c2.clone()))
+                }
+                x => {
+                    let c1 = x.finalize_constraint();
+                    let c2 = c2.clone();
+                    return ExpandITEState::Modified(Constraint::mk_conj(c1, c2));
+                }
+            };
+
+            match expand_ite_constr_once(c2) {
+                ExpandITEState::NotModified(c2) => {
+                    ExpandITEState::NotModified(Constraint::mk_conj(c1, c2))
+                }
+                ExpandITEState::Modified(c2) => {
+                    ExpandITEState::Modified(Constraint::mk_conj(c1, c2))
+                }
+                x => {
+                    let c2 = x.finalize_constraint();
+                    ExpandITEState::Modified(Constraint::mk_conj(c1, c2))
+                }
+            }
+        }
+        ConstraintExpr::Disj(c1, c2) => ExpandITEState::handle_two(
+            c1.clone(),
+            c2.clone(),
+            Constraint::mk_disj,
+            expand_ite_constr_once,
+        ),
+        ConstraintExpr::Quantifier(q, v, c) => match expand_ite_constr_once(c) {
+            ExpandITEState::InProgress { cond, left, right } => {
+                let c1 = Constraint::mk_disj(cond.negate().unwrap(), left);
+                let c2 = Constraint::mk_disj(cond, right);
+                ExpandITEState::Modified(Constraint::mk_quantifier(
+                    *q,
+                    v.clone(),
+                    Constraint::mk_conj(c1, c2),
+                ))
+            }
+            x => x.map(|c| Constraint::mk_quantifier(*q, v.clone(), c)),
+        },
     }
 }

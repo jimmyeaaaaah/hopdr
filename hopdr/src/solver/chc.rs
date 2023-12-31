@@ -67,7 +67,7 @@ fn predicate_to_smt2(p: &Ident, args: &[Op]) -> String {
     let mut r = format!("({}", smt::ident_2_smt2(p));
     for arg in args {
         r += " ";
-        r += &smt::op_to_smt2(arg);
+        r += &smt::op_to_smt2(arg, SMTSolverType::Z3);
     }
     r += ")";
     r
@@ -327,6 +327,7 @@ fn parse_op_cons(v: &lexpr::Cons, env: &HashMap<&str, Ident>, letenv: LetEnv) ->
         match v[0].kind() {
             crate::formula::OpExpr::Const(c) => Op::mk_const(-c),
             crate::formula::OpExpr::Var(_)
+            | crate::formula::OpExpr::ITE(_, _, _)
             | crate::formula::OpExpr::Op(_, _, _)
             | crate::formula::OpExpr::Ptr(_, _) => {
                 panic!("program error")
