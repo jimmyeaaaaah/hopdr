@@ -60,6 +60,10 @@ let ( * ) a b =
     raise IntegerOverflow
   else
     a * b
+
+let ( mod ) a b =
+  let a' = a mod b in
+  if a' < 0 then a' + b else a'
 "#;
 pub const FAIL_STRING: &str = "Failed to find a counterexample";
 
