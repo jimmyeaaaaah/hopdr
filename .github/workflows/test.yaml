@@ -16,22 +16,22 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: install dependency
-      run: sudo apt update && sudo apt upgrade -y && sudo apt install -y z3 default-jre wget
+      run: sudo apt update && sudo apt upgrade -y && sudo apt install -y z3 default-jre wget bubblewrap
     - name: get smtinterpol
       run: mkdir -p ~/.local/share/hopdr && wget https://ultimate.informatik.uni-freiburg.de/smtinterpol/smtinterpol-2.5-1147-g108647d8.jar -O ~/.local/share/hopdr/smtinterpol.jar
+    - name: OCaml Format Install
+      run: echo | bash -c "sh <(curl -fsSL https://raw.githubusercontent.com/ocaml/opam/master/shell/install.sh)" && opam init -y && eval $(opam env) && opam install -y ocamlformat
     - name: Setup tmate session
       uses: mxschmitt/action-tmate@v3
     - name: get hoice
       run: cargo install --git https://github.com/hopv/hoice --locked
     - name: Format
       run: cargo fmt --all -- --check
-    - name: OCaml Format Install
-      run: sudo add-apt-repository ppa:avsm/ppa && sudo apt update && sudo apt install -y opam && opam init -y && eval $(opam env)  && opam install ocamlformat 
     # - name: Clippy
     #   run: cargo clippy -- -D warnings
     - name: Build
       run: cargo build
     - name: Test
-      run: cargo test --verbose
+      run: eval &(opam env) && cargo test --verbose
     - name: Functional Test
-      run: ./test.sh
+      run: eval $(opam env) && ./test.sh
