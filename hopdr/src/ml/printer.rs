@@ -266,10 +266,7 @@ impl<'a> Program<'a> {
             f,
             " with IntegerOverflow -> begin\n
                 Printf.printf \"int overflow\n\";
-                if !check_mx > 10 then\n
-                    check_mx := !check_mx / 2;\n
-                if !check_mn < -10 then\n
-                    check_mn := !check_mn / 2;\n
+                event_integer_overflow ()
               end"
         )?;
         writeln!(f, ") done; Printf.printf \"{}\"", super::FAIL_STRING)
@@ -292,6 +289,8 @@ impl<'a> Program<'a> {
             f.dump_ml(&mut s, &self.ctx).unwrap();
         }
         self.dump_main_ml(&mut s).unwrap();
+        crate::title!("printer");
+        debug!("{s}");
         super::printer::do_format(&s)
     }
 }

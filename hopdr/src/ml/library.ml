@@ -1,7 +1,13 @@
 exception FalseExc
 exception IntegerOverflow
+
 let check_mx = ref 100000
 let check_mn = ref (-100000)
+
+let event_integer_overflow () = 
+  if !check_mx > 10 then check_mx := !check_mx / 2;
+  if !check_mn < -10 then check_mn := !check_mn / 2
+
 let rand_int (x, y) = 
   let mn = match x with 
     | Some(x) -> x
@@ -52,3 +58,4 @@ let ( * ) a b =
 let ( mod ) a b =
   let a' = a mod b in
   if a' < 0 then a' + b else a'
+
