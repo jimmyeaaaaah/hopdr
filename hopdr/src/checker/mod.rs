@@ -6,14 +6,23 @@ use crate::formula::hes::{Goal, GoalKind, Problem};
 use crate::formula::{Constraint, Ident, Logic, Negation, Op, Type as HFLType};
 use crate::ml::{optimize, Expr, Function, Program, Type as SType, Variable};
 use crate::preprocess::Context;
+use mode::Mode;
+
+use std::collections::HashMap;
 
 pub struct Config<'a> {
     context: &'a Context,
+    preds_mode_inferred: HashMap<Ident, Vec<(Mode, Expr)>>,
+    env: HashMap<Ident, Mode>,
 }
 
 impl<'a> Config<'a> {
     pub fn new(context: &'a Context) -> Self {
-        Config { context }
+        Config {
+            context,
+            preds_mode_inferred: HashMap::new(),
+            env: HashMap::new(),
+        }
     }
 }
 
@@ -47,7 +56,7 @@ impl<'a> Translator<'a> {
         let body = f(p);
         Expr::mk_fun(v, body)
     }
-    fn translate_constraint_inner(&self, c: &Constraint) -> either::Either<Constraint, Expr> {
+    fn translate_constraint_inner(&mut self, c: &Constraint) -> either::Either<Constraint, Expr> {
         match c.kind() {
             crate::formula::ConstraintExpr::True
             | crate::formula::ConstraintExpr::False
@@ -81,14 +90,14 @@ impl<'a> Translator<'a> {
             crate::formula::ConstraintExpr::Quantifier(_, _, _) => todo!(),
         }
     }
-    fn translate_constraint(&self, c: &Constraint) -> Expr {
+    fn translate_constraint(&mut self, c: &Constraint) -> Expr {
         let e = match self.translate_constraint_inner(c) {
             either::Left(c) => Expr::mk_constraint(c),
             either::Right(e) => e,
         };
         Self::gen_prop(|_| Expr::mk_if(e, Expr::mk_unit(), Expr::mk_raise()))
     }
-    fn handle_conj_disj(&self, g11: &G, g12: &G, g21: &G, g22: &G) -> Option<Expr> {
+    fn handle_conj_disj(&mut self, g11: &G, g12: &G, g21: &G, g22: &G) -> Option<Expr> {
         let s11: Option<Constraint> = g11.clone().into();
         let s12: Option<Constraint> = g12.clone().into();
         let s21: Option<Constraint> = g21.clone().into();
@@ -127,7 +136,7 @@ impl<'a> Translator<'a> {
     // [Ψ1 \/ Ψ2] = fun p -> try [Ψ1]p with FalseExc -> [Ψ2]p
     // [(¬θ \/ Ψ1) /\ (θ \/ Ψ2)] = fun p -> if [θ] then [Ψ1] else  [Ψ2]
     // [∀x. Ψ] = fun p -> let x = * in [Ψ] p
-    fn translate_goal(&self, goal: G) -> Expr {
+    fn translate_goal(&mut self, goal: G, mode: Mode) -> (Expr, Mode) {
         match goal.kind() {
             GoalKind::Constr(c) => self.translate_constraint(c),
             GoalKind::Op(_) => {
@@ -135,7 +144,9 @@ impl<'a> Translator<'a> {
             }
             GoalKind::Var(x) => Expr::mk_var(*x),
             GoalKind::Abs(x, g) => {
-                let body = self.translate_goal(g.clone());
+                let (arg, ret) = mode.is_fun();
+                unimplemented!();
+                let body = self.translate_goal(g.clone(), ret);
                 let v = Variable::mk(x.id, self.translate_type(&x.ty));
                 Expr::mk_fun(v, body)
             }
@@ -197,7 +208,7 @@ impl<'a> Translator<'a> {
             }),
         }
     }
-    fn translate(&self, problem: Problem<Constraint>) -> Program {
+    fn translate(&mut self, problem: Problem<Constraint>) -> Program {
         let functions: Vec<_> = problem
             .clauses
             .iter()
@@ -221,7 +232,7 @@ impl<'a> Translator<'a> {
 pub fn run(problem: Problem<Constraint>, config: Config) {
     println!("translated nu hflz");
     println!("{problem}");
-    let trans = Translator::new(config);
+    let mut trans = Translator::new(config);
     let prog = trans.translate(problem);
     println!("UnOptimized Program");
     println!("{}", prog.dump_ml());
