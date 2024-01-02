@@ -3,10 +3,12 @@ use crate::util::P;
 pub enum ModeKind {
     In,
     Out,
+    InOut,
+    Ret,
     Fun(Mode, Mode),
 }
 
-type Mode = P<ModeKind>;
+pub type Mode = P<ModeKind>;
 
 impl Mode {
     pub fn is_in(&self) -> bool {
@@ -17,8 +19,11 @@ impl Mode {
         matches!(self.kind(), ModeKind::Out)
     }
 
-    pub fn is_fun(&self) -> bool {
-        matches!(self.kind(), ModeKind::Fun(_, _))
+    pub fn is_fun(&self) -> (Mode, Mode) {
+        match self.kind() {
+            ModeKind::Fun(t1, t2) => (t1.clone(), t2.clone()),
+            _ => panic!("not a function type"),
+        }
     }
 
     pub fn mk_in() -> Self {
