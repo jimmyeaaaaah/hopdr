@@ -35,6 +35,7 @@ type G = Goal<Constraint>;
 #[derive(Clone, Debug)]
 struct Aux {
     mode: Mode,
+    ty: HFLType,
 }
 
 // The type of intermediate representation for each formula
@@ -46,15 +47,16 @@ impl<'a> Translator<'a> {
     fn new(config: Config<'a>) -> Self {
         Self { config }
     }
-    fn translate_type(&self, t: &HFLType) -> SType {
+    fn translate_type(&self, arg: &Mode, t: &HFLType) -> SType {
         match t.kind() {
             crate::formula::TypeKind::Proposition => {
                 SType::mk_type_arrow(SType::mk_type_unit(), SType::mk_type_unit())
             }
             crate::formula::TypeKind::Integer => SType::mk_type_int(),
             crate::formula::TypeKind::Arrow(t1, t2) => {
-                let t1 = self.translate_type(t1);
-                let t2 = self.translate_type(t2);
+                let (arg, ret) = arg.is_fun();
+                let t1 = self.translate_type(arg, t1);
+                let t2 = self.translate_type(ret, t2);
                 SType::mk_type_arrow(t1, t2)
             }
         }
@@ -150,10 +152,51 @@ impl<'a> Translator<'a> {
     fn handle_app(&mut self, goal: GoalM) -> Expr {
         unimplemented!()
     }
-    // [θ] = fun p -> if not [θ] then raise FalseExc
     // [\x. Ψ] = fun x -> [Ψ]
     // [Ψ1 Ψ2] = [Ψ1] [Ψ2]
     // [Ψ a] = [Ψ] a
+    fn translate_predicates(&mut self, goal: &GoalM, mut variables: Vec<Ident>) -> Expr {
+        let m = &goal.aux.mode;
+        let ty = &goal.aux.ty;
+        if ty.is_prop() {
+            return unimplemented!();
+        }
+        match goal.kind() {
+            GoalKind::Var(x) => Expr::mk_var(*x),
+            GoalKind::Abs(v, g) if v.ty.is_int() => {
+                let arg = m.is_fun().0;
+                match arg.kind() {
+                    mode::ModeKind::In => {
+                        let v = Variable::mk(v.id, self.translate_type(arg, &v.ty));
+                        let body = self.translate_predicates(g, variables);
+                        Expr::mk_fun(v, body)
+                    }
+                    mode::ModeKind::Out => {
+                        variables.push(v.id);
+                        self.translate_predicates(g, variables)
+                    }
+                    // well-formedness violation
+                    mode::ModeKind::Ret | mode::ModeKind::Fun(_, _) | mode::ModeKind::InOut => {
+                        panic!("program error")
+                    }
+                }
+            }
+            GoalKind::Abs(v, g) => {
+                let arg = m.is_fun().0;
+                let v = Variable::mk(v.id, self.translate_type(arg, &v.ty));
+                let body = self.translate_predicates(g, variables);
+                Expr::mk_fun(v, body)
+            }
+            GoalKind::App(g1, g2) => panic!("eta expansiton fails?"),
+            GoalKind::Constr(_)
+            | GoalKind::Op(_)
+            | GoalKind::Conj(_, _)
+            | GoalKind::Disj(_, _)
+            | GoalKind::Univ(_, _) => panic!("program error"),
+        }
+    }
+
+    // [θ] = fun p -> if not [θ] then raise FalseExc
     // [Ψ1 /\ Ψ2] = fun p -> if * then [Ψ1] p else [Ψ2]p
     // [θ /\ Ψ2] = fun p -> [θ] p; [Ψ2]p
     // [Ψ1 /\ θ] = fun p -> [θ] p; [Ψ1]p
