@@ -59,6 +59,15 @@ pub(super) fn peephole_optimize<'a>(mut p: Program<'a>) -> Program<'a> {
                 let rhs = f(rhs);
                 Expr::mk_sequential(lhs, rhs)
             }
+            ExprKind::Tuple(args) => {
+                let args = args.iter().map(f).collect();
+                Expr::mk_tuple(args)
+            }
+            ExprKind::LetTuple { idents, body, cont } => {
+                let body = f(body);
+                let cont = f(cont);
+                Expr::mk_let_tuple(idents.clone(), body, cont)
+            }
         }
     }
     p.functions = p
