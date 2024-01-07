@@ -20,9 +20,9 @@ impl Mode {
         matches!(self.kind(), ModeKind::Out)
     }
 
-    pub fn is_fun(&self) -> (Mode, Mode) {
+    pub fn is_fun<'a>(&'a self) -> (&'a Mode, &'a Mode) {
         match self.kind() {
-            ModeKind::Fun(t1, t2) => (t1.clone(), t2.clone()),
+            ModeKind::Fun(t1, t2) => (t1, t2),
             _ => panic!("not a function type"),
         }
     }
