@@ -2,7 +2,7 @@ mod ai;
 mod executor;
 mod mode;
 
-use crate::formula::hes::{Goal, GoalKind, Problem};
+use crate::formula::hes::{ClauseBase, Goal, GoalBase, GoalKind, Problem, ProblemBase};
 use crate::formula::{Constraint, Ident, Logic, Negation, Op, Type as HFLType};
 use crate::ml::{optimize, Expr, Function, Program, Type as SType, Variable};
 use crate::preprocess::Context;
@@ -29,7 +29,19 @@ impl<'a> Config<'a> {
 struct Translator<'a> {
     config: Config<'a>,
 }
+// The type of input
 type G = Goal<Constraint>;
+
+#[derive(Clone, Debug)]
+struct Aux {
+    mode: Mode,
+}
+
+// The type of intermediate representation for each formula
+type GoalM = GoalBase<Constraint, Aux>;
+type ClauseM = ClauseBase<Constraint, Aux>;
+type ProblemM = ProblemBase<Constraint, Aux>;
+
 impl<'a> Translator<'a> {
     fn new(config: Config<'a>) -> Self {
         Self { config }
@@ -97,7 +109,13 @@ impl<'a> Translator<'a> {
         };
         Self::gen_prop(|_| Expr::mk_if(e, Expr::mk_unit(), Expr::mk_raise()))
     }
-    fn handle_conj_disj(&mut self, g11: &G, g12: &G, g21: &G, g22: &G) -> Option<Expr> {
+    fn handle_conj_disj(
+        &mut self,
+        g11: &GoalM,
+        g12: &GoalM,
+        g21: &GoalM,
+        g22: &GoalM,
+    ) -> Option<Expr> {
         let s11: Option<Constraint> = g11.clone().into();
         let s12: Option<Constraint> = g12.clone().into();
         let s21: Option<Constraint> = g21.clone().into();
@@ -126,6 +144,12 @@ impl<'a> Translator<'a> {
             None
         }
     }
+    fn handle_app_arg(&mut self, goal: GoalM) -> (Expr, Mode) {
+        unimplemented!()
+    }
+    fn handle_app(&mut self, goal: GoalM) -> Expr {
+        unimplemented!()
+    }
     // [θ] = fun p -> if not [θ] then raise FalseExc
     // [\x. Ψ] = fun x -> [Ψ]
     // [Ψ1 Ψ2] = [Ψ1] [Ψ2]
@@ -136,7 +160,7 @@ impl<'a> Translator<'a> {
     // [Ψ1 \/ Ψ2] = fun p -> try [Ψ1]p with FalseExc -> [Ψ2]p
     // [(¬θ \/ Ψ1) /\ (θ \/ Ψ2)] = fun p -> if [θ] then [Ψ1] else  [Ψ2]
     // [∀x. Ψ] = fun p -> let x = * in [Ψ] p
-    fn translate_goal(&mut self, goal: G, mode: Mode) -> (Expr, Mode) {
+    fn translate_goal(&mut self, goal: GoalM) -> Expr {
         match goal.kind() {
             GoalKind::Constr(c) => self.translate_constraint(c),
             GoalKind::Op(_) => {
@@ -144,9 +168,7 @@ impl<'a> Translator<'a> {
             }
             GoalKind::Var(x) => Expr::mk_var(*x),
             GoalKind::Abs(x, g) => {
-                let (arg, ret) = mode.is_fun();
-                unimplemented!();
-                let body = self.translate_goal(g.clone(), ret);
+                let body = self.translate_goal(g.clone());
                 let v = Variable::mk(x.id, self.translate_type(&x.ty));
                 Expr::mk_fun(v, body)
             }
@@ -208,7 +230,7 @@ impl<'a> Translator<'a> {
             }),
         }
     }
-    fn translate(&mut self, problem: Problem<Constraint>) -> Program {
+    fn translate(&mut self, problem: ProblemM) -> Program {
         let functions: Vec<_> = problem
             .clauses
             .iter()
@@ -227,13 +249,19 @@ impl<'a> Translator<'a> {
             ctx: &self.config.context,
         }
     }
+
+    fn infer_mod(&mut self, problem: Problem<Constraint>) -> ProblemM {
+        unimplemented!()
+    }
 }
 
 pub fn run(problem: Problem<Constraint>, config: Config) {
     println!("translated nu hflz");
     println!("{problem}");
     let mut trans = Translator::new(config);
-    let prog = trans.translate(problem);
+    let problem_with_mode = trans.infer_mod(problem);
+    let prog = trans.translate(problem_with_mode);
+
     println!("UnOptimized Program");
     println!("{}", prog.dump_ml());
     let prog = optimize(prog);

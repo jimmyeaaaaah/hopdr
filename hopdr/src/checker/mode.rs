@@ -1,5 +1,6 @@
 use crate::util::P;
 
+#[derive(Clone, Debug)]
 pub enum ModeKind {
     In,
     Out,
