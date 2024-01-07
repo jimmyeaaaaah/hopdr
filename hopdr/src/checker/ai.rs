@@ -1,4 +1,4 @@
-use crate::formula::hes::{Goal, GoalKind};
+use crate::formula::hes::{GoalBase, GoalKind};
 use crate::formula::{Constraint, Fv, Ident, Op, PredKind};
 use crate::ml::Range;
 
@@ -322,7 +322,7 @@ fn gen_bound(x: Ident, c: &Constraint) -> Domain {
     }
 }
 
-fn analyze_inner(x: Ident, g: &Goal<Constraint>) -> Domain {
+fn analyze_inner<Aux>(x: Ident, g: &GoalBase<Constraint, Aux>) -> Domain {
     match g.kind() {
         GoalKind::Constr(c) => gen_bound(x, c),
         GoalKind::Op(_) => panic!("program error"),
@@ -341,7 +341,7 @@ fn analyze_inner(x: Ident, g: &Goal<Constraint>) -> Domain {
     }
 }
 
-pub fn analyze(x: Ident, g: &Goal<Constraint>) -> Range {
+pub fn analyze<Aux>(x: Ident, g: &GoalBase<Constraint, Aux>) -> Range {
     let d = analyze_inner(x, g);
     let mut r = Range::new();
     if d.is_bot() {

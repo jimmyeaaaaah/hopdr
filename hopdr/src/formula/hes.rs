@@ -928,11 +928,13 @@ impl<C: Refinement, T: Clone> Into<Option<C>> for GoalBase<C, T> {
 }
 
 #[derive(Debug, Clone)]
-pub struct Clause<C> {
-    pub body: Goal<C>,
+pub struct ClauseBase<C, Aux> {
+    pub body: GoalBase<C, Aux>,
     pub head: Variable,
     // pub fixpoint: Fixpoint
 }
+
+pub type Clause<C> = ClauseBase<C, ()>;
 
 impl From<Clause<Constraint>> for Clause<fofml::Atom> {
     fn from(c: Clause<Constraint>) -> Self {
@@ -978,10 +980,12 @@ impl<C> Clause<C> {
 }
 
 #[derive(Debug, Clone)]
-pub struct Problem<C> {
-    pub clauses: Vec<Clause<C>>,
-    pub top: Goal<C>,
+pub struct ProblemBase<C, Aux> {
+    pub clauses: Vec<ClauseBase<C, Aux>>,
+    pub top: GoalBase<C, Aux>,
 }
+
+pub type Problem<C> = ProblemBase<C, ()>;
 
 impl From<Problem<Constraint>> for Problem<fofml::Atom> {
     fn from(p: Problem<Constraint>) -> Self {
