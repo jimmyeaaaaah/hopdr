@@ -242,6 +242,37 @@ impl DumpML for Expr {
             ExprKind::Sequential { lhs, rhs } => {
                 dump_bin_op(f, self.precedence(), ";", lhs, rhs, ctx)
             }
+            ExprKind::Tuple(args) => {
+                assert!(args.len() > 0);
+                write!(f, "(")?;
+                let mut first = true;
+                for arg in args.iter() {
+                    if first {
+                        first = false;
+                    } else {
+                        write!(f, ", ")?;
+                    }
+                    arg.dump_ml(f, ctx)?;
+                }
+                write!(f, ")")
+            }
+            ExprKind::LetTuple { idents, body, cont } => {
+                assert!(idents.len() > 0);
+                write!(f, "let (")?;
+                let mut first = true;
+                for ident in idents.iter() {
+                    if first {
+                        first = false;
+                    } else {
+                        write!(f, ", ")?;
+                    }
+                    ident.dump_ml(f, ctx)?;
+                }
+                write!(f, ") = ")?;
+                body.dump_ml(f, ctx)?;
+                write!(f, " in ")?;
+                cont.dump_ml(f, ctx)
+            }
         }
     }
 }

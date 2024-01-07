@@ -212,7 +212,7 @@ impl<'a> Translator<'a> {
             GoalKind::Var(x) => Expr::mk_var(*x),
             GoalKind::Abs(x, g) => {
                 let body = self.translate_goal(g.clone());
-                let v = Variable::mk(x.id, self.translate_type(&x.ty));
+                let v = Variable::mk(x.id, self.translate_type(unimplemented!(), &x.ty));
                 Expr::mk_fun(v, body)
             }
             GoalKind::App(g1, g2) => {
@@ -279,7 +279,7 @@ impl<'a> Translator<'a> {
             .iter()
             .map(|c| {
                 let name = c.head.id;
-                let ty = self.translate_type(&c.head.ty);
+                let ty = self.translate_type(unimplemented!(), &c.head.ty);
                 let body = self.translate_goal(c.body.clone());
                 Function { name, ty, body }
             })

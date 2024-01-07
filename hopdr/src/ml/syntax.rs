@@ -71,6 +71,12 @@ pub enum ExprKind {
         lhs: Expr,
         rhs: Expr,
     },
+    Tuple(Vec<Expr>),
+    LetTuple {
+        idents: Vec<Ident>,
+        body: Expr,
+        cont: Expr,
+    },
 }
 pub type Expr = P<ExprKind>;
 
@@ -90,6 +96,8 @@ impl Precedence for Expr {
             ExprKind::TryWith { .. } => PrecedenceKind::If,
             ExprKind::Assert(_) => PrecedenceKind::App,
             ExprKind::Sequential { .. } => PrecedenceKind::Sequential,
+            ExprKind::Tuple(args) => PrecedenceKind::Atom,
+            ExprKind::LetTuple { .. } => PrecedenceKind::Abs,
         }
     }
 }
@@ -144,6 +152,12 @@ impl Expr {
     pub fn mk_sequential(lhs: Expr, rhs: Expr) -> Self {
         P::new(ExprKind::Sequential { lhs, rhs })
     }
+    pub fn mk_tuple(args: Vec<Expr>) -> Self {
+        P::new(ExprKind::Tuple(args))
+    }
+    pub fn mk_let_tuple(idents: Vec<Ident>, body: Expr, cont: Expr) -> Self {
+        P::new(ExprKind::LetTuple { idents, body, cont })
+    }
     pub fn subst(&self, ident: Ident, e: Expr) -> Self {
         match self.kind() {
             ExprKind::Var(x) if *x == ident => e,
@@ -188,6 +202,18 @@ impl Expr {
             ExprKind::Assert(cond) => Expr::mk_assert(cond.subst(ident, e)),
             ExprKind::Sequential { lhs, rhs } => {
                 Expr::mk_sequential(lhs.subst(ident, e.clone()), rhs.subst(ident, e))
+            }
+            ExprKind::Tuple(args) => {
+                Expr::mk_tuple(args.iter().map(|e2| e2.subst(ident, e.clone())).collect())
+            }
+            ExprKind::LetTuple { idents, body, cont } => {
+                let body = body.subst(ident, e.clone());
+                let cont = if idents.contains(&ident) {
+                    cont.clone()
+                } else {
+                    cont.subst(ident, e)
+                };
+                Expr::mk_let_tuple(idents.clone(), body, cont)
             }
         }
     }
@@ -239,6 +265,18 @@ impl Expr {
             ExprKind::Assert(cond) => Expr::mk_assert(cond.isubst(ident, e)),
             ExprKind::Sequential { lhs, rhs } => {
                 Expr::mk_sequential(lhs.isubst(ident, e.clone()), rhs.isubst(ident, e))
+            }
+            ExprKind::Tuple(args) => {
+                Expr::mk_tuple(args.iter().map(|e2| e2.isubst(ident, e.clone())).collect())
+            }
+            ExprKind::LetTuple { idents, body, cont } => {
+                let body = body.isubst(ident, e.clone());
+                let cont = if idents.contains(&ident) {
+                    cont.clone()
+                } else {
+                    cont.isubst(ident, e)
+                };
+                Expr::mk_let_tuple(idents.clone(), body, cont)
             }
         }
     }
