@@ -96,7 +96,7 @@ impl Precedence for Expr {
             ExprKind::TryWith { .. } => PrecedenceKind::If,
             ExprKind::Assert(_) => PrecedenceKind::App,
             ExprKind::Sequential { .. } => PrecedenceKind::Sequential,
-            ExprKind::Tuple(args) => PrecedenceKind::Atom,
+            ExprKind::Tuple(_) => PrecedenceKind::Atom,
             ExprKind::LetTuple { .. } => PrecedenceKind::Abs,
         }
     }

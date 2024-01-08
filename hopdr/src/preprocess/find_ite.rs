@@ -3,8 +3,7 @@ use super::safety::check_dual;
 /// For example, a formula ∀x. x != 0 \/ P(x, y) can be translated to P(0, y).
 use super::TypedPreprocessor;
 use crate::formula::hes::{self, GoalKind};
-use crate::formula::{self, Bot, Constraint, Fv, Ident, Logic, Negation, Op};
-use std::collections::HashSet;
+use crate::formula::{self, Constraint, Logic};
 
 pub struct FindITETransform {}
 

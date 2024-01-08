@@ -24,7 +24,7 @@ fn type_check_1() {
         }
     }
 
-    let (vc, _ctx) = preprocess::hes::preprocess(f);
+    let (vc, _ctx) = preprocess::hes::preprocess_with_default_config(f);
     for fml in vc.clauses.iter() {
         println!("{}", fml);
     }
@@ -235,7 +235,7 @@ fn type_check_poly() {
         }
     }
 
-    let (vc, _ctx) = preprocess::hes::preprocess(f);
+    let (vc, _ctx) = preprocess::hes::preprocess_with_default_config(f);
     for fml in vc.clauses.iter() {
         println!("{}", fml);
     }
