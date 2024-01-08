@@ -175,15 +175,27 @@ fn quantify_validity_checking(vc: NuHFLzValidityChecking) -> NuHFLzValidityCheck
     NuHFLzValidityChecking { formulas, toplevel }
 }
 
+/// the algorithm of preprocess can be reordered, called more than once.
+/// to do so, config is in the future, a sequence of algorithms.
+#[derive(Default)]
 pub struct Config {
     find_ite: bool,
+    unpack_constr: bool,
 }
+
 impl Config {
     pub fn new() -> Config {
-        Config { find_ite: false }
+        Config::default()
+    }
+    pub fn checker_default() -> Config {
+        Config::new().find_ite(true).unpack_constr(true)
     }
     pub fn find_ite(mut self, val: bool) -> Self {
         self.find_ite = val;
+        self
+    }
+    pub fn unpack_constr(mut self, val: bool) -> Self {
+        self.unpack_constr = val;
         self
     }
 }
@@ -203,6 +215,9 @@ pub fn preprocess_for_typed_problem(
     if config.find_ite {
         problem = reorder_disj::transform(problem);
         problem = find_ite::transform(problem);
+    }
+    if config.unpack_constr {
+        problem = unpack_constr::transform(problem);
     }
     let problem = remove_tmp_var::transform(problem);
     problem

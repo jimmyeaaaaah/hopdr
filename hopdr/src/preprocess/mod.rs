@@ -13,6 +13,7 @@ mod safety;
 mod simplify_constr_op;
 mod transform;
 mod typing;
+mod unpack_constr;
 
 use crate::formula;
 use crate::formula::Type as SimpleType;

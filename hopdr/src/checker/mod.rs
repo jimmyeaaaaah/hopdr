@@ -210,13 +210,15 @@ impl<'a> Translator<'a> {
 
     fn translate_constraintm(&mut self, c: &Constraint, cont: Expr) -> Expr {
         match c.kind() {
+            crate::formula::ConstraintExpr::Pred(_, _) => todo!(),
             crate::formula::ConstraintExpr::True | crate::formula::ConstraintExpr::False => {
                 panic!("program error")
             }
-            crate::formula::ConstraintExpr::Pred(_, _) => todo!(),
-            crate::formula::ConstraintExpr::Conj(_, _) => todo!(),
-            crate::formula::ConstraintExpr::Disj(_, _) => todo!(),
-            crate::formula::ConstraintExpr::Quantifier(_, _, _) => todo!(),
+            crate::formula::ConstraintExpr::Conj(_, _)
+            | crate::formula::ConstraintExpr::Disj(_, _)
+            | crate::formula::ConstraintExpr::Quantifier(_, _, _) => {
+                panic!("conj and disj must have been removed in preprocess::unpack_constr")
+            }
         }
     }
     fn mk_demonic_branch(&self, e1: Expr, e2: Expr) -> Expr {
