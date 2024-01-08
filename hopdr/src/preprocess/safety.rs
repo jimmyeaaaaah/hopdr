@@ -6,24 +6,23 @@
 
 use crate::formula;
 use crate::formula::hes;
-use crate::formula::Logic;
+use crate::formula::{Constraint, Logic, Negation};
+use hes::GoalKind;
+
+// these functions are used also in src/preprocess/find_ite.rs, so the visibility is pub(super)
+pub(super) type Goal = hes::Goal<formula::Constraint>;
+pub(super) fn check_dual(g1: &Goal, g2: &Goal) -> bool {
+    match (g1.kind(), g2.kind()) {
+        (GoalKind::Constr(c1), GoalKind::Constr(c2)) => {
+            let c2 = c2.negate().unwrap();
+            c1 == &c2
+        }
+        _ => false,
+    }
+}
 
 fn transform_goal(goal: &hes::Goal<formula::Constraint>) -> hes::Goal<formula::Constraint> {
-    use crate::formula::Negation;
-    use hes::GoalKind;
     let f = transform_goal;
-
-    type Goal = hes::Goal<formula::Constraint>;
-
-    fn check_dual(g1: &Goal, g2: &Goal) -> bool {
-        match (g1.kind(), g2.kind()) {
-            (GoalKind::Constr(c1), GoalKind::Constr(c2)) => {
-                let c2 = c2.negate().unwrap();
-                c1 == &c2
-            }
-            _ => false,
-        }
-    }
 
     match goal.kind() {
         GoalKind::Disj(g1, g2) => match (g1.kind(), g2.kind()) {
