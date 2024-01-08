@@ -266,8 +266,21 @@ impl<'a> Translator<'a> {
                 self.translate_goalm(g1, cont)
             }
             GoalKind::Univ(v, g) => {
+                let body = self.translate_goalm(g, cont);
                 let m = goal.aux.get_univ_mode();
-                unimplemented!()
+                match m.kind() {
+                    mode::ModeKind::InOut => {
+                        // TODO: assert(!body.fv().contains(&v.id));
+                        body
+                    }
+                    mode::ModeKind::In => {
+                        assert!(v.ty.is_int());
+                        let range = ai::analyze(v.id, g);
+                        Expr::mk_letrand(v.id, range, body)
+                    }
+                    mode::ModeKind::Out => unimplemented!(), // This is another case where it is unreachable in theory
+                    mode::ModeKind::Prop | mode::ModeKind::Fun(_, _) => panic!("program error"),
+                }
             }
             GoalKind::ITE(c, g1, g2) => {
                 let g1 = self.translate_goalm(g1, cont.clone());
@@ -302,6 +315,8 @@ impl<'a> Translator<'a> {
                 Expr::mk_fun(v, body)
             }
             GoalKind::App(g1, g2) => {
+                // should handle the arg's higher-order case
+                unimplemented!()
                 let g1 = self.translate_goal(g1.clone());
                 // TODO: check the type of g1 so that we can infer g2 is op or not
                 // corner case: g2 is a variable
