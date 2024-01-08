@@ -233,6 +233,9 @@ impl<C, T: Default> GoalBase<C, T> {
     pub fn mk_ite(c: C, g1: GoalBase<C, T>, g2: GoalBase<C, T>) -> GoalBase<C, T> {
         GoalBase::mk_ite_t(c, g1, g2, T::default())
     }
+    pub fn is_ite(&self) -> bool {
+        matches!(self.kind(), GoalKind::ITE(_, _, _))
+    }
 }
 
 impl<C: Bot + Top, T: Clone + Default> Logic for GoalBase<C, T> {
