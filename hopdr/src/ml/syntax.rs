@@ -158,6 +158,16 @@ impl Expr {
     pub fn mk_let_tuple(idents: Vec<Ident>, body: Expr, cont: Expr) -> Self {
         P::new(ExprKind::LetTuple { idents, body, cont })
     }
+    pub fn mk_let(ident: Ident, body: Expr, cont: Expr) -> Self {
+        P::new(ExprKind::LetTuple {
+            idents: vec![ident],
+            body,
+            cont,
+        })
+    }
+    pub fn mk_op(o: Op) -> Self {
+        unimplemented!()
+    }
     pub fn subst(&self, ident: Ident, e: Expr) -> Self {
         match self.kind() {
             ExprKind::Var(x) if *x == ident => e,
