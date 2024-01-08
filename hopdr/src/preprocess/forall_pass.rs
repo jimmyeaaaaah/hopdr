@@ -10,11 +10,14 @@ fn transform_goal(goal: &hes::Goal<formula::Constraint>) -> hes::Goal<formula::C
 
     type Goal = hes::Goal<formula::Constraint>;
 
-    fn divide_disj(g11: &Goal, g12: &Goal) -> (Constraint, Goal) {
+    fn divide_disj(g11: &Goal, g12: &Goal) -> Option<(Constraint, Goal)> {
         let c1: Option<Constraint> = g11.clone().into();
         match c1 {
-            Some(c) => (c, g12.clone()),
-            None => (g12.clone().into(), g11.clone()),
+            Some(c) => Some((c, g12.clone())),
+            None => {
+                let c2: Option<Constraint> = g12.clone().into();
+                c2.map(|c| (c, g11.clone()))
+            }
         }
     }
 
@@ -28,7 +31,10 @@ fn transform_goal(goal: &hes::Goal<formula::Constraint>) -> hes::Goal<formula::C
             _ => return goal,
         };
         let (c1, g1) = match g1.kind() {
-            GoalKind::Disj(g11, g12) => divide_disj(g11, g12),
+            GoalKind::Disj(g11, g12) => match divide_disj(g11, g12) {
+                Some(x) => x,
+                None => return goal,
+            },
             GoalKind::Constr(c) => match c.kind() {
                 formula::ConstraintExpr::Disj(c1, c2) => (c1.clone(), Goal::mk_constr(c2.clone())),
                 _ => return goal,
@@ -36,7 +42,10 @@ fn transform_goal(goal: &hes::Goal<formula::Constraint>) -> hes::Goal<formula::C
             _ => return goal,
         };
         let (c2, g2) = match g2.kind() {
-            GoalKind::Disj(left, right) => divide_disj(left, right),
+            GoalKind::Disj(left, right) => match divide_disj(left, right) {
+                Some(x) => x,
+                None => return goal,
+            },
             GoalKind::Constr(c) => match c.kind() {
                 formula::ConstraintExpr::Disj(c1, c2) => (c1.clone(), Goal::mk_constr(c2.clone())),
                 _ => return goal,
