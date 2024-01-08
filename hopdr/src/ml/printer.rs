@@ -273,6 +273,7 @@ impl DumpML for Expr {
                 write!(f, " in ")?;
                 cont.dump_ml(f, ctx)
             }
+            ExprKind::Op(o) => o.dump_ml(f, ctx),
         }
     }
 }

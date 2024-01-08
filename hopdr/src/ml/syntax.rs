@@ -77,6 +77,7 @@ pub enum ExprKind {
         body: Expr,
         cont: Expr,
     },
+    Op(Op),
 }
 pub type Expr = P<ExprKind>;
 
@@ -98,6 +99,7 @@ impl Precedence for Expr {
             ExprKind::Sequential { .. } => PrecedenceKind::Sequential,
             ExprKind::Tuple(_) => PrecedenceKind::Atom,
             ExprKind::LetTuple { .. } => PrecedenceKind::Abs,
+            ExprKind::Op(o) => o.precedence(),
         }
     }
 }
@@ -166,13 +168,12 @@ impl Expr {
         })
     }
     pub fn mk_op(o: Op) -> Self {
-        unimplemented!()
+        P::new(ExprKind::Op(o))
     }
     pub fn subst(&self, ident: Ident, e: Expr) -> Self {
         match self.kind() {
             ExprKind::Var(x) if *x == ident => e,
-            ExprKind::Var(_) => self.clone(),
-            ExprKind::Constraint(_) => self.clone(),
+            ExprKind::Var(_) | ExprKind::Op(_) | ExprKind::Constraint(_) => self.clone(),
             ExprKind::Or(lhs, rhs) => Expr::mk_or(lhs.subst(ident, e.clone()), rhs.subst(ident, e)),
             ExprKind::And(lhs, rhs) => {
                 Expr::mk_and(lhs.subst(ident, e.clone()), rhs.subst(ident, e))
@@ -288,6 +289,7 @@ impl Expr {
                 };
                 Expr::mk_let_tuple(idents.clone(), body, cont)
             }
+            ExprKind::Op(o) => Expr::mk_op(o.subst(&ident, &e)),
         }
     }
 }

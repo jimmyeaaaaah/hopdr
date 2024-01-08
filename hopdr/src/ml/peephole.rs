@@ -3,9 +3,11 @@ use crate::ml::*;
 pub(super) fn peephole_optimize<'a>(mut p: Program<'a>) -> Program<'a> {
     fn f(s: &Expr) -> Expr {
         match s.kind() {
-            ExprKind::Var(_) | ExprKind::Constraint(_) | ExprKind::Raise | ExprKind::Unit => {
-                s.clone()
-            }
+            ExprKind::Var(_)
+            | ExprKind::Constraint(_)
+            | ExprKind::Raise
+            | ExprKind::Unit
+            | ExprKind::Op(_) => s.clone(),
             ExprKind::Or(c1, c2) => {
                 let c1 = f(c1);
                 let c2 = f(c2);
