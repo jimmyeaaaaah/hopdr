@@ -57,6 +57,11 @@ pub trait Refinement:
     fn mk_implies_opt(x: Self, y: Self) -> Option<Self> {
         x.negate().map(|x| Self::mk_disj(x, y))
     }
+    fn mk_ite(c1: Self, c2: Self, c3: Self) -> Self {
+        let left = Self::mk_disj(c1.negate().unwrap(), c2);
+        let right = Self::mk_disj(c1, c3);
+        Self::mk_conj(left, right)
+    }
 }
 impl<T> Refinement for T where
     T: Clone

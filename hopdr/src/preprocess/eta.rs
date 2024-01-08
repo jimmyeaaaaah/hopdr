@@ -66,6 +66,12 @@ impl TypedPreprocessor for EtaTransform {
                     let g2 = translate(g2, s, env);
                     (t.clone(), Goal::mk_app(g1, g2))
                 }
+                GoalKind::ITE(c, g1, g2) => {
+                    let t = &Type::mk_type_prop();
+                    let g1 = translate(g1, t, env);
+                    let g2 = translate(g2, t, env);
+                    (Type::mk_type_prop(), Goal::mk_ite(c.clone(), g1, g2))
+                }
             }
         }
 
@@ -118,6 +124,9 @@ impl TypedPreprocessor for EtaTransform {
                 }
                 GoalKind::Disj(g1, g2) => {
                     Goal::mk_disj(translate(g1, t, env), translate(g2, t, env))
+                }
+                GoalKind::ITE(c, g1, g2) => {
+                    Goal::mk_ite(c.clone(), translate(g1, t, env), translate(g2, t, env))
                 }
             }
         }

@@ -195,7 +195,8 @@ impl<'a> Translator<'a> {
             | GoalKind::Op(_)
             | GoalKind::Conj(_, _)
             | GoalKind::Disj(_, _)
-            | GoalKind::Univ(_, _) => panic!("program error"),
+            | GoalKind::Univ(_, _)
+            | GoalKind::ITE(_, _, _) => panic!("program error"),
         }
     }
 
@@ -221,6 +222,7 @@ impl<'a> Translator<'a> {
             GoalKind::Conj(_, _) => todo!(),
             GoalKind::Disj(_, _) => todo!(),
             GoalKind::Univ(_, _) => todo!(),
+            GoalKind::ITE(_, _, _) => todo!(),
         }
     }
 
@@ -301,6 +303,11 @@ impl<'a> Translator<'a> {
                 let range = ai::analyze(v.id, g);
                 Expr::mk_letrand(v.id, range, Expr::mk_app(body, Expr::mk_var(p)))
             }),
+            GoalKind::ITE(c, g1, g2) => {
+                let g1 = self.translate_goal(g1.clone());
+                let g2 = self.translate_goal(g2.clone());
+                Expr::mk_if(Expr::mk_constraint(c.clone()), g1, g2)
+            }
         }
     }
     fn translate(&mut self, problem: ProblemM) -> Program {

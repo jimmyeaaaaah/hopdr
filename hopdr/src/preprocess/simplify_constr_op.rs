@@ -40,6 +40,12 @@ impl TypedPreprocessor for SimplifyConstrOpTransform {
                 let g = self.transform_goal(g, t, env);
                 hes::Goal::mk_univ_opt(x.clone(), g)
             }
+            hes::GoalKind::ITE(c, g1, g2) => {
+                let c = c.clone();
+                let g1 = self.transform_goal(g1, t, env);
+                let g2 = self.transform_goal(g2, t, env);
+                hes::Goal::mk_ite(c, g1, g2)
+            }
         }
     }
 }

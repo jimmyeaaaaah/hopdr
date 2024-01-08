@@ -62,6 +62,9 @@ fn transform_goal(goal: &hes::Goal<formula::Constraint>) -> hes::Goal<formula::C
             GoalKind::Disj(g1, g2) => {
                 ExpandITEState::handle_two(g1.clone(), g2.clone(), Goal::mk_disj, translate)
             }
+            GoalKind::ITE(_, _, _) => {
+                unimplemented!()
+            }
         }
     }
     debug!("transform_goal: {goal}");
