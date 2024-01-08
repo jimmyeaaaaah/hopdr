@@ -1,7 +1,5 @@
 use super::alpha::alpha_renaming;
 use super::eta;
-#[allow(unused_imports)]
-use super::extravar;
 use super::find_ite;
 use super::forall_pass;
 use super::remove_tmp_var;
@@ -11,7 +9,10 @@ use super::safety;
 use super::simplify_constr_op;
 use super::transform::transform;
 use super::typing::typing;
+use super::unpack_constr;
 use super::Context;
+#[allow(unused_imports)]
+use super::*;
 use crate::formula;
 use crate::formula::hes;
 use crate::formula::{Fv, OpKind, PredKind, Type as SimpleType};
