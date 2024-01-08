@@ -36,7 +36,7 @@ fn gen_configuration_from_args(args: &Args) -> hopdr::Configuration {
 }
 
 fn get_preprocess_config() -> hopdr::preprocess::hes::Config {
-    hopdr::preprocess::hes::Config::new().find_ite(true)
+    hopdr::preprocess::hes::Config::checker_default()
 }
 
 fn get_problem(
