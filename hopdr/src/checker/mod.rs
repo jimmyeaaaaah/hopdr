@@ -159,6 +159,9 @@ impl<'a> Translator<'a> {
         let m = &goal.aux.mode;
         let ty = &goal.aux.ty;
         if ty.is_prop() {
+            if variables.len() == 0 {
+                return self.translate_goal(goal.clone());
+            }
             return unimplemented!();
         }
         match goal.kind() {
@@ -196,6 +199,31 @@ impl<'a> Translator<'a> {
         }
     }
 
+    fn translate_constrainm(&mut self, c: &Constraint) -> Expr {
+        match c.kind() {
+            crate::formula::ConstraintExpr::True | crate::formula::ConstraintExpr::False => {
+                panic!("program error")
+            }
+            crate::formula::ConstraintExpr::Pred(_, _) => todo!(),
+            crate::formula::ConstraintExpr::Conj(_, _) => todo!(),
+            crate::formula::ConstraintExpr::Disj(_, _) => todo!(),
+            crate::formula::ConstraintExpr::Quantifier(_, _, _) => todo!(),
+        }
+    }
+
+    fn translate_goalm(&mut self, goal: &GoalM, cont: Expr, target: Option<Ident>) -> Expr {
+        match goal.kind() {
+            GoalKind::Constr(c) => todo!(),
+            GoalKind::Op(_) => panic!("program error"),
+            GoalKind::Var(x) => todo!(),
+            GoalKind::Abs(_, _) => todo!(),
+            GoalKind::App(_, _) => todo!(),
+            GoalKind::Conj(_, _) => todo!(),
+            GoalKind::Disj(_, _) => todo!(),
+            GoalKind::Univ(_, _) => todo!(),
+        }
+    }
+
     // [θ] = fun p -> if not [θ] then raise FalseExc
     // [Ψ1 /\ Ψ2] = fun p -> if * then [Ψ1] p else [Ψ2]p
     // [θ /\ Ψ2] = fun p -> [θ] p; [Ψ2]p
@@ -203,6 +231,8 @@ impl<'a> Translator<'a> {
     // [Ψ1 \/ Ψ2] = fun p -> try [Ψ1]p with FalseExc -> [Ψ2]p
     // [(¬θ \/ Ψ1) /\ (θ \/ Ψ2)] = fun p -> if [θ] then [Ψ1] else  [Ψ2]
     // [∀x. Ψ] = fun p -> let x = * in [Ψ] p
+    /// translate the given goal to a program whose unreachability to the assertion failure
+    /// is equivalent to the validity of the given goal
     fn translate_goal(&mut self, goal: GoalM) -> Expr {
         match goal.kind() {
             GoalKind::Constr(c) => self.translate_constraint(c),
