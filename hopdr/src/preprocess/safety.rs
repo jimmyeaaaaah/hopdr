@@ -6,7 +6,7 @@
 
 use crate::formula;
 use crate::formula::hes;
-use crate::formula::{Constraint, Logic, Negation};
+use crate::formula::{Logic, Negation};
 use hes::GoalKind;
 
 // these functions are used also in src/preprocess/find_ite.rs, so the visibility is pub(super)
