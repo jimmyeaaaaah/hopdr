@@ -2,6 +2,7 @@ use super::alpha::alpha_renaming;
 use super::eta;
 #[allow(unused_imports)]
 use super::extravar;
+use super::find_ite;
 use super::forall_pass;
 use super::remove_tmp_var;
 use super::reorder_conj;
@@ -173,8 +174,22 @@ fn quantify_validity_checking(vc: NuHFLzValidityChecking) -> NuHFLzValidityCheck
     NuHFLzValidityChecking { formulas, toplevel }
 }
 
+pub struct Config {
+    find_ite: bool,
+}
+impl Config {
+    pub fn new() -> Config {
+        Config { find_ite: false }
+    }
+    pub fn find_ite(mut self, val: bool) -> Self {
+        self.find_ite = val;
+        self
+    }
+}
+
 pub fn preprocess_for_typed_problem(
     problem: hes::Problem<formula::Constraint>,
+    config: &Config,
 ) -> hes::Problem<formula::Constraint> {
     debug!("[problem]\n{}\n", problem);
     let problem = safety::transform(problem);
@@ -182,13 +197,19 @@ pub fn preprocess_for_typed_problem(
     let problem = eta::transform(problem);
     let problem = forall_pass::transform(problem);
     let problem = reorder_conj::transform(problem);
-    let problem = simplify_constr_op::transform(problem);
+    let mut problem = simplify_constr_op::transform(problem);
     //let problem = ite_expand::transform(problem);
+    if config.find_ite {
+        problem = find_ite::transform(problem);
+    }
     let problem = remove_tmp_var::transform(problem);
     problem
 }
 
-pub fn preprocess(vc: parse::Problem) -> (hes::Problem<formula::Constraint>, Context) {
+pub fn preprocess(
+    vc: parse::Problem,
+    config: &Config,
+) -> (hes::Problem<formula::Constraint>, Context) {
     match vc {
         parse::Problem::NuHFLZValidityChecking(vc) => {
             let vc = quantify_validity_checking(vc);
@@ -196,8 +217,13 @@ pub fn preprocess(vc: parse::Problem) -> (hes::Problem<formula::Constraint>, Con
             let (problem, ctx) = alpha_renaming(problem);
             // let problem = extravar::transform(problem);
             let problem = transform(problem);
-            let problem = preprocess_for_typed_problem(problem);
+            let problem = preprocess_for_typed_problem(problem, &config);
             (problem, ctx)
         }
     }
+}
+pub fn preprocess_with_default_config(
+    vc: parse::Problem,
+) -> (hes::Problem<formula::Constraint>, Context) {
+    preprocess(vc, &Config::new())
 }

@@ -34,6 +34,11 @@ fn gen_configuration_from_args(args: &Args) -> hopdr::Configuration {
         .remove_disjunction(false)
         .wait_every_step(false)
 }
+
+fn get_preprocess_config() -> hopdr::preprocess::hes::Config {
+    hopdr::preprocess::hes::Config::new().find_ite(true)
+}
+
 fn get_problem(
     filename: &str,
     config: &hopdr::Configuration,
@@ -55,7 +60,7 @@ fn get_problem(
         }
     }
     title!("proprocessed");
-    let (vc, ctx) = preprocess::hes::preprocess(f);
+    let (vc, ctx) = preprocess::hes::preprocess(f, &get_preprocess_config());
     for fml in vc.clauses.iter() {
         debug!("{}", fml);
     }
@@ -111,7 +116,8 @@ fn main() {
             crate::formula::chc::translate_to_hes
         }(chcs);
 
-        let problem = crate::preprocess::hes::preprocess_for_typed_problem(problem);
+        let config = get_preprocess_config();
+        let problem = crate::preprocess::hes::preprocess_for_typed_problem(problem, &config);
         (problem, hopdr::preprocess::Context::empty())
     } else {
         get_problem(&args.input, &config)

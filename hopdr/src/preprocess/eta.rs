@@ -154,7 +154,7 @@ fn test_transform() {
     let (_, f) = parse::<VerboseError<&str>>(s).unwrap();
     // FIXME: hes::preprocess contains eta's path, and it's inevitable currently;
     // therefore, checking if hes::preprocess succeeds is the current check of this test..
-    let (_vc, _ctx) = preprocess::hes::preprocess(f);
+    let (_vc, _ctx) = preprocess::hes::preprocess_with_default_config(f);
     // println!("before: {vc}");
     // let vc_old = vc.clone();
     // let h = transform(vc);
