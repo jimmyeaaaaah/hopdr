@@ -9,7 +9,32 @@ pub struct FindITETransform {}
 
 type Goal = hes::Goal<Constraint>;
 
+fn get_ite_triple<'a>(
+    g11: &'a Goal,
+    g12: &'a Goal,
+    g21: &'a Goal,
+    g22: &'a Goal,
+) -> Option<(Constraint, &'a Goal, &'a Goal)> {
+    debug!("disjs: ({g11}) | ({g12}) vs ({g21}) | ({g22})");
+    if check_dual(g11, g21) {
+        let c: Constraint = g11.clone().into();
+        Some((c, g12, g22))
+    } else if check_dual(g11, g22) {
+        let c: Constraint = g11.clone().into();
+        Some((c, g12, g21))
+    } else if check_dual(g12, g21) {
+        let c: Constraint = g12.clone().into();
+        Some((c, g11, g22))
+    } else if check_dual(g12, g22) {
+        let c: Constraint = g12.clone().into();
+        Some((c, g11, g21))
+    } else {
+        return None;
+    }
+}
+
 fn f(g: &Goal) -> Goal {
+    debug!("target: {g}");
     match g.kind() {
         GoalKind::Constr(_) | GoalKind::Op(_) | GoalKind::Var(_) => g.clone(),
         GoalKind::Abs(x, g) => {
@@ -33,23 +58,26 @@ fn f(g: &Goal) -> Goal {
 
         GoalKind::Conj(g1, g2) => match (g1.kind(), g2.kind()) {
             (GoalKind::Disj(g11, g12), GoalKind::Disj(g21, g22)) => {
-                let (c, g1, g2) = if check_dual(g11, g21) {
-                    let c: Constraint = g11.clone().into();
-                    (c, g12, g22)
-                } else if check_dual(g11, g22) {
-                    let c: Constraint = g11.clone().into();
-                    (c, g12, g21)
-                } else if check_dual(g12, g21) {
-                    let c: Constraint = g12.clone().into();
-                    (c, g11, g22)
-                } else if check_dual(g12, g22) {
-                    let c: Constraint = g12.clone().into();
-                    (c, g11, g21)
-                } else {
-                    return Goal::mk_conj(f(g1), f(g2));
-                };
-                Goal::mk_ite(c, f(g1), f(g2))
+                match get_ite_triple(g11, g12, g21, g22) {
+                    Some((c, g1, g2)) => Goal::mk_ite(c, f(g1), f(g2)),
+                    None => Goal::mk_conj(f(g1), f(g2)),
+                }
             }
+            (GoalKind::Disj(g11, g12), GoalKind::Constr(c))
+            | (GoalKind::Constr(c), GoalKind::Disj(g11, g12)) => match c.kind() {
+                formula::ConstraintExpr::Disj(c1, c2) => {
+                    match get_ite_triple(
+                        g11,
+                        g12,
+                        &Goal::mk_constr(c1.clone()),
+                        &Goal::mk_constr(c2.clone()),
+                    ) {
+                        Some((c, g1, g2)) => Goal::mk_ite(c, f(g1), f(g2)),
+                        None => Goal::mk_conj(f(g1), f(g2)),
+                    }
+                }
+                _ => Goal::mk_conj(f(g1), f(g2)),
+            },
             _ => Goal::mk_conj(f(g1), f(g2)),
         },
         GoalKind::Disj(g1, g2) => {
