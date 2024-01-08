@@ -227,14 +227,7 @@ impl<'a> Translator<'a> {
             crate::formula::ConstraintExpr::Pred(PredKind::Neq, l) if l.len() == 2 => {
                 self.handle_neq(&l[0], &l[1], cont, env)
             }
-            crate::formula::ConstraintExpr::True
-            | crate::formula::ConstraintExpr::False
-            | crate::formula::ConstraintExpr::Pred(_, _)
-            | crate::formula::ConstraintExpr::Conj(_, _)
-            | crate::formula::ConstraintExpr::Disj(_, _)
-            | crate::formula::ConstraintExpr::Quantifier(_, _, _) => {
-                panic!("mode inference is buggy")
-            }
+            _ => panic!("mode inference is buggy"),
         }
     }
 
