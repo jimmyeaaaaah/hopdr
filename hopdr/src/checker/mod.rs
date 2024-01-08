@@ -36,6 +36,14 @@ type G = Goal<Constraint>;
 struct Aux {
     mode: Mode,
     ty: HFLType,
+    // this field is used for univ quantifier and abs
+    introduced_mode: Option<Mode>,
+}
+
+impl Aux {
+    fn get_univ_mode(&self) -> &Mode {
+        &self.mode
+    }
 }
 
 // The type of intermediate representation for each formula
@@ -149,7 +157,7 @@ impl<'a> Translator<'a> {
     fn handle_app_arg(&mut self, goal: GoalM) -> (Expr, Mode) {
         unimplemented!()
     }
-    fn handle_app(&mut self, goal: GoalM) -> Expr {
+    fn handle_app(&mut self, goal: GoalM, cont: Expr) -> Expr {
         unimplemented!()
     }
     // [\x. Ψ] = fun x -> [Ψ]
@@ -200,7 +208,7 @@ impl<'a> Translator<'a> {
         }
     }
 
-    fn translate_constrainm(&mut self, c: &Constraint) -> Expr {
+    fn translate_constraintm(&mut self, c: &Constraint, cont: Expr) -> Expr {
         match c.kind() {
             crate::formula::ConstraintExpr::True | crate::formula::ConstraintExpr::False => {
                 panic!("program error")
@@ -211,18 +219,37 @@ impl<'a> Translator<'a> {
             crate::formula::ConstraintExpr::Quantifier(_, _, _) => todo!(),
         }
     }
+    fn mk_demonic_branch(&self, e1: Expr, e2: Expr) -> Expr {
+        let ident = Ident::fresh();
+        let c = Constraint::mk_eq(Op::mk_var(ident), Op::zero());
+        let body = Expr::mk_if(Expr::mk_constraint(c), e1, e2);
+        Expr::mk_let_bool_rand(ident, body)
+    }
 
-    fn translate_goalm(&mut self, goal: &GoalM, cont: Expr, target: Option<Ident>) -> Expr {
+    fn translate_goalm(&mut self, goal: &GoalM, cont: Expr) -> Expr {
         match goal.kind() {
-            GoalKind::Constr(c) => todo!(),
-            GoalKind::Op(_) => panic!("program error"),
-            GoalKind::Var(x) => todo!(),
-            GoalKind::Abs(_, _) => todo!(),
-            GoalKind::App(_, _) => todo!(),
-            GoalKind::Conj(_, _) => todo!(),
-            GoalKind::Disj(_, _) => todo!(),
-            GoalKind::Univ(_, _) => todo!(),
-            GoalKind::ITE(_, _, _) => todo!(),
+            GoalKind::Constr(c) => self.translate_constraintm(c, cont),
+            GoalKind::App(_, _) => self.handle_app(goal.clone(), cont),
+            GoalKind::Conj(g1, g2) => {
+                let g1 = self.translate_goalm(g1, cont.clone());
+                let g2 = self.translate_goalm(g2, cont);
+                self.mk_demonic_branch(g1, g2)
+            }
+            GoalKind::Disj(g1, g2) => {
+                unimplemented!()
+            }
+            GoalKind::Univ(v, g) => {
+                let m = goal.aux.get_univ_mode();
+                unimplemented!()
+            }
+            GoalKind::ITE(c, g1, g2) => {
+                let g1 = self.translate_goalm(g1, cont.clone());
+                let g2 = self.translate_goalm(g2, cont.clone());
+                Expr::mk_if(Expr::mk_constraint(c.clone()), g1, g2)
+            }
+            GoalKind::Var(_) | GoalKind::Op(_) | GoalKind::Abs(_, _) => {
+                panic!("program error: mode inference is wrong?")
+            }
         }
     }
 
@@ -277,8 +304,6 @@ impl<'a> Translator<'a> {
                     let g1 = Expr::mk_app(g1, Expr::mk_var(p));
                     let g2 = self.translate_goal(g2_fml.clone());
                     let g2 = Expr::mk_app(g2, Expr::mk_var(p));
-                    let ident = Ident::fresh();
-                    let c = Constraint::mk_eq(Op::mk_var(ident), Op::zero());
 
                     //[θ /\ Ψ2] = fun p -> [θ] p; [Ψ2]p
                     //[Ψ1 /\ θ] = fun p -> [θ] p; [Ψ1]p
@@ -287,8 +312,7 @@ impl<'a> Translator<'a> {
                     } else if Into::<Option<Constraint>>::into(g2_fml.clone()).is_some() {
                         Expr::mk_sequential(g2, g1)
                     } else {
-                        let body = Expr::mk_if(Expr::mk_constraint(c), g1, g2);
-                        Expr::mk_let_bool_rand(ident, body)
+                        self.mk_demonic_branch(g1, g2)
                     }
                 })
             }
