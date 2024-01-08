@@ -1,6 +1,7 @@
 mod alpha;
 mod eta;
 mod extravar;
+mod find_ite;
 mod forall_pass;
 pub mod hes;
 pub mod hfl_preprocessor;

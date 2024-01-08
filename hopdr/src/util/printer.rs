@@ -590,6 +590,22 @@ impl<C: Pretty + Precedence, T> Pretty for hes::GoalBase<C, T> {
             Disj(x, y) => pretty_bin_op_soft(al, config, self.precedence(), "∨", x, y),
             Univ(x, y) => pretty_abs(al, config, "∀", x, y),
             Abs(x, y) => pretty_abs(al, config, "λ", x, y),
+            ITE(c, g1, g2) => {
+                let c = paren(al, config, PrecedenceKind::If, c);
+                let g1 = paren(al, config, PrecedenceKind::If, g1);
+                let g2 = paren(al, config, PrecedenceKind::If, g2);
+                al.text("if")
+                    .append(al.space())
+                    .append(c)
+                    .append(al.space())
+                    .append(al.text("then"))
+                    .append(al.space())
+                    .append(g1)
+                    .append(al.space())
+                    .append(al.text("else"))
+                    .append(al.space())
+                    .append(g2)
+            }
         }
         .group()
     }

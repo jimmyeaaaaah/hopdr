@@ -338,6 +338,11 @@ fn analyze_inner<Aux>(x: Ident, g: &GoalBase<Constraint, Aux>) -> Domain {
             d1.meet(d2)
         }
         GoalKind::Univ(_, g) => analyze_inner(x, g),
+        GoalKind::ITE(_, g1, g2) => {
+            let d1 = analyze_inner(x, g1);
+            let d2 = analyze_inner(x, g2);
+            d1.join(d2)
+        }
     }
 }
 

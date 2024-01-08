@@ -55,6 +55,7 @@ pub enum GoalKind<C, T> {
     Conj(GoalBase<C, T>, GoalBase<C, T>),
     Disj(GoalBase<C, T>, GoalBase<C, T>),
     Univ(Variable, GoalBase<C, T>),
+    ITE(C, GoalBase<C, T>, GoalBase<C, T>),
 }
 
 #[derive(Debug)]
@@ -122,6 +123,15 @@ impl<C: TeXFormat, T> TeXFormat for GoalBase<C, T> {
             GoalKind::Univ(x, g) => {
                 write!(f, "(\\forall {}. {})", TeXPrinter(x), TeXPrinter(g))
             }
+            GoalKind::ITE(x, g1, g2) => {
+                write!(
+                    f,
+                    "(if {} then {} else {})",
+                    TeXPrinter(x),
+                    TeXPrinter(g1),
+                    TeXPrinter(g2)
+                )
+            }
         }
     }
 }
@@ -173,6 +183,12 @@ impl<T: Clone> From<GoalBase<Constraint, T>> for Constraint {
             GoalKind::Op(_) | GoalKind::Var(_) | GoalKind::Abs(_, _) | GoalKind::App(_, _) => {
                 panic!("program error: {} cannot be translated to Constraint", g)
             }
+            GoalKind::ITE(c1, g1, g2) => {
+                let c1 = c1.clone();
+                let c2 = g1.clone().into();
+                let c3 = g2.clone().into();
+                Constraint::mk_ite(c1, c2, c3)
+            }
         }
     }
 }
@@ -186,7 +202,8 @@ impl<C, T> From<GoalBase<C, T>> for Op {
             | GoalKind::App(_, _)
             | GoalKind::Conj(_, _)
             | GoalKind::Disj(_, _)
-            | GoalKind::Univ(_, _) => panic!("program error"),
+            | GoalKind::Univ(_, _)
+            | GoalKind::ITE(_, _, _) => panic!("program error"),
         }
     }
 }
@@ -212,6 +229,9 @@ impl<C, T: Default> GoalBase<C, T> {
     }
     pub fn is_op(&self) -> bool {
         matches!(self.kind(), GoalKind::Op(_))
+    }
+    pub fn mk_ite(c: C, g1: GoalBase<C, T>, g2: GoalBase<C, T>) -> GoalBase<C, T> {
+        GoalBase::mk_ite_t(c, g1, g2, T::default())
     }
 }
 
@@ -284,6 +304,12 @@ impl<C, T> GoalBase<C, T> {
     pub fn mk_disj_t(lhs: GoalBase<C, T>, rhs: GoalBase<C, T>, aux: T) -> GoalBase<C, T> {
         GoalBase {
             ptr: P::new(GoalKind::Disj(lhs, rhs)),
+            aux,
+        }
+    }
+    pub fn mk_ite_t(c: C, g1: GoalBase<C, T>, g2: GoalBase<C, T>, aux: T) -> GoalBase<C, T> {
+        GoalBase {
+            ptr: P::new(GoalKind::ITE(c, g1, g2)),
             aux,
         }
     }
@@ -466,6 +492,11 @@ impl<C: Fv<Id = Ident>, T> Fv for GoalBase<C, T> {
             }
             GoalKind::Constr(c) => c.fv_with_vec(fvs),
             GoalKind::Op(op) => op.fv_with_vec(fvs),
+            GoalKind::ITE(c, g1, g2) => {
+                c.fv_with_vec(fvs);
+                g1.fv_with_vec(fvs);
+                g2.fv_with_vec(fvs);
+            }
         }
     }
 }
@@ -502,6 +533,12 @@ impl<C: Rename, T: Clone> Rename for GoalBase<C, T> {
             GoalKind::Disj(g1, g2) => {
                 GoalBase::mk_disj_t(g1.rename(x, y), g2.rename(x, y), self.aux.clone())
             }
+            GoalKind::ITE(c, g1, g2) => GoalBase::mk_ite_t(
+                c.rename(x, y),
+                g1.rename(x, y),
+                g2.rename(x, y),
+                self.aux.clone(),
+            ),
         }
     }
 }
@@ -541,6 +578,12 @@ impl<
             GoalKind::Univ(y, g) => {
                 let g = g.isubst(x, v);
                 Self::mk_univ_t(y.clone(), g, self.aux.clone())
+            }
+            GoalKind::ITE(c, g1, g2) => {
+                let c = c.subst(x, v);
+                let g1 = g1.isubst(x, v);
+                let g2 = g2.isubst(x, v);
+                Self::mk_ite_t(c, g1, g2, self.aux.clone())
             }
         }
     }
@@ -627,6 +670,11 @@ impl<C: Subst<Item = Op, Id = Ident> + Rename + Fv<Id = Ident> + Precedence + Pr
                         GoalBase::mk_univ_t(y.clone(), subst_inner(g, x, v, fv), target.aux.clone())
                     }
                 }
+                GoalKind::ITE(c, g1, g2) => {
+                    let g1 = subst_inner(g1, x, v, fv);
+                    let g2 = subst_inner(g2, x, v, fv);
+                    GoalBase::mk_ite_t(c.clone(), g1, g2, target.aux.clone())
+                }
             }
         }
         let fv = v.clone().fv();
@@ -645,7 +693,7 @@ impl<C: Subst<Item = Op, Id = Ident> + Rename + Fv<Id = Ident> + Precedence + Pr
     }
 }
 
-impl<C: Rename + Fv<Id = Ident>, T: Clone> GoalBase<C, T> {
+impl<C: Rename + Fv<Id = Ident> + Clone, T: Clone> GoalBase<C, T> {
     pub fn alpha_renaming(&self) -> GoalBase<C, T> {
         fn aux<C: Rename, T: Clone>(
             v: &Variable,
@@ -681,6 +729,11 @@ impl<C: Rename + Fv<Id = Ident>, T: Clone> GoalBase<C, T> {
                 let g1 = g1.alpha_renaming();
                 let g2 = g2.alpha_renaming();
                 GoalBase::mk_disj_t(g1, g2, self.aux.clone())
+            }
+            GoalKind::ITE(c, g1, g2) => {
+                let g1 = g1.alpha_renaming();
+                let g2 = g2.alpha_renaming();
+                GoalBase::mk_ite_t(c.clone(), g1, g2, self.aux.clone())
             }
         }
     }
@@ -718,6 +771,7 @@ impl<T, C: Precedence> Precedence for GoalBase<C, T> {
             GoalKind::App(_, _) => PrecedenceKind::App,
             GoalKind::Conj(_, _) => PrecedenceKind::Conj,
             GoalKind::Disj(_, _) => PrecedenceKind::Disj,
+            GoalKind::ITE(_, _, _) => PrecedenceKind::If,
         }
     }
 }
@@ -754,6 +808,11 @@ impl<C: Refinement> Goal<C> {
                 GoalBase::mk_abs(x.clone(), g)
             }
             GoalKind::Constr(_) | GoalKind::Var(_) | GoalKind::Op(_) => self.clone(),
+            GoalKind::ITE(c, g1, g2) => {
+                let g1 = g1.reduce_inner();
+                let g2 = g2.reduce_inner();
+                GoalBase::mk_ite(c.clone(), g1, g2)
+            }
         }
     }
     // since there is no recursion and g is strongly typed, this procedure
@@ -838,6 +897,13 @@ impl<C: Refinement, T: Clone + Default> GoalBase<C, T> {
                 v.push(x);
                 (v, a)
             }
+            GoalKind::ITE(c, g1, g2) => {
+                let c = c.clone();
+                let (mut v1, g1) = g1.prenex_normal_form_raw(env);
+                let (mut v2, g2) = g2.prenex_normal_form_raw(env);
+                v1.append(&mut v2);
+                (v1, GoalBase::mk_ite_t(c, g1, g2, self.aux.clone()))
+            }
         }
     }
 
@@ -867,6 +933,11 @@ impl<C: Refinement, T: Clone + Default> GoalBase<C, T> {
                 let v2 = y.to_cnf_inner();
                 cross_or(&v1, &v2)
             }
+            // TODO: implement cnf for ite
+            // after ite is introduced (which happens in preprocess::find_ite), not sure which is better:
+            // 1. unfold ite to disj & conj, then apply the above rule
+            // 2. see ite as one component
+            GoalKind::ITE(_, _, _) => unimplemented!(),
             GoalKind::Constr(_)
             | GoalKind::Op(_)
             | GoalKind::Var(_)
@@ -883,9 +954,10 @@ impl<C, T> GoalBase<C, T> {
             // if order(Var(_)) > 0, then \x. ... has bigger order than that.
             GoalKind::Constr(_) | GoalKind::Op(_) | GoalKind::Var(_) => 0,
             GoalKind::Abs(x, y) => std::cmp::max(x.order() + 1, y.order()),
-            GoalKind::App(x, y) | GoalKind::Conj(x, y) | GoalKind::Disj(x, y) => {
-                std::cmp::max(x.order(), y.order())
-            }
+            GoalKind::App(x, y)
+            | GoalKind::Conj(x, y)
+            | GoalKind::Disj(x, y)
+            | GoalKind::ITE(_, x, y) => std::cmp::max(x.order(), y.order()),
             GoalKind::Univ(_, y) => y.order(),
         }
     }
@@ -906,7 +978,8 @@ impl<C, T> GoalBase<C, T> {
             | GoalKind::App(_, _)
             | GoalKind::Conj(_, _)
             | GoalKind::Disj(_, _)
-            | GoalKind::Univ(_, _) => None,
+            | GoalKind::Univ(_, _)
+            | GoalKind::ITE(_, _, _) => None,
         }
     }
 }
@@ -923,6 +996,12 @@ impl<C: Refinement, T: Clone> Into<Option<C>> for GoalBase<C, T> {
             GoalKind::Univ(v, g) if v.ty.is_int() => Into::<Option<C>>::into(g.clone())
                 .map(|c| C::mk_quantifier_int(super::QuantifierKind::Universal, v.id, c)),
             GoalKind::Univ(_, _) => None,
+            GoalKind::ITE(c, g1, g2) => {
+                let c = c.clone();
+                Into::<Option<C>>::into(g1.clone()).and_then(|c1| {
+                    Into::<Option<C>>::into(g2.clone()).map(|c2| C::mk_ite(c, c1, c2))
+                })
+            }
         }
     }
 }
@@ -1012,7 +1091,7 @@ impl<C: TeXFormat> TeXFormat for Problem<C> {
     }
 }
 
-impl<C: Rename + Bot + Top> Problem<C> {
+impl<C: Rename + Bot + Top + Clone> Problem<C> {
     // [ψ₁/F₁, ψ₂/F₂ … ]ψ
     pub fn eval(&self, target: &Goal<C>) -> Goal<C> {
         match target.kind() {
@@ -1054,6 +1133,11 @@ impl<C: Rename + Bot + Top> Problem<C> {
                 } else {
                     Goal::mk_univ(y.clone(), self.eval(g))
                 }
+            }
+            GoalKind::ITE(c, g1, g2) => {
+                let g1 = self.eval(g1);
+                let g2 = self.eval(g2);
+                Goal::mk_ite(c.clone(), g1, g2)
             }
         }
     }

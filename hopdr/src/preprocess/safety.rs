@@ -59,6 +59,7 @@ fn transform_goal(goal: &hes::Goal<formula::Constraint>) -> hes::Goal<formula::C
         GoalKind::Univ(x, g) => Goal::mk_univ(x.clone(), f(g)),
         GoalKind::App(g1, g2) => Goal::mk_app(f(g1), f(g2)),
         GoalKind::Conj(g1, g2) => Goal::mk_conj(f(g1), f(g2)),
+        GoalKind::ITE(c, g1, g2) => Goal::mk_ite(c.clone(), f(g1), f(g2)),
     }
 }
 

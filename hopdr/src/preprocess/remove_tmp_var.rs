@@ -115,6 +115,13 @@ fn f(g: &Goal, tmp_vars: &mut HashSet<Ident>) -> (Goal, Vec<(Ident, Op)>) {
                 (g, Vec::new())
             }
         }
+        GoalKind::ITE(c, g1, g2) => {
+            let (g1, eqs) = f(g1, tmp_vars);
+            let g1 = app_eqs(g1, eqs);
+            let (g2, eqs) = f(g2, tmp_vars);
+            let g2 = app_eqs(g2, eqs);
+            (Goal::mk_ite(c.clone(), g1, g2), Vec::new())
+        }
     }
 }
 

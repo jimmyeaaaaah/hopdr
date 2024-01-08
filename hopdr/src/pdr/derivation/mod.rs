@@ -87,6 +87,7 @@ fn subst_predicate(
             let g = subst_predicate(g, problem, track_idents);
             G::mk_univ_t(v.clone(), g, candidate.aux.clone())
         }
+        formula::hes::GoalKind::ITE(_, _, _) => todo!(),
     }
 }
 type Level = usize;
@@ -301,6 +302,7 @@ impl From<Candidate> for G {
                 G::mk_disj_t(x.clone().into(), y.clone().into(), l)
             }
             formula::hes::GoalKind::Univ(x, g) => G::mk_univ_t(x.clone(), g.clone().into(), l),
+            GoalKind::ITE(_, _, _) => todo!(),
         }
     }
 }
@@ -315,6 +317,7 @@ impl From<G> for Goal<Constraint> {
             GoalKind::Conj(x, y) => Goal::mk_conj(x.clone().into(), y.clone().into()),
             GoalKind::Disj(x, y) => Goal::mk_disj(x.clone().into(), y.clone().into()),
             GoalKind::Univ(x, g) => Goal::mk_univ(x.clone(), g.clone().into()),
+            GoalKind::ITE(_, _, _) => todo!(),
         }
     }
 }
@@ -381,6 +384,7 @@ impl GoalBase<Constraint, TypeMemory> {
                     let g2 = go(g2, map);
                     GoalBase::mk_disj_t(g1, g2, expr.aux.clone())
                 }
+                GoalKind::ITE(_, _, _) => todo!(),
             }
         }
         go(self, map)
@@ -412,6 +416,7 @@ impl GoalBase<Constraint, TypeMemory> {
                 let x = x.update_ids();
                 Self::mk_univ(v.clone(), x)
             }
+            GoalKind::ITE(_, _, _) => todo!(),
         };
         expr.aux = self.aux.update_id();
         expr
@@ -455,6 +460,7 @@ impl GoalBase<Constraint, TypeMemory> {
                     let g2 = go(g2, ints);
                     G::mk_univ_t(x, g2, g.aux.clone())
                 }
+                GoalKind::ITE(_, _, _) => todo!(),
             };
             g.aux.ints = ints.clone();
             g
@@ -505,6 +511,7 @@ impl GoalBase<Constraint, TypeMemory> {
                     let g = G::mk_disj_t(g1, g2, g.aux.clone());
                     (g, STy::mk_type_prop())
                 }
+                GoalKind::ITE(_, _, _) => todo!(),
             };
             g.aux.sty = Some(sty.clone());
             (g, sty)
@@ -574,6 +581,7 @@ impl GoalBase<Constraint, TypeMemory> {
                 let g = g.eta_expand();
                 G::mk_univ_t(x.clone(), g, self.aux.clone())
             }
+            GoalKind::ITE(_, _, _) => todo!(),
         }
     }
 }
@@ -871,6 +879,7 @@ fn generate_reduction_sequence(goal: &G, optimizer: &mut dyn Optimizer) -> (Vec<
                     r
                 }
                 GoalKind::Constr(_) | GoalKind::Var(_) | GoalKind::Op(_) => None,
+                GoalKind::ITE(_, _, _) => todo!(),
             }
         }
         go_(
@@ -1343,12 +1352,13 @@ fn handle_app(
                 }
                 PossibleDerivation::new(result_cts)
             }
-            formula::hes::GoalKind::Constr(_)
-            | formula::hes::GoalKind::Op(_)
-            | formula::hes::GoalKind::Abs(_, _)
-            | formula::hes::GoalKind::Conj(_, _)
-            | formula::hes::GoalKind::Disj(_, _)
-            | formula::hes::GoalKind::Univ(_, _) => panic!("fatal: {}", pred_expr),
+            GoalKind::Constr(_)
+            | GoalKind::Op(_)
+            | GoalKind::Abs(_, _)
+            | GoalKind::Conj(_, _)
+            | GoalKind::Disj(_, _)
+            | GoalKind::Univ(_, _) => panic!("fatal: {}", pred_expr),
+            GoalKind::ITE(_, _, _) => todo!(),
         }
     }
     let pt = handle_inner(config, tenv, ienv, all_coefficients, app_expr, cty);
@@ -1516,6 +1526,7 @@ fn type_check_inner(
             }
             // op is always handled by App(x, op)
             formula::hes::GoalKind::Op(_) => panic!("fatal error"),
+            formula::hes::GoalKind::ITE(_, _, _) => todo!(),
         };
         (result_pt, already_registered)
     }

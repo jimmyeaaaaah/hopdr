@@ -23,6 +23,12 @@ impl From<Goal<Constraint>> for Goal<fofml::Atom> {
             GoalKind::Conj(x, y) => Goal::mk_conj(x.clone().into(), y.clone().into()),
             GoalKind::Disj(x, y) => Goal::mk_disj(x.clone().into(), y.clone().into()),
             GoalKind::Univ(x, y) => Goal::mk_univ(x.clone(), y.clone().into()),
+            GoalKind::ITE(c1, g1, g2) => {
+                let c1 = c1.clone();
+                let g1 = g1.clone().into();
+                let g2 = g2.clone().into();
+                Self::mk_ite(c1.into(), g1, g2)
+            }
         }
     }
 }
@@ -46,6 +52,12 @@ impl From<Goal<fofml::Atom>> for fofml::Atom {
             // the following must not happen
             GoalKind::Abs(_, _) | GoalKind::App(_, _) | GoalKind::Var(_) | GoalKind::Op(_) => {
                 panic!("impossible to transform: {}", frm)
+            }
+            GoalKind::ITE(c, g1, g2) => {
+                let c = c.clone();
+                let g1 = g1.clone().into();
+                let g2 = g2.clone().into();
+                fofml::Atom::mk_ite(c, g1, g2)
             }
         }
     }
@@ -173,6 +185,12 @@ impl<C: Refinement> Env<C> {
             }
             GoalKind::Univ(x, y) => Goal::mk_univ(x.clone(), self.go(y.clone(), ints)),
             GoalKind::Constr(_) | GoalKind::Op(_) => g.clone(),
+            GoalKind::ITE(c, g1, g2) => {
+                let c = c.clone();
+                let g1 = self.go(g1.clone(), ints);
+                let g2 = self.go(g2.clone(), ints);
+                Goal::mk_ite(c, g1, g2)
+            }
         }
     }
     pub fn eval(&self, g: Goal<C>) -> Goal<C> {
