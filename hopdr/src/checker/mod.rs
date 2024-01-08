@@ -3,10 +3,10 @@ mod executor;
 mod mode;
 
 use crate::formula::hes::{ClauseBase, Goal, GoalBase, GoalKind, Problem, ProblemBase};
-use crate::formula::{Constraint, Ident, Logic, Negation, Op, Type as HFLType};
+use crate::formula::{Constraint, Fv, Ident, Logic, Negation, Op, PredKind, Type as HFLType};
 use crate::ml::{optimize, Expr, Function, Program, Type as SType, Variable};
 use crate::preprocess::Context;
-use mode::Mode;
+use mode::{Mode, ModeEnv};
 
 use std::collections::HashMap;
 
@@ -34,8 +34,8 @@ type G = Goal<Constraint>;
 
 #[derive(Clone, Debug)]
 struct Aux {
+    env: ModeEnv,
     mode: Mode,
-    ty: HFLType,
     // this field is used for univ quantifier and abs
     introduced_mode: Option<Mode>,
 }
@@ -165,8 +165,7 @@ impl<'a> Translator<'a> {
     // [Ψ a] = [Ψ] a
     fn translate_predicates(&mut self, goal: &GoalM, mut variables: Vec<Ident>) -> Expr {
         let m = &goal.aux.mode;
-        let ty = &goal.aux.ty;
-        if ty.is_prop() {
+        if m.is_prop() {
             if variables.len() == 0 {
                 return self.translate_goal(goal.clone());
             }
@@ -187,7 +186,7 @@ impl<'a> Translator<'a> {
                         self.translate_predicates(g, variables)
                     }
                     // well-formedness violation
-                    mode::ModeKind::Ret | mode::ModeKind::Fun(_, _) | mode::ModeKind::InOut => {
+                    mode::ModeKind::Prop | mode::ModeKind::Fun(_, _) | mode::ModeKind::InOut => {
                         panic!("program error")
                     }
                 }
@@ -208,19 +207,37 @@ impl<'a> Translator<'a> {
         }
     }
 
-    fn translate_constraintm(&mut self, c: &Constraint, cont: Expr) -> Expr {
+    fn handle_neq(&mut self, o1: &Op, o2: &Op, cont: Expr, env: &ModeEnv) -> Expr {
+        let mut fvs = o1.fv();
+        o2.fv_with_vec(&mut fvs);
+        let v: Vec<&Ident> = fvs
+            .iter()
+            .filter(|x| matches!(env.get(x).unwrap().kind(), mode::ModeKind::Out))
+            .collect();
+        assert_eq!(v.len(), 1);
+
+        let v = v[0];
+
+        let o = Op::solve_for(v, o1, o2).unwrap();
+        Expr::mk_let(*v, Expr::mk_op(o), cont)
+    }
+
+    fn translate_constraintm(&mut self, c: &Constraint, cont: Expr, env: &ModeEnv) -> Expr {
         match c.kind() {
-            crate::formula::ConstraintExpr::Pred(_, _) => todo!(),
-            crate::formula::ConstraintExpr::True | crate::formula::ConstraintExpr::False => {
-                panic!("program error")
+            crate::formula::ConstraintExpr::Pred(PredKind::Neq, l) if l.len() == 2 => {
+                self.handle_neq(&l[0], &l[1], cont, env)
             }
-            crate::formula::ConstraintExpr::Conj(_, _)
+            crate::formula::ConstraintExpr::True
+            | crate::formula::ConstraintExpr::False
+            | crate::formula::ConstraintExpr::Pred(_, _)
+            | crate::formula::ConstraintExpr::Conj(_, _)
             | crate::formula::ConstraintExpr::Disj(_, _)
             | crate::formula::ConstraintExpr::Quantifier(_, _, _) => {
-                panic!("conj and disj must have been removed in preprocess::unpack_constr")
+                panic!("mode inference is buggy")
             }
         }
     }
+
     fn mk_demonic_branch(&self, e1: Expr, e2: Expr) -> Expr {
         let ident = Ident::fresh();
         let c = Constraint::mk_eq(Op::mk_var(ident), Op::zero());
@@ -230,7 +247,7 @@ impl<'a> Translator<'a> {
 
     fn translate_goalm(&mut self, goal: &GoalM, cont: Expr) -> Expr {
         match goal.kind() {
-            GoalKind::Constr(c) => self.translate_constraintm(c, cont),
+            GoalKind::Constr(c) => self.translate_constraintm(c, cont, &goal.aux.env),
             GoalKind::App(_, _) => self.handle_app(goal.clone(), cont),
             GoalKind::Conj(g1, g2) => {
                 let g1 = self.translate_goalm(g1, cont.clone());
