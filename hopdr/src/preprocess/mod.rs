@@ -8,6 +8,7 @@ pub mod hfl_preprocessor;
 mod ite_expand;
 mod remove_tmp_var;
 mod reorder_conj;
+mod reorder_disj;
 mod safety;
 mod simplify_constr_op;
 mod transform;
