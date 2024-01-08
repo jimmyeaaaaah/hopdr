@@ -6,6 +6,7 @@ use super::find_ite;
 use super::forall_pass;
 use super::remove_tmp_var;
 use super::reorder_conj;
+use super::reorder_disj;
 use super::safety;
 use super::simplify_constr_op;
 use super::transform::transform;
@@ -200,6 +201,7 @@ pub fn preprocess_for_typed_problem(
     let mut problem = simplify_constr_op::transform(problem);
     //let problem = ite_expand::transform(problem);
     if config.find_ite {
+        problem = reorder_disj::transform(problem);
         problem = find_ite::transform(problem);
     }
     let problem = remove_tmp_var::transform(problem);
