@@ -346,7 +346,7 @@ pub fn run(problem: Problem<Constraint>, config: Config) {
     println!("{}", prog.dump_ml());
     let prog = optimize(prog);
     let s = prog.dump_ml();
-    println!("Generated Program");
+    println!("(* Generated Program *)");
     println!("{s}");
 
     match executor::executor(s) {

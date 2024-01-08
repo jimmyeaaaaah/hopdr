@@ -76,7 +76,7 @@ impl TypedPreprocessor for FindITETransform {
 }
 
 pub fn transform(problem: hes::Problem<formula::Constraint>) -> hes::Problem<formula::Constraint> {
-    crate::title!("remove_tmp_vars");
+    crate::title!("find_ite");
     let t = FindITETransform {};
     t.transform(problem)
 }

@@ -80,7 +80,7 @@ fn pdr_main(args: Args, contents: String, config: PDRConfig) {
     }
 
     title!("proprocessed");
-    let (vc, ctx) = preprocess::hes::preprocess(f);
+    let (vc, ctx) = preprocess::hes::preprocess_with_default_config(f);
     for fml in vc.clauses.iter() {
         debug!("{}", fml);
     }
