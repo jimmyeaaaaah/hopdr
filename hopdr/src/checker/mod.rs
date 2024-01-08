@@ -33,16 +33,26 @@ struct Translator<'a> {
 type G = Goal<Constraint>;
 
 #[derive(Clone, Debug)]
+pub enum DisjInfo {
+    Left,
+    Right,
+}
+
+#[derive(Clone, Debug)]
 struct Aux {
     env: ModeEnv,
     mode: Mode,
     // this field is used for univ quantifier and abs
     introduced_mode: Option<Mode>,
+    disj_info: Option<DisjInfo>,
 }
 
 impl Aux {
     fn get_univ_mode(&self) -> &Mode {
         &self.mode
+    }
+    fn get_disj_info(&self) -> &DisjInfo {
+        self.disj_info.as_ref().unwrap()
     }
 }
 
@@ -248,7 +258,12 @@ impl<'a> Translator<'a> {
                 self.mk_demonic_branch(g1, g2)
             }
             GoalKind::Disj(g1, g2) => {
-                unimplemented!()
+                let (g1, g2) = match goal.aux.get_disj_info() {
+                    DisjInfo::Left => (g1, g2),
+                    DisjInfo::Right => (g2, g1),
+                };
+                let cont = self.translate_goalm(g2, cont);
+                self.translate_goalm(g1, cont)
             }
             GoalKind::Univ(v, g) => {
                 let m = goal.aux.get_univ_mode();
