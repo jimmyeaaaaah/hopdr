@@ -50,7 +50,7 @@ struct Aux {
 
 impl Aux {
     fn get_univ_mode(&self) -> &Mode {
-        &self.mode
+        &self.introduced_mode.as_ref().unwrap()
     }
     fn get_disj_info(&self) -> &DisjInfo {
         self.disj_info.as_ref().unwrap()
@@ -66,8 +66,16 @@ impl<'a> Translator<'a> {
     fn new(config: Config<'a>) -> Self {
         Self { config }
     }
+    fn translate_type_arg(&self, arg: &Mode, t: &HFLType) -> SType {
+        match (arg.kind(), t.kind()) {
+            (mode::ModeKind::In, crate::formula::TypeKind::Integer) => SType::mk_type_int(),
+            (mode::ModeKind::Out, crate::formula::TypeKind::Integer) => panic!("program error"),
+            _ => self.translate_type(arg, t),
+        }
+    }
     fn translate_type(&self, arg: &Mode, t: &HFLType) -> SType {
         fn inner(arg: &Mode, t: &HFLType, n_int: usize) -> SType {
+            println!("{} vs {}", arg, t);
             match (arg.kind(), t.kind()) {
                 (mode::ModeKind::Prop, crate::formula::TypeKind::Proposition) => {
                     if n_int == 0 {
@@ -243,7 +251,7 @@ impl<'a> Translator<'a> {
                 let arg = m.is_fun().0;
                 match arg.kind() {
                     mode::ModeKind::In => {
-                        let v = Variable::mk(v.id, self.translate_type(arg, &v.ty));
+                        let v = Variable::mk(v.id, self.translate_type_arg(arg, &v.ty));
                         let body = self.translate_predicates(g, variables);
                         Expr::mk_fun(v, body)
                     }
@@ -365,11 +373,7 @@ impl<'a> Translator<'a> {
                 unreachable!()
             }
             GoalKind::Var(x) => Expr::mk_var(*x),
-            GoalKind::Abs(x, g) => {
-                let body = self.translate_goal(g.clone());
-                let v = Variable::mk(x.id, self.translate_type(unimplemented!(), &x.ty));
-                Expr::mk_fun(v, body)
-            }
+            GoalKind::Abs(_, _) => self.translate_predicates(&goal, Vec::new()),
             GoalKind::App(g1, g2) => {
                 // should handle the arg's higher-order case
                 let g1 = self.translate_goal(g1.clone());
@@ -486,17 +490,20 @@ fn test_translate_predicate() {
         introduced_mode: None,
         disj_info: None,
     };
-
+    // P w
     let g2: GoalBase<Constraint, Aux> = GoalBase::mk_app_t(
         GoalBase::mk_var_t(p, gen_aux(mp.clone())),
         GoalBase::mk_var_t(w, gen_aux(Mode::mk_in())),
         gen_aux(Mode::mk_fun(Mode::mk_out(), Mode::mk_prop())),
     );
+    // P w y
     let g2 = GoalBase::mk_app_t(
         g2,
         GoalBase::mk_var_t(y, gen_aux(Mode::mk_out())),
         gen_aux(Mode::mk_prop()),
     );
+
+    // P (x + 11)
     let g3: GoalBase<Constraint, Aux> = GoalBase::mk_app_t(
         GoalBase::mk_var_t(p, gen_aux(mp)),
         GoalBase::mk_op_t(
@@ -505,12 +512,24 @@ fn test_translate_predicate() {
         ),
         gen_aux(Mode::mk_prop()),
     );
+    // P (x + 11) w
     let g3 = GoalBase::mk_app_t(
         g3,
-        GoalBase::mk_var_t(w, gen_aux(Mode::mk_inout())),
+        GoalBase::mk_var_t(w, gen_aux(Mode::mk_out())),
         gen_aux(Mode::mk_prop()),
     );
-    let g4 = GoalBase::mk_disj_t(g2, g3, gen_aux(Mode::mk_prop()));
+
+    // P w y \/ P (x + 11) w
+    let g4 = GoalBase::mk_disj_t(
+        g2,
+        g3,
+        Aux {
+            env: env.insert(w, Mode::mk_inout()),
+            mode: Mode::mk_prop(),
+            introduced_mode: None,
+            disj_info: Some(DisjInfo::Right),
+        },
+    );
     let g5 = GoalBase::mk_ite_t(c, g1, g4, gen_aux(Mode::mk_prop()));
 
     let gen_aux = |mode| Aux {
@@ -522,7 +541,12 @@ fn test_translate_predicate() {
     let g6 = GoalBase::mk_univ_t(
         crate::formula::Variable::mk(w, HFLType::mk_type_int()),
         g5,
-        gen_aux(Mode::mk_prop()),
+        Aux {
+            env: env.clone(),
+            mode: Mode::mk_prop(),
+            introduced_mode: Some(Mode::mk_inout()),
+            disj_info: None,
+        },
     );
     let g7 = GoalBase::mk_abs_t(
         crate::formula::Variable::mk(y, HFLType::mk_type_int()),

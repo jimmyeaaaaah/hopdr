@@ -1,3 +1,5 @@
+use core::fmt;
+
 use crate::formula::Ident;
 use crate::util::P;
 
@@ -86,5 +88,17 @@ impl ModeEnv {
 
     pub fn iter(&self) -> impl Iterator<Item = (&Ident, &Mode)> {
         self.env.iter()
+    }
+}
+
+impl fmt::Display for Mode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.kind() {
+            ModeKind::In => write!(f, "-"),
+            ModeKind::Out => write!(f, "+"),
+            ModeKind::InOut => write!(f, "-/+"),
+            ModeKind::Prop => write!(f, "*"),
+            ModeKind::Fun(t1, t2) => write!(f, "({} -> {})", t1, t2),
+        }
     }
 }
