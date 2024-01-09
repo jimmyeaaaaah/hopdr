@@ -67,18 +67,38 @@ impl<'a> Translator<'a> {
         Self { config }
     }
     fn translate_type(&self, arg: &Mode, t: &HFLType) -> SType {
-        match t.kind() {
-            crate::formula::TypeKind::Proposition => {
-                SType::mk_type_arrow(SType::mk_type_unit(), SType::mk_type_unit())
-            }
-            crate::formula::TypeKind::Integer => SType::mk_type_int(),
-            crate::formula::TypeKind::Arrow(t1, t2) => {
-                let (arg, ret) = arg.is_fun();
-                let t1 = self.translate_type(arg, t1);
-                let t2 = self.translate_type(ret, t2);
-                SType::mk_type_arrow(t1, t2)
+        fn inner(arg: &Mode, t: &HFLType, n_int: usize) -> SType {
+            match (arg.kind(), t.kind()) {
+                (mode::ModeKind::Prop, crate::formula::TypeKind::Proposition) => {
+                    if n_int == 0 {
+                        SType::mk_type_arrow(SType::mk_type_unit(), SType::mk_type_unit())
+                    } else {
+                        let mut args = Vec::new();
+                        for _ in 0..n_int {
+                            args.push(SType::mk_type_int());
+                        }
+                        SType::mk_tuple(args)
+                    }
+                }
+                (mode::ModeKind::Fun(m1, m2), crate::formula::TypeKind::Arrow(t1, t2)) => {
+                    match (m1.kind(), t1.kind()) {
+                        (mode::ModeKind::In, crate::formula::TypeKind::Integer) => {
+                            SType::mk_type_arrow(SType::mk_type_int(), inner(m2, t2, n_int))
+                        }
+                        (mode::ModeKind::Out, crate::formula::TypeKind::Integer) => {
+                            SType::mk_type_arrow(SType::mk_type_unit(), inner(m2, t2, n_int + 1))
+                        }
+                        (_, _) => {
+                            let t1 = inner(m1, t1, 0);
+                            let t2 = inner(m2, t2, n_int);
+                            SType::mk_type_arrow(t1, t2)
+                        }
+                    }
+                }
+                (_, _) => panic!("program error"),
             }
         }
+        inner(arg, t, 0)
     }
     fn gen_prop<F>(f: F) -> Expr
     where
@@ -352,7 +372,6 @@ impl<'a> Translator<'a> {
             }
             GoalKind::App(g1, g2) => {
                 // should handle the arg's higher-order case
-                unimplemented!();
                 let g1 = self.translate_goal(g1.clone());
                 // TODO: check the type of g1 so that we can infer g2 is op or not
                 // corner case: g2 is a variable
@@ -360,7 +379,7 @@ impl<'a> Translator<'a> {
                 match g2.kind() {
                     GoalKind::Op(o) => Expr::mk_iapp(g1, o.clone()),
                     _ => {
-                        let g2 = self.translate_goal(g2.clone());
+                        let g2 = self.translate_predicates(g2, Vec::new());
                         Expr::mk_app(g1, g2)
                     }
                 }
