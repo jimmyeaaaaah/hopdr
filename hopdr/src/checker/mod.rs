@@ -1,12 +1,12 @@
 mod ai;
 mod executor;
 mod mode;
+mod mode_infer;
 
 use crate::formula::hes::{ClauseBase, Goal, GoalBase, GoalKind, Problem, ProblemBase};
 use crate::formula::{Constraint, Fv, Ident, Logic, Negation, Op, PredKind, Type as HFLType};
 use crate::ml::{optimize, Expr, Function, Program, Type as SType, Variable};
 use crate::preprocess::Context;
-use colored::control;
 use mode::{Mode, ModeEnv};
 
 use std::collections::HashMap;
@@ -217,7 +217,7 @@ impl<'a> Translator<'a> {
                             let arg = self.handle_app_arg(g2.clone());
                             args.push(arg);
                         }
-                        mode::ModeKind::InOut => panic!("program error"),
+                        mode::ModeKind::InOut | mode::ModeKind::Var(_) => panic!("program error"),
                     }
                     pred = g1.clone();
                 }
@@ -260,7 +260,10 @@ impl<'a> Translator<'a> {
                         self.translate_predicates(g, variables)
                     }
                     // well-formedness violation
-                    mode::ModeKind::Prop | mode::ModeKind::Fun(_, _) | mode::ModeKind::InOut => {
+                    mode::ModeKind::Prop
+                    | mode::ModeKind::Fun(_, _)
+                    | mode::ModeKind::InOut
+                    | mode::ModeKind::Var(_) => {
                         panic!("program error")
                     }
                 }
@@ -343,7 +346,9 @@ impl<'a> Translator<'a> {
                         Expr::mk_letrand(v.id, range, body)
                     }
                     mode::ModeKind::Out => unimplemented!(), // This is another case where it is unreachable in theory
-                    mode::ModeKind::Prop | mode::ModeKind::Fun(_, _) => panic!("program error"),
+                    mode::ModeKind::Prop | mode::ModeKind::Fun(_, _) | mode::ModeKind::Var(_) => {
+                        panic!("program error")
+                    }
                 }
             }
             GoalKind::ITE(c, g1, g2) => {
@@ -453,10 +458,6 @@ impl<'a> Translator<'a> {
             main,
             ctx: &self.config.context,
         }
-    }
-
-    fn infer_mod(&mut self, problem: Problem<Constraint>) -> ProblemM {
-        unimplemented!()
     }
 }
 
@@ -572,7 +573,7 @@ pub fn run(problem: Problem<Constraint>, config: Config) {
     println!("translated nu hflz");
     println!("{problem}");
     let mut trans = Translator::new(config);
-    let problem_with_mode = trans.infer_mod(problem);
+    let problem_with_mode = mode_infer::infer(problem);
     let prog = trans.translate(problem_with_mode);
 
     println!("UnOptimized Program");
