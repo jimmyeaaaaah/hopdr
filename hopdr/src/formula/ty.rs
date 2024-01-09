@@ -1,6 +1,7 @@
 use rpds::HashTrieMap;
 
 use crate::util::P;
+use std::collections::HashMap;
 use std::fmt;
 
 use super::{Ident, TeXFormat, TeXPrinter};
@@ -112,6 +113,12 @@ impl TyEnv {
     }
     pub fn get(&self, id: &Ident) -> Option<Type> {
         self.map.get(id).cloned()
+    }
+    pub fn to_hash_map(&self) -> HashMap<Ident, Type> {
+        self.map
+            .iter()
+            .map(|(x, y)| (x.clone(), y.clone()))
+            .collect()
     }
 }
 
