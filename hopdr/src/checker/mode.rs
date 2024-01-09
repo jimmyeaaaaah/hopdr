@@ -7,6 +7,7 @@ use rpds::HashTrieMap;
 
 #[derive(Clone, Debug)]
 pub enum ModeKind {
+    Var(Ident),
     In,
     Out,
     InOut,
@@ -29,6 +30,7 @@ impl Mode {
         match self.kind() {
             ModeKind::In | ModeKind::Out | ModeKind::InOut => true,
             ModeKind::Prop | ModeKind::Fun(_, _) => false,
+            ModeKind::Var(_) => panic!("program error"),
         }
     }
 
@@ -61,6 +63,28 @@ impl Mode {
 
     pub fn mk_fun(t1: Self, t2: Self) -> Self {
         P(ModeKind::Fun(t1, t2))
+    }
+
+    pub fn new_var() -> Self {
+        let id = Ident::fresh();
+        P(ModeKind::Var(id))
+    }
+
+    pub fn is_var(&self) -> bool {
+        matches!(self.kind(), ModeKind::Var(_))
+    }
+
+    /// integers are all treated as `-`
+    pub fn from_hflty(ty: &crate::formula::Type) -> Self {
+        match ty.kind() {
+            crate::formula::TypeKind::Proposition => Self::mk_prop(),
+            crate::formula::TypeKind::Integer => Self::mk_in(),
+            crate::formula::TypeKind::Arrow(t1, t2) => {
+                let t1 = Self::from_hflty(t1);
+                let t2 = Self::from_hflty(t2);
+                Self::mk_fun(t1, t2)
+            }
+        }
     }
 }
 
@@ -99,6 +123,7 @@ impl fmt::Display for Mode {
             ModeKind::InOut => write!(f, "-/+"),
             ModeKind::Prop => write!(f, "*"),
             ModeKind::Fun(t1, t2) => write!(f, "({} -> {})", t1, t2),
+            ModeKind::Var(x) => write!(f, "{}", x),
         }
     }
 }
