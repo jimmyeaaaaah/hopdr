@@ -277,6 +277,14 @@ impl DumpML for Expr {
         }
     }
 }
+#[cfg(test)]
+impl Expr {
+    pub fn print_expr(&self, ctx: &Context) -> String {
+        let mut s = String::new();
+        self.dump_ml(&mut s, ctx).unwrap();
+        s
+    }
+}
 
 impl DumpML for Function {
     fn dump_ml<W: Write>(&self, f: &mut W, ctx: &Context) -> Result<(), fmt::Error> {

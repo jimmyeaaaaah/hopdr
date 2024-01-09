@@ -6,6 +6,7 @@ use crate::formula::hes::{ClauseBase, Goal, GoalBase, GoalKind, Problem, Problem
 use crate::formula::{Constraint, Fv, Ident, Logic, Negation, Op, PredKind, Type as HFLType};
 use crate::ml::{optimize, Expr, Function, Program, Type as SType, Variable};
 use crate::preprocess::Context;
+use colored::control;
 use mode::{Mode, ModeEnv};
 
 use std::collections::HashMap;
@@ -164,11 +165,43 @@ impl<'a> Translator<'a> {
             None
         }
     }
-    fn handle_app_arg(&mut self, goal: GoalM) -> (Expr, Mode) {
-        unimplemented!()
+    fn handle_app_arg(&mut self, goal: GoalM) -> Expr {
+        if goal.aux.mode.is_int() {
+            let o: Op = goal.clone().into();
+            Expr::mk_op(o)
+        } else {
+            self.translate_predicates(&goal, Vec::new())
+        }
     }
     fn handle_app(&mut self, goal: GoalM, cont: Expr) -> Expr {
-        unimplemented!()
+        let mut args = Vec::new();
+        let mut rets = Vec::new();
+        let mut pred = goal;
+        loop {
+            match pred.kind() {
+                GoalKind::App(g1, g2) => {
+                    match g2.aux.mode.kind() {
+                        mode::ModeKind::Out => {
+                            let v = g2.var();
+                            rets.push(*v);
+                        }
+                        mode::ModeKind::In | mode::ModeKind::Prop | mode::ModeKind::Fun(_, _) => {
+                            let arg = self.handle_app_arg(g2.clone());
+                            args.push(arg);
+                        }
+                        mode::ModeKind::InOut => panic!("program error"),
+                    }
+                    pred = g1.clone();
+                }
+                _ => break,
+            }
+        }
+        let mut body = self.translate_predicates(&pred, Vec::new());
+        for arg in args {
+            body = Expr::mk_app(body, arg);
+        }
+        // TODO: rev?
+        Expr::mk_let_tuple(rets, body, cont)
     }
     // [\x. Ψ] = fun x -> [Ψ]
     // [Ψ1 Ψ2] = [Ψ1] [Ψ2]
@@ -178,8 +211,11 @@ impl<'a> Translator<'a> {
         if m.is_prop() {
             if variables.len() == 0 {
                 return self.translate_goal(goal.clone());
+            } else {
+                let exprs = variables.into_iter().map(|x| Expr::mk_var(x)).collect();
+                let cont = Expr::mk_tuple(exprs);
+                return self.translate_goalm(goal, cont);
             }
-            return unimplemented!();
         }
         match goal.kind() {
             GoalKind::Var(x) => Expr::mk_var(*x),
@@ -207,7 +243,7 @@ impl<'a> Translator<'a> {
                 let body = self.translate_predicates(g, variables);
                 Expr::mk_fun(v, body)
             }
-            GoalKind::App(g1, g2) => panic!("eta expansiton fails?"),
+            GoalKind::App(_, _) => panic!("eta expansiton fails?"),
             GoalKind::Constr(_)
             | GoalKind::Op(_)
             | GoalKind::Conj(_, _)
@@ -316,7 +352,7 @@ impl<'a> Translator<'a> {
             }
             GoalKind::App(g1, g2) => {
                 // should handle the arg's higher-order case
-                unimplemented!()
+                unimplemented!();
                 let g1 = self.translate_goal(g1.clone());
                 // TODO: check the type of g1 so that we can infer g2 is op or not
                 // corner case: g2 is a variable
@@ -399,6 +435,94 @@ impl<'a> Translator<'a> {
     fn infer_mod(&mut self, problem: Problem<Constraint>) -> ProblemM {
         unimplemented!()
     }
+}
+
+#[test]
+fn test_translate_predicate() {
+    // P = \x. \y. ∀w. (x < 101 \/ y != x - 10) /\ (x >= 101 \/ (P (x+11) w \/ P w y)).
+    let x = Ident::fresh();
+    let y = Ident::fresh();
+    let w = Ident::fresh();
+    let p = Ident::fresh();
+    let mp = Mode::mk_fun(Mode::mk_in(), Mode::mk_fun(Mode::mk_out(), Mode::mk_prop()));
+    let c = Constraint::mk_geq(Op::mk_var(x), Op::mk_const(101));
+    let c2 = Constraint::mk_neq(Op::mk_var(y), Op::mk_sub(Op::mk_var(x), Op::mk_const(10)));
+
+    let env = ModeEnv::new();
+    let env = env.insert(x, Mode::mk_in()).insert(y, Mode::mk_out());
+
+    let g1 = GoalBase::mk_constr_t(
+        c2,
+        Aux {
+            env: env.insert(w, Mode::mk_in()),
+            mode: Mode::mk_prop(),
+            introduced_mode: None,
+            disj_info: None,
+        },
+    );
+
+    let gen_aux = |mode| Aux {
+        env: env.insert(w, Mode::mk_in()),
+        mode,
+        introduced_mode: None,
+        disj_info: None,
+    };
+
+    let g2: GoalBase<Constraint, Aux> = GoalBase::mk_app_t(
+        GoalBase::mk_var_t(p, gen_aux(mp.clone())),
+        GoalBase::mk_var_t(w, gen_aux(Mode::mk_in())),
+        gen_aux(Mode::mk_fun(Mode::mk_out(), Mode::mk_prop())),
+    );
+    let g2 = GoalBase::mk_app_t(
+        g2,
+        GoalBase::mk_var_t(y, gen_aux(Mode::mk_out())),
+        gen_aux(Mode::mk_prop()),
+    );
+    let g3: GoalBase<Constraint, Aux> = GoalBase::mk_app_t(
+        GoalBase::mk_var_t(p, gen_aux(mp)),
+        GoalBase::mk_op_t(
+            Op::mk_add(Op::mk_var(x), Op::mk_const(11)),
+            gen_aux(Mode::mk_in()),
+        ),
+        gen_aux(Mode::mk_prop()),
+    );
+    let g3 = GoalBase::mk_app_t(
+        g3,
+        GoalBase::mk_var_t(w, gen_aux(Mode::mk_inout())),
+        gen_aux(Mode::mk_prop()),
+    );
+    let g4 = GoalBase::mk_disj_t(g2, g3, gen_aux(Mode::mk_prop()));
+    let g5 = GoalBase::mk_ite_t(c, g1, g4, gen_aux(Mode::mk_prop()));
+
+    let gen_aux = |mode| Aux {
+        env: env.clone(),
+        mode,
+        introduced_mode: None,
+        disj_info: None,
+    };
+    let g6 = GoalBase::mk_univ_t(
+        crate::formula::Variable::mk(w, HFLType::mk_type_int()),
+        g5,
+        gen_aux(Mode::mk_prop()),
+    );
+    let g7 = GoalBase::mk_abs_t(
+        crate::formula::Variable::mk(y, HFLType::mk_type_int()),
+        g6,
+        gen_aux(Mode::mk_fun(Mode::mk_out(), Mode::mk_prop())),
+    );
+    let g8 = GoalBase::mk_abs_t(
+        crate::formula::Variable::mk(x, HFLType::mk_type_int()),
+        g7,
+        gen_aux(Mode::mk_fun(
+            Mode::mk_in(),
+            Mode::mk_fun(Mode::mk_out(), Mode::mk_prop()),
+        )),
+    );
+    println!("{g8}");
+    let ctx = Context::empty();
+    let mut tr = Translator::new(Config::new(&ctx));
+    let e = tr.translate_goal(g8);
+    println!("{}", e.print_expr(&ctx));
 }
 
 pub fn run(problem: Problem<Constraint>, config: Config) {
