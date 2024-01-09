@@ -441,8 +441,8 @@ impl<'a> Translator<'a> {
             .iter()
             .map(|c| {
                 let name = c.head.id;
-                let ty = self.translate_type(unimplemented!(), &c.head.ty);
-                let body = self.translate_goal(c.body.clone());
+                let ty = self.translate_type(&c.body.aux.mode, &c.head.ty);
+                let body = self.translate_predicates(&c.body, Vec::new());
                 Function { name, ty, body }
             })
             .collect();
