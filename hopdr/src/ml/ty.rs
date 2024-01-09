@@ -7,6 +7,7 @@ pub enum TypeKind {
     Unit,
     Integer,
     Arrow(Type, Type),
+    Tuple(Vec<Type>),
 }
 
 pub type Type = P<TypeKind>;
@@ -17,6 +18,19 @@ impl fmt::Display for Type {
             TypeKind::Integer => write!(f, "i"),
             TypeKind::Unit => write!(f, "unit"),
             TypeKind::Arrow(x, y) => write!(f, "({} -> {})", x, y),
+            TypeKind::Tuple(ts) => {
+                write!(f, "(")?;
+                let mut first = true;
+                for t in ts.iter() {
+                    if first {
+                        first = false;
+                    } else {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", t)?;
+                }
+                write!(f, ")")
+            }
         }
     }
 }
@@ -35,6 +49,9 @@ impl Type {
     pub fn mk_type_arrow(lhs: Type, rhs: Type) -> Type {
         Type::new(TypeKind::Arrow(lhs, rhs))
     }
+    pub fn mk_tuple(ts: Vec<Type>) -> Type {
+        Type::new(TypeKind::Tuple(ts))
+    }
     pub fn is_int(&self) -> bool {
         matches!(self.kind(), TypeKind::Integer)
     }
@@ -50,6 +67,7 @@ impl Type {
             TypeKind::Integer => 0,
             TypeKind::Unit => 0,
             TypeKind::Arrow(x, y) => std::cmp::max(x.order() + 1, y.order()),
+            TypeKind::Tuple(ts) => ts.iter().map(|x| x.order()).max().unwrap(),
         }
     }
     pub fn arrow<'a>(&'a self) -> (&'a Self, &'a Self) {
