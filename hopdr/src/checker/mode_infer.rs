@@ -13,6 +13,8 @@ use crate::formula::{
     Type as HFLType, Variable,
 };
 
+use std::collections::HashMap;
+
 type Input = ProblemBase<Constraint, ()>;
 type Output = ProblemBase<Constraint, super::Aux>;
 
@@ -131,6 +133,12 @@ fn handle_op(o: &Op, env: ModeEnv) -> Mode {
 pub struct ModeConstraint {
     left: Op,
     right: Op,
+}
+
+impl std::fmt::Display for ModeConstraint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} = {}", self.left, self.right)
+    }
 }
 
 impl ModeConstraint {
@@ -273,7 +281,7 @@ fn gen_template_clause(
     }
 }
 
-fn gen_template_problem(p: &Problem) -> Problem {
+fn gen_template_problem(p: &Problem, target: Ident) -> (Problem, Vec<ModeConstraint>) {
     let env: ModeEnv = p
         .clauses
         .iter()
@@ -289,12 +297,20 @@ fn gen_template_problem(p: &Problem) -> Problem {
                 env.clone(),
                 env.get(&c.head.id).unwrap().clone(),
                 &mut constraints,
-                false, // TODO
+                target == c.head.id,
             )
         })
         .collect();
     let top = gen_template_goal(&p.top, env, &mut constraints, false);
-    Problem { clauses, top }
+    (Problem { clauses, top }, constraints)
+}
+
+fn solve(constraint: Vec<ModeConstraint>) -> Option<HashMap<Ident, Mode>> {
+    unimplemented!()
+}
+
+fn apply_model(problem: Problem, model: HashMap<Ident, Mode>) -> Problem {
+    unimplemented!()
 }
 
 // 1. pick a clause
@@ -302,7 +318,84 @@ fn gen_template_problem(p: &Problem) -> Problem {
 // 3. gen templates for all the clauses
 
 pub(super) fn infer(problem: Input) -> Output {
-    let problem = translate_to_problem(problem);
-
+    let clause_names: Vec<Ident> = problem
+        .clauses
+        .iter()
+        .map(|c| c.head.id)
+        .into_iter()
+        .collect();
+    let mut problem = translate_to_problem(problem);
+    for name in clause_names {
+        let (new_problem, constraint) = gen_template_problem(&problem, name);
+        match solve(constraint) {
+            Some(model) => {
+                problem = apply_model(new_problem, model);
+            }
+            None => {}
+        }
+    }
     output_problem(problem)
+}
+
+#[test]
+fn test_generate_template() {
+    // P = \x. \y. ∀w. (x < 101 \/ y != x - 10) /\ (x >= 101 \/ (P (x+11) w \/ P w y)).
+    use crate::formula::hes::Goal as G;
+
+    // clause P
+    let x = Ident::fresh();
+    let y = Ident::fresh();
+    let w = Ident::fresh();
+    let p = Ident::fresh();
+    let c = Constraint::mk_geq(Op::mk_var(x), Op::mk_const(101));
+    let c2 = Constraint::mk_neq(Op::mk_var(x), Op::mk_sub(Op::mk_var(x), Op::mk_const(10)));
+    let g1 = G::mk_app(
+        G::mk_app(
+            G::mk_var(p),
+            G::mk_op(Op::mk_add(Op::mk_var(x), Op::mk_const(11))),
+        ),
+        G::mk_var(w),
+    );
+    let g2 = G::mk_app(G::mk_app(G::mk_var(p), G::mk_var(w)), G::mk_var(y));
+    let g3 = G::mk_disj(g1, g2);
+    let g4 = G::mk_ite(c, G::mk_constr(c2), g3);
+    let g = G::mk_univ(Variable::mk(w, HFLType::mk_type_int()), g4);
+    let g = G::mk_abs(
+        Variable::mk(x, HFLType::mk_type_int()),
+        G::mk_abs(Variable::mk(y, HFLType::mk_type_int()), g),
+    );
+    let clause = ClauseBase {
+        head: Variable::mk(
+            p,
+            HFLType::mk_type_arrow(
+                HFLType::mk_type_int(),
+                HFLType::mk_type_arrow(HFLType::mk_type_int(), HFLType::mk_type_prop()),
+            ),
+        ),
+        body: g,
+    };
+
+    // top: ∀x. ∀y. x = 91 \/ y > 101 \/ P y x.
+
+    let x = Ident::fresh();
+    let y = Ident::fresh();
+    let c = Constraint::mk_eq(Op::mk_var(x), Op::mk_const(91));
+    let c2 = Constraint::mk_gt(Op::mk_var(y), Op::mk_const(101));
+    let g1 = G::mk_app(G::mk_app(G::mk_var(p), G::mk_var(y)), G::mk_var(x));
+    let g2 = G::mk_disj(G::mk_constr(c), G::mk_constr(c2));
+    let top = G::mk_univ(
+        Variable::mk(x, HFLType::mk_type_int()),
+        G::mk_univ(Variable::mk(y, HFLType::mk_type_int()), G::mk_disj(g1, g2)),
+    );
+
+    let problem = ProblemBase {
+        clauses: vec![clause],
+        top,
+    };
+
+    let problem = translate_to_problem(problem);
+    let (new_problem, constraint) = gen_template_problem(&problem, p);
+    for c in constraint {
+        println!("{c}");
+    }
 }
