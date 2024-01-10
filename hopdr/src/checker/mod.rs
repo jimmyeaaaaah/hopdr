@@ -49,11 +49,41 @@ struct Aux {
 }
 
 impl Aux {
+    fn new(env: ModeEnv, mode: Mode) -> Self {
+        Self {
+            env,
+            mode,
+            introduced_mode: None,
+            disj_info: None,
+        }
+    }
+    fn introduced_mode(self, mode: Mode) -> Self {
+        Self {
+            introduced_mode: Some(mode),
+            ..self
+        }
+    }
+    fn disj_info(self, info: DisjInfo) -> Self {
+        Self {
+            disj_info: Some(info),
+            ..self
+        }
+    }
+
     fn get_univ_mode(&self) -> &Mode {
         &self.introduced_mode.as_ref().unwrap()
     }
     fn get_disj_info(&self) -> &DisjInfo {
         self.disj_info.as_ref().unwrap()
+    }
+    fn new_univ(env: ModeEnv, introduced: Mode) -> Self {
+        Self::new(env, Mode::mk_prop()).introduced_mode(introduced)
+    }
+    fn new_disj(env: ModeEnv) -> Self {
+        Self::new(env, Mode::mk_prop())
+    }
+    fn mk_prop(env: ModeEnv) -> Self {
+        Self::new(env, Mode::mk_prop())
     }
 }
 
