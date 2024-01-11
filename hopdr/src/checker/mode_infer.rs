@@ -259,7 +259,7 @@ fn try_solve_and_add_constraint(
     constraints: &mut PossibleConstraints,
 ) -> bool {
     if let Some(o) = Op::solve_for(&target, lhs, rhs) {
-        constraints.push(ModeConstraint::new(o, Op::one()));
+        constraints.push(ModeConstraint::new(Op::mk_var(target), Op::one()));
         for x in rhs.fv() {
             constraints.push(ModeConstraint::mode_in(x));
         }
