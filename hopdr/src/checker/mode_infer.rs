@@ -117,9 +117,9 @@ fn output_problem(problem: Problem) -> Output {
 fn template_from_mode(mode: &Mode) -> Mode {
     match mode.kind() {
         ModeKind::Prop => Mode::mk_prop(),
-        ModeKind::In | ModeKind::Out => Mode::new_var(),
+        ModeKind::In | ModeKind::Out | ModeKind::Var(_) => Mode::new_var(),
         ModeKind::Fun(t1, t2) => Mode::mk_fun(template_from_mode(t1), template_from_mode(t2)),
-        _ => panic!("program error"),
+        _ => panic!("program error: {}", mode),
     }
 }
 
@@ -178,7 +178,7 @@ fn mode_to_op(mode: &Mode) -> Op {
     match mode.kind() {
         ModeKind::In => Op::zero(),
         ModeKind::Out => Op::one(),
-        ModeKind::Prop | ModeKind::Fun(_, _) | ModeKind::InOut => panic!("program error"),
+        ModeKind::Prop | ModeKind::Fun(_, _) | ModeKind::InOut => panic!("program error: {}", mode),
         ModeKind::Var(x) => Op::mk_var(*x),
     }
 }
@@ -225,6 +225,9 @@ fn gen_template_goal(
             let g2_env = gen_new_env(g2, &env);
             // 2. add a constraint
             for (x, m) in env.iter() {
+                if matches!(m.kind(), ModeKind::Fun(_, _)) {
+                    continue;
+                }
                 let lhs = mode_to_op(m);
                 match (g1_env.get(x), g2_env.get(x)) {
                     (Some(m1), Some(m2)) => {
