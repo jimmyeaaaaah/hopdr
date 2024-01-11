@@ -155,8 +155,8 @@ impl ModeConstraint {
     fn new(left: Op, right: Op) -> Self {
         Self { left, right }
     }
-    fn mode_in(x: Ident) -> Self {
-        Self::new(Op::mk_var(x), Op::zero())
+    fn mode_in(x: &Mode) -> Self {
+        Self::new(mode_to_op(&x), Op::zero())
     }
 }
 
@@ -166,7 +166,10 @@ fn gen_op_template(o: &Op, env: ModeEnv, constraints: &mut PossibleConstraints) 
         crate::formula::OpExpr::Const(_) => Mode::mk_in(),
         _ => {
             for v in o.fv() {
-                constraints.push(ModeConstraint::mode_in(v.clone()));
+                constraints.push(ModeConstraint::new(
+                    mode_to_op(env.get(&v).unwrap()),
+                    Op::zero(),
+                ));
             }
             Mode::mk_in()
         }
@@ -257,14 +260,15 @@ fn try_solve_and_add_constraint(
     rhs: &Op,
     fv: &HashSet<Ident>,
     constraints: &mut PossibleConstraints,
+    env: ModeEnv,
 ) -> bool {
     if let Some(o) = Op::solve_for(&target, lhs, rhs) {
         constraints.push(ModeConstraint::new(Op::mk_var(target), Op::one()));
         for x in rhs.fv() {
-            constraints.push(ModeConstraint::mode_in(x));
+            constraints.push(ModeConstraint::mode_in(env.get(&x).unwrap()));
         }
         for x in lhs.fv() {
-            constraints.push(ModeConstraint::mode_in(x));
+            constraints.push(ModeConstraint::mode_in(env.get(&x).unwrap()));
         }
         true
     } else {
@@ -298,7 +302,8 @@ fn gen_template_constraint(c: &Constraint, env: ModeEnv, constraints: &mut Possi
                 return;
             }
             if vars.len() == 1 {
-                if !try_solve_and_add_constraint(vars[0], lhs, rhs, &fvs, constraints) {
+                if !try_solve_and_add_constraint(vars[0], lhs, rhs, &fvs, constraints, env.clone())
+                {
                     constraints.insert_false();
                 }
                 return;
@@ -317,7 +322,7 @@ fn gen_template_constraint(c: &Constraint, env: ModeEnv, constraints: &mut Possi
             let pc = constraints.clone();
             for target in vars {
                 let mut pc = pc.clone();
-                if try_solve_and_add_constraint(target, lhs, rhs, &fvs, &mut pc) {
+                if try_solve_and_add_constraint(target, lhs, rhs, &fvs, &mut pc, env.clone()) {
                     constraints.append(pc);
                 }
             }
@@ -328,7 +333,7 @@ fn gen_template_constraint(c: &Constraint, env: ModeEnv, constraints: &mut Possi
                 o.fv_with_vec(&mut fvs);
             }
             for x in fvs {
-                constraints.push(ModeConstraint::mode_in(x));
+                append_constraint(&Mode::mk_in(), env.get(&x).unwrap(), constraints)
             }
         }
         crate::formula::ConstraintExpr::Conj(_, _)
@@ -422,7 +427,7 @@ fn gen_template_goal(
         GoalKind::ITE(c, g1, g2) => {
             let fv = c.fv();
             for x in fv {
-                constraints.push(ModeConstraint::mode_in(x));
+                constraints.push(ModeConstraint::mode_in(env.get(&x).unwrap()));
             }
             let g1 = gen_template_goal(g1, env.clone(), constraints, coarse);
             let g2 = gen_template_goal(g2, env.clone(), constraints, coarse);
@@ -438,7 +443,7 @@ fn append_constraint(m1: &Mode, m2: &Mode, constraints: &mut PossibleConstraints
         (ModeKind::In, ModeKind::In)
         | (ModeKind::Out, ModeKind::Out)
         | (ModeKind::Prop, ModeKind::Prop) => {}
-        (ModeKind::Var(x), _) | (_, ModeKind::Var(x)) => {
+        (ModeKind::Var(_), _) | (_, ModeKind::Var(_)) => {
             constraints.push(ModeConstraint::new(mode_to_op(m1), mode_to_op(m2)));
         }
         (ModeKind::Fun(t1, t2), ModeKind::Fun(t3, t4)) => {
