@@ -208,6 +208,34 @@ fn int_to_mode(i: i64) -> Mode {
     }
 }
 
+fn gen_template_constraint(c: &Constraint, env: ModeEnv, constraints: &mut Vec<ModeConstraint>) {
+    match c.kind() {
+        crate::formula::ConstraintExpr::True | crate::formula::ConstraintExpr::False => (),
+        crate::formula::ConstraintExpr::Pred(PredKind::Neq, l) if l.len() == 2 => {
+            let lhs = &l[0];
+            let rhs = &l[1];
+            // TODO: to handle nondeterminism of which to be used as output,
+            // we should implement a simplification mecahnism
+            unimplemented!()
+            //let vars = env.iter().filter_map(|(x, m)| m.is_out());
+        }
+        crate::formula::ConstraintExpr::Pred(_, l) => {
+            let mut fvs = HashSet::new();
+            for o in l {
+                o.fv_with_vec(&mut fvs);
+            }
+            for x in fvs {
+                constraints.push(ModeConstraint::mode_in(x));
+            }
+        }
+        crate::formula::ConstraintExpr::Conj(_, _)
+        | crate::formula::ConstraintExpr::Disj(_, _)
+        | crate::formula::ConstraintExpr::Quantifier(_, _, _) => {
+            panic!("assumption is broken: eta expansion bug?")
+        }
+    }
+}
+
 fn gen_template_goal(
     goal: &Goal,
     env: ModeEnv,
@@ -216,7 +244,10 @@ fn gen_template_goal(
 ) -> Goal {
     let f = |mode| Aux::new(env.clone(), mode);
     let g = match goal.kind() {
-        GoalKind::Constr(c) => GoalBase::mk_constr_t(c.clone(), f(Mode::mk_prop())),
+        GoalKind::Constr(c) => {
+            gen_template_constraint(c, env.clone(), constraints);
+            GoalBase::mk_constr_t(c.clone(), f(Mode::mk_prop()))
+        }
         GoalKind::Op(x) => {
             let mode = gen_op_template(x, env.clone(), constraints);
             GoalBase::mk_op_t(x.clone(), f(mode))
@@ -286,6 +317,10 @@ fn gen_template_goal(
             GoalBase::mk_univ_t(x.clone(), g, aux)
         }
         GoalKind::ITE(c, g1, g2) => {
+            let fv = c.fv();
+            for x in fv {
+                constraints.push(ModeConstraint::mode_in(x));
+            }
             let g1 = gen_template_goal(g1, env.clone(), constraints, coarse);
             let g2 = gen_template_goal(g2, env.clone(), constraints, coarse);
             GoalBase::mk_ite_t(c.clone(), g1, g2, f(Mode::mk_prop()))
@@ -544,7 +579,7 @@ fn test_generate_template() {
     let w = Ident::fresh();
     let p = Ident::fresh();
     let c = Constraint::mk_geq(Op::mk_var(x), Op::mk_const(101));
-    let c2 = Constraint::mk_neq(Op::mk_var(x), Op::mk_sub(Op::mk_var(x), Op::mk_const(10)));
+    let c2 = Constraint::mk_neq(Op::mk_var(y), Op::mk_sub(Op::mk_var(x), Op::mk_const(10)));
     let g1 = G::mk_app(
         G::mk_app(
             G::mk_var(p),
