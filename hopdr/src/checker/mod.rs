@@ -321,6 +321,9 @@ impl<'a> Translator<'a> {
             .iter()
             .filter(|x| matches!(env.get(x).unwrap().kind(), mode::ModeKind::Out))
             .collect();
+        if v.len() != 1 {
+            println!("{} != {}", o1, o2);
+        }
         assert_eq!(v.len(), 1);
 
         let v = v[0];

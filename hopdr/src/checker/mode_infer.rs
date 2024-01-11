@@ -177,7 +177,16 @@ fn gen_new_env(g: &Goal, env: &ModeEnv) -> ModeEnv {
     let env: ModeEnv = env
         .iter()
         .filter(|(x, _)| fv.contains(x))
-        .map(|(x, m)| (*x, template_from_mode(m)))
+        .map(|(x, m)| {
+            (
+                *x,
+                if m.is_int() {
+                    template_from_mode(m)
+                } else {
+                    m.clone()
+                },
+            )
+        })
         .collect();
     env
 }
@@ -200,13 +209,13 @@ fn int_to_mode(i: i64) -> Mode {
 }
 
 fn gen_template_goal(
-    g: &Goal,
+    goal: &Goal,
     env: ModeEnv,
     constraints: &mut Vec<ModeConstraint>,
     coarse: bool,
 ) -> Goal {
     let f = |mode| Aux::new(env.clone(), mode);
-    match g.kind() {
+    let g = match goal.kind() {
         GoalKind::Constr(c) => GoalBase::mk_constr_t(c.clone(), f(Mode::mk_prop())),
         GoalKind::Op(x) => {
             let mode = gen_op_template(x, env.clone(), constraints);
@@ -217,7 +226,7 @@ fn gen_template_goal(
             GoalBase::mk_var_t(x.clone(), f(mode))
         }
         GoalKind::Abs(v, g) => {
-            let mode = Mode::from_hflty(&v.ty);
+            let mode = template_from_mode(&Mode::from_hflty(&v.ty));
             let g = gen_template_goal(g, env.insert(v.id, mode.clone()), constraints, coarse);
             let ret_mode = g.aux.mode.clone();
 
@@ -227,8 +236,10 @@ fn gen_template_goal(
         GoalKind::App(g1, g2) => {
             let g1 = gen_template_goal(g1, env.clone(), constraints, coarse);
             let g2 = gen_template_goal(g2, env.clone(), constraints, coarse);
-            let ret_mode = g1.aux.mode.is_fun().1.clone();
-            GoalBase::mk_app_t(g1, g2, f(ret_mode))
+            let g1_clone = g1.clone();
+            let (arg_mode, ret_mode) = g1.aux.mode.is_fun();
+            append_constraint(arg_mode, &g2.aux.mode, constraints);
+            GoalBase::mk_app_t(g1_clone, g2, f(ret_mode.clone()))
         }
         GoalKind::Conj(g1, g2) => {
             let g1 = gen_template_goal(g1, env.clone(), constraints, coarse);
@@ -271,6 +282,7 @@ fn gen_template_goal(
             };
             let g = gen_template_goal(g, env.insert(x.id, mode.clone()), constraints, coarse);
             let aux = f(Mode::mk_prop()).introduced_mode(mode);
+            println!("{}: {}", goal, aux.mode);
             GoalBase::mk_univ_t(x.clone(), g, aux)
         }
         GoalKind::ITE(c, g1, g2) => {
@@ -278,7 +290,9 @@ fn gen_template_goal(
             let g2 = gen_template_goal(g2, env.clone(), constraints, coarse);
             GoalBase::mk_ite_t(c.clone(), g1, g2, f(Mode::mk_prop()))
         }
-    }
+    };
+    println!("{}: {}", g, g.aux.mode);
+    g
 }
 
 fn append_constraint(m1: &Mode, m2: &Mode, constraints: &mut Vec<ModeConstraint>) {
@@ -340,7 +354,8 @@ fn gen_template_problem(p: &Problem, target: Ident) -> (Problem, Vec<ModeConstra
             )
         })
         .collect();
-    let top = gen_template_goal(&p.top, env, &mut constraints, false);
+    //let top = gen_template_goal(&p.top, env, &mut constraints, false);
+    let top = p.top.clone();
     (Problem { clauses, top }, constraints)
 }
 
@@ -429,10 +444,20 @@ fn apply_model_to_goal(g: &Goal, model: &HashMap<Ident, Mode>) -> Option<Goal> {
             let g1 = apply_model_to_goal(g1, model)?;
             let g2 = apply_model_to_goal(g2, model)?;
             let aux = apply_model_to_aux(&g.aux, model);
-            // ここから
-            let b1 = g1.aux.env.iter().any(|(_, m)| m.is_out());
-            let b2 = g2.aux.env.iter().any(|(_, m)| m.is_out());
+            let b1 = g1
+                .aux
+                .env
+                .iter()
+                .any(|(x, m)| m.is_out() && g2.aux.env.get(x).is_some());
+            let b2 = g2
+                .aux
+                .env
+                .iter()
+                .any(|(x, m)| m.is_out() && g1.aux.env.get(x).is_some());
             let disj_info = if b1 && b2 {
+                println!("{g1} vs {g2}");
+                println!("{}", g1.aux.env);
+                println!("{}", g2.aux.env);
                 return None;
             } else if b2 {
                 DisjInfo::Right
@@ -566,13 +591,25 @@ fn test_generate_template() {
 
     let problem = translate_to_problem(problem);
     let (new_problem, constraint) = gen_template_problem(&problem, p);
+    println!("constraints: ");
+    for c in constraint.iter() {
+        println!("{}", c);
+    }
     println!("clauses: ");
     for c in new_problem.clauses.iter() {
         println!("{}: {}", c.head, c.mode);
     }
     println!("model: ");
     let m = solve(constraint);
-    for (x, m) in m.unwrap().iter() {
+    let model = m.unwrap();
+    for (x, m) in model.iter() {
         println!("{}: {}", x, m);
     }
+
+    let translated = apply_model(&new_problem, model).unwrap();
+
+    let ctx = super::Context::empty();
+    let mut tr = super::Translator::new(super::Config::new(&ctx));
+    let e = tr.translate_goal(translated.clauses[0].body.clone());
+    println!("{}", e.print_expr(&ctx));
 }
