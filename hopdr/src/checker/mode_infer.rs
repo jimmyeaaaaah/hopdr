@@ -5,7 +5,9 @@
 /// the temporary variable introduced by universal quantifiers
 use super::mode::*;
 use super::Aux;
+use super::DisjInfo;
 use super::ProblemM;
+use super::G;
 
 use crate::formula::hes::{ClauseBase, GoalBase, GoalKind, ProblemBase};
 use crate::formula::{
@@ -268,13 +270,30 @@ fn gen_template_goal(
                 Mode::from_hflty(&x.ty)
             };
             let g = gen_template_goal(g, env.insert(x.id, mode.clone()), constraints, coarse);
-            GoalBase::mk_univ_t(x.clone(), g, f(mode))
+            let aux = f(Mode::mk_prop()).introduced_mode(mode);
+            GoalBase::mk_univ_t(x.clone(), g, aux)
         }
         GoalKind::ITE(c, g1, g2) => {
             let g1 = gen_template_goal(g1, env.clone(), constraints, coarse);
             let g2 = gen_template_goal(g2, env.clone(), constraints, coarse);
             GoalBase::mk_ite_t(c.clone(), g1, g2, f(Mode::mk_prop()))
         }
+    }
+}
+
+fn append_constraint(m1: &Mode, m2: &Mode, constraints: &mut Vec<ModeConstraint>) {
+    match (m1.kind(), m2.kind()) {
+        (ModeKind::In, ModeKind::In)
+        | (ModeKind::Out, ModeKind::Out)
+        | (ModeKind::Prop, ModeKind::Prop) => {}
+        (ModeKind::Var(x), _) | (_, ModeKind::Var(x)) => {
+            constraints.push(ModeConstraint::new(mode_to_op(m1), mode_to_op(m2)));
+        }
+        (ModeKind::Fun(t1, t2), ModeKind::Fun(t3, t4)) => {
+            append_constraint(t1, t3, constraints);
+            append_constraint(t2, t4, constraints);
+        }
+        _ => panic!("program error: {} {}", m1, m2),
     }
 }
 
@@ -291,7 +310,9 @@ fn gen_template_clause(
         mode: _,
     } = c;
     let body = gen_template_goal(body, env, constraints, coarse);
-    todo!("match the returned mode and the given mode");
+    let m = &body.aux.mode;
+    println!("{} vs {}", m, mode);
+    append_constraint(m, &mode, constraints);
     Clause {
         head: head.clone(),
         body,
@@ -352,8 +373,96 @@ fn solve(constraints: Vec<ModeConstraint>) -> Option<HashMap<Ident, Mode>> {
         })
 }
 
+fn apply_model_to_mode(mode: &Mode, model: &HashMap<Ident, Mode>) -> Mode {
+    match mode.kind() {
+        ModeKind::In | ModeKind::Out | ModeKind::Prop => mode.clone(),
+        ModeKind::Var(x) => model.get(x).unwrap().clone(),
+        ModeKind::Fun(t1, t2) => Mode::mk_fun(
+            apply_model_to_mode(t1, model),
+            apply_model_to_mode(t2, model),
+        ),
+        ModeKind::InOut => panic!("program error: {}", mode),
+    }
+}
+
+fn apply_model_to_env(env: &ModeEnv, model: &HashMap<Ident, Mode>) -> ModeEnv {
+    env.iter()
+        .map(|(x, m)| (*x, apply_model_to_mode(m, model)))
+        .collect()
+}
+
+fn apply_model_to_aux(aux: &Aux, model: &HashMap<Ident, Mode>) -> Aux {
+    let mode = apply_model_to_mode(&aux.mode, model);
+    let env = apply_model_to_env(&aux.env, model);
+    let introduced_mode = aux
+        .introduced_mode
+        .as_ref()
+        .map(|m| apply_model_to_mode(m, model));
+    Aux {
+        mode,
+        env,
+        introduced_mode,
+        disj_info: None,
+    }
+}
+
+fn apply_model_to_goal(g: &Goal, model: &HashMap<Ident, Mode>) -> Goal {
+    match g.kind() {
+        GoalKind::Constr(c) => GoalBase::mk_constr_t(c.clone(), apply_model_to_aux(&g.aux, model)),
+        GoalKind::Op(o) => GoalBase::mk_op_t(o.clone(), apply_model_to_aux(&g.aux, model)),
+        GoalKind::Var(x) => GoalBase::mk_var_t(x.clone(), apply_model_to_aux(&g.aux, model)),
+        GoalKind::Abs(v, body) => {
+            let body = apply_model_to_goal(body, model);
+            GoalBase::mk_abs_t(v.clone(), body, apply_model_to_aux(&g.aux, model))
+        }
+        GoalKind::App(g1, g2) => {
+            let g1 = apply_model_to_goal(g1, model);
+            let g2 = apply_model_to_goal(g2, model);
+            GoalBase::mk_app_t(g1, g2, apply_model_to_aux(&g.aux, model))
+        }
+        GoalKind::Conj(g1, g2) => {
+            let g1 = apply_model_to_goal(g1, model);
+            let g2 = apply_model_to_goal(g2, model);
+            GoalBase::mk_conj_t(g1, g2, apply_model_to_aux(&g.aux, model))
+        }
+        GoalKind::Disj(g1, g2) => {
+            let g1 = apply_model_to_goal(g1, model);
+            let g2 = apply_model_to_goal(g2, model);
+            let aux = apply_model_to_aux(&g.aux, model);
+            todo!("handle disj_info");
+            GoalBase::mk_disj_t(g1, g2, aux)
+        }
+        GoalKind::Univ(x, body) => {
+            let body = apply_model_to_goal(body, model);
+            GoalBase::mk_univ_t(x.clone(), body, apply_model_to_aux(&g.aux, model))
+        }
+        GoalKind::ITE(c, g1, g2) => {
+            let g1 = apply_model_to_goal(g1, model);
+            let g2 = apply_model_to_goal(g2, model);
+            GoalBase::mk_ite_t(c.clone(), g1, g2, apply_model_to_aux(&g.aux, model))
+        }
+    }
+}
+
+fn apply_model_to_clause(c: &Clause, model: &HashMap<Ident, Mode>) -> Clause {
+    let Clause { head, body, mode } = c;
+    let body = apply_model_to_goal(body, model);
+    let mode = apply_model_to_mode(mode, model);
+    Clause {
+        head: head.clone(),
+        body,
+        mode,
+    }
+}
+
 fn apply_model(problem: Problem, model: HashMap<Ident, Mode>) -> Problem {
-    unimplemented!()
+    let clauses = problem
+        .clauses
+        .into_iter()
+        .map(|c| apply_model_to_clause(&c, &model))
+        .collect();
+    let top = apply_model_to_goal(&problem.top, &model);
+    Problem { clauses, top }
 }
 
 // 1. pick a clause
@@ -438,9 +547,13 @@ fn test_generate_template() {
 
     let problem = translate_to_problem(problem);
     let (new_problem, constraint) = gen_template_problem(&problem, p);
-    for c in constraint.iter() {
-        println!("{c}");
+    println!("clauses: ");
+    for c in new_problem.clauses.iter() {
+        println!("{}: {}", c.head, c.mode);
     }
+    println!("model: ");
     let m = solve(constraint);
-    println!("{:?}", m);
+    for (x, m) in m.unwrap().iter() {
+        println!("{}: {}", x, m);
+    }
 }
