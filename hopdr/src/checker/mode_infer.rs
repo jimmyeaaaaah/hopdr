@@ -9,11 +9,11 @@ use super::ProblemM;
 
 use crate::formula::hes::{ClauseBase, GoalBase, GoalKind, ProblemBase};
 use crate::formula::{
-    generate_global_environment, Constraint, Fv, Ident, Logic, Negation, Op, PredKind, TyEnv,
+    generate_global_environment, Constraint, Fv, Ident, Logic, Negation, Op, PredKind, Top, TyEnv,
     Type as HFLType, Variable,
 };
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 type Input = ProblemBase<Constraint, ()>;
 type Output = ProblemBase<Constraint, super::Aux>;
@@ -141,6 +141,12 @@ impl std::fmt::Display for ModeConstraint {
     }
 }
 
+impl From<ModeConstraint> for Constraint {
+    fn from(value: ModeConstraint) -> Self {
+        Constraint::mk_eq(value.left, value.right)
+    }
+}
+
 impl ModeConstraint {
     fn new(left: Op, right: Op) -> Self {
         Self { left, right }
@@ -180,6 +186,14 @@ fn mode_to_op(mode: &Mode) -> Op {
         ModeKind::Out => Op::one(),
         ModeKind::Prop | ModeKind::Fun(_, _) | ModeKind::InOut => panic!("program error: {}", mode),
         ModeKind::Var(x) => Op::mk_var(*x),
+    }
+}
+
+fn int_to_mode(i: i64) -> Mode {
+    match i {
+        0 => Mode::mk_in(),
+        1 => Mode::mk_out(),
+        _ => panic!("program error: {}", i),
     }
 }
 
@@ -277,6 +291,7 @@ fn gen_template_clause(
         mode: _,
     } = c;
     let body = gen_template_goal(body, env, constraints, coarse);
+    todo!("match the returned mode and the given mode");
     Clause {
         head: head.clone(),
         body,
@@ -308,8 +323,33 @@ fn gen_template_problem(p: &Problem, target: Ident) -> (Problem, Vec<ModeConstra
     (Problem { clauses, top }, constraints)
 }
 
-fn solve(constraint: Vec<ModeConstraint>) -> Option<HashMap<Ident, Mode>> {
-    unimplemented!()
+fn solve(constraints: Vec<ModeConstraint>) -> Option<HashMap<Ident, Mode>> {
+    use crate::solver::smt::default_solver;
+
+    let mut fv = HashSet::new();
+    for c in constraints.iter() {
+        c.left.fv_with_vec(&mut fv);
+        c.right.fv_with_vec(&mut fv);
+    }
+    let constraint = fv.iter().fold(Constraint::mk_true(), |acc, elem| {
+        let left = Constraint::mk_leq(Op::mk_const(0), Op::mk_var(*elem));
+        let right = Constraint::mk_leq(Op::mk_var(*elem), Op::mk_const(1));
+        Constraint::mk_conj(acc, Constraint::mk_conj(left, right))
+    });
+    let constraint = constraints.into_iter().fold(constraint, |acc, elem| {
+        Constraint::mk_conj(acc, elem.into())
+    });
+
+    let mut sol = default_solver();
+    sol.solve_with_model(&constraint, &HashSet::new(), &fv)
+        .ok()
+        .map(|m| {
+            let mut model = HashMap::new();
+            for (x, v) in m.model.iter() {
+                model.insert(*x, int_to_mode(*v));
+            }
+            model
+        })
 }
 
 fn apply_model(problem: Problem, model: HashMap<Ident, Mode>) -> Problem {
@@ -398,7 +438,9 @@ fn test_generate_template() {
 
     let problem = translate_to_problem(problem);
     let (new_problem, constraint) = gen_template_problem(&problem, p);
-    for c in constraint {
+    for c in constraint.iter() {
         println!("{c}");
     }
+    let m = solve(constraint);
+    println!("{:?}", m);
 }
