@@ -29,9 +29,8 @@ impl Mode {
 
     pub fn is_int(&self) -> bool {
         match self.kind() {
-            ModeKind::In | ModeKind::Out | ModeKind::InOut => true,
+            ModeKind::In | ModeKind::Out | ModeKind::InOut | ModeKind::Var(_) => true,
             ModeKind::Prop | ModeKind::Fun(_, _) => false,
-            ModeKind::Var(_) => panic!("program error"),
         }
     }
 
@@ -140,5 +139,20 @@ impl fmt::Display for Mode {
             ModeKind::Fun(t1, t2) => write!(f, "({} -> {})", t1, t2),
             ModeKind::Var(x) => write!(f, "{}", x),
         }
+    }
+}
+
+impl fmt::Display for ModeEnv {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut first = true;
+        for (x, m) in self.iter() {
+            if first {
+                first = false;
+            } else {
+                write!(f, ", ")?;
+            }
+            write!(f, "{}: {}", x, m)?;
+        }
+        Ok(())
     }
 }
