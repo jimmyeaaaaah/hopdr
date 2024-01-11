@@ -158,6 +158,9 @@ impl ModeConstraint {
     fn mode_in(x: &Mode) -> Self {
         Self::new(mode_to_op(&x), Op::zero())
     }
+    fn mode_out(x: &Mode) -> Self {
+        Self::new(mode_to_op(&x), Op::one())
+    }
 }
 
 fn gen_op_template(o: &Op, env: ModeEnv, constraints: &mut PossibleConstraints) -> Mode {
@@ -239,6 +242,11 @@ impl PossibleConstraints {
             constraints: vec![Vec::new()],
         }
     }
+    fn empty() -> Self {
+        Self {
+            constraints: Vec::new(),
+        }
+    }
     fn push(&mut self, c: ModeConstraint) {
         for cs in self.constraints.iter_mut() {
             cs.push(c.clone());
@@ -258,16 +266,12 @@ fn try_solve_and_add_constraint(
     target: Ident,
     lhs: &Op,
     rhs: &Op,
-    fv: &HashSet<Ident>,
     constraints: &mut PossibleConstraints,
     env: ModeEnv,
 ) -> bool {
     if let Some(o) = Op::solve_for(&target, lhs, rhs) {
-        constraints.push(ModeConstraint::new(Op::mk_var(target), Op::one()));
-        for x in rhs.fv() {
-            constraints.push(ModeConstraint::mode_in(env.get(&x).unwrap()));
-        }
-        for x in lhs.fv() {
+        constraints.push(ModeConstraint::mode_out(env.get(&target).unwrap()));
+        for x in o.fv() {
             constraints.push(ModeConstraint::mode_in(env.get(&x).unwrap()));
         }
         true
@@ -302,8 +306,7 @@ fn gen_template_constraint(c: &Constraint, env: ModeEnv, constraints: &mut Possi
                 return;
             }
             if vars.len() == 1 {
-                if !try_solve_and_add_constraint(vars[0], lhs, rhs, &fvs, constraints, env.clone())
-                {
+                if !try_solve_and_add_constraint(vars[0], lhs, rhs, constraints, env.clone()) {
                     constraints.insert_false();
                 }
                 return;
@@ -320,9 +323,10 @@ fn gen_template_constraint(c: &Constraint, env: ModeEnv, constraints: &mut Possi
                 })
                 .collect();
             let pc = constraints.clone();
+            *constraints = PossibleConstraints::empty();
             for target in vars {
                 let mut pc = pc.clone();
-                if try_solve_and_add_constraint(target, lhs, rhs, &fvs, &mut pc, env.clone()) {
+                if try_solve_and_add_constraint(target, lhs, rhs, &mut pc, env.clone()) {
                     constraints.append(pc);
                 }
             }
@@ -387,8 +391,8 @@ fn gen_template_goal(
         }
         GoalKind::Disj(g1, g2) => {
             // 1. introduce a new variable
-            let g1_env = gen_new_env(g1, &env);
-            let g2_env = gen_new_env(g2, &env);
+            let mut g1_env = gen_new_env(g1, &env);
+            let mut g2_env = gen_new_env(g2, &env);
             // 2. add a constraint
             for (x, m) in env.iter() {
                 if matches!(m.kind(), ModeKind::Fun(_, _)) {
@@ -402,10 +406,8 @@ fn gen_template_goal(
                         let rhs = Op::mk_add(o1, o2);
                         constraints.push(ModeConstraint::new(lhs, rhs));
                     }
-                    (Some(m), None) | (None, Some(m)) => {
-                        let rhs = mode_to_op(m);
-                        constraints.push(ModeConstraint::new(lhs, rhs));
-                    }
+                    (Some(_), None) => g1_env = g1_env.insert(*x, m.clone()),
+                    (None, Some(_)) => g2_env = g2_env.insert(*x, m.clone()),
                     (None, None) => {}
                 }
             }
@@ -414,14 +416,16 @@ fn gen_template_goal(
             GoalBase::mk_disj_t(g1, g2, f(Mode::mk_prop()))
         }
         GoalKind::Univ(x, g) => {
-            let mode = if coarse {
+            let mode = if coarse && x.ty.is_int() {
                 Mode::mk_out()
+            } else if x.ty.is_int() {
+                Mode::new_var()
             } else {
                 Mode::from_hflty(&x.ty)
             };
             let g = gen_template_goal(g, env.insert(x.id, mode.clone()), constraints, coarse);
             let aux = f(Mode::mk_prop()).introduced_mode(mode);
-            println!("{}: {}", goal, aux.mode);
+            println!("univ: {}: {}", x.id, aux.introduced_mode.as_ref().unwrap());
             GoalBase::mk_univ_t(x.clone(), g, aux)
         }
         GoalKind::ITE(c, g1, g2) => {
@@ -434,7 +438,7 @@ fn gen_template_goal(
             GoalBase::mk_ite_t(c.clone(), g1, g2, f(Mode::mk_prop()))
         }
     };
-    println!("{}: {}", g, g.aux.mode);
+    println!("{} |- {}: {}", env, g, g.aux.mode);
     g
 }
 
@@ -497,8 +501,8 @@ fn gen_template_problem(p: &Problem, target: Ident) -> (Problem, PossibleConstra
             )
         })
         .collect();
-    //let top = gen_template_goal(&p.top, env, &mut constraints, false);
-    let top = p.top.clone();
+    let top = gen_template_goal(&p.top, env, &mut constraints, false);
+    //let top = p.top.clone();
     (Problem { clauses, top }, constraints)
 }
 
