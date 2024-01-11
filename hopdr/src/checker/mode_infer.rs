@@ -406,63 +406,80 @@ fn apply_model_to_aux(aux: &Aux, model: &HashMap<Ident, Mode>) -> Aux {
     }
 }
 
-fn apply_model_to_goal(g: &Goal, model: &HashMap<Ident, Mode>) -> Goal {
+fn apply_model_to_goal(g: &Goal, model: &HashMap<Ident, Mode>) -> Option<Goal> {
     match g.kind() {
         GoalKind::Constr(c) => GoalBase::mk_constr_t(c.clone(), apply_model_to_aux(&g.aux, model)),
         GoalKind::Op(o) => GoalBase::mk_op_t(o.clone(), apply_model_to_aux(&g.aux, model)),
         GoalKind::Var(x) => GoalBase::mk_var_t(x.clone(), apply_model_to_aux(&g.aux, model)),
         GoalKind::Abs(v, body) => {
-            let body = apply_model_to_goal(body, model);
+            let body = apply_model_to_goal(body, model)?;
             GoalBase::mk_abs_t(v.clone(), body, apply_model_to_aux(&g.aux, model))
         }
         GoalKind::App(g1, g2) => {
-            let g1 = apply_model_to_goal(g1, model);
-            let g2 = apply_model_to_goal(g2, model);
+            let g1 = apply_model_to_goal(g1, model)?;
+            let g2 = apply_model_to_goal(g2, model)?;
             GoalBase::mk_app_t(g1, g2, apply_model_to_aux(&g.aux, model))
         }
         GoalKind::Conj(g1, g2) => {
-            let g1 = apply_model_to_goal(g1, model);
-            let g2 = apply_model_to_goal(g2, model);
+            let g1 = apply_model_to_goal(g1, model)?;
+            let g2 = apply_model_to_goal(g2, model)?;
             GoalBase::mk_conj_t(g1, g2, apply_model_to_aux(&g.aux, model))
         }
         GoalKind::Disj(g1, g2) => {
-            let g1 = apply_model_to_goal(g1, model);
-            let g2 = apply_model_to_goal(g2, model);
+            let g1 = apply_model_to_goal(g1, model)?;
+            let g2 = apply_model_to_goal(g2, model)?;
             let aux = apply_model_to_aux(&g.aux, model);
-            todo!("handle disj_info");
+            // ここから
+            let b1 = g1.aux.env.iter().any(|(_, m)| m.is_out());
+            let b2 = g2.aux.env.iter().any(|(_, m)| m.is_out());
+            let disj_info = if b1 && b2 {
+                return None;
+            } else if b2 {
+                DisjInfo::Right
+            } else {
+                // case where b1 is true or both are false
+                // Left: default case
+                DisjInfo::Left
+            };
+            let aux = aux.disj_info(disj_info);
             GoalBase::mk_disj_t(g1, g2, aux)
         }
         GoalKind::Univ(x, body) => {
-            let body = apply_model_to_goal(body, model);
+            let body = apply_model_to_goal(body, model)?;
             GoalBase::mk_univ_t(x.clone(), body, apply_model_to_aux(&g.aux, model))
         }
         GoalKind::ITE(c, g1, g2) => {
-            let g1 = apply_model_to_goal(g1, model);
-            let g2 = apply_model_to_goal(g2, model);
+            let g1 = apply_model_to_goal(g1, model)?;
+            let g2 = apply_model_to_goal(g2, model)?;
             GoalBase::mk_ite_t(c.clone(), g1, g2, apply_model_to_aux(&g.aux, model))
         }
     }
+    .into()
 }
 
-fn apply_model_to_clause(c: &Clause, model: &HashMap<Ident, Mode>) -> Clause {
+fn apply_model_to_clause(c: &Clause, model: &HashMap<Ident, Mode>) -> Option<Clause> {
     let Clause { head, body, mode } = c;
-    let body = apply_model_to_goal(body, model);
+    let body = apply_model_to_goal(body, model)?;
     let mode = apply_model_to_mode(mode, model);
     Clause {
         head: head.clone(),
         body,
         mode,
     }
+    .into()
 }
 
-fn apply_model(problem: Problem, model: HashMap<Ident, Mode>) -> Problem {
-    let clauses = problem
+fn apply_model(problem: &Problem, model: HashMap<Ident, Mode>) -> Option<Problem> {
+    let mut clauses = Vec::new();
+    for c in problem
         .clauses
-        .into_iter()
-        .map(|c| apply_model_to_clause(&c, &model))
-        .collect();
-    let top = apply_model_to_goal(&problem.top, &model);
-    Problem { clauses, top }
+        .iter()
+        .map(|c| apply_model_to_clause(c, &model))
+    {
+        clauses.push(c?);
+    }
+    let top = apply_model_to_goal(&problem.top, &model)?;
+    Problem { clauses, top }.into()
 }
 
 // 1. pick a clause
@@ -481,7 +498,9 @@ pub(super) fn infer(problem: Input) -> Output {
         let (new_problem, constraint) = gen_template_problem(&problem, name);
         match solve(constraint) {
             Some(model) => {
-                problem = apply_model(new_problem, model);
+                if let Some(new_problem) = apply_model(&new_problem, model) {
+                    problem = new_problem;
+                }
             }
             None => {}
         }
