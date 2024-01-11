@@ -15,6 +15,7 @@ use crate::formula::{
     Type as HFLType, Variable,
 };
 
+use core::fmt;
 use std::collections::{HashMap, HashSet};
 
 type Input = ProblemBase<Constraint, ()>;
@@ -132,6 +133,7 @@ fn handle_op(o: &Op, env: ModeEnv) -> Mode {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct ModeConstraint {
     left: Op,
     right: Op,
@@ -158,7 +160,7 @@ impl ModeConstraint {
     }
 }
 
-fn gen_op_template(o: &Op, env: ModeEnv, constraints: &mut Vec<ModeConstraint>) -> Mode {
+fn gen_op_template(o: &Op, env: ModeEnv, constraints: &mut PossibleConstraints) -> Mode {
     match o.kind() {
         crate::formula::OpExpr::Var(x) => env.get(x).unwrap().clone(),
         crate::formula::OpExpr::Const(_) => Mode::mk_in(),
@@ -208,16 +210,117 @@ fn int_to_mode(i: i64) -> Mode {
     }
 }
 
-fn gen_template_constraint(c: &Constraint, env: ModeEnv, constraints: &mut Vec<ModeConstraint>) {
+#[derive(Clone)]
+struct PossibleConstraints {
+    // nondeterministic monad of mode constraints
+    // TODO: union-find
+    constraints: Vec<Vec<ModeConstraint>>,
+}
+
+impl fmt::Display for PossibleConstraints {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for (i, cs) in self.constraints.iter().enumerate() {
+            write!(f, "[Possible Constraint Set {}]\n", i + 1)?;
+            for c in cs.iter() {
+                write!(f, "{} = {}\n", c.left, c.right)?;
+            }
+            write!(f, "\n")?;
+        }
+        write!(f, "\n")
+    }
+}
+
+impl PossibleConstraints {
+    fn new() -> Self {
+        Self {
+            constraints: vec![Vec::new()],
+        }
+    }
+    fn push(&mut self, c: ModeConstraint) {
+        for cs in self.constraints.iter_mut() {
+            cs.push(c.clone());
+        }
+    }
+    fn insert_false(&mut self) {
+        for cs in self.constraints.iter_mut() {
+            cs.push(ModeConstraint::new(Op::zero(), Op::one()));
+        }
+    }
+    fn append(&mut self, other: Self) {
+        self.constraints.extend(other.constraints);
+    }
+}
+
+fn try_solve_and_add_constraint(
+    target: Ident,
+    lhs: &Op,
+    rhs: &Op,
+    fv: &HashSet<Ident>,
+    constraints: &mut PossibleConstraints,
+) -> bool {
+    if let Some(o) = Op::solve_for(&target, lhs, rhs) {
+        constraints.push(ModeConstraint::new(o, Op::one()));
+        for x in rhs.fv() {
+            constraints.push(ModeConstraint::mode_in(x));
+        }
+        for x in lhs.fv() {
+            constraints.push(ModeConstraint::mode_in(x));
+        }
+        true
+    } else {
+        false
+    }
+}
+
+fn gen_template_constraint(c: &Constraint, env: ModeEnv, constraints: &mut PossibleConstraints) {
     match c.kind() {
         crate::formula::ConstraintExpr::True | crate::formula::ConstraintExpr::False => (),
         crate::formula::ConstraintExpr::Pred(PredKind::Neq, l) if l.len() == 2 => {
             let lhs = &l[0];
             let rhs = &l[1];
+            let mut fvs = HashSet::new();
+            lhs.fv_with_vec(&mut fvs);
+            rhs.fv_with_vec(&mut fvs);
             // TODO: to handle nondeterminism of which to be used as output,
             // we should implement a simplification mecahnism
-            unimplemented!()
-            //let vars = env.iter().filter_map(|(x, m)| m.is_out());
+            let vars: Vec<_> = env
+                .iter()
+                .filter_map(|(x, m)| {
+                    if fvs.contains(x) && m.is_out() {
+                        Some(*x)
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            if vars.len() >= 2 {
+                constraints.insert_false();
+                return;
+            }
+            if vars.len() == 1 {
+                if !try_solve_and_add_constraint(vars[0], lhs, rhs, &fvs, constraints) {
+                    constraints.insert_false();
+                }
+                return;
+            }
+
+            let vars: Vec<_> = env
+                .iter()
+                .filter_map(|(x, m)| {
+                    if fvs.contains(x) && m.is_var() {
+                        Some(*x)
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            let pc = constraints.clone();
+            for target in vars {
+                let mut pc = pc.clone();
+                if try_solve_and_add_constraint(target, lhs, rhs, &fvs, &mut pc) {
+                    constraints.append(pc);
+                }
+            }
         }
         crate::formula::ConstraintExpr::Pred(_, l) => {
             let mut fvs = HashSet::new();
@@ -239,7 +342,7 @@ fn gen_template_constraint(c: &Constraint, env: ModeEnv, constraints: &mut Vec<M
 fn gen_template_goal(
     goal: &Goal,
     env: ModeEnv,
-    constraints: &mut Vec<ModeConstraint>,
+    constraints: &mut PossibleConstraints,
     coarse: bool,
 ) -> Goal {
     let f = |mode| Aux::new(env.clone(), mode);
@@ -330,7 +433,7 @@ fn gen_template_goal(
     g
 }
 
-fn append_constraint(m1: &Mode, m2: &Mode, constraints: &mut Vec<ModeConstraint>) {
+fn append_constraint(m1: &Mode, m2: &Mode, constraints: &mut PossibleConstraints) {
     match (m1.kind(), m2.kind()) {
         (ModeKind::In, ModeKind::In)
         | (ModeKind::Out, ModeKind::Out)
@@ -350,7 +453,7 @@ fn gen_template_clause(
     c: &Clause,
     env: ModeEnv,
     mode: Mode,
-    constraints: &mut Vec<ModeConstraint>,
+    constraints: &mut PossibleConstraints,
     coarse: bool,
 ) -> Clause {
     let Clause {
@@ -369,13 +472,13 @@ fn gen_template_clause(
     }
 }
 
-fn gen_template_problem(p: &Problem, target: Ident) -> (Problem, Vec<ModeConstraint>) {
+fn gen_template_problem(p: &Problem, target: Ident) -> (Problem, PossibleConstraints) {
     let env: ModeEnv = p
         .clauses
         .iter()
         .map(|c| (c.head.id, template_from_mode(&c.mode)))
         .collect();
-    let mut constraints = Vec::new();
+    let mut constraints = PossibleConstraints::new();
     let clauses = p
         .clauses
         .iter()
@@ -394,7 +497,7 @@ fn gen_template_problem(p: &Problem, target: Ident) -> (Problem, Vec<ModeConstra
     (Problem { clauses, top }, constraints)
 }
 
-fn solve(constraints: Vec<ModeConstraint>) -> Option<HashMap<Ident, Mode>> {
+fn solve_constraint_set(constraints: &Vec<ModeConstraint>) -> Option<HashMap<Ident, Mode>> {
     use crate::solver::smt::default_solver;
 
     let mut fv = HashSet::new();
@@ -408,7 +511,7 @@ fn solve(constraints: Vec<ModeConstraint>) -> Option<HashMap<Ident, Mode>> {
         Constraint::mk_conj(acc, Constraint::mk_conj(left, right))
     });
     let constraint = constraints.into_iter().fold(constraint, |acc, elem| {
-        Constraint::mk_conj(acc, elem.into())
+        Constraint::mk_conj(acc, elem.clone().into())
     });
 
     let mut sol = default_solver();
@@ -421,6 +524,15 @@ fn solve(constraints: Vec<ModeConstraint>) -> Option<HashMap<Ident, Mode>> {
             }
             model
         })
+}
+
+fn solve(pc: PossibleConstraints) -> Option<HashMap<Ident, Mode>> {
+    for constraints in pc.constraints.iter() {
+        if let Some(model) = solve_constraint_set(constraints) {
+            return Some(model);
+        }
+    }
+    None
 }
 
 fn apply_model_to_mode(mode: &Mode, model: &HashMap<Ident, Mode>) -> Mode {
@@ -572,7 +684,6 @@ pub(super) fn infer(problem: Input) -> Output {
 fn test_generate_template() {
     // P = \x. \y. ∀w. (x < 101 \/ y != x - 10) /\ (x >= 101 \/ (P (x+11) w \/ P w y)).
     use crate::formula::hes::Goal as G;
-
     // clause P
     let x = Ident::fresh();
     let y = Ident::fresh();
@@ -624,17 +735,18 @@ fn test_generate_template() {
         top,
     };
 
+    println!("[target problem]");
+    println!("{}", problem);
+
     let problem = translate_to_problem(problem);
     let (new_problem, constraint) = gen_template_problem(&problem, p);
-    println!("constraints: ");
-    for c in constraint.iter() {
-        println!("{}", c);
-    }
-    println!("clauses: ");
+    println!("[constraints]");
+    println!("{constraint}");
+    println!("[clauses] ");
     for c in new_problem.clauses.iter() {
         println!("{}: {}", c.head, c.mode);
     }
-    println!("model: ");
+    println!("[model] ");
     let m = solve(constraint);
     let model = m.unwrap();
     for (x, m) in model.iter() {
@@ -646,5 +758,6 @@ fn test_generate_template() {
     let ctx = super::Context::empty();
     let mut tr = super::Translator::new(super::Config::new(&ctx));
     let e = tr.translate_goal(translated.clauses[0].body.clone());
+    println!("[translated program]");
     println!("{}", e.print_expr(&ctx));
 }

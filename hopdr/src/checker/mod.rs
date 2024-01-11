@@ -369,7 +369,7 @@ impl<'a> Translator<'a> {
                 let body = self.translate_goalm(g, cont);
                 let m = goal.aux.get_univ_mode();
                 match m.kind() {
-                    mode::ModeKind::InOut => {
+                    mode::ModeKind::Out => {
                         // TODO: assert(!body.fv().contains(&v.id));
                         body
                     }
@@ -378,7 +378,7 @@ impl<'a> Translator<'a> {
                         let range = ai::analyze(v.id, g);
                         Expr::mk_letrand(v.id, range, body)
                     }
-                    mode::ModeKind::Out => unimplemented!(), // This is another case where it is unreachable in theory
+                    mode::ModeKind::InOut => unimplemented!(), // This is another case where it is unreachable in theory
                     mode::ModeKind::Prop | mode::ModeKind::Fun(_, _) | mode::ModeKind::Var(_) => {
                         panic!("program error")
                     }
