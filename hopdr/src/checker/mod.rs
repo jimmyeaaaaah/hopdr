@@ -196,7 +196,7 @@ impl<'a> Translator<'a> {
             self.translate_predicates(&goal, Vec::new())
         }
     }
-    fn handle_app(&mut self, goal: GoalM, cont: Expr) -> Expr {
+    fn handle_app(&mut self, goal: GoalM, p: Ident, cont: Expr) -> Expr {
         let mut args = Vec::new();
         let mut rets = Vec::new();
         let mut pred = goal;
@@ -223,6 +223,8 @@ impl<'a> Translator<'a> {
         for arg in args {
             body = Expr::mk_app(body, arg);
         }
+        // For handling delay
+        body = Expr::mk_app(body, Expr::mk_var(p));
         // TODO: rev?
         Expr::mk_let_tuple(rets, body, cont)
     }
@@ -322,62 +324,71 @@ impl<'a> Translator<'a> {
 
     fn translate_goalm(&mut self, goal: &GoalM, cont: Expr) -> Expr {
         println!("tranlsate goal: {}: {}", goal, goal.aux.mode);
-        match goal.kind() {
-            GoalKind::Constr(c) => self.translate_constraintm(c, cont, &goal.aux.env),
-            GoalKind::App(_, _) => self.handle_app(goal.clone(), cont),
-            GoalKind::Var(x) => Expr::mk_if(Expr::mk_var(*x), Expr::mk_raise(), cont),
-            GoalKind::Conj(g1_fml, g2_fml) => {
-                let g1 = self.translate_goalm(g1_fml, cont.clone());
-                let g2 = self.translate_goalm(g2_fml, cont);
+        Self::gen_prop(|p| {
+            match goal.kind() {
+                GoalKind::Constr(c) => self.translate_constraintm(c, cont, &goal.aux.env),
+                GoalKind::App(_, _) => self.handle_app(goal.clone(), p, cont),
+                GoalKind::Var(x) => Expr::mk_if(Expr::mk_var(*x), Expr::mk_raise(), cont),
+                GoalKind::Conj(g1_fml, g2_fml) => {
+                    let g1 = self.translate_goalm(g1_fml, cont.clone());
+                    let g1 = Expr::mk_app(g1, Expr::mk_var(p));
+                    let g2 = self.translate_goalm(g2_fml, cont);
+                    let g1 = Expr::mk_app(g1, Expr::mk_var(p));
 
-                //[θ /\ Ψ2] = fun p -> [θ] p; [Ψ2]p
-                //[Ψ1 /\ θ] = fun p -> [θ] p; [Ψ1]p
-                let left = Expr::mk_try_with(g1.clone(), g2.clone());
-                let right = Expr::mk_try_with(g2, g1);
-                if Into::<Option<Constraint>>::into(g1_fml.clone()).is_some() {
-                    left
-                } else if Into::<Option<Constraint>>::into(g2_fml.clone()).is_some() {
-                    right
-                } else {
-                    self.mk_demonic_branch(left, right)
-                }
-            }
-            GoalKind::Disj(g1, g2) => {
-                let (g1, g2) = match goal.aux.get_disj_info() {
-                    DisjInfo::Left => (g1, g2),
-                    DisjInfo::Right => (g2, g1),
-                };
-                let cont = self.translate_goalm(g2, cont);
-                self.translate_goalm(g1, cont)
-            }
-            GoalKind::Univ(v, g) => {
-                let body = self.translate_goalm(g, cont);
-                let m = goal.aux.get_univ_mode();
-                match m.kind() {
-                    mode::ModeKind::Out => {
-                        // TODO: assert(!body.fv().contains(&v.id));
-                        body
-                    }
-                    mode::ModeKind::In => {
-                        assert!(v.ty.is_int());
-                        let range = ai::analyze(v.id, g);
-                        Expr::mk_letrand(v.id, range, body)
-                    }
-                    mode::ModeKind::InOut => unimplemented!(), // This is another case where it is unreachable in theory
-                    mode::ModeKind::Prop | mode::ModeKind::Fun(_, _) | mode::ModeKind::Var(_) => {
-                        panic!("program error")
+                    //[θ /\ Ψ2] = fun p -> [θ] p; [Ψ2]p
+                    //[Ψ1 /\ θ] = fun p -> [θ] p; [Ψ1]p
+                    let left = Expr::mk_try_with(g1.clone(), g2.clone());
+                    let right = Expr::mk_try_with(g2, g1);
+                    if Into::<Option<Constraint>>::into(g1_fml.clone()).is_some() {
+                        left
+                    } else if Into::<Option<Constraint>>::into(g2_fml.clone()).is_some() {
+                        right
+                    } else {
+                        self.mk_demonic_branch(left, right)
                     }
                 }
+                GoalKind::Disj(g1, g2) => {
+                    let (g1, g2) = match goal.aux.get_disj_info() {
+                        DisjInfo::Left => (g1, g2),
+                        DisjInfo::Right => (g2, g1),
+                    };
+                    let cont = Expr::mk_app(self.translate_goalm(g2, cont), Expr::mk_var(p));
+                    Expr::mk_app(self.translate_goalm(g1, cont), Expr::mk_var(p))
+                }
+                GoalKind::Univ(v, g) => {
+                    let body = Expr::mk_app(self.translate_goalm(g, cont), Expr::mk_var(p));
+                    let m = goal.aux.get_univ_mode();
+                    match m.kind() {
+                        mode::ModeKind::Out => {
+                            // TODO: assert(!body.fv().contains(&v.id));
+                            body
+                        }
+                        mode::ModeKind::In => {
+                            assert!(v.ty.is_int());
+                            let range = ai::analyze(v.id, g);
+                            Expr::mk_letrand(v.id, range, body)
+                        }
+                        mode::ModeKind::InOut => unimplemented!(), // This is another case where it is unreachable in theory
+                        mode::ModeKind::Prop
+                        | mode::ModeKind::Fun(_, _)
+                        | mode::ModeKind::Var(_) => {
+                            panic!("program error")
+                        }
+                    }
+                }
+                GoalKind::ITE(c, g1, g2) => {
+                    let g1 = self.translate_goalm(g1, cont.clone());
+                    let g2 = self.translate_goalm(g2, cont.clone());
+                    Expr::mk_app(
+                        Expr::mk_if(Expr::mk_constraint(c.clone()), g1, g2),
+                        Expr::mk_var(p),
+                    )
+                }
+                GoalKind::Op(_) | GoalKind::Abs(_, _) => {
+                    panic!("program error: mode inference is wrong?")
+                }
             }
-            GoalKind::ITE(c, g1, g2) => {
-                let g1 = self.translate_goalm(g1, cont.clone());
-                let g2 = self.translate_goalm(g2, cont.clone());
-                Expr::mk_if(Expr::mk_constraint(c.clone()), g1, g2)
-            }
-            GoalKind::Op(_) | GoalKind::Abs(_, _) => {
-                panic!("program error: mode inference is wrong?")
-            }
-        }
+        })
     }
     fn translate(&mut self, problem: ProblemM) -> Program {
         let functions: Vec<_> = problem
