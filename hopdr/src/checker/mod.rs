@@ -495,7 +495,7 @@ fn test_translate_predicate() {
         Aux {
             env: env.clone(),
             mode: Mode::mk_prop(),
-            introduced_mode: Some(Mode::mk_inout()),
+            introduced_mode: Some(Mode::mk_out()),
             disj_info: None,
         },
     );
@@ -515,7 +515,7 @@ fn test_translate_predicate() {
     println!("{g8}");
     let ctx = Context::empty();
     let mut tr = Translator::new(Config::new(&ctx));
-    let e = tr.translate_goalm(&g8, Expr::mk_unit());
+    let e = tr.translate_predicates(&g8, Vec::new());
     println!("{}", e.print_expr(&ctx));
 }
 
