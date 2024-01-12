@@ -6,14 +6,9 @@
 use super::mode::*;
 use super::Aux;
 use super::DisjInfo;
-use super::ProblemM;
-use super::G;
 
 use crate::formula::hes::{ClauseBase, GoalBase, GoalKind, ProblemBase};
-use crate::formula::{
-    generate_global_environment, Constraint, Fv, Ident, Logic, Negation, Op, PredKind, Top, TyEnv,
-    Type as HFLType, Variable,
-};
+use crate::formula::{Constraint, Fv, Ident, Logic, Op, PredKind, Top, Variable};
 
 use core::fmt;
 use std::collections::{HashMap, HashSet};
@@ -89,7 +84,6 @@ fn translate_to_clause(clause: ClauseBase<Constraint, ()>, env: ModeEnv) -> Clau
 
 /// translates the given problem to the intermediate representation for mode inference
 fn translate_to_problem(problem: Input) -> Problem {
-    let mut env = ModeEnv::new();
     let env: ModeEnv = crate::formula::generate_global_environment(&problem.clauses)
         .to_hash_map()
         .into_iter()
@@ -123,13 +117,6 @@ fn template_from_mode(mode: &Mode) -> Mode {
         ModeKind::In | ModeKind::Out | ModeKind::Var(_) => Mode::new_var(),
         ModeKind::Fun(t1, t2) => Mode::mk_fun(template_from_mode(t1), template_from_mode(t2)),
         _ => panic!("program error: {}", mode),
-    }
-}
-
-fn handle_op(o: &Op, env: ModeEnv) -> Mode {
-    match o.kind() {
-        crate::formula::OpExpr::Var(x) => env.get(x).unwrap().clone(),
-        _ => Mode::mk_in(),
     }
 }
 
@@ -693,6 +680,7 @@ pub(super) fn infer(problem: Input) -> Output {
 fn test_generate_template() {
     // P = \x. \y. ∀w. (x < 101 \/ y != x - 10) /\ (x >= 101 \/ (P (x+11) w \/ P w y)).
     use crate::formula::hes::Goal as G;
+    use crate::formula::Type as HFLType;
     // clause P
     let x = Ident::fresh();
     let y = Ident::fresh();

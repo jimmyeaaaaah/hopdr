@@ -3,35 +3,25 @@ mod executor;
 mod mode;
 mod mode_infer;
 
-use crate::formula::hes::{ClauseBase, Goal, GoalBase, GoalKind, Problem, ProblemBase};
-use crate::formula::{Constraint, Fv, Ident, Logic, Negation, Op, PredKind, Type as HFLType};
+use crate::formula::hes::{GoalBase, GoalKind, Problem, ProblemBase};
+use crate::formula::{Constraint, Fv, Ident, Op, PredKind, Type as HFLType};
 use crate::ml::{optimize, Expr, Function, Program, Type as SType, Variable};
 use crate::preprocess::Context;
 use mode::{Mode, ModeEnv};
 
-use std::collections::HashMap;
-
 pub struct Config<'a> {
     context: &'a Context,
-    preds_mode_inferred: HashMap<Ident, Vec<(Mode, Expr)>>,
-    env: HashMap<Ident, Mode>,
 }
 
 impl<'a> Config<'a> {
     pub fn new(context: &'a Context) -> Self {
-        Config {
-            context,
-            preds_mode_inferred: HashMap::new(),
-            env: HashMap::new(),
-        }
+        Config { context }
     }
 }
 
 struct Translator<'a> {
     config: Config<'a>,
 }
-// The type of input
-type G = Goal<Constraint>;
 
 #[derive(Clone, Debug)]
 pub enum DisjInfo {
@@ -89,7 +79,6 @@ impl Aux {
 
 // The type of intermediate representation for each formula
 type GoalM = GoalBase<Constraint, Aux>;
-type ClauseM = ClauseBase<Constraint, Aux>;
 type ProblemM = ProblemBase<Constraint, Aux>;
 
 impl<'a> Translator<'a> {
@@ -146,47 +135,6 @@ impl<'a> Translator<'a> {
         let v = Variable::mk(p, SType::mk_type_unit());
         let body = f(p);
         Expr::mk_fun(v, body)
-    }
-    fn translate_constraint_inner(&mut self, c: &Constraint) -> either::Either<Constraint, Expr> {
-        match c.kind() {
-            crate::formula::ConstraintExpr::True
-            | crate::formula::ConstraintExpr::False
-            | crate::formula::ConstraintExpr::Pred(_, _) => either::Left(c.clone()),
-            crate::formula::ConstraintExpr::Conj(c1, c2) => {
-                let c1 = self.translate_constraint_inner(c1);
-                let c2 = self.translate_constraint_inner(c2);
-                match (c1, c2) {
-                    (either::Left(c1), either::Left(c2)) => {
-                        either::Left(Constraint::mk_conj(c1, c2))
-                    }
-                    (either::Left(c), either::Right(e)) | (either::Right(e), either::Left(c)) => {
-                        either::Right(Expr::mk_and(Expr::mk_constraint(c), e))
-                    }
-                    (either::Right(e1), either::Right(e2)) => either::Right(Expr::mk_and(e1, e2)),
-                }
-            }
-            crate::formula::ConstraintExpr::Disj(c1, c2) => {
-                let c1 = self.translate_constraint_inner(c1);
-                let c2 = self.translate_constraint_inner(c2);
-                match (c1, c2) {
-                    (either::Left(c1), either::Left(c2)) => {
-                        either::Left(Constraint::mk_disj(c1, c2))
-                    }
-                    (either::Left(c), either::Right(e)) | (either::Right(e), either::Left(c)) => {
-                        either::Right(Expr::mk_or(Expr::mk_constraint(c), e))
-                    }
-                    (either::Right(e1), either::Right(e2)) => either::Right(Expr::mk_or(e1, e2)),
-                }
-            }
-            crate::formula::ConstraintExpr::Quantifier(_, _, _) => todo!(),
-        }
-    }
-    fn translate_constraint(&mut self, c: &Constraint) -> Expr {
-        let e = match self.translate_constraint_inner(c) {
-            either::Left(c) => Expr::mk_constraint(c),
-            either::Right(e) => e,
-        };
-        Self::gen_prop(|_| Expr::mk_if(e, Expr::mk_unit(), Expr::mk_raise()))
     }
     fn handle_app_arg(&mut self, goal: GoalM) -> Expr {
         if goal.aux.mode.is_int() {

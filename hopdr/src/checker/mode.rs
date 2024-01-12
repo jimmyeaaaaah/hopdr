@@ -1,5 +1,4 @@
 use core::fmt;
-use std::iter::{self, FromIterator};
 
 use crate::formula::Ident;
 use crate::util::P;
@@ -94,6 +93,7 @@ pub struct ModeEnv {
 }
 
 impl ModeEnv {
+    #[allow(dead_code)]
     pub fn new() -> Self {
         ModeEnv {
             env: HashTrieMap::new(),
@@ -112,12 +112,6 @@ impl ModeEnv {
 
     pub fn iter(&self) -> impl Iterator<Item = (&Ident, &Mode)> {
         self.env.iter()
-    }
-
-    pub fn from_iterator(iter: impl Iterator<Item = (Ident, Mode)>) -> Self {
-        ModeEnv {
-            env: iter.collect(),
-        }
     }
 }
 
