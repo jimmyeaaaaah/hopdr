@@ -1,3 +1,4 @@
+exception TrueExc
 exception FalseExc
 exception IntegerOverflow
 
