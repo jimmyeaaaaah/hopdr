@@ -60,7 +60,8 @@ fn translate_to_goal(goal: &GoalBase<Constraint, ()>, env: ModeEnv) -> Goal {
         GoalKind::Disj(g1, g2) => {
             let g1 = translate_to_goal(g1, env.clone());
             let g2 = translate_to_goal(g2, env.clone());
-            GoalBase::mk_disj_t(g1, g2, Aux::new_disj(env.clone()))
+            let aux = Aux::new_disj(env.clone()).disj_info(DisjInfo::Left);
+            GoalBase::mk_disj_t(g1, g2, aux)
         }
         GoalKind::Univ(x, g) => {
             let mode = Mode::from_hflty(&x.ty);
