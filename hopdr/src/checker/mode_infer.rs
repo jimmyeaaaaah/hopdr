@@ -412,7 +412,7 @@ fn gen_template_goal(
             };
             let g = gen_template_goal(g, env.insert(x.id, mode.clone()), constraints, coarse);
             let aux = f(Mode::mk_prop()).introduced_mode(mode);
-            println!("univ: {}: {}", x.id, aux.introduced_mode.as_ref().unwrap());
+            debug!("univ: {}: {}", x.id, aux.introduced_mode.as_ref().unwrap());
             GoalBase::mk_univ_t(x.clone(), g, aux)
         }
         GoalKind::ITE(c, g1, g2) => {
@@ -425,7 +425,7 @@ fn gen_template_goal(
             GoalBase::mk_ite_t(c.clone(), g1, g2, f(Mode::mk_prop()))
         }
     };
-    println!("{} |- {}: {}", env, g, g.aux.mode);
+    debug!("{} |- {}: {}", env, g, g.aux.mode);
     g
 }
 
@@ -459,7 +459,6 @@ fn gen_template_clause(
     } = c;
     let body = gen_template_goal(body, env, constraints, coarse);
     let m = &body.aux.mode;
-    println!("{} vs {}", m, mode);
     append_constraint(m, &mode, constraints);
     Clause {
         head: head.clone(),
@@ -598,9 +597,6 @@ fn apply_model_to_goal(g: &Goal, model: &HashMap<Ident, Mode>) -> Option<Goal> {
                 .iter()
                 .any(|(x, m)| m.is_out() && g1.aux.env.get(x).is_some());
             let disj_info = if b1 && b2 {
-                println!("{g1} vs {g2}");
-                println!("{}", g1.aux.env);
-                println!("{}", g2.aux.env);
                 return None;
             } else if b2 {
                 DisjInfo::Right

@@ -94,7 +94,6 @@ impl<'a> Translator<'a> {
     }
     fn translate_type(&self, arg: &Mode, t: &HFLType) -> SType {
         fn inner(arg: &Mode, t: &HFLType, n_int: usize) -> SType {
-            println!("{} vs {}", arg, t);
             match (arg.kind(), t.kind()) {
                 (mode::ModeKind::Prop, crate::formula::TypeKind::Proposition) => {
                     if n_int == 0 {
@@ -271,7 +270,7 @@ impl<'a> Translator<'a> {
     }
 
     fn translate_goalm(&mut self, goal: &GoalM, cont: Expr) -> Expr {
-        println!("tranlsate goal: {}: {}", goal, goal.aux.mode);
+        debug!("tranlsate goal: {}: {}", goal, goal.aux.mode);
         Self::gen_prop(|p| {
             match goal.kind() {
                 GoalKind::Constr(c) => self.translate_constraintm(c, cont, &goal.aux.env),
