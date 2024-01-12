@@ -188,41 +188,6 @@ impl<'a> Translator<'a> {
         };
         Self::gen_prop(|_| Expr::mk_if(e, Expr::mk_unit(), Expr::mk_raise()))
     }
-    fn handle_conj_disj(
-        &mut self,
-        g11: &GoalM,
-        g12: &GoalM,
-        g21: &GoalM,
-        g22: &GoalM,
-    ) -> Option<Expr> {
-        let s11: Option<Constraint> = g11.clone().into();
-        let s12: Option<Constraint> = g12.clone().into();
-        let s21: Option<Constraint> = g21.clone().into();
-        let s22: Option<Constraint> = g22.clone().into();
-
-        let (c1, g1) = match (s11, s12) {
-            (Some(c), _) => (c, g12),
-            (_, Some(c)) => (c, g11),
-            _ => return None,
-        };
-        let (c2, g2) = match (s21, s22) {
-            (Some(c), _) => (c, g22),
-            (_, Some(c)) => (c, g21),
-            _ => return None,
-        };
-
-        if c1.negate().unwrap() == c2 {
-            Some(Translator::gen_prop(move |p| {
-                let g1 = self.translate_goal(g1.clone());
-                let g2 = self.translate_goal(g2.clone());
-                let g1 = Expr::mk_app(g1.clone(), Expr::mk_var(p));
-                let g2 = Expr::mk_app(g2.clone(), Expr::mk_var(p));
-                Expr::mk_if(Expr::mk_constraint(c2), g1, g2)
-            }))
-        } else {
-            None
-        }
-    }
     fn handle_app_arg(&mut self, goal: GoalM) -> Expr {
         if goal.aux.mode.is_int() {
             let o: Op = goal.clone().into();
@@ -267,13 +232,13 @@ impl<'a> Translator<'a> {
     fn translate_predicates(&mut self, goal: &GoalM, mut variables: Vec<Ident>) -> Expr {
         let m = &goal.aux.mode;
         if m.is_prop() {
-            if variables.len() == 0 {
-                return self.translate_goal(goal.clone());
+            return if variables.len() == 0 {
+                self.translate_goalm(goal, Expr::mk_unit())
             } else {
                 let exprs = variables.into_iter().map(|x| Expr::mk_var(x)).collect();
                 let cont = Expr::mk_tuple(exprs);
-                return self.translate_goalm(goal, cont);
-            }
+                self.translate_goalm(goal, cont)
+            };
         }
         match goal.kind() {
             GoalKind::Var(x) => Expr::mk_var(*x),
@@ -314,6 +279,13 @@ impl<'a> Translator<'a> {
         }
     }
 
+    fn handle_constr(&self, c: &Constraint, cont: Expr, env: &ModeEnv) -> Expr {
+        let fvs = c.fv();
+        assert!(!fvs.iter().any(|x| env.get(x).unwrap().is_out()));
+
+        Expr::mk_if(Expr::mk_constraint(c.clone()), Expr::mk_raise(), cont)
+    }
+
     fn handle_neq(&mut self, o1: &Op, o2: &Op, cont: Expr, env: &ModeEnv) -> Expr {
         let mut fvs = o1.fv();
         o2.fv_with_vec(&mut fvs);
@@ -321,8 +293,8 @@ impl<'a> Translator<'a> {
             .iter()
             .filter(|x| matches!(env.get(x).unwrap().kind(), mode::ModeKind::Out))
             .collect();
-        if v.len() != 1 {
-            println!("{} != {}", o1, o2);
+        if v.len() == 0 {
+            return self.handle_constr(&Constraint::mk_neq(o1.clone(), o2.clone()), cont, env);
         }
         assert_eq!(v.len(), 1);
 
@@ -337,7 +309,7 @@ impl<'a> Translator<'a> {
             crate::formula::ConstraintExpr::Pred(PredKind::Neq, l) if l.len() == 2 => {
                 self.handle_neq(&l[0], &l[1], cont, env)
             }
-            _ => panic!("mode inference is buggy"),
+            _ => self.handle_constr(c, cont, env),
         }
     }
 
@@ -349,13 +321,26 @@ impl<'a> Translator<'a> {
     }
 
     fn translate_goalm(&mut self, goal: &GoalM, cont: Expr) -> Expr {
+        println!("tranlsate goal: {}: {}", goal, goal.aux.mode);
         match goal.kind() {
             GoalKind::Constr(c) => self.translate_constraintm(c, cont, &goal.aux.env),
             GoalKind::App(_, _) => self.handle_app(goal.clone(), cont),
-            GoalKind::Conj(g1, g2) => {
-                let g1 = self.translate_goalm(g1, cont.clone());
-                let g2 = self.translate_goalm(g2, cont);
-                self.mk_demonic_branch(g1, g2)
+            GoalKind::Var(x) => Expr::mk_if(Expr::mk_var(*x), Expr::mk_raise(), cont),
+            GoalKind::Conj(g1_fml, g2_fml) => {
+                let g1 = self.translate_goalm(g1_fml, cont.clone());
+                let g2 = self.translate_goalm(g2_fml, cont);
+
+                //[θ /\ Ψ2] = fun p -> [θ] p; [Ψ2]p
+                //[Ψ1 /\ θ] = fun p -> [θ] p; [Ψ1]p
+                let left = Expr::mk_try_with(g1.clone(), g2.clone());
+                let right = Expr::mk_try_with(g2, g1);
+                if Into::<Option<Constraint>>::into(g1_fml.clone()).is_some() {
+                    left
+                } else if Into::<Option<Constraint>>::into(g2_fml.clone()).is_some() {
+                    right
+                } else {
+                    self.mk_demonic_branch(left, right)
+                }
             }
             GoalKind::Disj(g1, g2) => {
                 let (g1, g2) = match goal.aux.get_disj_info() {
@@ -389,87 +374,8 @@ impl<'a> Translator<'a> {
                 let g2 = self.translate_goalm(g2, cont.clone());
                 Expr::mk_if(Expr::mk_constraint(c.clone()), g1, g2)
             }
-            GoalKind::Var(_) | GoalKind::Op(_) | GoalKind::Abs(_, _) => {
+            GoalKind::Op(_) | GoalKind::Abs(_, _) => {
                 panic!("program error: mode inference is wrong?")
-            }
-        }
-    }
-
-    // [θ] = fun p -> if not [θ] then raise FalseExc
-    // [Ψ1 /\ Ψ2] = fun p -> if * then [Ψ1] p else [Ψ2]p
-    // [θ /\ Ψ2] = fun p -> [θ] p; [Ψ2]p
-    // [Ψ1 /\ θ] = fun p -> [θ] p; [Ψ1]p
-    // [Ψ1 \/ Ψ2] = fun p -> try [Ψ1]p with FalseExc -> [Ψ2]p
-    // [(¬θ \/ Ψ1) /\ (θ \/ Ψ2)] = fun p -> if [θ] then [Ψ1] else  [Ψ2]
-    // [∀x. Ψ] = fun p -> let x = * in [Ψ] p
-    /// translate the given goal to a program whose unreachability to the assertion failure
-    /// is equivalent to the validity of the given goal
-    fn translate_goal(&mut self, goal: GoalM) -> Expr {
-        match goal.kind() {
-            GoalKind::Constr(c) => self.translate_constraint(c),
-            GoalKind::Op(_) => {
-                unreachable!()
-            }
-            GoalKind::Var(x) => Expr::mk_var(*x),
-            GoalKind::Abs(_, _) => self.translate_predicates(&goal, Vec::new()),
-            GoalKind::App(g1, g2) => {
-                // should handle the arg's higher-order case
-                let g1 = self.translate_goal(g1.clone());
-                // TODO: check the type of g1 so that we can infer g2 is op or not
-                // corner case: g2 is a variable
-                // I think they are preprocessed but I forgot it
-                match g2.kind() {
-                    GoalKind::Op(o) => Expr::mk_iapp(g1, o.clone()),
-                    _ => {
-                        let g2 = self.translate_predicates(g2, Vec::new());
-                        Expr::mk_app(g1, g2)
-                    }
-                }
-            }
-            //
-            GoalKind::Conj(g1_fml, g2_fml) => {
-                Self::gen_prop(|p| {
-                    match (g1_fml.kind(), g2_fml.kind()) {
-                        (GoalKind::Disj(g11, g12), GoalKind::Disj(g21, g22)) => {
-                            match self.handle_conj_disj(g11, g12, g21, g22) {
-                                Some(x) => return Expr::mk_app(x, Expr::mk_var(p)),
-                                _ => (),
-                            }
-                        }
-                        _ => (),
-                    };
-
-                    let g1 = self.translate_goal(g1_fml.clone());
-                    let g1 = Expr::mk_app(g1, Expr::mk_var(p));
-                    let g2 = self.translate_goal(g2_fml.clone());
-                    let g2 = Expr::mk_app(g2, Expr::mk_var(p));
-
-                    //[θ /\ Ψ2] = fun p -> [θ] p; [Ψ2]p
-                    //[Ψ1 /\ θ] = fun p -> [θ] p; [Ψ1]p
-                    if Into::<Option<Constraint>>::into(g1_fml.clone()).is_some() {
-                        Expr::mk_sequential(g1, g2)
-                    } else if Into::<Option<Constraint>>::into(g2_fml.clone()).is_some() {
-                        Expr::mk_sequential(g2, g1)
-                    } else {
-                        self.mk_demonic_branch(g1, g2)
-                    }
-                })
-            }
-            GoalKind::Disj(g1, g2) => Self::gen_prop(|p| {
-                let g1 = Expr::mk_app(self.translate_goal(g1.clone()), Expr::mk_var(p));
-                let g2 = Expr::mk_app(self.translate_goal(g2.clone()), Expr::mk_var(p));
-                Expr::mk_try_with(g1, g2)
-            }),
-            GoalKind::Univ(v, g) => Self::gen_prop(|p| {
-                let body = self.translate_goal(g.clone());
-                assert!(v.ty.is_int());
-                let range = ai::analyze(v.id, g);
-                Expr::mk_letrand(v.id, range, Expr::mk_app(body, Expr::mk_var(p)))
-            }),
-            GoalKind::ITE(c, g1, g2) => {
-                let g1 = self.translate_goal(g1.clone());
-                let g2 = self.translate_goal(g2.clone());
-                Expr::mk_if(Expr::mk_constraint(c.clone()), g1, g2)
             }
         }
     }
@@ -484,7 +390,7 @@ impl<'a> Translator<'a> {
                 Function { name, ty, body }
             })
             .collect();
-        let main = self.translate_goal(problem.top.clone());
+        let main = self.translate_goalm(&problem.top, Expr::mk_unit());
         let main = Expr::mk_app(main, Expr::mk_unit());
         Program {
             functions,
@@ -598,7 +504,7 @@ fn test_translate_predicate() {
     println!("{g8}");
     let ctx = Context::empty();
     let mut tr = Translator::new(Config::new(&ctx));
-    let e = tr.translate_goal(g8);
+    let e = tr.translate_goalm(&g8, Expr::mk_unit());
     println!("{}", e.print_expr(&ctx));
 }
 
