@@ -9,6 +9,8 @@ let event_integer_overflow () =
   if !check_mx > 10 then check_mx := !check_mx / 2;
   if !check_mn < -10 then check_mn := !check_mn / 2
 
+let event_stack_overflow () = ()
+
 let rand_int (x, y) = 
   let mn = match x with 
     | Some(x) -> x

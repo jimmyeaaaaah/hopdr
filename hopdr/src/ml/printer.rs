@@ -309,7 +309,11 @@ impl<'a> Program<'a> {
             " with IntegerOverflow -> begin\n
                 Printf.printf \"int overflow\n\";
                 event_integer_overflow ()
-              end"
+              end
+              | Stack_overflow -> begin
+                Printf.printf \"stack overflow\n\";
+                event_stack_overflow ()
+              end "
         )?;
         write!(f, " | TrueExc -> ()")?;
         writeln!(f, ") done; Printf.printf \"{}\"", super::FAIL_STRING)
