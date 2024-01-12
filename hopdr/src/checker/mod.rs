@@ -220,7 +220,7 @@ impl<'a> Translator<'a> {
             }
         }
         let mut body = self.translate_predicates(&pred, Vec::new());
-        for arg in args {
+        for arg in args.into_iter().rev() {
             body = Expr::mk_app(body, arg);
         }
         // For handling delay
@@ -333,7 +333,7 @@ impl<'a> Translator<'a> {
                     let g1 = self.translate_goalm(g1_fml, cont.clone());
                     let g1 = Expr::mk_app(g1, Expr::mk_var(p));
                     let g2 = self.translate_goalm(g2_fml, cont);
-                    let g1 = Expr::mk_app(g1, Expr::mk_var(p));
+                    let g2 = Expr::mk_app(g2, Expr::mk_var(p));
 
                     //[θ /\ Ψ2] = fun p -> [θ] p; [Ψ2]p
                     //[Ψ1 /\ θ] = fun p -> [θ] p; [Ψ1]p

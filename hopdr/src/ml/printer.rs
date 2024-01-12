@@ -231,11 +231,11 @@ impl DumpML for Expr {
                 paren(f, self.precedence(), c, ctx)
             }
             ExprKind::Unit => write!(f, "()"),
-            ExprKind::Raise => write!(f, "(raise FalseExc)"),
+            ExprKind::Raise => write!(f, "(raise TrueExc)"),
             ExprKind::TryWith { body, handler } => {
                 write!(f, "try begin ")?;
                 body.dump_ml(f, ctx)?;
-                write!(f, " end with FalseExc -> begin ")?;
+                write!(f, " end with TrueExc -> begin ")?;
                 handler.dump_ml(f, ctx)?;
                 write!(f, " end ")
             }
@@ -257,7 +257,7 @@ impl DumpML for Expr {
                 write!(f, ")")
             }
             ExprKind::LetTuple { idents, body, cont } => {
-                assert!(idents.len() > 0);
+                //assert!(idents.len() > 0);
                 write!(f, "let (")?;
                 let mut first = true;
                 for ident in idents.iter() {
@@ -302,6 +302,8 @@ impl<'a> Program<'a> {
             "let () = for i = 1 to 1000 do (Printf.printf \"epoch %d...\\n\" i; try "
         )?;
         self.main.dump_ml(f, &self.ctx)?;
+        // if it terminates, it means that the program is *NOT* safe
+        write!(f, "; raise FalseExc ")?;
         write!(
             f,
             " with IntegerOverflow -> begin\n
@@ -309,6 +311,7 @@ impl<'a> Program<'a> {
                 event_integer_overflow ()
               end"
         )?;
+        write!(f, " | TrueExc -> ()")?;
         writeln!(f, ") done; Printf.printf \"{}\"", super::FAIL_STRING)
     }
     fn dump_library_func<W: Write>(&self, f: &mut W) -> Result<(), fmt::Error> {
