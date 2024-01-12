@@ -6,8 +6,8 @@ use std::time::Duration;
 use super::util;
 use super::{Model, SMTSolverType, SolverResult};
 use crate::formula::{
-    Constraint, ConstraintExpr, FirstOrderLogic, Fv, Ident, Logic, Op, OpExpr, OpKind, PredKind,
-    QuantifierKind, Subst, Top,
+    Constraint, ConstraintExpr, FirstOrderLogic, Fv, Ident, Logic, Negation, Op, OpExpr, OpKind,
+    PredKind, QuantifierKind, Subst, Top,
 };
 use lexpr;
 use lexpr::Value;
@@ -576,4 +576,23 @@ fn z3_sat_model_from_constraint() {
         }
         Err(_) => panic!("test failed"),
     }
+}
+
+/// Check duality of two constraints by semantic analyses (will invoke smt solver).
+/// For example, x = 1 and x != 1 are dual. x = 1 and x != 2 is not.
+///
+/// This function is a bit robust against some modifications during hoice's parsing
+/// For example, -1 * x >= -100 and x >= 101 are safely considered as dual, and
+/// this function returns true.
+pub fn check_dual_semantically(c1: &Constraint, c2: &Constraint) -> bool {
+    println!("check_dual_semantically: {} vs {}", c1, c2);
+    let mut fv = c1.fv();
+    c2.fv_with_vec(&mut fv);
+    let c1 = Constraint::mk_disj(c1.clone(), c2.clone());
+    let c2 = Constraint::mk_conj(c1.clone(), c2.clone())
+        .negate()
+        .unwrap();
+    let c = Constraint::mk_conj(c1, c2);
+    let mut sol = default_solver();
+    sol.solve_with_universal_quantifiers(&c).is_sat()
 }
