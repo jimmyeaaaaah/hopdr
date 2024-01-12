@@ -85,6 +85,7 @@ impl TypedPreprocessor for UnpackConstrTransform {
 }
 
 pub fn transform(problem: hes::Problem<formula::Constraint>) -> hes::Problem<formula::Constraint> {
+    crate::title!("unpack_constr");
     let t = UnpackConstrTransform {};
     t.transform(problem)
 }

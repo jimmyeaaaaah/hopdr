@@ -6,17 +6,15 @@
 
 use crate::formula;
 use crate::formula::hes;
-use crate::formula::{Logic, Negation};
+use crate::formula::Logic;
+use crate::solver::smt::check_dual_semantically;
 use hes::GoalKind;
 
 // these functions are used also in src/preprocess/find_ite.rs, so the visibility is pub(super)
 pub(super) type Goal = hes::Goal<formula::Constraint>;
 pub(super) fn check_dual(g1: &Goal, g2: &Goal) -> bool {
     match (g1.kind(), g2.kind()) {
-        (GoalKind::Constr(c1), GoalKind::Constr(c2)) => {
-            let c2 = c2.negate().unwrap();
-            c1 == &c2
-        }
+        (GoalKind::Constr(c1), GoalKind::Constr(c2)) => check_dual_semantically(c1, c2),
         _ => false,
     }
 }
