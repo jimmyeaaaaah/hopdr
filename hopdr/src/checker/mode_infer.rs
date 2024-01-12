@@ -766,7 +766,7 @@ fn test_generate_template() {
 
     let ctx = super::Context::empty();
     let mut tr = super::Translator::new(super::Config::new(&ctx));
-    let e = tr.translate_goal(translated.clauses[0].body.clone());
+    let e = tr.translate_predicates(&translated.clauses[0].body.clone(), Vec::new());
     println!("[translated program]");
     println!("{}", e.print_expr(&ctx));
 
