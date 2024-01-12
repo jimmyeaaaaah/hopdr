@@ -769,4 +769,8 @@ fn test_generate_template() {
     let e = tr.translate_goal(translated.clauses[0].body.clone());
     println!("[translated program]");
     println!("{}", e.print_expr(&ctx));
+
+    let problem = output_problem(translated);
+    let p = tr.translate(problem);
+    println!("{}", p.main.print_expr(&ctx));
 }
