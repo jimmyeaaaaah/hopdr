@@ -65,35 +65,30 @@ fn f(g: &Goal) -> Goal {
             Goal::mk_ite(c.clone(), g1, g2)
         }
 
-        GoalKind::Conj(g1, g2) => {
-            match (
-                g1.unwrap_quantifiers().kind(),
-                g2.unwrap_quantifiers().kind(),
-            ) {
-                (GoalKind::Disj(g11, g12), GoalKind::Disj(g21, g22)) => {
-                    match get_ite_triple(g11, g12, g21, g22) {
+        GoalKind::Conj(g1, g2) => match (g1.kind(), g2.kind()) {
+            (GoalKind::Disj(g11, g12), GoalKind::Disj(g21, g22)) => {
+                match get_ite_triple(g11, g12, g21, g22) {
+                    Some((c, g1, g2)) => Goal::mk_ite(c, f(g1), f(g2)),
+                    None => Goal::mk_conj(f(g1), f(g2)),
+                }
+            }
+            (GoalKind::Disj(g11, g12), GoalKind::Constr(c))
+            | (GoalKind::Constr(c), GoalKind::Disj(g11, g12)) => match c.kind() {
+                formula::ConstraintExpr::Disj(c1, c2) => {
+                    match get_ite_triple(
+                        g11,
+                        g12,
+                        &Goal::mk_constr(c1.clone()),
+                        &Goal::mk_constr(c2.clone()),
+                    ) {
                         Some((c, g1, g2)) => Goal::mk_ite(c, f(g1), f(g2)),
                         None => Goal::mk_conj(f(g1), f(g2)),
                     }
                 }
-                (GoalKind::Disj(g11, g12), GoalKind::Constr(c))
-                | (GoalKind::Constr(c), GoalKind::Disj(g11, g12)) => match c.kind() {
-                    formula::ConstraintExpr::Disj(c1, c2) => {
-                        match get_ite_triple(
-                            g11,
-                            g12,
-                            &Goal::mk_constr(c1.clone()),
-                            &Goal::mk_constr(c2.clone()),
-                        ) {
-                            Some((c, g1, g2)) => Goal::mk_ite(c, f(g1), f(g2)),
-                            None => Goal::mk_conj(f(g1), f(g2)),
-                        }
-                    }
-                    _ => Goal::mk_conj(f(g1), f(g2)),
-                },
                 _ => Goal::mk_conj(f(g1), f(g2)),
-            }
-        }
+            },
+            _ => Goal::mk_conj(f(g1), f(g2)),
+        },
         GoalKind::Disj(g1, g2) => {
             let g1 = f(g1);
             let g2 = f(g2);
@@ -127,7 +122,7 @@ fn test_transform() {
     use crate::formula::{Constraint, Ident, Op, OpKind, Variable};
     use hes::Goal;
     // (x < 0 \/ F x) /\ (x >= 0 \/ F (0 - x))
-    let xi = Ident::fresh();
+    let xi: Ident = Ident::fresh();
     let x = Op::mk_var(xi);
     let zero = Op::mk_const(0);
     let func = Ident::fresh();

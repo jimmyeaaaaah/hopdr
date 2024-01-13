@@ -153,7 +153,12 @@ impl ModeConstraint {
 
 fn gen_op_template(o: &Op, env: ModeEnv, constraints: &mut PossibleConstraints) -> Mode {
     match o.kind() {
-        crate::formula::OpExpr::Var(x) => env.get(x).unwrap().clone(),
+        crate::formula::OpExpr::Var(x) => match env.get(x) {
+            Some(m) => m.clone(),
+            None => {
+                panic!("not found: {} in {}", x, env)
+            }
+        },
         crate::formula::OpExpr::Const(_) => Mode::mk_in(),
         _ => {
             for v in o.fv() {
