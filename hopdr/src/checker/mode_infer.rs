@@ -660,6 +660,7 @@ pub(super) fn infer(problem: Input) -> Output {
     let clause_names: Vec<Ident> = problem
         .clauses
         .iter()
+        .filter(|c| c.disjunctive_degree() > 1)
         .map(|c| c.head.id)
         .into_iter()
         .collect();

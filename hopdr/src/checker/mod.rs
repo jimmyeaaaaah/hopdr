@@ -480,6 +480,7 @@ pub fn run(problem: Problem<Constraint>, config: Config) {
     println!("(* Generated Program *)");
     println!("{s}");
 
+    print!("Verification Result: ");
     match executor::executor(s) {
         executor::ExecResult::Unknown => println!("Unknown"),
         executor::ExecResult::Invalid => println!("Invalid"),

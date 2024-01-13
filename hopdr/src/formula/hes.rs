@@ -1017,6 +1017,35 @@ impl<C, T> GoalBase<C, T> {
             | GoalKind::ITE(_, _, _) => None,
         }
     }
+    pub fn disjunctive_degree(&self) -> usize {
+        match self.kind() {
+            GoalKind::Constr(_) | GoalKind::Op(_) => 0,
+            GoalKind::Var(_) => 1,
+            GoalKind::Abs(_, g) | GoalKind::Univ(_, g) => std::cmp::max(1, g.disjunctive_degree()),
+            GoalKind::App(g1, g2) | GoalKind::Conj(g1, g2) | GoalKind::ITE(_, g1, g2) => {
+                std::cmp::max(
+                    1,
+                    std::cmp::max(g1.disjunctive_degree(), g2.disjunctive_degree()),
+                )
+            }
+            GoalKind::Disj(g1, g2) => g1.disjunctive_degree() + g2.disjunctive_degree(),
+        }
+    }
+}
+
+#[test]
+fn test_disjunctive_degree() {
+    let x = Ident::fresh();
+    let f = Ident::fresh();
+    let g: Goal<Constraint> = Goal::mk_app(Goal::mk_var(f), Goal::mk_var(x));
+    let g2 = Goal::mk_conj(g.clone(), g.clone());
+    let g3 = Goal::mk_disj(g.clone(), g.clone());
+    let g4 = Goal::mk_disj(g.clone(), g2.clone());
+    let g5 = Goal::mk_disj(g3.clone(), g3.clone());
+    let table = vec![(g, 1), (g2, 1), (g3, 2), (g4, 2), (g5, 4)];
+    for (g, expected) in table.iter() {
+        assert_eq!(g.disjunctive_degree(), *expected);
+    }
 }
 
 impl<C: Refinement, T: Clone> Into<Option<C>> for GoalBase<C, T> {
@@ -1090,6 +1119,9 @@ impl<C> Clause<C> {
     }
     pub fn order(&self) -> usize {
         self.body.order()
+    }
+    pub fn disjunctive_degree(&self) -> usize {
+        self.body.disjunctive_degree()
     }
 }
 
