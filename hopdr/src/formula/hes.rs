@@ -392,6 +392,22 @@ impl<C, T> GoalBase<C, T> {
         matches!(self.kind(), GoalKind::Disj(_, _))
     }
 }
+
+impl<C: super::FormulaSize, T> super::FormulaSize for GoalBase<C, T> {
+    fn formula_size(&self) -> usize {
+        match self.kind() {
+            GoalKind::Constr(c) => c.formula_size(),
+            GoalKind::Op(o) => o.formula_size(),
+            GoalKind::Var(_) => 1,
+            GoalKind::Abs(_, g) => 1 + g.formula_size(),
+            GoalKind::App(g1, g2) => g1.formula_size() + g2.formula_size(),
+            GoalKind::Conj(g1, g2) => g1.formula_size() + g2.formula_size(),
+            GoalKind::Disj(g1, g2) => g1.formula_size() + g2.formula_size(),
+            GoalKind::Univ(_, g) => 1 + g.formula_size(),
+            GoalKind::ITE(_, g1, g2) => 1 + g1.formula_size() + g2.formula_size(),
+        }
+    }
+}
 impl<C: Bot + Top + Logic> Goal<C> {
     pub fn mk_ho_disj(fmls: &[Goal<C>], mut sty: Type) -> Goal<C> {
         let mut vs = Vec::new();

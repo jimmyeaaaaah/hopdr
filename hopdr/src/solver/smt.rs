@@ -585,7 +585,7 @@ fn z3_sat_model_from_constraint() {
 /// For example, -1 * x >= -100 and x >= 101 are safely considered as dual, and
 /// this function returns true.
 pub fn check_dual_semantically(c1: &Constraint, c2: &Constraint) -> bool {
-    println!("check_dual_semantically: {} vs {}", c1, c2);
+    debug!("check_dual_semantically: {} vs {}", c1, c2);
     if &c1.negate().unwrap() == c2 {
         return true;
     }
