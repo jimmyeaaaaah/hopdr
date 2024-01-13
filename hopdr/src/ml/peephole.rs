@@ -19,7 +19,7 @@ pub(super) fn peephole_optimize<'a>(mut p: Program<'a>) -> Program<'a> {
                 Expr::mk_and(c1, c2)
             }
             ExprKind::App(e1, e2) => match e1.kind() {
-                ExprKind::Fun { ident, body } => body.subst(ident.ident, e2.clone()),
+                ExprKind::Fun { ident, body } => f(body).subst(ident.ident, e2.clone()),
                 _ => {
                     let e1 = f(e1);
                     let e2 = f(e2);
@@ -68,7 +68,15 @@ pub(super) fn peephole_optimize<'a>(mut p: Program<'a>) -> Program<'a> {
             ExprKind::LetTuple { idents, body, cont } => {
                 let body = f(body);
                 let cont = f(cont);
-                Expr::mk_let_tuple(idents.clone(), body, cont)
+                // the follwing call of pred is not a tail recursion.
+                //    let () = pred(x, y, z) in ()
+                // we transform this to pred(x, y, z) so that we can reduce the
+                // possibility of stack-overflow, and also optimize the memory-usage.
+                if idents.len() == 0 && matches!(cont.kind(), ExprKind::Unit) {
+                    body
+                } else {
+                    Expr::mk_let_tuple(idents.clone(), body, cont)
+                }
             }
         }
     }
