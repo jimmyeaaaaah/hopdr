@@ -388,8 +388,9 @@ fn gen_template_goal(
             let mut g2_env = gen_new_env(g2, &env);
             // 2. add a constraint
             for (x, m) in env.iter() {
-                if matches!(m.kind(), ModeKind::Fun(_, _)) {
-                    continue;
+                match m.kind() {
+                    ModeKind::Prop | ModeKind::Fun(_, _) => continue,
+                    _ => (),
                 }
                 let lhs = mode_to_op(m);
                 match (g1_env.get(x), g2_env.get(x)) {
