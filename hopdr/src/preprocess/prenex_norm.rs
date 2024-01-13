@@ -37,13 +37,21 @@ fn f(g: &Goal, mut env: formula::TyEnv) -> (Type, Vec<(QuantifierKind, Variable)
             env.add(x.id.clone(), x.ty.clone());
             let (ty, v, g) = f(g, env);
             let g = append_quantifiers(v, g);
-            (Type::mk_type_arrow(x.ty.clone(), ty), Vec::new(), g)
+            (
+                Type::mk_type_arrow(x.ty.clone(), ty),
+                Vec::new(),
+                Goal::mk_abs(x.clone(), g),
+            )
         }
         GoalKind::App(g1, g2) => {
             let (ty1, v1, g1) = f(g1, env.clone());
+            let g1 = append_quantifiers(v1, g1);
             let (_, ty) = ty1.arrow();
+
             let (_, v2, g2) = f(g2, env.clone());
-            (ty.clone(), conjoin(v1, v2), Goal::mk_app(g1, g2))
+            let g2 = append_quantifiers(v2, g2);
+
+            (ty.clone(), Vec::new(), Goal::mk_app(g1, g2))
         }
         GoalKind::Univ(x, g) => {
             env.add(x.id, x.ty.clone());
@@ -78,8 +86,11 @@ impl TypedPreprocessor for PrenexNormTransform {
         _t: &formula::Type,
         env: &mut formula::TyEnv,
     ) -> formula::hes::Goal<formula::Constraint> {
+        debug!("transform_goal: {goal}");
         let (_, v, g) = f(goal, env.clone());
-        append_quantifiers(v, g)
+        let g = append_quantifiers(v, g);
+        debug!("translated: {g}");
+        g
     }
 }
 
