@@ -586,13 +586,16 @@ fn z3_sat_model_from_constraint() {
 /// this function returns true.
 pub fn check_dual_semantically(c1: &Constraint, c2: &Constraint) -> bool {
     println!("check_dual_semantically: {} vs {}", c1, c2);
+    if &c1.negate().unwrap() == c2 {
+        return true;
+    }
     let mut fv = c1.fv();
     c2.fv_with_vec(&mut fv);
-    let c1 = Constraint::mk_disj(c1.clone(), c2.clone());
-    let c2 = Constraint::mk_conj(c1.clone(), c2.clone())
+    let left = Constraint::mk_disj(c1.clone(), c2.clone());
+    let right = Constraint::mk_conj(c1.clone(), c2.clone())
         .negate()
         .unwrap();
-    let c = Constraint::mk_conj(c1, c2);
+    let c = Constraint::mk_conj(left, right);
     let mut sol = default_solver();
     sol.solve_with_universal_quantifiers(&c).is_sat()
 }

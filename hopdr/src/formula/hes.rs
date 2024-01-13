@@ -377,6 +377,12 @@ impl<C, T> GoalBase<C, T> {
             _ => panic!("the given expr is not atom"),
         }
     }
+    pub fn unwrap_quantifiers<'a>(&'a self) -> &'a Self {
+        match self.kind() {
+            GoalKind::Univ(_, g) => g.unwrap_quantifiers(),
+            _ => self,
+        }
+    }
 }
 impl<C, T> GoalBase<C, T> {
     pub fn is_conj(&self) -> bool {
