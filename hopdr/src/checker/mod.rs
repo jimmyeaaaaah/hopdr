@@ -144,17 +144,30 @@ impl<'a> Translator<'a> {
         }
     }
     fn handle_app(&mut self, goal: GoalM, p: Ident, cont: Expr) -> Expr {
+        fn handle_out_arg(g: &GoalM, rets: &mut Vec<Ident>) {
+            let o = match g.kind() {
+                GoalKind::Var(v) => {
+                    rets.push(*v);
+                    return;
+                }
+                GoalKind::Op(o) => o,
+                _ => panic!("mode inference error?: {}", g),
+            };
+            match o.kind() {
+                crate::formula::OpExpr::Var(v) => rets.push(*v),
+                _ => panic!("program error"),
+            }
+        }
+
         let mut args = Vec::new();
         let mut rets = Vec::new();
         let mut pred = goal;
+
         loop {
             match pred.kind() {
                 GoalKind::App(g1, g2) => {
                     match g2.aux.mode.kind() {
-                        mode::ModeKind::Out => {
-                            let v = g2.var();
-                            rets.push(*v);
-                        }
+                        mode::ModeKind::Out => handle_out_arg(g2, &mut rets),
                         mode::ModeKind::In | mode::ModeKind::Prop | mode::ModeKind::Fun(_, _) => {
                             let arg = self.handle_app_arg(g2.clone());
                             args.push(arg);

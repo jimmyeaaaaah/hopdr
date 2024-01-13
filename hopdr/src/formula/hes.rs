@@ -368,7 +368,7 @@ impl<C, T> GoalBase<C, T> {
     pub fn var<'a>(&'a self) -> &'a Ident {
         match self.kind() {
             GoalKind::Var(x) => x,
-            _ => panic!("the given expr is not abs"),
+            _ => panic!("the given expr is not var"),
         }
     }
     pub fn atom<'a>(&'a self) -> &'a C {
