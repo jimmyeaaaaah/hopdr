@@ -377,11 +377,22 @@ impl<C, T> GoalBase<C, T> {
             _ => panic!("the given expr is not atom"),
         }
     }
-    pub fn unwrap_quantifiers<'a>(&'a self) -> &'a Self {
+    pub fn unwrap_quantifiers<'a>(&'a self) -> (Vec<&'a Variable>, &'a Self) {
         match self.kind() {
-            GoalKind::Univ(_, g) => g.unwrap_quantifiers(),
-            _ => self,
+            GoalKind::Univ(v, g) => {
+                let (mut vec, g) = g.unwrap_quantifiers();
+                vec.push(v);
+                (vec, g)
+            }
+            _ => (Vec::new(), self),
         }
+    }
+}
+impl<C> Goal<C> {
+    pub fn wrap_quantifiers<'a>(self, vs: Vec<&'a Variable>) -> Self {
+        vs.into_iter()
+            .rev()
+            .fold(self, |g, v| GoalBase::mk_univ(v.clone(), g))
     }
 }
 impl<C, T> GoalBase<C, T> {
@@ -881,7 +892,6 @@ impl<C: Refinement> Goal<C> {
     }
 }
 impl<C: Refinement, T: Clone + Default> GoalBase<C, T> {
-    // TODO: Goal<C> to GoalBase<C, T>
     pub fn prenex_normal_form_raw(
         &self,
         env: &mut HashSet<Ident>,
