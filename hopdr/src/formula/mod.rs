@@ -2724,3 +2724,30 @@ pub fn expand_ite_constr_once(c: &Constraint) -> ExpandITEState<Constraint> {
         },
     }
 }
+
+pub trait FormulaSize {
+    fn formula_size(&self) -> usize;
+}
+
+impl FormulaSize for Op {
+    fn formula_size(&self) -> usize {
+        match self.kind() {
+            OpExpr::Var(_) | OpExpr::Const(_) => 1,
+            OpExpr::Op(_, x, y) => 1 + x.formula_size() + y.formula_size(),
+            OpExpr::ITE(c, x, y) => c.formula_size() + x.formula_size() + y.formula_size(),
+            OpExpr::Ptr(_, o) => o.formula_size(),
+        }
+    }
+}
+
+impl FormulaSize for Constraint {
+    fn formula_size(&self) -> usize {
+        match self.kind() {
+            ConstraintExpr::True | ConstraintExpr::False => 1,
+            ConstraintExpr::Pred(_, l) => 1 + l.iter().map(|o| o.formula_size()).sum::<usize>(),
+            ConstraintExpr::Conj(c1, c2) => c1.formula_size() + c2.formula_size(),
+            ConstraintExpr::Disj(c1, c2) => c1.formula_size() + c2.formula_size(),
+            ConstraintExpr::Quantifier(_, _, c) => 1 + c.formula_size(),
+        }
+    }
+}

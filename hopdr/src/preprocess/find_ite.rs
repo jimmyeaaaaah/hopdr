@@ -3,11 +3,20 @@ use super::safety::check_dual;
 /// For example, a formula ∀x. x != 0 \/ P(x, y) can be translated to P(0, y).
 use super::TypedPreprocessor;
 use crate::formula::hes::{self, GoalKind};
-use crate::formula::{self, Constraint, Logic};
+use crate::formula::{self, Constraint, FormulaSize, Logic, Negation};
 
 pub struct FindITETransform {}
 
 type Goal = hes::Goal<Constraint>;
+
+fn get_smaller_condition(c1: Constraint, c2: Constraint) -> Constraint {
+    let c2 = c2.negate().unwrap();
+    if c1.formula_size() < c2.formula_size() {
+        c1
+    } else {
+        c2
+    }
+}
 
 fn get_ite_triple<'a>(
     g11: &'a Goal,
@@ -17,16 +26,16 @@ fn get_ite_triple<'a>(
 ) -> Option<(Constraint, &'a Goal, &'a Goal)> {
     debug!("disjs: ({g11}) | ({g12}) vs ({g21}) | ({g22})");
     if check_dual(g11, g21) {
-        let c: Constraint = g11.clone().into();
+        let c = get_smaller_condition(g11.clone().into(), g21.clone().into());
         Some((c, g12, g22))
     } else if check_dual(g11, g22) {
-        let c: Constraint = g11.clone().into();
+        let c = get_smaller_condition(g11.clone().into(), g22.clone().into());
         Some((c, g12, g21))
     } else if check_dual(g12, g21) {
-        let c: Constraint = g12.clone().into();
+        let c = get_smaller_condition(g12.clone().into(), g21.clone().into());
         Some((c, g11, g22))
     } else if check_dual(g12, g22) {
-        let c: Constraint = g12.clone().into();
+        let c = get_smaller_condition(g12.clone().into(), g22.clone().into());
         Some((c, g11, g21))
     } else {
         return None;
