@@ -290,22 +290,27 @@ impl<'a> Translator<'a> {
                 GoalKind::App(_, _) => self.handle_app(goal.clone(), p, cont),
                 GoalKind::Var(x) => Expr::mk_if(Expr::mk_var(*x), Expr::mk_raise(), cont),
                 GoalKind::Conj(g1_fml, g2_fml) => {
-                    let g1 = self.translate_goalm(g1_fml, cont.clone());
+                    let fvs: Vec<Ident> = cont.fv().into_iter().collect();
+
+                    let cont_v = Expr::mk_tuple(fvs.iter().map(|x| Expr::mk_var(*x)).collect());
+
+                    let g1 = self.translate_goalm(g1_fml, cont_v.clone());
                     let g1 = Expr::mk_app(g1, Expr::mk_var(p));
-                    let g2 = self.translate_goalm(g2_fml, cont);
+                    let g2 = self.translate_goalm(g2_fml, cont_v);
                     let g2 = Expr::mk_app(g2, Expr::mk_var(p));
 
                     //[θ /\ Ψ2] = fun p -> [θ] p; [Ψ2]p
                     //[Ψ1 /\ θ] = fun p -> [θ] p; [Ψ1]p
                     let left = Expr::mk_try_with(g1.clone(), g2.clone());
                     let right = Expr::mk_try_with(g2, g1);
-                    if Into::<Option<Constraint>>::into(g1_fml.clone()).is_some() {
+                    let body = if Into::<Option<Constraint>>::into(g1_fml.clone()).is_some() {
                         left
                     } else if Into::<Option<Constraint>>::into(g2_fml.clone()).is_some() {
                         right
                     } else {
                         self.mk_demonic_branch(left, right)
-                    }
+                    };
+                    Expr::mk_let_tuple(fvs, body, cont)
                 }
                 GoalKind::Disj(g1, g2) => {
                     let (g1, g2) = match goal.aux.get_disj_info() {
