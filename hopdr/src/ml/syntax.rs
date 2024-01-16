@@ -1,7 +1,7 @@
 use core::panic;
 
 use super::{Type as SType, Variable};
-use crate::formula::{Constraint, Ident, Op, Precedence, PrecedenceKind, Subst};
+use crate::formula::{Constraint, Fv, Ident, Op, Precedence, PrecedenceKind, Subst};
 use crate::util::P;
 
 /// Represents a half-open interval [lb, ub).
@@ -100,6 +100,94 @@ impl Precedence for Expr {
             ExprKind::Tuple(_) => PrecedenceKind::Atom,
             ExprKind::LetTuple { .. } => PrecedenceKind::Abs,
             ExprKind::Op(o) => o.precedence(),
+        }
+    }
+}
+
+impl Fv for Expr {
+    type Id = Ident;
+    fn fv_with_vec(&self, fvs: &mut std::collections::HashSet<Self::Id>) {
+        match self.kind() {
+            ExprKind::Var(x) => {
+                fvs.insert(x.clone());
+            }
+            ExprKind::Constraint(c) => {
+                c.fv_with_vec(fvs);
+            }
+            ExprKind::Or(x, y) => {
+                x.fv_with_vec(fvs);
+                y.fv_with_vec(fvs);
+            }
+            ExprKind::And(x, y) => {
+                x.fv_with_vec(fvs);
+                y.fv_with_vec(fvs);
+            }
+            ExprKind::App(x, y) => {
+                x.fv_with_vec(fvs);
+                y.fv_with_vec(fvs);
+            }
+            ExprKind::IApp(x, o) => {
+                x.fv_with_vec(fvs);
+                o.fv_with_vec(fvs);
+            }
+            ExprKind::Fun { ident: x, body } => {
+                let check = fvs.contains(&x.ident);
+                body.fv_with_vec(fvs);
+                if !check {
+                    fvs.remove(&x.ident);
+                }
+            }
+            ExprKind::If { cond, then, els } => {
+                cond.fv_with_vec(fvs);
+                then.fv_with_vec(fvs);
+                els.fv_with_vec(fvs);
+            }
+            ExprKind::LetRand {
+                ident: x,
+                body,
+                range: _,
+            } => {
+                let check = fvs.contains(&x);
+                body.fv_with_vec(fvs);
+                if !check {
+                    fvs.remove(&x);
+                }
+            }
+            ExprKind::Raise => {}
+            ExprKind::Unit => {}
+            ExprKind::TryWith { body, handler } => {
+                body.fv_with_vec(fvs);
+                handler.fv_with_vec(fvs);
+            }
+            ExprKind::Assert(cond) => {
+                cond.fv_with_vec(fvs);
+            }
+            ExprKind::Sequential { lhs, rhs } => {
+                lhs.fv_with_vec(fvs);
+                rhs.fv_with_vec(fvs);
+            }
+            ExprKind::Tuple(args) => {
+                for arg in args {
+                    arg.fv_with_vec(fvs);
+                }
+            }
+            ExprKind::LetTuple {
+                idents: xs,
+                body,
+                cont,
+            } => {
+                let checks = xs.iter().map(|x| fvs.contains(x)).collect::<Vec<_>>();
+                cont.fv_with_vec(fvs);
+                for (check, x) in checks.iter().zip(xs.iter()) {
+                    if !check {
+                        fvs.remove(x);
+                    }
+                }
+                body.fv_with_vec(fvs);
+            }
+            ExprKind::Op(o) => {
+                o.fv_with_vec(fvs);
+            }
         }
     }
 }
