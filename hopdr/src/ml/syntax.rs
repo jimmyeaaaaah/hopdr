@@ -243,7 +243,11 @@ impl Expr {
         P::new(ExprKind::Sequential { lhs, rhs })
     }
     pub fn mk_tuple(args: Vec<Expr>) -> Self {
-        P::new(ExprKind::Tuple(args))
+        if args.len() == 0 {
+            Self::mk_unit()
+        } else {
+            P::new(ExprKind::Tuple(args))
+        }
     }
     pub fn mk_let_tuple(idents: Vec<Ident>, body: Expr, cont: Expr) -> Self {
         P::new(ExprKind::LetTuple { idents, body, cont })
