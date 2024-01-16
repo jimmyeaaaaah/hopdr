@@ -9,6 +9,8 @@ use crate::ml::{optimize, Expr, Function, Program, Type as SType, Variable};
 use crate::preprocess::Context;
 use mode::{Mode, ModeEnv};
 
+use std::collections::HashMap;
+
 pub struct Config<'a> {
     context: &'a Context,
 }
@@ -21,6 +23,7 @@ impl<'a> Config<'a> {
 
 struct Translator<'a> {
     config: Config<'a>,
+    clause_idents: HashMap<Ident, HFLType>,
 }
 
 #[derive(Clone, Debug)]
@@ -82,8 +85,22 @@ type GoalM = GoalBase<Constraint, Aux>;
 type ProblemM = ProblemBase<Constraint, Aux>;
 
 impl<'a> Translator<'a> {
-    fn new(config: Config<'a>) -> Self {
-        Self { config }
+    fn new(config: Config<'a>, problem: &Problem<Constraint>) -> Self {
+        Self {
+            config,
+            clause_idents: problem
+                .clauses
+                .iter()
+                .map(|x| (x.head.id, x.head.ty.clone()))
+                .collect(),
+        }
+    }
+    #[cfg(test)]
+    fn new_with_clause_idents(config: Config<'a>, clause_idents: HashMap<Ident, HFLType>) -> Self {
+        Self {
+            config,
+            clause_idents,
+        }
     }
     fn translate_type_arg(&self, arg: &Mode, t: &HFLType) -> SType {
         match (arg.kind(), t.kind()) {
@@ -290,7 +307,11 @@ impl<'a> Translator<'a> {
                 GoalKind::App(_, _) => self.handle_app(goal.clone(), p, cont),
                 GoalKind::Var(x) => Expr::mk_if(Expr::mk_var(*x), Expr::mk_raise(), cont),
                 GoalKind::Conj(g1_fml, g2_fml) => {
-                    let fvs: Vec<Ident> = cont.fv().into_iter().collect();
+                    let fvs: Vec<Ident> = cont
+                        .fv()
+                        .into_iter()
+                        .filter(|x| !self.clause_idents.contains_key(x))
+                        .collect();
 
                     let cont_v = Expr::mk_tuple(fvs.iter().map(|x| Expr::mk_var(*x)).collect());
 
@@ -479,7 +500,7 @@ fn test_translate_predicate() {
     );
     println!("{g8}");
     let ctx = Context::empty();
-    let mut tr = Translator::new(Config::new(&ctx));
+    let mut tr = Translator::new_with_clause_idents(Config::new(&ctx), HashMap::new());
     let e = tr.translate_predicates(&g8, Vec::new());
     println!("{}", e.print_expr(&ctx));
 }
@@ -487,7 +508,7 @@ fn test_translate_predicate() {
 pub fn run(problem: Problem<Constraint>, config: Config) {
     println!("translated nu hflz");
     println!("{problem}");
-    let mut trans = Translator::new(config);
+    let mut trans = Translator::new(config, &problem);
     let problem_with_mode = mode_infer::infer(problem);
     let prog = trans.translate(problem_with_mode);
 
