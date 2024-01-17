@@ -4,7 +4,7 @@ mod mode;
 mod mode_infer;
 
 use crate::formula::hes::{GoalBase, GoalKind, Problem, ProblemBase};
-use crate::formula::{Constraint, Fv, Ident, Op, PredKind, Type as HFLType};
+use crate::formula::{Bot, Constraint, Fv, Ident, Logic, Op, PredKind, Type as HFLType};
 use crate::ml::{optimize, Expr, Function, Program, Type as SType, Variable};
 use crate::preprocess::Context;
 use mode::{Mode, ModeEnv};
@@ -179,15 +179,30 @@ impl<'a> Translator<'a> {
         let mut args = Vec::new();
         let mut rets = Vec::new();
         let mut pred = goal;
+        let mut checks = Vec::new();
 
         loop {
             match pred.kind() {
                 GoalKind::App(g1, g2) => {
-                    match g2.aux.mode.kind() {
-                        mode::ModeKind::Out => handle_out_arg(g2, &mut rets),
-                        mode::ModeKind::In | mode::ModeKind::Prop | mode::ModeKind::Fun(_, _) => {
+                    let pred_arg_mode = g1.aux.mode.is_fun().0;
+                    match pred_arg_mode.kind() {
+                        mode::ModeKind::Out => match g2.aux.mode.kind() {
+                            mode::ModeKind::Out => handle_out_arg(g2, &mut rets),
+                            mode::ModeKind::In => {
+                                let temp_var = Ident::fresh();
+                                rets.push(temp_var);
+
+                                let o: Op = g2.clone().into();
+                                checks.push((temp_var, o));
+                            }
+                            _ => panic!("program error"),
+                        },
+                        mode::ModeKind::In | mode::ModeKind::Prop => {
                             let arg = self.handle_app_arg(g2.clone());
                             args.push(arg);
+                        }
+                        mode::ModeKind::Fun(_, _) => {
+                            unimplemented!()
                         }
                         mode::ModeKind::InOut | mode::ModeKind::Var(_) => panic!("program error"),
                     }
@@ -202,7 +217,15 @@ impl<'a> Translator<'a> {
         }
         // For handling delay
         body = Expr::mk_app(body, Expr::mk_var(p));
-        // TODO: rev?
+        let mut cont = cont;
+        if checks.len() > 0 {
+            let check = checks
+                .into_iter()
+                .fold(Constraint::mk_false(), |acc, (v, o)| {
+                    Constraint::mk_disj(acc, Constraint::mk_neq(Op::mk_var(v), o))
+                });
+            cont = Expr::mk_if(Expr::mk_constraint(check), Expr::mk_raise(), cont);
+        }
         Expr::mk_let_tuple(rets, body, cont)
     }
     // [\x. Ψ] = fun x -> [Ψ]
