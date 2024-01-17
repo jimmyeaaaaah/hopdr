@@ -305,12 +305,16 @@ impl<'a> Translator<'a> {
             match goal.kind() {
                 GoalKind::Constr(c) => self.translate_constraintm(c, cont, &goal.aux.env),
                 GoalKind::App(_, _) => self.handle_app(goal.clone(), p, cont),
-                GoalKind::Var(x) => Expr::mk_if(Expr::mk_var(*x), Expr::mk_raise(), cont),
+                GoalKind::Var(x) => Expr::mk_var(*x),
                 GoalKind::Conj(g1_fml, g2_fml) => {
                     let fvs: Vec<Ident> = cont
                         .fv()
                         .into_iter()
                         .filter(|x| !self.clause_idents.contains_key(x))
+                        .filter(|x| match goal.aux.env.get(x) {
+                            Some(x) => x.is_out(),
+                            None => false,
+                        })
                         .collect();
 
                     let cont_v = Expr::mk_tuple(fvs.iter().map(|x| Expr::mk_var(*x)).collect());

@@ -757,7 +757,8 @@ fn test_generate_template() {
     let translated = apply_model(&new_problem, model).unwrap();
 
     let ctx = super::Context::empty();
-    let mut tr = super::Translator::new(super::Config::new(&ctx));
+    let mut tr =
+        super::Translator::new_with_clause_idents(super::Config::new(&ctx), HashMap::new());
     let e = tr.translate_predicates(&translated.clauses[0].body.clone(), Vec::new());
     println!("[translated program]");
     println!("{}", e.print_expr(&ctx));
