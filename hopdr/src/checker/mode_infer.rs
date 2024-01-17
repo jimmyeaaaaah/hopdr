@@ -122,32 +122,46 @@ fn template_from_mode(mode: &Mode) -> Mode {
 }
 
 #[derive(Clone, Debug)]
-pub struct ModeConstraint {
-    left: Op,
-    right: Op,
+pub enum ModeConstraint {
+    Eq { left: Op, right: Op },
+    Leq { left: Op, right: Op },
 }
 
 impl std::fmt::Display for ModeConstraint {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} = {}", self.left, self.right)
+        match self {
+            ModeConstraint::Eq { left, right } => write!(f, "{} = {}", left, right),
+            ModeConstraint::Leq { left, right } => write!(f, "{} <= {}", left, right),
+        }
     }
 }
 
 impl From<ModeConstraint> for Constraint {
     fn from(value: ModeConstraint) -> Self {
-        Constraint::mk_eq(value.left, value.right)
+        match value {
+            ModeConstraint::Eq { left, right } => Constraint::mk_eq(left, right),
+            ModeConstraint::Leq { left, right } => Constraint::mk_leq(left, right),
+        }
     }
 }
 
 impl ModeConstraint {
     fn new(left: Op, right: Op) -> Self {
-        Self { left, right }
+        Self::Eq { left, right }
     }
     fn mode_in(x: &Mode) -> Self {
         Self::new(mode_to_op(&x), Op::zero())
     }
     fn mode_out(x: &Mode) -> Self {
         Self::new(mode_to_op(&x), Op::one())
+    }
+
+    // left <= right
+    fn leq(left: Op, right: Op) -> Self {
+        Self::Leq {
+            left: left,
+            right: right,
+        }
     }
 }
 
@@ -221,7 +235,7 @@ impl fmt::Display for PossibleConstraints {
         for (i, cs) in self.constraints.iter().enumerate() {
             write!(f, "[Possible Constraint Set {}]\n", i + 1)?;
             for c in cs.iter() {
-                write!(f, "{} = {}\n", c.left, c.right)?;
+                write!(f, "{}", c)?
             }
             write!(f, "\n")?;
         }
@@ -330,7 +344,8 @@ fn gen_template_constraint(c: &Constraint, env: ModeEnv, constraints: &mut Possi
                 o.fv_with_vec(&mut fvs);
             }
             for x in fvs {
-                append_constraint(&Mode::mk_in(), env.get(&x).unwrap(), constraints)
+                let m = env.get(&x).unwrap();
+                constraints.push(ModeConstraint::mode_in(m));
             }
         }
         crate::formula::ConstraintExpr::Conj(_, _)
@@ -374,7 +389,7 @@ fn gen_template_goal(
             let g2 = gen_template_goal(g2, env.clone(), constraints, coarse);
             let g1_clone = g1.clone();
             let (arg_mode, ret_mode) = g1.aux.mode.is_fun();
-            append_constraint(arg_mode, &g2.aux.mode, constraints);
+            append_constraint_leq(arg_mode, &g2.aux.mode, constraints);
             GoalBase::mk_app_t(g1_clone, g2, f(ret_mode.clone()))
         }
         GoalKind::Conj(g1, g2) => {
@@ -436,20 +451,38 @@ fn gen_template_goal(
     g
 }
 
-fn append_constraint(m1: &Mode, m2: &Mode, constraints: &mut PossibleConstraints) {
+// append constraint m1 <= m2
+fn append_constraint_inner(
+    m1: &Mode,
+    m2: &Mode,
+    constraints: &mut PossibleConstraints,
+    f: &impl Fn(Op, Op) -> ModeConstraint,
+) {
     match (m1.kind(), m2.kind()) {
         (ModeKind::In, ModeKind::In)
         | (ModeKind::Out, ModeKind::Out)
         | (ModeKind::Prop, ModeKind::Prop) => {}
         (ModeKind::Var(_), _) | (_, ModeKind::Var(_)) => {
-            constraints.push(ModeConstraint::new(mode_to_op(m1), mode_to_op(m2)));
+            let o1 = mode_to_op(m1);
+            let o2 = mode_to_op(m2);
+            // m1 <= m2 <=> o1 >= o2
+            constraints.push(f(o2, o1));
         }
         (ModeKind::Fun(t1, t2), ModeKind::Fun(t3, t4)) => {
-            append_constraint(t1, t3, constraints);
-            append_constraint(t2, t4, constraints);
+            // contravariant
+            append_constraint_inner(t3, t1, constraints, f);
+            append_constraint_inner(t2, t4, constraints, f);
         }
         _ => panic!("program error: {} {}", m1, m2),
     }
+}
+
+fn append_constraint_leq(m1: &Mode, m2: &Mode, constraints: &mut PossibleConstraints) {
+    append_constraint_inner(m1, m2, constraints, &ModeConstraint::leq);
+}
+
+fn append_constraint_eq(m1: &Mode, m2: &Mode, constraints: &mut PossibleConstraints) {
+    append_constraint_inner(m1, m2, constraints, &ModeConstraint::new);
 }
 
 fn gen_template_clause(
@@ -466,7 +499,7 @@ fn gen_template_clause(
     } = c;
     let body = gen_template_goal(body, env, constraints, coarse);
     let m = &body.aux.mode;
-    append_constraint(m, &mode, constraints);
+    append_constraint_eq(m, &mode, constraints);
     Clause {
         head: head.clone(),
         body,
@@ -504,8 +537,16 @@ fn solve_constraint_set(constraints: &Vec<ModeConstraint>) -> Option<HashMap<Ide
 
     let mut fv = HashSet::new();
     for c in constraints.iter() {
-        c.left.fv_with_vec(&mut fv);
-        c.right.fv_with_vec(&mut fv);
+        match c {
+            ModeConstraint::Eq { left, right } => {
+                left.fv_with_vec(&mut fv);
+                right.fv_with_vec(&mut fv);
+            }
+            ModeConstraint::Leq { left, right } => {
+                left.fv_with_vec(&mut fv);
+                right.fv_with_vec(&mut fv);
+            }
+        }
     }
     let constraint = fv.iter().fold(Constraint::mk_true(), |acc, elem| {
         let left = Constraint::mk_leq(Op::mk_const(0), Op::mk_var(*elem));
@@ -530,9 +571,19 @@ fn solve_constraint_set(constraints: &Vec<ModeConstraint>) -> Option<HashMap<Ide
 
 fn solve(pc: PossibleConstraints) -> Option<HashMap<Ident, Mode>> {
     for constraints in pc.constraints.iter() {
+        crate::title!("solve constraint set");
+        for c in constraints.iter() {
+            debug!("{c}");
+        }
         if let Some(model) = solve_constraint_set(constraints) {
+            debug!("Result: OK");
+            crate::title!("model");
+            for (x, m) in model.iter() {
+                debug!("{}: {}", x, m);
+            }
             return Some(model);
         }
+        debug!("Result: NG");
     }
     None
 }
