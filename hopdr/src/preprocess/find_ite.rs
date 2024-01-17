@@ -10,7 +10,7 @@ pub struct FindITETransform {}
 type Goal = hes::Goal<Constraint>;
 
 fn get_smaller_condition(c1: Constraint, c2: Constraint) -> Constraint {
-    let c2 = c2.negate().unwrap();
+    let c1 = c1.negate().unwrap();
     if c1.formula_size() < c2.formula_size() {
         c1
     } else {
