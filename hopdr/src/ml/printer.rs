@@ -14,6 +14,12 @@ const LIBRARY: &str = include_str!("library.ml");
 
 pub const FAIL_STRING: &str = "Failed to find a counterexample";
 
+pub(super) static mut DO_FORMAT: bool = false;
+
+fn check_do_format() -> bool {
+    unsafe { DO_FORMAT }
+}
+
 pub fn do_format(input: &str) -> String {
     // ocamlformat  --impl -
     let args = vec!["--impl", "-"];
@@ -338,6 +344,10 @@ impl<'a> Program<'a> {
         self.dump_main_ml(&mut s).unwrap();
         crate::title!("printer");
         debug!("{s}");
-        super::printer::do_format(&s)
+        if check_do_format() {
+            super::printer::do_format(&s)
+        } else {
+            s
+        }
     }
 }
