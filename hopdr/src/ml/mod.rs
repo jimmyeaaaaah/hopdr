@@ -24,3 +24,7 @@ pub fn optimize(p: Program) -> Program {
     let p = peephole::peephole_optimize(p);
     p
 }
+
+pub fn set_format(do_format: bool) {
+    unsafe { self::printer::DO_FORMAT = do_format }
+}

@@ -25,6 +25,8 @@ struct Args {
     //remove_disjunction: bool,
     #[clap(long)]
     chc: bool,
+    #[clap(long)]
+    do_format: bool,
 }
 
 fn gen_configuration_from_args(args: &Args) -> hopdr::Configuration {
@@ -88,6 +90,9 @@ fn main() {
 
     // parsing command line args
     let args = Args::parse();
+
+    crate::ml::set_format(args.do_format);
+
     let config = gen_configuration_from_args(&args);
 
     let (vc, ctx) = if args.chc {
