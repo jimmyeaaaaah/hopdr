@@ -12,15 +12,13 @@ let event_integer_overflow () =
 let event_stack_overflow () = ()
 
 let rand_int (x, y) = 
-  let mn = match x with 
-    | Some(x) -> x
-    | None -> !check_mn
-  in
-  let mx = match y with
-    | Some(x) -> x
-    | None -> !check_mx
-  in 
-    Random.int (mx - mn) + mn
+  let diff = !check_mx - !check_mn in
+  let (mn, mx) = match (x, y) with 
+  | (Some(x), Some(y)) -> (x, y)
+  | (Some(x), None) -> (x, x + diff)
+  | (None, Some(y)) -> (y - diff, y)
+  | (None, None) -> (!check_mn, !check_mx)
+  in Random.int (mx - mn) + mn
     
 let check_overflow f x y = try f x y with Invalid_argument _ -> raise IntegerOverflow
 
