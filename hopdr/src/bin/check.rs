@@ -27,6 +27,8 @@ struct Args {
     chc: bool,
     #[clap(long)]
     do_format: bool,
+    #[clap(long)]
+    print_check_log: bool,
 }
 
 fn gen_configuration_from_args(args: &Args) -> hopdr::Configuration {
@@ -97,16 +99,20 @@ fn main() {
 
     let (vc, ctx) = if args.chc {
         let data = std::fs::read_to_string(&args.input).unwrap();
-        println!("data");
-        println!("{data}");
+        if args.print_check_log {
+            println!("data");
+            println!("{data}");
+        }
         let chcs = parse::parse_chc(&data).unwrap();
-        println!("CHCs");
-        println!(
-            "linearity check {}",
-            crate::formula::chc::nonliniality(chcs.iter())
-        );
-        for chc in chcs.iter() {
-            println!("{}", chc);
+        if args.print_check_log {
+            println!("CHCs");
+            println!(
+                "linearity check {}",
+                crate::formula::chc::nonliniality(chcs.iter())
+            );
+            for chc in chcs.iter() {
+                println!("{}", chc);
+            }
         }
 
         //let chcs = crate::formula::chc::expand_ite(chcs);
@@ -128,7 +134,7 @@ fn main() {
         get_problem(&args.input, &config)
     };
 
-    let config = checker::Config::new(&ctx);
+    let config = checker::Config::new(&ctx, args.print_check_log);
 
     checker::run(vc, config);
 }

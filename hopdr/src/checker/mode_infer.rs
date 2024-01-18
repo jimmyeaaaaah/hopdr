@@ -809,7 +809,7 @@ fn test_generate_template() {
 
     let ctx = super::Context::empty();
     let mut tr =
-        super::Translator::new_with_clause_idents(super::Config::new(&ctx), HashMap::new());
+        super::Translator::new_with_clause_idents(super::Config::new(&ctx, true), HashMap::new());
     let e = tr.translate_predicates(&translated.clauses[0].body.clone(), Vec::new());
     println!("[translated program]");
     println!("{}", e.print_expr(&ctx));
