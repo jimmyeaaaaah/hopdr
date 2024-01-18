@@ -11,13 +11,18 @@ use mode::{Mode, ModeEnv};
 
 use std::collections::HashMap;
 
+#[derive(Clone)]
 pub struct Config<'a> {
     context: &'a Context,
+    print_check_log: bool,
 }
 
 impl<'a> Config<'a> {
-    pub fn new(context: &'a Context) -> Self {
-        Config { context }
+    pub fn new(context: &'a Context, print_check_log: bool) -> Self {
+        Config {
+            context,
+            print_check_log,
+        }
     }
 }
 
@@ -527,24 +532,30 @@ fn test_translate_predicate() {
     );
     println!("{g8}");
     let ctx = Context::empty();
-    let mut tr = Translator::new_with_clause_idents(Config::new(&ctx), HashMap::new());
+    let mut tr = Translator::new_with_clause_idents(Config::new(&ctx, true), HashMap::new());
     let e = tr.translate_predicates(&g8, Vec::new());
     println!("{}", e.print_expr(&ctx));
 }
 
 pub fn run(problem: Problem<Constraint>, config: Config) {
-    println!("translated nu hflz");
-    println!("{problem}");
-    let mut trans = Translator::new(config, &problem);
+    if config.print_check_log {
+        println!("translated nu hflz");
+        println!("{problem}");
+    }
+    let mut trans = Translator::new(config.clone(), &problem);
     let problem_with_mode = mode_infer::infer(problem);
     let prog = trans.translate(problem_with_mode);
 
-    println!("UnOptimized Program");
-    println!("{}", prog.dump_ml());
+    if config.print_check_log {
+        println!("UnOptimized Program");
+        println!("{}", prog.dump_ml());
+    }
     let prog = optimize(prog);
     let s = prog.dump_ml();
-    println!("(* Generated Program *)");
-    println!("{s}");
+    if config.print_check_log {
+        println!("(* Generated Program *)");
+        println!("{s}");
+    }
 
     print!("Verification Result: ");
     match executor::executor(s) {
