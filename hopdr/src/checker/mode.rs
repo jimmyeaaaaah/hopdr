@@ -5,7 +5,7 @@ use crate::util::P;
 
 use rpds::HashTrieMap;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ModeKind {
     Var(Ident),
     In,

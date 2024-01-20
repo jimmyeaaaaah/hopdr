@@ -206,6 +206,10 @@ impl<'a> Translator<'a> {
                             let arg = self.handle_app_arg(g2.clone());
                             args.push(arg);
                         }
+                        mode::ModeKind::Fun(_, _) if &g2.aux.mode == pred_arg_mode => {
+                            let arg = self.handle_app_arg(g2.clone());
+                            args.push(arg);
+                        }
                         mode::ModeKind::Fun(_, _) => {
                             unimplemented!()
                         }
