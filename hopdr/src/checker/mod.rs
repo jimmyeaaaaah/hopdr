@@ -336,8 +336,8 @@ impl<'a> Translator<'a> {
         Self::gen_prop(|p| {
             match goal.kind() {
                 GoalKind::Constr(c) => self.translate_constraintm(c, cont, &goal.aux.env),
+                GoalKind::Var(x) => Expr::mk_app(Expr::mk_var(*x), Expr::mk_var(p)),
                 GoalKind::App(_, _) => self.handle_app(goal.clone(), p, cont),
-                GoalKind::Var(x) => Expr::mk_var(*x),
                 GoalKind::Conj(g1_fml, g2_fml) => {
                     let fvs: Vec<Ident> = cont
                         .fv()
