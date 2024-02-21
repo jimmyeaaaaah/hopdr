@@ -282,7 +282,7 @@ impl Expr {
                 }
             }
             ExprKind::If { cond, then, els } => Expr::mk_if(
-                cond.clone(),
+                cond.subst(ident, e.clone()),
                 then.subst(ident, e.clone()),
                 els.subst(ident, e),
             ),

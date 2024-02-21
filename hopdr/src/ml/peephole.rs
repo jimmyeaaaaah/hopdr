@@ -38,7 +38,7 @@ pub(super) fn peephole_optimize<'a>(mut p: Program<'a>) -> Program<'a> {
                 Expr::mk_fun(ident.clone(), body)
             }
             ExprKind::If { cond, then, els } => {
-                let cond = cond.clone();
+                let cond = f(cond);
                 let then = f(then);
                 let els = f(els);
                 Expr::mk_if(cond, then, els)
