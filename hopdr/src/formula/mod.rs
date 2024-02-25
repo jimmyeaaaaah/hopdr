@@ -1338,6 +1338,15 @@ impl Constraint {
             }
         }
     }
+    pub fn count_quantifier(&self) -> usize {
+        match self.kind() {
+            ConstraintExpr::True | ConstraintExpr::False | ConstraintExpr::Pred(_, _) => 0,
+            ConstraintExpr::Conj(c1, c2) | ConstraintExpr::Disj(c1, c2) => {
+                c1.count_quantifier() + c2.count_quantifier()
+            }
+            ConstraintExpr::Quantifier(_, _, c) => 1 + c.count_quantifier(),
+        }
+    }
 }
 
 #[test]
