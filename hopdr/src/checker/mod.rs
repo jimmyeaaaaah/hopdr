@@ -570,3 +570,15 @@ pub fn run(problem: Problem<Constraint>, config: Config) {
         executor::ExecResult::Fail(s) => println!("Fail\nReason: {s}"),
     }
 }
+
+/// This function is used to calculate the difficulty score of the problem.
+///
+/// Current implementation returns the number of quantifiers in the problem.
+pub fn difficulty_score(problem: &Problem<Constraint>) -> usize {
+    let mut score = 0;
+    for c in &problem.clauses {
+        score += c.body.count_quantifier();
+    }
+    score += problem.top.count_quantifier();
+    score
+}

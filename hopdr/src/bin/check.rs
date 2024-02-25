@@ -29,6 +29,9 @@ struct Args {
     do_format: bool,
     #[clap(long)]
     print_check_log: bool,
+    #[clap(long)]
+    /// Interpret the input CHC problems is defined by least fixpoint
+    chc_least: bool,
 }
 
 fn gen_configuration_from_args(args: &Args) -> hopdr::Configuration {
@@ -120,12 +123,22 @@ fn main() {
         //for chc in chcs.iter() {
         //    println!("{}", chc);
         //}
-
-        let problem = if crate::formula::chc::is_linear(chcs.iter()) {
-            crate::formula::chc::translate_to_hes_linear
+        let problem = if !args.chc_least && crate::formula::chc::is_linear(chcs.iter()) {
+            let greatest = crate::formula::chc::translate_to_hes_linear(chcs.clone());
+            let least = crate::formula::chc::translate_to_hes(chcs);
+            let lhs = crate::checker::difficulty_score(&greatest);
+            let rhs = crate::checker::difficulty_score(&least);
+            if args.print_check_log {
+                println!("difficulty score: {} vs {}", lhs, rhs);
+            }
+            if lhs < rhs {
+                greatest
+            } else {
+                least
+            }
         } else {
-            crate::formula::chc::translate_to_hes
-        }(chcs);
+            crate::formula::chc::translate_to_hes(chcs)
+        };
 
         let config = get_preprocess_config();
         let problem = crate::preprocess::hes::preprocess_for_typed_problem(problem, &config);
