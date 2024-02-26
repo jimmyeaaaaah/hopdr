@@ -545,8 +545,9 @@ fn test_translate_predicate() {
 
 pub fn run(problem: Problem<Constraint>, config: Config) {
     if config.print_check_log {
+        use crate::util::Pretty;
         println!("translated nu hflz");
-        println!("{problem}");
+        println!("{}", problem.pretty_display_with_context(&config.context));
     }
     let mut trans = Translator::new(config.clone(), &problem);
     let problem_with_mode = mode_infer::infer(problem);

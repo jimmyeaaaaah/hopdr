@@ -41,7 +41,8 @@ fn alpha_rename_expr(
         Or(e1, e2) => Expr::mk_or(f(env.clone(), e1), f(env, e2)),
         Univ(x, e) => {
             let id = formula::Ident::fresh();
-            let env = env.insert(x.id.clone(), id);
+            let mut env = env.clone();
+            env.insert(x.id.clone(), id);
             let v = VariableS {
                 id,
                 ty: x.ty.clone(),
@@ -50,7 +51,8 @@ fn alpha_rename_expr(
         }
         Abs(x, e) => {
             let id = formula::Ident::fresh();
-            let env = env.insert(x.id.clone(), id);
+            let mut env = env.clone();
+            env.insert(x.id.clone(), id);
             let v = VariableS {
                 id,
                 ty: x.ty.clone(),
@@ -64,7 +66,7 @@ fn alpha_rename_clause(mut env: Environment, c: &InClause) -> OutClause {
     let mut args = Vec::new();
     for arg in c.args.iter() {
         let k = formula::Ident::fresh();
-        env = env.insert(arg.clone(), k);
+        env.insert(arg.clone(), k);
         args.push(k);
     }
 
@@ -78,7 +80,7 @@ fn alpha_rename_clause(mut env: Environment, c: &InClause) -> OutClause {
 fn alpha_rename_clauses(mut env: Environment, c: &[InClause]) -> Environment {
     for clause in c.iter() {
         let k = formula::Ident::fresh();
-        env = env.insert(clause.id.id.clone(), k);
+        env.insert(clause.id.id.clone(), k);
     }
     env
 }
