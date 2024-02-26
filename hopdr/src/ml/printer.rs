@@ -171,7 +171,12 @@ impl DumpML for Op {
 impl DumpML for Ident {
     fn dump_ml<W: Write>(&self, writer: &mut W, ctx: &Context) -> Result<(), fmt::Error> {
         match ctx.inverse_map.get(self) {
-            Some(v) => write!(writer, "id_{}", v.as_str().to_string().to_lowercase()),
+            Some(v) => write!(
+                writer,
+                "{}_{}",
+                v.as_str().to_string().to_lowercase(),
+                self.get_id()
+            ),
             None => write!(writer, "{}", self),
         }
     }
