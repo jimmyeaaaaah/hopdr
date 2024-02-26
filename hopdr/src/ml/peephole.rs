@@ -22,6 +22,20 @@ fn handle_if(cond: Expr, then: Expr, els: Expr) -> Expr {
     }
 }
 
+fn flatten_sequential(lhs: &Expr, rhs: &Expr) -> Expr {
+    match lhs.kind() {
+        ExprKind::Sequential { lhs: l, rhs: r } => {
+            let rhs = flatten_sequential(r, rhs);
+            flatten_sequential(l, &rhs)
+        }
+        _ => Expr::mk_sequential(lhs.clone(), rhs.clone()),
+    }
+}
+
+fn handle_sequential(lhs: Expr, rhs: Expr) -> Expr {
+    flatten_sequential(&lhs, &rhs)
+}
+
 pub(super) fn peephole_optimize<'a>(mut p: Program<'a>) -> Program<'a> {
     fn f(s: &Expr) -> Expr {
         match s.kind() {
@@ -81,7 +95,7 @@ pub(super) fn peephole_optimize<'a>(mut p: Program<'a>) -> Program<'a> {
             ExprKind::Sequential { lhs, rhs } => {
                 let lhs = f(lhs);
                 let rhs = f(rhs);
-                Expr::mk_sequential(lhs, rhs)
+                handle_sequential(lhs, rhs)
             }
             ExprKind::Tuple(args) => {
                 let args = args.iter().map(f).collect();
