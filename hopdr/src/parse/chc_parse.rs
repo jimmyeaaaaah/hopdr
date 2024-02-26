@@ -428,7 +428,16 @@ pub fn parse_chc(
     };
     assert_eq!(res, parse::Parsed::CheckSat);
     let mut var_map = HashMap::new();
-    Ok(translate(&instance, &mut var_map))
+    let (vc, mut vmmap) = translate(&instance, &mut var_map);
+    for (k, v) in var_map.iter() {
+        match vmmap.get(k) {
+            Some(info) => {
+                vmmap.insert(v.clone(), info.clone());
+            }
+            None => {}
+        }
+    }
+    Ok((vc, vmmap))
 }
 
 pub fn get_mc91() -> Vec<chc::CHC<chc::Atom, Constraint>> {

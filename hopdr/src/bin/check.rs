@@ -5,6 +5,7 @@ extern crate lazy_static;
 extern crate log;
 extern crate ctrlc;
 
+use hopdr::util::Pretty;
 use hopdr::*;
 
 use clap::Parser;
@@ -124,7 +125,7 @@ fn main() {
                 crate::formula::chc::nonliniality(chcs.iter())
             );
             for chc in chcs.iter() {
-                println!("{}", chc);
+                println!("{}", chc.pretty_display_with_context(&ctx));
             }
         }
 
