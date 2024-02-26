@@ -106,7 +106,7 @@ fn main() {
             println!("data");
             println!("{data}");
         }
-        let chcs = parse::parse_chc(&data).unwrap();
+        let (chcs, vmap) = parse::parse_chc(&data).unwrap();
         if args.print_check_log {
             println!("CHCs");
             println!(

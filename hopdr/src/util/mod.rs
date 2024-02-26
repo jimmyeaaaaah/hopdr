@@ -7,6 +7,7 @@ use std::thread;
 use std::time;
 use std::{fmt, rc::Rc};
 
+pub mod info;
 pub mod printer;
 
 pub use printer::{set_colored, set_default_width, Pretty};

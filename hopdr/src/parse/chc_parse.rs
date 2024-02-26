@@ -1,6 +1,7 @@
 use crate::formula::chc::CHCHead;
 use crate::formula::{chc, Logic};
 use crate::formula::{Bot, Constraint, Ident, Negation, Op, OpKind, PredKind, Top};
+use crate::util::info::{Variable as Info, VariableMap};
 use hoice::common::*;
 use hoice::instance::Clause;
 use hoice::instance::Instance;
@@ -13,11 +14,13 @@ type CHC = chc::CHC<chc::Atom, Constraint>;
 fn handle_atomic_predicate<'a>(
     op: &term::Op,
     mut args: impl Iterator<Item = &'a RTerm> + 'a,
+    vmap: &mut VariableMap,
+    instance: &Instance,
 ) -> Constraint {
     match op {
         term::Op::Gt | term::Op::Ge | term::Op::Le | term::Op::Lt | term::Op::Eql => {
-            let x = translate_rterm_op(args.next().unwrap());
-            let y = translate_rterm_op(args.next().unwrap());
+            let x = translate_rterm_op(args.next().unwrap(), vmap, instance);
+            let y = translate_rterm_op(args.next().unwrap(), vmap, instance);
             let p = match op {
                 term::Op::Gt => PredKind::Gt,
                 term::Op::Ge => PredKind::Geq,
@@ -36,7 +39,7 @@ fn bool_variable_encoding(id: Ident) -> Constraint {
     Constraint::mk_eq(Op::mk_mod(Op::mk_var(id), Op::mk_const(2)), Op::mk_const(1))
 }
 
-fn translate_rterm_top(t: &RTerm) -> Constraint {
+fn translate_rterm_top(t: &RTerm, vmap: &mut VariableMap, instance: &Instance) -> Constraint {
     match t {
         RTerm::CArray { .. }
         | RTerm::DTypNew { .. }
@@ -44,7 +47,7 @@ fn translate_rterm_top(t: &RTerm) -> Constraint {
         | RTerm::DTypTst { .. } => panic!("program error"),
         RTerm::Var(ty, x) => {
             assert!(ty.is_bool());
-            bool_variable_encoding(translate_varidx(x))
+            bool_variable_encoding(transform_varidx(*x, vmap, instance))
         }
         RTerm::Cst(c) => match c.get() {
             val::RVal::B(x) if *x => Constraint::mk_true(),
@@ -70,47 +73,47 @@ fn translate_rterm_top(t: &RTerm) -> Constraint {
             | term::Op::Mod => panic!("program error"),
             term::Op::Gt | term::Op::Ge | term::Op::Le | term::Op::Lt | term::Op::Eql => {
                 assert_eq!(args.len(), 2);
-                handle_atomic_predicate(op, args.iter().map(|x| &**x))
+                handle_atomic_predicate(op, args.iter().map(|x| &**x), vmap, instance)
             }
             term::Op::Impl => {
                 assert_eq!(args.len(), 2);
-                let x = translate_rterm_top(&args[0]);
-                let y = translate_rterm_top(&args[1]);
+                let x = translate_rterm_top(&args[0], vmap, instance);
+                let y = translate_rterm_top(&args[1], vmap, instance);
                 Constraint::mk_implies(x, y)
             }
             term::Op::Not => {
                 assert_eq!(args.len(), 1);
-                let x = translate_rterm_top(&args[0]);
+                let x = translate_rterm_top(&args[0], vmap, instance);
                 x.negate().unwrap()
             }
             term::Op::And => {
                 assert!(args.len() >= 2);
-                let x = translate_rterm_top(&args[0]);
-                let y = translate_rterm_top(&args[1]);
+                let x = translate_rterm_top(&args[0], vmap, instance);
+                let y = translate_rterm_top(&args[1], vmap, instance);
                 let mut c = Constraint::mk_conj(x, y);
                 for z in args.iter().skip(2) {
-                    let z = translate_rterm_top(z);
+                    let z = translate_rterm_top(z, vmap, instance);
                     c = Constraint::mk_conj(c, z);
                 }
                 c
             }
             term::Op::Or => {
                 assert!(args.len() >= 2);
-                let x = translate_rterm_top(&args[0]);
-                let y = translate_rterm_top(&args[1]);
+                let x = translate_rterm_top(&args[0], vmap, instance);
+                let y = translate_rterm_top(&args[1], vmap, instance);
                 let mut c = Constraint::mk_disj(x, y);
                 for z in args.iter().skip(2) {
-                    let z = translate_rterm_top(z);
+                    let z = translate_rterm_top(z, vmap, instance);
                     c = Constraint::mk_disj(c, z);
                 }
                 c
             }
             term::Op::Ite => {
                 assert_eq!(args.len(), 3);
-                let x = translate_rterm_top(&args[0]);
+                let x = translate_rterm_top(&args[0], vmap, instance);
                 let x2 = x.negate().unwrap();
-                let y = translate_rterm_top(&args[1]);
-                let z = translate_rterm_top(&args[2]);
+                let y = translate_rterm_top(&args[1], vmap, instance);
+                let z = translate_rterm_top(&args[2], vmap, instance);
 
                 let lhs = Constraint::mk_implies(x, y);
                 let rhs = Constraint::mk_implies(x2, z);
@@ -120,11 +123,6 @@ fn translate_rterm_top(t: &RTerm) -> Constraint {
         },
         RTerm::Fun { .. } => todo!(),
     }
-}
-
-fn translate_varidx(v: &VarIdx) -> Ident {
-    let x = v.get();
-    Ident::from(x as u64)
 }
 
 fn decode_op2constr(x: Op) -> Constraint {
@@ -148,11 +146,16 @@ fn handle_bin_bool_op(x: Op, y: Op, f: impl Fn(Constraint, Constraint) -> Constr
     encode_constr2op(c)
 }
 
-fn translate_rterm_op(t: &RTerm) -> Op {
+fn transform_varidx(p: VarIdx, _vmap: &mut VariableMap, _instance: &Instance) -> Ident {
+    let id = Ident::from(p.get() as u64);
+    id
+}
+
+fn translate_rterm_op(t: &RTerm, vmap: &mut VariableMap, instance: &Instance) -> Op {
     match t {
         RTerm::Var(ty, y) => {
             if ty.is_int() || ty.is_bool() {
-                Op::mk_var(translate_varidx(y))
+                Op::mk_var(transform_varidx(*y, vmap, instance))
             } else {
                 panic!("program error")
             }
@@ -198,43 +201,45 @@ fn translate_rterm_op(t: &RTerm) -> Op {
                 term::Op::Mod => OpKind::Mod,
                 term::Op::Ite => {
                     assert_eq!(args.len(), 3);
-                    let c = translate_rterm_top(&args[0]);
-                    let x = translate_rterm_op(&args[1]);
-                    let y = translate_rterm_op(&args[2]);
+                    let c = translate_rterm_top(&args[0], vmap, instance);
+                    let x = translate_rterm_op(&args[1], vmap, instance);
+                    let y = translate_rterm_op(&args[2], vmap, instance);
                     return Op::mk_ite(c, x, y);
                 }
                 term::Op::Gt | term::Op::Ge | term::Op::Le | term::Op::Lt | term::Op::Eql => {
-                    let c = handle_atomic_predicate(op, args.iter().map(|x| &**x));
+                    let c = handle_atomic_predicate(op, args.iter().map(|x| &**x), vmap, instance);
                     return encode_constr2op(c);
                 }
                 term::Op::And => {
                     assert!(args.len() >= 2);
-                    let mut c = translate_rterm_op(&args[0]);
+                    let mut c = translate_rterm_op(&args[0], vmap, instance);
                     for z in args.iter().skip(1) {
-                        let z: crate::formula::P<crate::formula::OpExpr> = translate_rterm_op(z);
+                        let z: crate::formula::P<crate::formula::OpExpr> =
+                            translate_rterm_op(z, vmap, instance);
                         c = handle_bin_bool_op(c, z, Constraint::mk_conj)
                     }
                     return c;
                 }
                 term::Op::Or => {
                     assert!(args.len() >= 2);
-                    let mut c = translate_rterm_op(&args[0]);
+                    let mut c = translate_rterm_op(&args[0], vmap, instance);
                     for z in args.iter().skip(1) {
-                        let z: crate::formula::P<crate::formula::OpExpr> = translate_rterm_op(z);
+                        let z: crate::formula::P<crate::formula::OpExpr> =
+                            translate_rterm_op(z, vmap, instance);
                         c = handle_bin_bool_op(c, z, Constraint::mk_disj)
                     }
                     return c;
                 }
                 term::Op::Not => {
                     assert_eq!(args.len(), 1);
-                    let o = translate_rterm_op(&args[0]);
+                    let o = translate_rterm_op(&args[0], vmap, instance);
                     let c = decode_op2constr(o);
                     return encode_constr2op(c.negate().unwrap());
                 }
                 term::Op::Impl => {
                     assert_eq!(args.len(), 2);
-                    let x = translate_rterm_op(&args[0]);
-                    let y = translate_rterm_op(&args[1]);
+                    let x = translate_rterm_op(&args[0], vmap, instance);
+                    let y = translate_rterm_op(&args[1], vmap, instance);
                     return handle_bin_bool_op(x, y, Constraint::mk_implies);
                 }
                 term::Op::Distinct => todo!(),
@@ -248,11 +253,11 @@ fn translate_rterm_op(t: &RTerm) -> Op {
             if args.len() != 2 {
                 assert!(op == OpKind::Add || op == OpKind::Mul);
             }
-            let x = translate_rterm_op(&args[0]);
-            let y = translate_rterm_op(&args[1]);
+            let x = translate_rterm_op(&args[0], vmap, instance);
+            let y = translate_rterm_op(&args[1], vmap, instance);
             let mut o = Op::mk_bin_op(op, x, y);
             for z in args.iter().skip(2) {
-                let z = translate_rterm_op(z);
+                let z = translate_rterm_op(z, vmap, instance);
                 o = Op::mk_bin_op(op, o, z);
             }
             o
@@ -267,18 +272,29 @@ fn translate_rterm_op(t: &RTerm) -> Op {
     }
 }
 
-fn translate_clause(c: &Clause) -> CHC {
+fn register_and_transform_prdidx(p: PrdIdx, vmap: &mut VariableMap, instance: &Instance) -> Ident {
+    let id = Ident::from(p.get() as u64);
+    let info = Info::new(id, instance[p].name.clone());
+    vmap.insert(id, info);
+    id
+}
+
+fn translate_clause(c: &Clause, vmap: &mut VariableMap, instance: &Instance) -> CHC {
     let constraint = c.lhs_terms().iter().fold(Constraint::mk_true(), |c, t| {
-        Constraint::mk_conj(c.clone(), translate_rterm_top(t))
+        Constraint::mk_conj(c.clone(), translate_rterm_top(t, vmap, instance))
     });
     let predicates = c
         .lhs_preds()
         .iter()
         .fold(Vec::new(), |mut predicates, (p, args_h)| {
             args_h.iter().for_each(|a| {
-                let args = a.iter().map(|x| translate_rterm_op(x)).collect();
+                let args = a
+                    .iter()
+                    .map(|x| translate_rterm_op(x, vmap, instance))
+                    .collect();
+                let id = register_and_transform_prdidx(*p, vmap, instance);
                 predicates.push(chc::Atom {
-                    predicate: Ident::from(p.get() as u64),
+                    predicate: id,
                     args,
                 });
             });
@@ -290,8 +306,11 @@ fn translate_clause(c: &Clause) -> CHC {
     };
     let rhs = match c.rhs() {
         Some((p, args)) => chc::CHCHead::Predicate(chc::Atom {
-            predicate: Ident::from(p.get() as u64),
-            args: args.iter().map(|x| translate_rterm_op(x)).collect(),
+            predicate: register_and_transform_prdidx(p, vmap, instance),
+            args: args
+                .iter()
+                .map(|x| translate_rterm_op(x, vmap, instance))
+                .collect(),
         }),
         None => chc::CHCHead::Constraint(Constraint::mk_false()),
     };
@@ -385,16 +404,19 @@ fn rename_clause(c: CHC, pred_map: &mut HashMap<Ident, Ident>) -> CHC {
     CHC { head, body }
 }
 
-fn translate(instance: &Instance, var_map: &mut HashMap<Ident, Ident>) -> Vec<CHC> {
+fn translate(instance: &Instance, var_map: &mut HashMap<Ident, Ident>) -> (Vec<CHC>, VariableMap) {
+    let mut vmap = VariableMap::new();
     let clauses = instance
         .clauses()
         .into_iter()
-        .map(|c| rename_clause(translate_clause(c), var_map))
+        .map(|c| rename_clause(translate_clause(c, &mut vmap, instance), var_map))
         .collect();
-    clauses
+    (clauses, vmap)
 }
 
-pub fn parse_chc(input: &str) -> Result<Vec<chc::CHC<chc::Atom, Constraint>>, &'static str> {
+pub fn parse_chc(
+    input: &str,
+) -> Result<(Vec<chc::CHC<chc::Atom, Constraint>>, VariableMap), &'static str> {
     let mut instance = Instance::new();
     let mut cxt = parse::ParserCxt::new();
     let res = match cxt
@@ -435,7 +457,7 @@ pub fn get_mc91() -> Vec<chc::CHC<chc::Atom, Constraint>> {
 ))
 (check-sat)
     ";
-    parse_chc(input).unwrap()
+    parse_chc(input).unwrap().0
 }
 
 pub fn get_linear() -> Vec<chc::CHC<chc::Atom, Constraint>> {
@@ -445,7 +467,7 @@ pub fn get_linear() -> Vec<chc::CHC<chc::Atom, Constraint>> {
     (assert (forall ((x Int) ) (=> (and (< x 10000) (P x)) (P (+ x 1)))))
     (assert (forall ((x Int) ) (=> (and (>= x 10000) (P x)) (> x 10000))))
     (check-sat)";
-    parse_chc(input).unwrap()
+    parse_chc(input).unwrap().0
 }
 
 #[test]
