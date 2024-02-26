@@ -32,14 +32,20 @@ pub struct Config<'a> {
 }
 
 impl<'a> Config<'a> {
-    fn get_name_by_ident(&mut self, id: &Ident) -> String {
+    fn get_name_by_ident(&mut self, default: &str, id: &Ident) -> String {
         match self.context {
             Some(m) => m.inverse_map.get(id).map_or_else(
-                || format!("x_{}", id.get_id()),
+                || format!("{}_{}", default, id.get_id()),
                 |x| format!("{}_{}", x, id.get_id()),
             ),
-            None => format!("x_{}", id.get_id()),
+            None => format!("{}_{}", default, id.get_id()),
         }
+    }
+    fn get_var_name_by_ident(&mut self, id: &Ident) -> String {
+        self.get_name_by_ident("x", id)
+    }
+    fn get_pred_name_by_ident(&mut self, id: &Ident) -> String {
+        self.get_name_by_ident("P", id)
     }
 }
 
@@ -316,7 +322,7 @@ impl Pretty for Ident {
         A: Clone,
     {
         // todo: making it more human-readable name
-        al.text(config.get_name_by_ident(self))
+        al.text(config.get_var_name_by_ident(self))
     }
 }
 
@@ -658,7 +664,7 @@ where
     I: IntoIterator<Item = &'b T>,
     T: Pretty + 'b,
 {
-    al.text(format!("P{}", ident.get_id())).append(
+    al.text(config.get_pred_name_by_ident(ident)).append(
         al.intersperse(args.into_iter().map(|o| o.pretty(al, config)), ",")
             .parens(),
     )
