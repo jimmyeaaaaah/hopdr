@@ -34,10 +34,10 @@ pub struct Config<'a> {
 impl<'a> Config<'a> {
     fn get_name_by_ident(&mut self, id: &Ident) -> String {
         match self.context {
-            Some(m) => m
-                .inverse_map
-                .get(id)
-                .map_or_else(|| format!("x_{}", id.get_id()), |x| x.to_string()),
+            Some(m) => m.inverse_map.get(id).map_or_else(
+                || format!("x_{}", id.get_id()),
+                |x| format!("{}_{}", x, id.get_id()),
+            ),
             None => format!("x_{}", id.get_id()),
         }
     }

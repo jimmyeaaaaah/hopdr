@@ -20,10 +20,9 @@ use crate::formula;
 use crate::formula::Type as SimpleType;
 use crate::parse;
 use hes::ValidityChecking;
-use rpds::HashTrieMap;
 use std::collections::HashMap;
 
-type IdentMap = HashTrieMap<parse::Ident, formula::Ident>;
+type IdentMap = HashMap<parse::Ident, formula::Ident>;
 pub struct Context {
     pub ident_map: IdentMap,
     pub inverse_map: HashMap<formula::Ident, parse::Ident>,
@@ -44,7 +43,7 @@ impl Context {
     }
     pub fn empty() -> Context {
         Context {
-            ident_map: HashTrieMap::new(),
+            ident_map: IdentMap::new(),
             inverse_map: HashMap::new(),
             original: None,
         }

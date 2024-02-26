@@ -46,6 +46,15 @@ fn get_preprocess_config() -> hopdr::preprocess::hes::Config {
     hopdr::preprocess::hes::Config::checker_default()
 }
 
+fn generate_context_for_chc(vmap: &crate::util::info::VariableMap) -> hopdr::preprocess::Context {
+    let mut ctx = hopdr::preprocess::Context::empty();
+    for (k, v) in vmap.iter() {
+        ctx.ident_map.insert(v.name.clone(), k.clone());
+        ctx.inverse_map.insert(*k, v.name.clone());
+    }
+    ctx
+}
+
 fn get_problem(
     filename: &str,
     config: &hopdr::Configuration,
@@ -107,6 +116,7 @@ fn main() {
             println!("{data}");
         }
         let (chcs, vmap) = parse::parse_chc(&data).unwrap();
+        let ctx = generate_context_for_chc(&vmap);
         if args.print_check_log {
             println!("CHCs");
             println!(
@@ -142,7 +152,7 @@ fn main() {
 
         let config = get_preprocess_config();
         let problem = crate::preprocess::hes::preprocess_for_typed_problem(problem, &config);
-        (problem, hopdr::preprocess::Context::empty())
+        (problem, ctx)
     } else {
         get_problem(&args.input, &config)
     };
