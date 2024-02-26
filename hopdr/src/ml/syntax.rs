@@ -8,7 +8,7 @@ use crate::util::P;
 ///
 /// lb or ub can be None, which means there is no ends.
 /// For example, `Range{lb: None, ub: 5}` represents [-∞, 5).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Range {
     pub lb: Option<i64>,
     pub ub: Option<i64>,
@@ -38,7 +38,7 @@ impl Range {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ExprKind {
     Var(Ident),
     Constraint(Constraint),
@@ -382,6 +382,22 @@ impl Expr {
                 Expr::mk_let_tuple(idents.clone(), body, cont)
             }
             ExprKind::Op(o) => Expr::mk_op(o.subst(&ident, &e)),
+        }
+    }
+    /// checks if self is the expression of the form `if cond then raise True else ()`
+    /// where cond is a constraint
+    pub fn is_check_constraint(&self) -> Option<Constraint> {
+        match self.kind() {
+            ExprKind::If { cond, then, els }
+                if matches!(then.kind(), ExprKind::Raise)
+                    && matches!(els.kind(), ExprKind::Unit) =>
+            {
+                match cond.kind() {
+                    ExprKind::Constraint(c) => Some(c.clone()),
+                    _ => None,
+                }
+            }
+            _ => None,
         }
     }
 }

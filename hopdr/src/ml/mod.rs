@@ -8,7 +8,7 @@ pub use printer::FAIL_STRING;
 pub use syntax::{Expr, ExprKind, Function, Program, Range};
 pub use ty::{Type, TypeKind};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Variable {
     pub ident: Ident,
     pub ty: Type,

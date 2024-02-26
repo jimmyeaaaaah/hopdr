@@ -1,4 +1,26 @@
+use crate::formula::{Constraint, Logic};
 use crate::ml::*;
+
+const OPTIMIZE_LIMIT: u64 = 1000;
+
+fn handle_try_with<'a>(body: Expr, handler: Expr) -> Expr {
+    match body.is_check_constraint() {
+        Some(c) => Expr::mk_if(Expr::mk_constraint(c), handler, Expr::mk_unit()),
+        None => Expr::mk_try_with(body, handler),
+    }
+}
+
+fn handle_if(cond: Expr, then: Expr, els: Expr) -> Expr {
+    // case if c1 then (if c2 then raise else ()) else ()
+    match (cond.kind(), then.is_check_constraint(), els.kind()) {
+        (ExprKind::Constraint(c), Some(c2), ExprKind::Unit) => Expr::mk_if(
+            Expr::mk_constraint(Constraint::mk_conj(c.clone(), c2.clone())),
+            Expr::mk_raise(),
+            Expr::mk_unit(),
+        ),
+        _ => Expr::mk_if(cond, then, els),
+    }
+}
 
 pub(super) fn peephole_optimize<'a>(mut p: Program<'a>) -> Program<'a> {
     fn f(s: &Expr) -> Expr {
@@ -41,7 +63,7 @@ pub(super) fn peephole_optimize<'a>(mut p: Program<'a>) -> Program<'a> {
                 let cond = f(cond);
                 let then = f(then);
                 let els = f(els);
-                Expr::mk_if(cond, then, els)
+                handle_if(cond, then, els)
             }
             ExprKind::LetRand { ident, range, body } => {
                 let body = f(body);
@@ -50,7 +72,7 @@ pub(super) fn peephole_optimize<'a>(mut p: Program<'a>) -> Program<'a> {
             ExprKind::TryWith { body, handler } => {
                 let body = f(body);
                 let handler = f(handler);
-                Expr::mk_try_with(body, handler)
+                handle_try_with(body, handler)
             }
             ExprKind::Assert(e) => {
                 let e = f(e);
@@ -72,19 +94,34 @@ pub(super) fn peephole_optimize<'a>(mut p: Program<'a>) -> Program<'a> {
                 //    let () = pred(x, y, z) in ()
                 // we transform this to pred(x, y, z) so that we can reduce the
                 // possibility of stack-overflow, and also optimize the memory-usage.
-                if idents.len() == 0 && matches!(cont.kind(), ExprKind::Unit) {
-                    body
+                if idents.len() == 0 {
+                    if matches!(cont.kind(), ExprKind::Unit) {
+                        body
+                    } else {
+                        Expr::mk_sequential(body, cont)
+                    }
                 } else {
                     Expr::mk_let_tuple(idents.clone(), body, cont)
                 }
             }
         }
     }
+    fn translate_expr(e: &Expr) -> Expr {
+        let mut e = e.clone();
+        for _ in 0..OPTIMIZE_LIMIT {
+            let e2 = f(&e);
+            if e == e2 {
+                return e;
+            }
+            e = e2;
+        }
+        e
+    }
     p.functions = p
         .functions
         .into_iter()
         .map(|func| Function {
-            body: f(&func.body),
+            body: translate_expr(&func.body),
             ..func
         })
         .collect();
