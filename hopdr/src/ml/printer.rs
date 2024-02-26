@@ -168,15 +168,14 @@ impl DumpML for Op {
     }
 }
 
+fn sanitize_ident(id: &str) -> String {
+    id.chars().filter(|c| c.is_alphanumeric()).collect()
+}
+
 impl DumpML for Ident {
     fn dump_ml<W: Write>(&self, writer: &mut W, ctx: &Context) -> Result<(), fmt::Error> {
         match ctx.inverse_map.get(self) {
-            Some(v) => write!(
-                writer,
-                "{}_{}",
-                v.as_str().to_string().to_lowercase(),
-                self.get_id()
-            ),
+            Some(v) => write!(writer, "{}_{}", sanitize_ident(v.as_str()), self.get_id()),
             None => write!(writer, "{}", self),
         }
     }
