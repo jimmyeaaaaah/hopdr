@@ -1,4 +1,4 @@
-use crate::formula::{Constraint, Logic};
+use crate::formula::{Bot, Constraint, Logic, Top};
 use crate::ml::*;
 
 const OPTIMIZE_LIMIT: u64 = 1000;
@@ -128,6 +128,16 @@ pub(super) fn peephole_optimize<'a>(mut p: Program<'a>) -> Program<'a> {
                 let cond = f(cond);
                 let then = f(then);
                 let els = f(els);
+                match cond.kind() {
+                    ExprKind::Constraint(c) => {
+                        if c.is_true() {
+                            return then;
+                        } else if c.is_false() {
+                            return els;
+                        }
+                    }
+                    _ => (),
+                };
                 handle_if(cond, then, els)
             }
             ExprKind::LetRand { ident, range, body } => {
