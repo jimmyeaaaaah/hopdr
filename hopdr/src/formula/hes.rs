@@ -896,7 +896,8 @@ impl Goal<Constraint> {
         match self.kind() {
             GoalKind::Constr(c) => c.count_quantifier(),
             GoalKind::Op(_) | GoalKind::Var(_) => 0,
-            GoalKind::Abs(_, g) | GoalKind::Univ(_, g) => 1 + g.count_quantifier(),
+            GoalKind::Abs(_, g) => g.count_quantifier(),
+            GoalKind::Univ(_, g) => 1 + g.count_quantifier(),
             GoalKind::App(g1, g2) | GoalKind::Conj(g1, g2) | GoalKind::Disj(g1, g2) => {
                 g1.count_quantifier() + g2.count_quantifier()
             }
