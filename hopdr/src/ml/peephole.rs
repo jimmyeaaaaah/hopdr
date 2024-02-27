@@ -32,8 +32,34 @@ fn flatten_sequential(lhs: &Expr, rhs: &Expr) -> Expr {
     }
 }
 
+fn handle_sequential_ifs(lhs: &Expr, rhs: &Expr) -> Expr {
+    match (lhs.is_check_constraint(), rhs.kind()) {
+        (
+            Some(c),
+            ExprKind::Sequential {
+                lhs: lhs2,
+                rhs: new_rhs,
+            },
+        ) => {
+            if let Some(c2) = lhs2.is_check_constraint() {
+                let c = Constraint::mk_disj(c, c2);
+                let new_lhs =
+                    Expr::mk_if(Expr::mk_constraint(c), Expr::mk_raise(), Expr::mk_unit());
+                handle_sequential_ifs(&new_lhs, new_rhs)
+            } else {
+                Expr::mk_sequential(lhs.clone(), rhs.clone())
+            }
+        }
+        _ => Expr::mk_sequential(lhs.clone(), rhs.clone()),
+    }
+}
+
 fn handle_sequential(lhs: Expr, rhs: Expr) -> Expr {
-    flatten_sequential(&lhs, &rhs)
+    let s = flatten_sequential(&lhs, &rhs);
+    match s.kind() {
+        ExprKind::Sequential { lhs, rhs } => handle_sequential_ifs(lhs, rhs),
+        _ => s,
+    }
 }
 
 pub(super) fn peephole_optimize<'a>(mut p: Program<'a>) -> Program<'a> {
