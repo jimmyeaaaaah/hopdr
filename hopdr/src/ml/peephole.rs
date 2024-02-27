@@ -4,15 +4,19 @@ use crate::ml::*;
 const OPTIMIZE_LIMIT: u64 = 1000;
 
 fn handle_try_with<'a>(body: Expr, handler: Expr) -> Expr {
-    match body.is_check_constraint() {
-        Some(c) => Expr::mk_if(Expr::mk_constraint(c), handler, Expr::mk_unit()),
+    match body.is_check_constraint_unit() {
+        Some(c) => Expr::mk_if(Expr::mk_constraint(c.clone()), handler, Expr::mk_unit()),
         None => Expr::mk_try_with(body, handler),
     }
 }
 
-// Handle the following case
-// if x_49 mod 2 <> 1 then raise TrueExc
-//  else if x_44 mod 2 = 1 then raise TrueExc
+/// Optimize if-then else
+///
+/// Handle the following cases
+/// 1. if c then raise else if c2 then raise else e
+/// Ex)
+/// if x_49 mod 2 <> 1 then raise TrueExc
+///  else if x_44 mod 2 = 1 then raise TrueExc
 fn handle_if_else(cond: &Expr, then: &Expr, els: &Expr) -> Expr {
     let c = match (cond.kind(), then.kind()) {
         (ExprKind::Constraint(c), ExprKind::Raise) => c,
@@ -37,7 +41,7 @@ fn handle_if_else(cond: &Expr, then: &Expr, els: &Expr) -> Expr {
 
 fn handle_if(cond: Expr, then: Expr, els: Expr) -> Expr {
     // case if c1 then (if c2 then raise else ()) else ()
-    match (cond.kind(), then.is_check_constraint(), els.kind()) {
+    match (cond.kind(), then.is_check_constraint_unit(), els.kind()) {
         (ExprKind::Constraint(c), Some(c2), ExprKind::Unit) => handle_if_else(
             &Expr::mk_constraint(Constraint::mk_conj(c.clone(), c2.clone())),
             &Expr::mk_raise(),
@@ -58,7 +62,7 @@ fn flatten_sequential(lhs: &Expr, rhs: &Expr) -> Expr {
 }
 
 fn handle_sequential_ifs(lhs: &Expr, rhs: &Expr) -> Expr {
-    match (lhs.is_check_constraint(), rhs.kind()) {
+    match (lhs.is_check_constraint_unit(), rhs.kind()) {
         (
             Some(c),
             ExprKind::Sequential {
@@ -66,8 +70,8 @@ fn handle_sequential_ifs(lhs: &Expr, rhs: &Expr) -> Expr {
                 rhs: new_rhs,
             },
         ) => {
-            if let Some(c2) = lhs2.is_check_constraint() {
-                let c = Constraint::mk_disj(c, c2);
+            if let Some(c2) = lhs2.is_check_constraint_unit() {
+                let c = Constraint::mk_disj(c.clone(), c2.clone());
                 let new_lhs =
                     Expr::mk_if(Expr::mk_constraint(c), Expr::mk_raise(), Expr::mk_unit());
                 handle_sequential_ifs(&new_lhs, new_rhs)
