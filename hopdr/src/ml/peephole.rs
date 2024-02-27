@@ -10,15 +10,40 @@ fn handle_try_with<'a>(body: Expr, handler: Expr) -> Expr {
     }
 }
 
+// Handle the following case
+// if x_49 mod 2 <> 1 then raise TrueExc
+//  else if x_44 mod 2 = 1 then raise TrueExc
+fn handle_if_else(cond: &Expr, then: &Expr, els: &Expr) -> Expr {
+    let c = match (cond.kind(), then.kind()) {
+        (ExprKind::Constraint(c), ExprKind::Raise) => c,
+        _ => return Expr::mk_if(cond.clone(), then.clone(), els.clone()),
+    };
+
+    match els.kind() {
+        ExprKind::If {
+            cond: c2,
+            then: t2,
+            els: e2,
+        } => match (c2.kind(), t2.kind()) {
+            (ExprKind::Constraint(c2), ExprKind::Raise) => {
+                let new_cond = Expr::mk_constraint(Constraint::mk_disj(c.clone(), c2.clone()));
+                handle_if_else(&new_cond, then, e2)
+            }
+            _ => Expr::mk_if(cond.clone(), then.clone(), els.clone()),
+        },
+        _ => Expr::mk_if(cond.clone(), then.clone(), els.clone()),
+    }
+}
+
 fn handle_if(cond: Expr, then: Expr, els: Expr) -> Expr {
     // case if c1 then (if c2 then raise else ()) else ()
     match (cond.kind(), then.is_check_constraint(), els.kind()) {
-        (ExprKind::Constraint(c), Some(c2), ExprKind::Unit) => Expr::mk_if(
-            Expr::mk_constraint(Constraint::mk_conj(c.clone(), c2.clone())),
-            Expr::mk_raise(),
-            Expr::mk_unit(),
+        (ExprKind::Constraint(c), Some(c2), ExprKind::Unit) => handle_if_else(
+            &Expr::mk_constraint(Constraint::mk_conj(c.clone(), c2.clone())),
+            &Expr::mk_raise(),
+            &Expr::mk_unit(),
         ),
-        _ => Expr::mk_if(cond, then, els),
+        _ => handle_if_else(&cond, &then, &els),
     }
 }
 
