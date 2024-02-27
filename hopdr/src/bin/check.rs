@@ -134,25 +134,29 @@ fn main() {
         //for chc in chcs.iter() {
         //    println!("{}", chc);
         //}
+        let config = get_preprocess_config();
         let problem = if !args.chc_least && crate::formula::chc::is_linear(chcs.iter()) {
             let greatest = crate::formula::chc::translate_to_hes_linear(chcs.clone());
+            let greatest = crate::preprocess::hes::preprocess_for_typed_problem(greatest, &config);
+
             let least = crate::formula::chc::translate_to_hes(chcs);
+            let least = crate::preprocess::hes::preprocess_for_typed_problem(least, &config);
+
             let lhs = crate::checker::difficulty_score(&greatest);
             let rhs = crate::checker::difficulty_score(&least);
             if args.print_check_log {
                 println!("difficulty score: {} vs {}", lhs, rhs);
             }
-            if lhs < rhs {
+            if lhs <= rhs {
                 greatest
             } else {
                 least
             }
         } else {
-            crate::formula::chc::translate_to_hes(chcs)
+            let problem = crate::formula::chc::translate_to_hes(chcs);
+            crate::preprocess::hes::preprocess_for_typed_problem(problem, &config)
         };
 
-        let config = get_preprocess_config();
-        let problem = crate::preprocess::hes::preprocess_for_typed_problem(problem, &config);
         (problem, ctx)
     } else {
         get_problem(&args.input, &config)

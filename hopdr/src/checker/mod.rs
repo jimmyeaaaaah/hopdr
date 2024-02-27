@@ -574,11 +574,11 @@ pub fn run(problem: Problem<Constraint>, config: Config) {
 
 /// This function is used to calculate the difficulty score of the problem.
 ///
-/// Current implementation returns the number of quantifiers in the problem.
+/// Current implementation returns 2 * number of quantifiers in the clauses + number of quantifiers in the top formula.
 pub fn difficulty_score(problem: &Problem<Constraint>) -> usize {
     let mut score = 0;
     for c in &problem.clauses {
-        score += c.body.count_quantifier();
+        score += 2 * c.body.count_quantifier();
     }
     score += problem.top.count_quantifier();
     score
