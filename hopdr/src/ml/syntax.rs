@@ -386,17 +386,20 @@ impl Expr {
     }
     /// checks if self is the expression of the form `if cond then raise True else ()`
     /// where cond is a constraint
-    pub fn is_check_constraint(&self) -> Option<Constraint> {
+    pub fn is_check_constraint<'a>(&'a self) -> Option<(&'a Constraint, &'a Expr)> {
         match self.kind() {
-            ExprKind::If { cond, then, els }
-                if matches!(then.kind(), ExprKind::Raise)
-                    && matches!(els.kind(), ExprKind::Unit) =>
-            {
+            ExprKind::If { cond, then, els } if matches!(then.kind(), ExprKind::Raise) => {
                 match cond.kind() {
-                    ExprKind::Constraint(c) => Some(c.clone()),
+                    ExprKind::Constraint(c) => Some((c, els)),
                     _ => None,
                 }
             }
+            _ => None,
+        }
+    }
+    pub fn is_check_constraint_unit<'a>(&'a self) -> Option<&'a Constraint> {
+        match self.is_check_constraint() {
+            Some((c, e)) if matches!(e.kind(), ExprKind::Unit) => Some(c),
             _ => None,
         }
     }
