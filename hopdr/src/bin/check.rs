@@ -122,10 +122,10 @@ fn main() {
             println!("CHCs");
             println!(
                 "linearity check {}",
-                crate::formula::chc::nonliniality(chcs.iter())
+                crate::formula::chc::nonliniality(chcs.iter().map(|echc| &echc.chc))
             );
-            for chc in chcs.iter() {
-                println!("{}", chc.pretty_display_with_context(&ctx));
+            for echc in chcs.iter() {
+                println!("{}", echc.chc.pretty_display_with_context(&ctx));
             }
         }
 
@@ -135,7 +135,9 @@ fn main() {
         //    println!("{}", chc);
         //}
         let config = get_preprocess_config();
-        let problem = if !args.chc_least && crate::formula::chc::is_linear(chcs.iter()) {
+        let problem = if !args.chc_least
+            && crate::formula::chc::is_linear(chcs.iter().map(|echc| &echc.chc))
+        {
             let greatest = crate::formula::chc::translate_to_hes_linear(chcs.clone());
             let greatest = crate::preprocess::hes::preprocess_for_typed_problem(greatest, &config);
 

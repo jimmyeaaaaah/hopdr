@@ -1,13 +1,15 @@
 use crate::formula::chc::CHCHead;
 use crate::formula::{chc, Logic};
-use crate::formula::{Bot, Constraint, Ident, Negation, Op, OpKind, PredKind, Top};
+use crate::formula::{Bot, Constraint, Ident, Negation, Op, OpKind, PredKind, Top, Type, Variable};
 use crate::util::info::{Variable as Info, VariableMap};
 use hoice::common::*;
 use hoice::instance::Clause;
 use hoice::instance::Instance;
 use hoice::parse;
 use hoice::term::RTerm;
+
 type CHC = chc::CHC<chc::Atom, Constraint>;
+type ExtendedCHC = chc::ExtendedCHC<chc::Atom, Constraint>;
 
 // during parsing, we encode boolean as integer (1 or 0).
 
@@ -273,13 +275,13 @@ fn translate_rterm_op(t: &RTerm, vmap: &mut VariableMap, instance: &Instance) ->
 }
 
 fn register_and_transform_prdidx(p: PrdIdx, vmap: &mut VariableMap, instance: &Instance) -> Ident {
-    let id = Ident::from(p.get() as u64);
+    let id: Ident = Ident::from(p.get() as u64);
     let info = Info::new(id, instance[p].name.clone());
     vmap.insert(id, info);
     id
 }
 
-fn translate_clause(c: &Clause, vmap: &mut VariableMap, instance: &Instance) -> CHC {
+fn translate_clause(c: &Clause, vmap: &mut VariableMap, instance: &Instance) -> ExtendedCHC {
     let constraint = c.lhs_terms().iter().fold(Constraint::mk_true(), |c, t| {
         Constraint::mk_conj(c.clone(), translate_rterm_top(t, vmap, instance))
     });
@@ -314,9 +316,29 @@ fn translate_clause(c: &Clause, vmap: &mut VariableMap, instance: &Instance) -> 
         }),
         None => chc::CHCHead::Constraint(Constraint::mk_false()),
     };
-    CHC {
+    let chc = CHC {
         head: rhs,
         body: lhs,
+    };
+
+    let free_variables = c
+        .vars()
+        .iter()
+        .map(|v| {
+            let id = Ident::from(v.idx.get() as u64);
+            let ty = if v.typ.is_int() {
+                Type::mk_type_int()
+            } else if v.typ.is_bool() {
+                Type::mk_type_prop()
+            } else {
+                panic!("unknown type")
+            };
+            Variable::mk(id, ty)
+        })
+        .collect();
+    ExtendedCHC {
+        free_variables,
+        chc,
     }
 }
 
@@ -361,9 +383,17 @@ fn rename_constraint(c: &Constraint, varmap: &mut HashMap<Ident, Ident>) -> Cons
     }
 }
 
-fn rename_clause(c: CHC, pred_map: &mut HashMap<Ident, Ident>) -> CHC {
+fn rename_clause(c: ExtendedCHC, pred_map: &mut HashMap<Ident, Ident>) -> ExtendedCHC {
     let mut arg_map = HashMap::new();
-    let head = match c.head {
+    let new_variables: Vec<_> = c
+        .free_variables
+        .iter()
+        .map(|x| Variable::mk(Ident::fresh(), x.ty.clone()))
+        .collect();
+    for (old, new) in c.free_variables.iter().zip(new_variables.iter()) {
+        arg_map.insert(old.id, new.id);
+    }
+    let head = match c.chc.head {
         CHCHead::Constraint(c) => CHCHead::Constraint(rename_constraint(&c, &mut arg_map)),
         CHCHead::Predicate(p) => match pred_map.get(&p.predicate) {
             Some(i) => CHCHead::Predicate(chc::Atom {
@@ -381,6 +411,7 @@ fn rename_clause(c: CHC, pred_map: &mut HashMap<Ident, Ident>) -> CHC {
         },
     };
     let predicates = c
+        .chc
         .body
         .predicates
         .iter()
@@ -396,15 +427,22 @@ fn rename_clause(c: CHC, pred_map: &mut HashMap<Ident, Ident>) -> CHC {
             args: p.args.iter().map(|x| rename_op(x, &mut arg_map)).collect(),
         })
         .collect();
-    let constraint = rename_constraint(&c.body.constraint, &mut arg_map);
+    let constraint = rename_constraint(&c.chc.body.constraint, &mut arg_map);
     let body = chc::CHCBody {
         predicates,
         constraint,
     };
-    CHC { head, body }
+    let chc = CHC { head, body };
+    ExtendedCHC {
+        free_variables: new_variables,
+        chc,
+    }
 }
 
-fn translate(instance: &Instance, var_map: &mut HashMap<Ident, Ident>) -> (Vec<CHC>, VariableMap) {
+fn translate(
+    instance: &Instance,
+    var_map: &mut HashMap<Ident, Ident>,
+) -> (Vec<ExtendedCHC>, VariableMap) {
     let mut vmap = VariableMap::new();
     let clauses = instance
         .clauses()
@@ -414,9 +452,7 @@ fn translate(instance: &Instance, var_map: &mut HashMap<Ident, Ident>) -> (Vec<C
     (clauses, vmap)
 }
 
-pub fn parse_chc(
-    input: &str,
-) -> Result<(Vec<chc::CHC<chc::Atom, Constraint>>, VariableMap), &'static str> {
+pub fn parse_chc(input: &str) -> Result<(Vec<ExtendedCHC>, VariableMap), &'static str> {
     let mut instance = Instance::new();
     let mut cxt = parse::ParserCxt::new();
     let res = match cxt
@@ -440,7 +476,7 @@ pub fn parse_chc(
     Ok((vc, vmmap))
 }
 
-pub fn get_mc91() -> Vec<chc::CHC<chc::Atom, Constraint>> {
+pub fn get_mc91() -> Vec<ExtendedCHC> {
     let input = "(set-logic HORN)
 (declare-fun mc91 ( Int Int ) Bool)
 (assert (forall ((n Int)) (=> (> n 100) (mc91 n (- n 10)))))
@@ -469,7 +505,7 @@ pub fn get_mc91() -> Vec<chc::CHC<chc::Atom, Constraint>> {
     parse_chc(input).unwrap().0
 }
 
-pub fn get_linear() -> Vec<chc::CHC<chc::Atom, Constraint>> {
+pub fn get_linear() -> Vec<ExtendedCHC> {
     let input = "(set-logic HORN)
     (declare-fun P (Int) Bool)
     (assert (forall ((x Int)) (P 0)))
@@ -484,6 +520,6 @@ fn test_parse_file() {
     use crate::util::Pretty;
     let chc = get_mc91();
     chc.iter().for_each(|c| {
-        println!("{}", c.pretty_display());
+        println!("{}", c.chc.pretty_display());
     })
 }
