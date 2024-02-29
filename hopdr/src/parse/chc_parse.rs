@@ -329,7 +329,7 @@ fn translate_clause(c: &Clause, vmap: &mut VariableMap, instance: &Instance) -> 
             let ty = if v.typ.is_int() {
                 Type::mk_type_int()
             } else if v.typ.is_bool() {
-                Type::mk_type_prop()
+                Type::mk_type_bit()
             } else {
                 panic!("unknown type")
             };
