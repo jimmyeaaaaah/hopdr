@@ -429,7 +429,7 @@ impl<C: Bot + Top + Logic> Goal<C> {
                     vs.push(Variable::mk(Ident::fresh(), t.clone()));
                     s.clone()
                 }
-                super::TypeKind::Integer => panic!("program error"),
+                super::TypeKind::Integer | super::TypeKind::Bit => panic!("program error"),
             };
         }
         let mut x = Goal::mk_false();

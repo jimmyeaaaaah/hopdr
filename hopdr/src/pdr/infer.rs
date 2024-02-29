@@ -88,9 +88,10 @@ impl From<formula::Type> for Type {
         match t.kind() {
             formula::TypeKind::Proposition => Type::mk_prop(),
             // integers are handled in Arrow(Integer, ...)
-            formula::TypeKind::Integer => panic!("program errror"),
+            formula::TypeKind::Integer | formula::TypeKind::Bit => panic!("program errror"),
             formula::TypeKind::Arrow(t1, t2) => match t1.kind() {
                 formula::TypeKind::Integer => Type::mk_iarrow(t2.clone().into()),
+                formula::TypeKind::Bit => unimplemented!(),
                 formula::TypeKind::Proposition | formula::TypeKind::Arrow(_, _) => {
                     Type::mk_arrow(vec![t1.clone().into()], t2.clone().into())
                 }

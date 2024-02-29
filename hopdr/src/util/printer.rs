@@ -503,6 +503,7 @@ impl Pretty for Type {
         match self.kind() {
             TypeKind::Proposition => al.text("b"),
             TypeKind::Integer => al.text("i"),
+            TypeKind::Bit => al.text("bit"),
             TypeKind::Arrow(x, y) => {
                 let xs = x.pretty(al, config);
                 let ys = y.pretty(al, config);

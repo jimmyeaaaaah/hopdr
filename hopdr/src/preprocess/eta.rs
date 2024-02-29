@@ -59,7 +59,9 @@ impl TypedPreprocessor for EtaTransform {
                     let (t, g1) = handle_abs(g1, env);
                     let (s, t) = match t.kind() {
                         formula::TypeKind::Arrow(s, t) => (s, t),
-                        formula::TypeKind::Proposition | formula::TypeKind::Integer => {
+                        formula::TypeKind::Proposition
+                        | formula::TypeKind::Integer
+                        | formula::TypeKind::Bit => {
                             panic!("program error")
                         }
                     };
@@ -77,11 +79,15 @@ impl TypedPreprocessor for EtaTransform {
 
         fn append_args(g: Goal, t: &formula::Type) -> Goal {
             match t.kind() {
-                formula::TypeKind::Proposition | formula::TypeKind::Integer => g,
+                formula::TypeKind::Proposition
+                | formula::TypeKind::Integer
+                | formula::TypeKind::Bit => g,
                 formula::TypeKind::Arrow(s, t) => {
                     let x = formula::Ident::fresh();
                     let arg = match s.kind() {
-                        formula::TypeKind::Integer => Goal::mk_op(Op::mk_var(x)),
+                        formula::TypeKind::Integer | formula::TypeKind::Bit => {
+                            Goal::mk_op(Op::mk_var(x))
+                        }
                         formula::TypeKind::Proposition | formula::TypeKind::Arrow(_, _) => {
                             Goal::mk_var(x)
                         }
@@ -111,7 +117,9 @@ impl TypedPreprocessor for EtaTransform {
                     let (s, g1) = handle_abs(g1, env);
                     let g2 = match s.kind() {
                         formula::TypeKind::Arrow(t1, _) => translate(g2, t1, env),
-                        formula::TypeKind::Proposition | formula::TypeKind::Integer => {
+                        formula::TypeKind::Proposition
+                        | formula::TypeKind::Integer
+                        | formula::TypeKind::Bit => {
                             panic!("program error")
                         }
                     };
