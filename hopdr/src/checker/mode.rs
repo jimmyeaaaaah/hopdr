@@ -77,7 +77,7 @@ impl Mode {
     pub fn from_hflty(ty: &crate::formula::Type) -> Self {
         match ty.kind() {
             crate::formula::TypeKind::Proposition => Self::mk_prop(),
-            crate::formula::TypeKind::Integer => Self::mk_in(),
+            crate::formula::TypeKind::Integer | crate::formula::TypeKind::Bit => Self::mk_in(),
             crate::formula::TypeKind::Arrow(t1, t2) => {
                 let t1 = Self::from_hflty(t1);
                 let t2 = Self::from_hflty(t2);

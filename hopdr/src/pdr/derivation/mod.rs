@@ -539,7 +539,7 @@ impl GoalBase<Constraint, TypeMemory> {
         fn eta_expand_inner(g: G, ty: &STy) -> G {
             match ty.kind() {
                 formula::TypeKind::Proposition => g,
-                formula::TypeKind::Integer => panic!("program error"),
+                formula::TypeKind::Integer | formula::TypeKind::Bit => panic!("program error"),
                 formula::TypeKind::Arrow(arg, rty) => {
                     let g = eta_expand_inner(g, rty);
                     let id = Ident::fresh();

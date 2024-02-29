@@ -233,7 +233,7 @@ impl<C: Refinement> TyKind<C> {
                 vec![Tau::new(TauKind::new_bot(x))],
                 Tau::new(TauKind::new_top(y)),
             ),
-            Integer => panic!("integer occurs at the result position"),
+            Integer | Bit => panic!("integer occurs at the result position"),
         }
     }
     fn new_bot(st: &SType) -> TyKind<C> {
@@ -247,7 +247,7 @@ impl<C: Refinement> TyKind<C> {
                 vec![Tau::new(TauKind::new_top(x))],
                 Tau::new(TauKind::new_bot(y)),
             ),
-            Integer => panic!("integer occurs at the result position"),
+            Integer | Bit => panic!("integer occurs at the result position"),
         }
     }
 }

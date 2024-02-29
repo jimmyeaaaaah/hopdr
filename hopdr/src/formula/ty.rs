@@ -10,6 +10,7 @@ use super::{Ident, TeXFormat, TeXPrinter};
 pub enum TypeKind {
     Proposition,
     Integer,
+    Bit,
     Arrow(Type, Type),
 }
 
@@ -19,6 +20,7 @@ impl fmt::Display for Type {
         match self.kind() {
             TypeKind::Proposition => write!(f, "b"),
             TypeKind::Integer => write!(f, "i"),
+            TypeKind::Bit => write!(f, "bit"),
             TypeKind::Arrow(x, y) => write!(f, "({} -> {})", x, y),
         }
     }
@@ -29,6 +31,7 @@ impl TeXFormat for Type {
         match self.kind() {
             TypeKind::Proposition => write!(f, "\\stypebool "),
             TypeKind::Integer => write!(f, "\\stypeint "),
+            TypeKind::Bit => write!(f, "\\texttt{{bit}}"),
             TypeKind::Arrow(x, y) => write!(f, "({} \\to {})", TeXPrinter(x), TeXPrinter(y)),
         }
     }
@@ -41,19 +44,24 @@ impl Type {
     pub fn mk_type_int() -> Type {
         Type::new(TypeKind::Integer)
     }
+    pub fn mk_type_bit() -> Type {
+        Type::new(TypeKind::Bit)
+    }
     pub fn mk_type_arrow(lhs: Type, rhs: Type) -> Type {
         Type::new(TypeKind::Arrow(lhs, rhs))
     }
     pub fn is_int(&self) -> bool {
         matches!(self.kind(), TypeKind::Integer)
     }
+    pub fn is_bit(&self) -> bool {
+        matches!(self.kind(), TypeKind::Bit)
+    }
     pub fn is_prop(&self) -> bool {
         matches!(self.kind(), TypeKind::Proposition)
     }
     pub fn order(&self) -> usize {
         match self.kind() {
-            TypeKind::Proposition => 0,
-            TypeKind::Integer => 0,
+            TypeKind::Proposition | TypeKind::Integer | TypeKind::Bit => 0,
             TypeKind::Arrow(x, y) => std::cmp::max(x.order() + 1, y.order()),
         }
     }
