@@ -38,7 +38,7 @@ fn handle_atomic_predicate<'a>(
 }
 
 fn bool_variable_encoding(id: Ident) -> Constraint {
-    Constraint::mk_eq(Op::mk_mod(Op::mk_var(id), Op::mk_const(2)), Op::mk_const(1))
+    Constraint::mk_eq(Op::mk_var(id), Op::mk_const(1))
 }
 
 fn translate_rterm_top(t: &RTerm, vmap: &mut VariableMap, instance: &Instance) -> Constraint {
