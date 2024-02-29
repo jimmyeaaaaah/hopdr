@@ -914,28 +914,25 @@ pub fn translate_to_hes(
     chcs: Vec<ExtendedCHC<Atom, Constraint>>,
 ) -> crate::formula::hes::Problem<Constraint> {
     use crate::formula::hes::*;
-    fn handle_body(
-        body: CHCBody<Atom, Constraint>,
-        free_variables: &Vec<Variable>,
-    ) -> Goal<Constraint> {
+    fn handle_body(body: CHCBody<Atom, Constraint>) -> Goal<Constraint> {
         let c = Goal::mk_constr(body.constraint.negate().unwrap());
         let c = translate_predicates(body.predicates, c);
-        let c = quantify(c, free_variables);
         c
     }
     let ((top_free_variables, toplevel), map) = merge_chcs_with_same_head(chcs);
 
-    let mut top = Goal::mk_true();
-    for body in toplevel {
-        top = Goal::mk_conj_opt(top, handle_body(body, &top_free_variables));
-    }
+    let top = toplevel.into_iter().fold(Goal::mk_true(), |top, body| {
+        Goal::mk_conj_opt(top, handle_body(body))
+    });
+    let top = quantify(top, &top_free_variables);
 
     let mut clauses = Vec::new();
     for (k, (free_variables, chcs)) in map {
         let (ty, args) = get_hfl_atom_info_from_atom(&chcs[0].0);
         let form = chcs.into_iter().fold(Goal::mk_true(), |form, (_, body)| {
-            Goal::mk_conj_opt(form, handle_body(body, &free_variables))
+            Goal::mk_conj_opt(form, handle_body(body))
         });
+        let form = quantify(form, &free_variables);
         clauses.push(gen_clause(k, ty, form, args));
     }
     Problem { clauses, top }
@@ -1046,30 +1043,39 @@ pub fn translate_to_hes_linear(
     chcs: Vec<ExtendedCHC<Atom, Constraint>>,
 ) -> crate::formula::hes::Problem<Constraint> {
     use crate::formula::hes::*;
-    fn handle_chc(echc: ExtendedCHC<Atom, Constraint>) -> Goal<Constraint> {
-        let constraint = echc.chc.body.constraint.clone().negate().unwrap();
-        let g = match echc.chc.head {
-            CHCHead::Constraint(c) => Goal::mk_constr(Constraint::mk_disj(constraint, c)),
-            CHCHead::Predicate(p) => translate_predicate_linear(p, Goal::mk_constr(constraint)),
-        };
-        quantify(g, &echc.free_variables)
+    fn handle_chc(chc: &CHC<Atom, Constraint>) -> Goal<Constraint> {
+        let constraint = chc.body.constraint.clone().negate().unwrap();
+        match &chc.head {
+            CHCHead::Constraint(c) => Goal::mk_constr(Constraint::mk_disj(constraint, c.clone())),
+            CHCHead::Predicate(p) => {
+                translate_predicate_linear(p.clone(), Goal::mk_constr(constraint))
+            }
+        }
+    }
+    fn conjoin<F>(echcs: Vec<ExtendedCHC<Atom, Constraint>>, assert_f: F) -> Goal<Constraint>
+    where
+        F: Fn(&CHC<Atom, Constraint>),
+    {
+        let mut free_variables = Vec::new();
+        let mut form = Goal::mk_true();
+        for mut echc in echcs {
+            assert_f(&echc.chc);
+            form = Goal::mk_conj_opt(form, handle_chc(&echc.chc));
+            free_variables.append(&mut echc.free_variables);
+        }
+        quantify(form, &free_variables)
     }
     let (toplevel, map) = merge_chcs_with_same_head_linear(chcs);
 
-    let mut top = Goal::mk_true();
-    for echc in toplevel {
-        assert_eq!(echc.chc.body.predicates.len(), 0);
-        top = Goal::mk_conj_opt(top, handle_chc(echc));
-    }
+    let top = conjoin(toplevel, |chc| assert_eq!(chc.body.predicates.len(), 0));
 
     let mut clauses = Vec::new();
     for (k, echcs) in map {
         let p = &echcs[0].chc.body.predicates[0];
         let (ty, args) = get_hfl_atom_info_from_atom(p);
-        let form = echcs.into_iter().fold(Goal::mk_true(), |form, echc| {
-            assert_eq!(echc.chc.body.predicates.len(), 1);
-            assert_eq!(echc.chc.body.predicates[0].predicate, k);
-            Goal::mk_conj_opt(form, handle_chc(echc))
+        let form = conjoin(echcs, |chc| {
+            assert_eq!(chc.body.predicates.len(), 1);
+            assert_eq!(chc.body.predicates[0].predicate, k);
         });
         clauses.push(gen_clause(k, ty, form, args));
     }
