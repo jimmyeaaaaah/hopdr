@@ -5,7 +5,7 @@ mod mode_infer;
 
 use crate::formula::hes::{GoalBase, GoalKind, Problem, ProblemBase};
 use crate::formula::{Bot, Constraint, Fv, Ident, Logic, Op, PredKind, Type as HFLType};
-use crate::ml::{optimize, Expr, Function, Program, Type as SType, Variable};
+use crate::ml::{optimize, Expr, Function, Program, Range, Type as SType, Variable};
 use crate::preprocess::Context;
 use mode::{Mode, ModeEnv};
 
@@ -388,8 +388,11 @@ impl<'a> Translator<'a> {
                             body
                         }
                         mode::ModeKind::In => {
-                            assert!(v.ty.is_int());
-                            let range = ai::analyze(v.id, g);
+                            assert!(v.ty.is_int() || v.ty.is_bit());
+                            let mut range = ai::analyze(v.id, g);
+                            if v.ty.is_bit() {
+                                range = range.meet(Range::boolean())
+                            }
                             Expr::mk_letrand(v.id, range, body)
                         }
                         mode::ModeKind::InOut => unimplemented!(), // This is another case where it is unreachable in theory

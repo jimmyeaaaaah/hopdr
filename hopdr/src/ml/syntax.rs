@@ -36,6 +36,19 @@ impl Range {
             ub: Some(2),
         }
     }
+    pub fn meet(self, other: Self) -> Self {
+        let lb = match (self.lb, other.lb) {
+            (Some(x), Some(y)) => Some(x.max(y)),
+            (Some(x), None) | (None, Some(x)) => Some(x),
+            _ => None,
+        };
+        let ub = match (self.ub, other.ub) {
+            (Some(x), Some(y)) => Some(x.min(y)),
+            (Some(x), None) | (None, Some(x)) => Some(x),
+            _ => None,
+        };
+        Self { lb, ub }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
