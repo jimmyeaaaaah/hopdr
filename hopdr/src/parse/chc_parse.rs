@@ -287,6 +287,15 @@ fn translate_clause(c: &Clause, vmap: &mut VariableMap, instance: &Instance) -> 
     let constraint = c.lhs_terms().iter().fold(Constraint::mk_true(), |c, t| {
         Constraint::mk_conj(c.clone(), translate_rterm_top(t, vmap, instance))
     });
+
+    c.vars().iter().for_each(|x| {
+        let id = Ident::from(x.idx.get() as u64);
+        let name = x.name.clone();
+        println!("map: {}: {}", id, &name);
+        let info = Info::new(id, name);
+        vmap.insert(id, info);
+    });
+
     let predicates = c
         .lhs_preds()
         .iter()
@@ -385,7 +394,11 @@ fn rename_constraint(c: &Constraint, varmap: &mut HashMap<Ident, Ident>) -> Cons
     }
 }
 
-fn rename_clause(c: ExtendedCHC, pred_map: &mut HashMap<Ident, Ident>) -> ExtendedCHC {
+fn rename_clause(
+    c: ExtendedCHC,
+    pred_map: &mut HashMap<Ident, Ident>,
+    variable_map: &mut VariableMap,
+) -> ExtendedCHC {
     let mut arg_map = HashMap::new();
     let new_variables: Vec<_> = c
         .free_variables
@@ -435,6 +448,17 @@ fn rename_clause(c: ExtendedCHC, pred_map: &mut HashMap<Ident, Ident>) -> Extend
         constraint,
     };
     let chc = CHC { head, body };
+
+    for (k, v) in arg_map.iter() {
+        match variable_map.get(k) {
+            Some(info) => {
+                println!("remap: {}: {}", k, v);
+                variable_map.insert(v.clone(), info.clone());
+            }
+            None => {}
+        }
+    }
+
     ExtendedCHC {
         free_variables: new_variables,
         chc,
@@ -449,7 +473,7 @@ fn translate(
     let clauses = instance
         .clauses()
         .into_iter()
-        .map(|c| rename_clause(translate_clause(c, &mut vmap, instance), var_map))
+        .map(|c| rename_clause(translate_clause(c, &mut vmap, instance), var_map, &mut vmap))
         .collect();
     (clauses, vmap)
 }
@@ -471,14 +495,6 @@ pub fn parse_chc(input: &str) -> Result<(Vec<ExtendedCHC>, VariableMap), &'stati
     assert_eq!(res, parse::Parsed::CheckSat);
     let mut var_map = HashMap::new();
     let (vc, mut vmmap) = translate(&instance, &mut var_map);
-    for (k, v) in var_map.iter() {
-        match vmmap.get(k) {
-            Some(info) => {
-                vmmap.insert(v.clone(), info.clone());
-            }
-            None => {}
-        }
-    }
     Ok((vc, vmmap))
 }
 
