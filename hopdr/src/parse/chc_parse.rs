@@ -6,6 +6,7 @@ use hoice::common::*;
 use hoice::instance::Clause;
 use hoice::instance::Instance;
 use hoice::parse;
+use hoice::preproc;
 use hoice::term::RTerm;
 
 type CHC = chc::CHC<chc::Atom, Constraint>;
@@ -180,9 +181,10 @@ fn translate_rterm_op(t: &RTerm, vmap: &mut VariableMap, instance: &Instance) ->
                         Op::mk_const(n as i64)
                     }
                 }
+                val::RVal::B(x) if *x => Op::mk_const(1),
+                val::RVal::B(_) => Op::mk_const(0),
                 val::RVal::R(_)
                 | val::RVal::N(_)
-                | val::RVal::B(_)
                 | val::RVal::DTypNew { .. }
                 | val::RVal::Array { .. } => todo!(),
             }
@@ -462,6 +464,10 @@ pub fn parse_chc(input: &str) -> Result<(Vec<ExtendedCHC>, VariableMap), &'stati
         Ok(res) => res,
         Err(_) => return Err("parse fail"),
     };
+
+    // preprocess by hoice
+    let profiler = Profiler::new();
+    preproc::work(&mut instance, &profiler).unwrap();
     assert_eq!(res, parse::Parsed::CheckSat);
     let mut var_map = HashMap::new();
     let (vc, mut vmmap) = translate(&instance, &mut var_map);
