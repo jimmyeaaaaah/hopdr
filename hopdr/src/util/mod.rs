@@ -281,3 +281,10 @@ pub fn wait_for_line() {
         .read_line(&mut line)
         .expect("failed to read stdin");
 }
+
+pub fn sanitize_ident(id: &str) -> String {
+    id.to_lowercase()
+        .chars()
+        .filter(|c| c.is_alphanumeric())
+        .collect()
+}

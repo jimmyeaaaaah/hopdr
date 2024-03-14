@@ -288,14 +288,6 @@ fn translate_clause(c: &Clause, vmap: &mut VariableMap, instance: &Instance) -> 
         Constraint::mk_conj(c.clone(), translate_rterm_top(t, vmap, instance))
     });
 
-    c.vars().iter().for_each(|x| {
-        let id = Ident::from(x.idx.get() as u64);
-        let name = x.name.clone();
-        println!("map: {}: {}", id, &name);
-        let info = Info::new(id, name);
-        vmap.insert(id, info);
-    });
-
     let predicates = c
         .lhs_preds()
         .iter()
@@ -398,6 +390,7 @@ fn rename_clause(
     c: ExtendedCHC,
     pred_map: &mut HashMap<Ident, Ident>,
     variable_map: &mut VariableMap,
+    original_clause: &Clause,
 ) -> ExtendedCHC {
     let mut arg_map = HashMap::new();
     let new_variables: Vec<_> = c
@@ -449,15 +442,17 @@ fn rename_clause(
     };
     let chc = CHC { head, body };
 
-    for (k, v) in arg_map.iter() {
-        match variable_map.get(k) {
-            Some(info) => {
-                println!("remap: {}: {}", k, v);
-                variable_map.insert(v.clone(), info.clone());
+    original_clause.vars().iter().for_each(|x| {
+        let id = Ident::from(x.idx.get() as u64);
+        match arg_map.get(&id) {
+            Some(i) => {
+                let name = x.name.clone();
+                let info = Info::new(i.clone(), name);
+                variable_map.insert(i.clone(), info);
             }
             None => {}
         }
-    }
+    });
 
     ExtendedCHC {
         free_variables: new_variables,
@@ -469,13 +464,23 @@ fn translate(
     instance: &Instance,
     var_map: &mut HashMap<Ident, Ident>,
 ) -> (Vec<ExtendedCHC>, VariableMap) {
-    let mut vmap = VariableMap::new();
+    let mut pmap = VariableMap::new();
     let clauses = instance
         .clauses()
         .into_iter()
-        .map(|c| rename_clause(translate_clause(c, &mut vmap, instance), var_map, &mut vmap))
+        .map(|c| {
+            let mut vmap = VariableMap::new();
+            let c = rename_clause(
+                translate_clause(c, &mut pmap, instance),
+                var_map,
+                &mut vmap,
+                c,
+            );
+            pmap.extend(vmap);
+            c
+        })
         .collect();
-    (clauses, vmap)
+    (clauses, pmap)
 }
 
 pub fn parse_chc(input: &str) -> Result<(Vec<ExtendedCHC>, VariableMap), &'static str> {
@@ -494,7 +499,7 @@ pub fn parse_chc(input: &str) -> Result<(Vec<ExtendedCHC>, VariableMap), &'stati
     preproc::work(&mut instance, &profiler).unwrap();
     assert_eq!(res, parse::Parsed::CheckSat);
     let mut var_map = HashMap::new();
-    let (vc, mut vmmap) = translate(&instance, &mut var_map);
+    let (vc, vmmap) = translate(&instance, &mut var_map);
     Ok((vc, vmmap))
 }
 
