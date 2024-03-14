@@ -459,7 +459,7 @@ impl Pretty for Op {
                     _ => pretty_bin_op(al, config, k.precedence(), k.to_str(), o1, o2),
                 }
             }
-            Var(i) => al.text(format!("{}", i)),
+            Var(i) => i.pretty(al, config),
             Const(c) => al.text(format!("{}", c)),
             ITE(c, x, y) => {
                 let c = paren(al, config, PrecedenceKind::If, c);
