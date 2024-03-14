@@ -1,4 +1,5 @@
 mod alpha;
+mod boolean_expand;
 mod eta;
 mod extravar;
 mod find_ite;
