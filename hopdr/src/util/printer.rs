@@ -29,6 +29,7 @@ pub fn colored() -> bool {
 #[derive(Default)]
 pub struct Config<'a> {
     context: Option<&'a preprocess::Context>,
+    filter: bool,
 }
 
 impl<'a> Config<'a> {
@@ -36,7 +37,17 @@ impl<'a> Config<'a> {
         match self.context {
             Some(m) => m.inverse_map.get(id).map_or_else(
                 || format!("{}_{}", default, id.get_id()),
-                |x| format!("{}_{}", x, id.get_id()),
+                |x| {
+                    format!(
+                        "{}_{}",
+                        if self.filter {
+                            crate::util::sanitize_ident(x)
+                        } else {
+                            x.to_string()
+                        },
+                        id.get_id()
+                    )
+                },
             ),
             None => format!("{}_{}", default, id.get_id()),
         }
@@ -54,7 +65,10 @@ pub struct PrettyDisplay<'a, A: Pretty>(&'a A, usize, Option<&'a preprocess::Con
 impl<'a, A: Pretty> Display for PrettyDisplay<'a, A> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let al = BoxAllocator;
-        let mut config = Config { context: self.2 };
+        let mut config = Config {
+            context: self.2,
+            filter: false,
+        };
         self.0
             .pretty::<_, ()>(&al, &mut config)
             .1
