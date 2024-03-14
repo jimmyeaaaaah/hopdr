@@ -475,6 +475,8 @@ impl<C: Bot + Top + Logic> Goal<C> {
             rhs
         } else if rhs.is_true() {
             lhs
+        } else if lhs.is_false() || rhs.is_false() {
+            Goal::mk_false()
         } else {
             Goal::mk_conj(lhs, rhs)
         }
@@ -486,6 +488,8 @@ impl<C: Bot + Top + Logic> Goal<C> {
             rhs
         } else if rhs.is_false() {
             lhs
+        } else if lhs.is_true() || rhs.is_true() {
+            Goal::mk_true()
         } else {
             Goal::mk_disj(lhs, rhs)
         }
@@ -903,6 +907,42 @@ impl Goal<Constraint> {
             }
             GoalKind::ITE(c1, g1, g2) => {
                 c1.count_quantifier() + g1.count_quantifier() + g2.count_quantifier()
+            }
+        }
+    }
+    pub fn simplify(&self) -> Self {
+        match self.kind() {
+            GoalKind::Constr(c) => Goal::mk_constr(c.simplify()),
+            GoalKind::Op(o) => Goal::mk_op(o.simplify()),
+            GoalKind::Var(_) => self.clone(),
+            GoalKind::Abs(v, g) => {
+                let g = g.simplify();
+                Goal::mk_abs(v.clone(), g)
+            }
+            GoalKind::App(g1, g2) => {
+                let g1 = g1.simplify();
+                let g2 = g2.simplify();
+                Goal::mk_app(g1, g2)
+            }
+            GoalKind::Conj(g1, g2) => {
+                let g1 = g1.simplify();
+                let g2 = g2.simplify();
+                Goal::mk_conj_opt(g1, g2)
+            }
+            GoalKind::Disj(g1, g2) => {
+                let g1 = g1.simplify();
+                let g2 = g2.simplify();
+                Goal::mk_disj_opt(g1, g2)
+            }
+            GoalKind::Univ(v, g) => {
+                let g = g.simplify();
+                Goal::mk_univ_opt(v.clone(), g)
+            }
+            GoalKind::ITE(c, g1, g2) => {
+                let c = c.simplify();
+                let g1 = g1.simplify();
+                let g2 = g2.simplify();
+                Goal::mk_ite(c, g1, g2)
             }
         }
     }

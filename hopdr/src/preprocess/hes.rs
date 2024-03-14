@@ -223,6 +223,7 @@ pub fn preprocess_for_typed_problem(
         problem = unpack_constr::transform(problem);
     }
     let problem = remove_tmp_var::transform(problem);
+    let problem = boolean_expand::transform(problem);
     problem
 }
 

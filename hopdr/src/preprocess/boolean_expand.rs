@@ -1,5 +1,3 @@
-use z3::ast::Bool;
-
 use super::TypedPreprocessor;
 use crate::formula::hes::{self, GoalKind};
 use crate::formula::{self, Constraint, Ident, Logic, Negation, Op, Top, TyEnv, Type};
@@ -13,10 +11,9 @@ type Goal = hes::Goal<formula::Constraint>;
 //    unimplemented!()
 //}
 
-fn dfs(goal: Goal, mut fvbool: &[Ident], cur: usize) -> Goal {
+fn dfs(goal: Goal, fvbool: &[Ident], cur: usize) -> Goal {
     if cur == fvbool.len() {
-        println!("{}", goal);
-        goal.clone()
+        goal.simplify()
     } else {
         let v = fvbool[cur];
         let g1 = goal.isubst(&v, &Op::one());
@@ -37,12 +34,17 @@ fn handle_goal(goal: &Goal, mut fvbools: Vec<Ident>) -> Goal {
             let g = handle_goal(g, fvbools);
             Goal::mk_univ(v.clone(), g)
         }
+        GoalKind::Abs(v, g) => {
+            let g = handle_goal(g, fvbools);
+            Goal::mk_abs(v.clone(), g)
+        }
         _ => dfs(goal.clone(), &fvbools, 0),
     }
 }
 
 impl TypedPreprocessor for BooleanExpandTransform {
     fn transform_goal(&self, goal: &Goal, t: &Type, env: &mut TyEnv) -> Goal {
+        println!("transform_goal: {}", goal);
         let fvbools = Vec::new();
         handle_goal(goal, fvbools)
     }
