@@ -15,7 +15,7 @@ fn conj_list<'a>(g: &Goal, res: &mut Vec<Goal>) {
     }
 }
 
-fn check_dual(g1: &Goal, g2: &Goal) -> bool {
+pub(super) fn check_dual(g1: &Goal, g2: &Goal) -> bool {
     match (g1.kind(), g2.kind()) {
         (GoalKind::Disj(g11, g12), GoalKind::Disj(g21, g22)) => {
             let c1 = match (g11.kind(), g12.kind()) {
