@@ -1,8 +1,7 @@
 use super::TypedPreprocessor;
 use crate::formula::hes::{self, GoalKind};
-use crate::formula::{self, Constraint, Ident, Logic, Negation, Op, Top, TyEnv, Type};
+use crate::formula::{self, Ident, Op, TyEnv, Type};
 
-use std::collections::HashSet;
 pub struct BooleanExpandTransform {}
 
 type Goal = hes::Goal<formula::Constraint>;
@@ -43,14 +42,15 @@ fn handle_goal(goal: &Goal, mut fvbools: Vec<Ident>) -> Goal {
 }
 
 impl TypedPreprocessor for BooleanExpandTransform {
-    fn transform_goal(&self, goal: &Goal, t: &Type, env: &mut TyEnv) -> Goal {
-        println!("transform_goal: {}", goal);
+    fn transform_goal(&self, goal: &Goal, _t: &Type, _env: &mut TyEnv) -> Goal {
+        debug!("transform_goal: {}", goal);
         let fvbools = Vec::new();
         handle_goal(goal, fvbools)
     }
 }
 
 pub fn transform(problem: hes::Problem<formula::Constraint>) -> hes::Problem<formula::Constraint> {
+    debug!("boolean expand transform");
     let t = BooleanExpandTransform {};
     t.transform(problem)
 }
@@ -86,4 +86,5 @@ fn test_boolean_transform() {
     println!("{}", g);
     let g_after = handle_goal(&g, Vec::new());
     println!("{}", g_after);
+    assert!(false);
 }

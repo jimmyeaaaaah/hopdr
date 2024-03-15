@@ -42,6 +42,7 @@ impl TypedPreprocessor for ReorderDisjTransform {
             hes::GoalKind::Disj(_, _) => {
                 let mut disjs = Vec::new();
                 list_disj(goal, &mut disjs);
+                let disjs = super::reorder_conj::filter_redundant(disjs);
                 disjs
                     .into_iter()
                     .rev()

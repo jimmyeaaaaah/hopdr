@@ -1,7 +1,6 @@
 use super::TypedPreprocessor;
 use crate::formula::hes::{self, GoalKind};
 use crate::formula::{self, Logic, Negation, Top};
-
 pub struct ReorderConjTransform {}
 
 type Goal = hes::Goal<formula::Constraint>;
@@ -33,6 +32,16 @@ fn check_dual(g1: &Goal, g2: &Goal) -> bool {
     }
 }
 
+pub(super) fn filter_redundant(conjs: Vec<Goal>) -> Vec<Goal> {
+    let mut filtered = Vec::new();
+    for g in conjs {
+        if filtered.iter().find(|g2| &g == *g2).is_none() {
+            filtered.push(g);
+        }
+    }
+    filtered
+}
+
 impl TypedPreprocessor for ReorderConjTransform {
     fn transform_goal(
         &self,
@@ -54,6 +63,9 @@ impl TypedPreprocessor for ReorderConjTransform {
             hes::GoalKind::Conj(_, _) => {
                 let mut conjs = Vec::new();
                 conj_list(goal, &mut conjs);
+
+                let mut conjs = filter_redundant(conjs);
+
                 let mut res = hes::Goal::mk_true();
                 while conjs.len() > 0 {
                     let g1 = conjs.pop().unwrap();
