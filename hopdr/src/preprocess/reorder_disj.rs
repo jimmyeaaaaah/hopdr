@@ -1,6 +1,6 @@
 use super::TypedPreprocessor;
 use crate::formula::hes::{self, GoalKind};
-use crate::formula::{self, Bot, Logic};
+use crate::formula::{self, Bot, Logic, Negation, Top};
 
 pub struct ReorderDisjTransform {}
 
@@ -14,6 +14,25 @@ fn list_disj<'a>(g: &Goal, res: &mut Vec<Goal>) {
         }
         _ => res.push(g.clone()),
     }
+}
+
+fn check_contains_dual(disj: &[Goal]) -> bool {
+    for g in disj.iter() {
+        let c = match g.kind() {
+            GoalKind::Constr(c) => c,
+            _ => continue,
+        };
+        for g2 in disj.iter() {
+            let c2 = match g2.kind() {
+                GoalKind::Constr(c) => c,
+                _ => continue,
+            };
+            if &c.negate().unwrap() == c2 {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 impl TypedPreprocessor for ReorderDisjTransform {
@@ -43,6 +62,9 @@ impl TypedPreprocessor for ReorderDisjTransform {
                 let mut disjs = Vec::new();
                 list_disj(goal, &mut disjs);
                 let disjs = super::reorder_conj::filter_redundant(disjs);
+                if check_contains_dual(&disjs) {
+                    return Goal::mk_true();
+                }
                 disjs
                     .into_iter()
                     .rev()
