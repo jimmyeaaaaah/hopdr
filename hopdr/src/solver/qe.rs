@@ -16,7 +16,6 @@ pub trait QESolver {
         debug!("trying quantifier elimination: {formula}");
         let smt_string = self.to_smt(formula);
         let result = self.solve_string(smt_string);
-        debug!("result string: {result}");
         let r = self
             .parse(&result)
             .unwrap_or_else(|_| panic!("qe result parse failed: {}", result));
@@ -421,7 +420,7 @@ impl QESolver for UltimateEliminator {
     }
 
     fn solve_string(&self, s: String) -> String {
-        debug!("smt2 string: {s}");
+        debug!("smt2: {s}");
         ultimate_solver(s)
     }
 

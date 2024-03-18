@@ -226,7 +226,7 @@ pub fn preprocess_for_typed_problem(
     let problem = boolean_expand::transform(problem);
     let problem = reorder_disj::transform(problem);
     let problem = reorder_conj::transform(problem);
-    println!("transformed: {}", problem);
+    debug!("transformed: {}", problem);
     problem
 }
 
