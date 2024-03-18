@@ -292,7 +292,9 @@ pub fn default_solver() -> Box<dyn SMTSolver> {
     smt_solver(SMTSolverType::Z3)
 }
 
-pub fn z3_solver(smt_string: String) -> String {
+/// Invoke an SMT solver with the command `<cmd> filename` where the contents of
+/// the file is `smt_string`.
+fn invoke_smt_solver(cmd: &str, smt_string: String) -> String {
     let f = save_smt2(smt_string);
     let args = vec![f.path().to_str().unwrap()];
     // debug
@@ -304,7 +306,7 @@ pub fn z3_solver(smt_string: String) -> String {
         crate::stat::smt::start_clock();
     }
 
-    let out = util::exec_with_timeout("z3", &args, Duration::from_secs(1));
+    let out = util::exec_with_timeout(cmd, &args, Duration::from_secs(1));
 
     #[cfg(not(debug_assertions))]
     {
@@ -312,6 +314,14 @@ pub fn z3_solver(smt_string: String) -> String {
     }
 
     String::from_utf8(out).unwrap()
+}
+
+pub fn z3_solver(smt_string: String) -> String {
+    invoke_smt_solver("z3", smt_string)
+}
+
+pub fn ultimate_solver(smt_string: String) -> String {
+    invoke_smt_solver("ultimate_eliminator", smt_string)
 }
 
 impl AutoSolver {
