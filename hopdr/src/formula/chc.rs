@@ -909,8 +909,7 @@ fn merge_chcs_with_same_head(
         let constraint = group_eq_constrs(&chc.chc.body.constraint, &mut eqs);
         let predicates = chc.chc.body.predicates.clone();
 
-        let (constraint, predicates) =
-            remove_fvs(constraint, predicates, &chc.free_variables, Vec::new());
+        let (constraint, predicates) = remove_fvs(constraint, predicates, &chc.free_variables, eqs);
 
         let body = CHCBody {
             constraint,
