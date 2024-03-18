@@ -4,8 +4,10 @@ use std::fmt;
 use std::vec;
 
 use crate::formula;
+use crate::formula::FirstOrderLogic;
 use crate::formula::Type;
 use crate::pdr::rtype::Refinement;
+use crate::solver;
 use crate::util::Pretty;
 
 use super::pcsp;
@@ -791,6 +793,45 @@ fn finalize_replacement(
     (constraint, predicates)
 }
 
+fn simplify_by_qe(fvs: &Vec<Variable>, constraint: &Constraint, predicates: &[Atom]) -> Constraint {
+    fn remove_quantifier(c: &Constraint) -> Constraint {
+        match c.kind() {
+            formula::ConstraintExpr::True
+            | formula::ConstraintExpr::False
+            | formula::ConstraintExpr::Pred(_, _) => c.clone(),
+            formula::ConstraintExpr::Conj(c1, c2) => {
+                let c1 = remove_quantifier(c1);
+                let c2 = remove_quantifier(c2);
+                Constraint::mk_conj(c1, c2)
+            }
+            formula::ConstraintExpr::Disj(c1, c2) => {
+                let c1 = remove_quantifier(c1);
+                let c2 = remove_quantifier(c2);
+                Constraint::mk_disj(c1, c2)
+            }
+            formula::ConstraintExpr::Quantifier(q, _, c) if q.is_existential() => c.clone(),
+            formula::ConstraintExpr::Quantifier(q, x, c) => {
+                Constraint::mk_quantifier(*q, x.clone(), remove_quantifier(c))
+            }
+        }
+    }
+    let mut used_by_pred = HashSet::new();
+    for p in predicates.iter() {
+        p.fv_with_vec(&mut used_by_pred);
+    }
+    let mut constraint = constraint.clone();
+    for fv in fvs.iter() {
+        if used_by_pred.contains(&fv.id) {
+            continue;
+        }
+        constraint =
+            Constraint::mk_quantifier_int(formula::QuantifierKind::Existential, fv.id, constraint);
+    }
+    let ue = solver::qe::qe_solver(solver::SMTSolverType::UltimateEliminator);
+    let c = ue.solve(&constraint);
+    remove_quantifier(&c)
+}
+
 fn filter_and_append_fvs(
     free_variables: &mut Vec<Variable>,
     old_fvs: &Vec<Variable>,
@@ -802,6 +843,25 @@ fn filter_and_append_fvs(
         }
     }
 }
+
+/// remove fvs as much as possible using eq constraint and external QE solver
+fn remove_fvs(
+    mut constraint: Constraint,
+    mut predicates: Vec<Atom>,
+    fvs: &Vec<Variable>,
+    mut eqs: Vec<(Op, Op)>,
+) -> (Constraint, Vec<Atom>) {
+    // remove fvs as much as possible
+    for fv in fvs.iter() {
+        replace_by_eq(&mut constraint, &mut predicates, &mut eqs, &fv.id)
+    }
+    let (constraint, predicates) = finalize_replacement(eqs, constraint, predicates);
+
+    // use *external* QE solver to remove free variables more drastically
+    let constraint = simplify_by_qe(fvs, &constraint, &predicates);
+    (constraint, predicates)
+}
+
 /// Merge CHCs that have the same head predicate.
 /// Divide goal formulas and clauses
 ///
@@ -839,14 +899,12 @@ fn merge_chcs_with_same_head(
             }
         };
 
-        let mut constraint = group_eq_constrs(&chc.chc.body.constraint, &mut eqs);
-        let mut predicates = chc.chc.body.predicates.clone();
+        let constraint = group_eq_constrs(&chc.chc.body.constraint, &mut eqs);
+        let predicates = chc.chc.body.predicates.clone();
 
-        // remove fvs as much as possible
-        for fv in chc.free_variables.iter() {
-            replace_by_eq(&mut constraint, &mut predicates, &mut eqs, &fv.id);
-        }
-        let (constraint, predicates) = finalize_replacement(eqs, constraint, predicates);
+        let (constraint, predicates) =
+            remove_fvs(constraint, predicates, &chc.free_variables, Vec::new());
+
         let body = CHCBody {
             constraint,
             predicates,
@@ -968,7 +1026,6 @@ fn merge_chcs_with_same_head_linear(
     // 3. rename vairables so that all the chcs have the same (non-free) variables
     for echc in chcs {
         let chc = &echc.chc;
-        let fvs = chc.fv();
         let (mut eqs, body_predicates) = if chc.body.predicates.len() == 1 {
             let atom = &chc.body.predicates[0];
             let varnames = arguments.get(&atom.predicate).unwrap();
@@ -989,18 +1046,17 @@ fn merge_chcs_with_same_head_linear(
             (Vec::new(), Vec::new())
         };
 
-        let mut constraint = group_eq_constrs(&chc.body.constraint, &mut eqs);
+        let constraint = group_eq_constrs(&chc.body.constraint, &mut eqs);
         // use head's predicate will be substituted
-        let mut predicates = match &chc.head {
+        let predicates = match &chc.head {
             CHCHead::Constraint(_) => Vec::new(),
             CHCHead::Predicate(a) => vec![a.clone()],
         };
 
         // remove fvs as much as possible
-        for fv in fvs.iter() {
-            replace_by_eq(&mut constraint, &mut predicates, &mut eqs, fv)
-        }
-        let (constraint, predicates) = finalize_replacement(eqs, constraint, predicates);
+        let (constraint, predicates) =
+            remove_fvs(constraint, predicates, &echc.free_variables, eqs);
+
         let body = CHCBody {
             constraint,
             predicates: body_predicates,
