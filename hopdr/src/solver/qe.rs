@@ -7,11 +7,39 @@ use crate::formula::{Bot, Constraint, Fv, Ident, Logic, Negation, Op, OpKind, Pr
 use lexpr::Value;
 use lexpr::{self, Cons};
 
-pub struct QESolver {}
+pub trait QESolver {
+    fn to_smt(&self, formula: &Constraint) -> String;
+    fn solve_string(&self, s: String) -> String;
+    fn parse(&self, s: &str) -> Result<Constraint, lexpr::parse::Error>;
 
-pub fn qe_solver(ty: SMTSolverType) -> QESolver {
+    fn solve(&self, formula: &Constraint) -> Constraint {
+        debug!("trying quantifier elimination: {formula}");
+        let smt_string = self.to_smt(formula);
+        let result = self.solve_string(smt_string);
+        debug!("result string: {result}");
+        let r = self
+            .parse(&result)
+            .unwrap_or_else(|_| panic!("qe result parse failed: {}", result));
+        debug!("result: {r}");
+        r
+    }
+    fn model_quantifer_elimination(&self, model: &mut Model) {
+        for (_, (_, c)) in model.model.iter_mut() {
+            let (qs, _) = c.to_pnf_raw();
+            if qs.iter().any(|(q, _)| q.is_existential()) {
+                *c = self.solve(c);
+            }
+        }
+    }
+}
+
+pub struct Z3 {}
+pub struct UltimateEliminator {}
+
+pub fn qe_solver(ty: SMTSolverType) -> Box<dyn QESolver> {
     match ty {
-        SMTSolverType::Z3 | SMTSolverType::Auto => QESolver {},
+        SMTSolverType::Z3 | SMTSolverType::Auto => Box::new(Z3 {}),
+        SMTSolverType::UltimateEliminator => Box::new(UltimateEliminator {}),
         SMTSolverType::CVC => unimplemented!(),
     }
 }
@@ -254,7 +282,11 @@ fn test_parse_constraint() {
     assert!(c.alpha_equiv(&Constraint::mk_false()));
 }
 
-impl QESolver {
+pub fn default_solver() -> Box<dyn QESolver> {
+    qe_solver(SMTSolverType::Z3)
+}
+
+impl QESolver for Z3 {
     fn to_smt(&self, formula: &Constraint) -> String {
         let fvs = formula.fv();
         let declare_funs = fvs
@@ -298,27 +330,22 @@ impl QESolver {
         };
         Ok(c)
     }
-    pub fn default_solver() -> QESolver {
-        qe_solver(SMTSolverType::Z3)
+    fn solve_string(&self, s: String) -> String {
+        z3_solver(s)
     }
-    pub fn solve(&self, formula: &Constraint) -> Constraint {
-        debug!("trying quantifier elimination: {formula}");
-        let smt_string = self.to_smt(formula);
-        let result = z3_solver(smt_string);
-        debug!("result string: {result}");
-        let r = self
-            .parse(&result)
-            .unwrap_or_else(|_| panic!("qe result parse failed: {}", result));
-        debug!("result: {r}");
-        r
+}
+
+impl QESolver for UltimateEliminator {
+    fn to_smt(&self, formula: &Constraint) -> String {
+        todo!()
     }
-    pub fn model_quantifer_elimination(&self, model: &mut Model) {
-        for (_, (_, c)) in model.model.iter_mut() {
-            let (qs, _) = c.to_pnf_raw();
-            if qs.iter().any(|(q, _)| q.is_existential()) {
-                *c = self.solve(c);
-            }
-        }
+
+    fn solve_string(&self, s: String) -> String {
+        todo!()
+    }
+
+    fn parse(&self, s: &str) -> Result<Constraint, lexpr::parse::Error> {
+        todo!()
     }
 }
 

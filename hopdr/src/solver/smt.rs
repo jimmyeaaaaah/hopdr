@@ -284,7 +284,7 @@ pub fn smt_solver(s: SMTSolverType) -> Box<dyn SMTSolver> {
     match s {
         SMTSolverType::Z3 => Box::new(Z3Solver {}),
         SMTSolverType::Auto => Box::new(AutoSolver::new()),
-        SMTSolverType::CVC => panic!("not supported"),
+        SMTSolverType::CVC | SMTSolverType::UltimateEliminator => panic!("not supported"),
     }
 }
 
