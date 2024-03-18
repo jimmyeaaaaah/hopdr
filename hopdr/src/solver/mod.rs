@@ -13,6 +13,7 @@ pub mod util;
 pub enum SMTSolverType {
     Z3,
     CVC,
+    UltimateEliminator,
     Auto,
 }
 

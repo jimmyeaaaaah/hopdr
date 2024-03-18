@@ -806,7 +806,7 @@ pub fn solve_old(chc: &Vec<CHC>, _config: &InterpolationConfig) -> Model {
     let chc: Vec<_> = chc.iter().map(|c| c.fresh_variables()).collect();
     match solver.solve(&chc) {
         solver::chc::CHCResult::Sat(mut m) => {
-            let qe_solver = solver::qe::QESolver::default_solver();
+            let qe_solver = solver::qe::default_solver();
             qe_solver.model_quantifer_elimination(&mut m);
             m
         }
@@ -850,7 +850,7 @@ pub fn solve(chc: &Vec<CHC>, config: &InterpolationConfig) -> Model {
             let mut solver = solver::chc::interpolating_solver();
             match solver.solve(chc) {
                 solver::chc::CHCResult::Sat(mut m) => {
-                    let qe_solver = solver::qe::QESolver::default_solver();
+                    let qe_solver = solver::qe::default_solver();
                     qe_solver.model_quantifer_elimination(&mut m);
                     m
                 }
