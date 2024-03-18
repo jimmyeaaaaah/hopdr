@@ -414,10 +414,14 @@ impl QESolver for UltimateEliminator {
         let fvs = formula.fv();
         let declare_funs = gen_declare_fun(fvs.iter());
         let c_str = constraint_to_smt2_inner(formula, SMTSolverType::UltimateEliminator);
-        format!("{}\n (simplify {})\n", declare_funs, c_str)
+        format!(
+            "(set-info :smt-lib-version 2.6)\n(set-logic LIA)\n{}\n (simplify {})\n",
+            declare_funs, c_str
+        )
     }
 
     fn solve_string(&self, s: String) -> String {
+        debug!("smt2 string: {s}");
         ultimate_solver(s)
     }
 
