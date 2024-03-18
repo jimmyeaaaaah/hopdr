@@ -820,12 +820,19 @@ fn simplify_by_qe(fvs: &Vec<Variable>, constraint: &Constraint, predicates: &[At
         p.fv_with_vec(&mut used_by_pred);
     }
     let mut constraint = constraint.clone();
+    let mut flag = false;
+    let actual_fvs = constraint.fv();
     for fv in fvs.iter() {
-        if used_by_pred.contains(&fv.id) {
+        if used_by_pred.contains(&fv.id) || !actual_fvs.contains(&fv.id) {
             continue;
         }
+        flag = true;
         constraint =
             Constraint::mk_quantifier_int(formula::QuantifierKind::Existential, fv.id, constraint);
+    }
+    if !flag {
+        // there is no variable to be removed
+        return constraint;
     }
     let ue = solver::qe::qe_solver(solver::SMTSolverType::UltimateEliminator);
     let c = ue.solve(&constraint);
@@ -996,9 +1003,9 @@ pub fn translate_to_hes(
     Problem { clauses, top }
 }
 
-/// I didn't come up with the way to merge the following linear-case and non-linear case
+/// I didn't come up with the way to merge the translations for linear-case and non-linear case
 /// So I wrote two different functions, but essentially they do the same thing.
-
+///
 /// Assumption: chcs are linear
 /// Therefore, each clause is a triple of (a1, c, a2)  where a1 and a2 are atoms and
 /// c is a constraint such that a1 /\ c => a2. (a1 and a2 can be T).
@@ -1015,10 +1022,12 @@ fn merge_chcs_with_same_head_linear(
     Vec<ExtendedCHC<Atom, Constraint>>,
     HashMap<Ident, Vec<ExtendedCHC<Atom, Constraint>>>,
 ) {
-    // 2. group chcs that have the same head
+    // map for each predicate name to its clauses
     let mut map = HashMap::new();
+    // vector for constraints
     let mut constraints = Vec::new();
 
+    // 1. generate new argument variables for each predicate
     let arguments: HashMap<Ident, Vec<Ident>> =
         normalize_constraint_and_generate_new_args(&mut chcs);
 
@@ -1026,6 +1035,9 @@ fn merge_chcs_with_same_head_linear(
     // 3. rename vairables so that all the chcs have the same (non-free) variables
     for echc in chcs {
         let chc = &echc.chc;
+
+        // generate equations xi = oi for each argument of the predicate where
+        // oi is the original argument
         let (mut eqs, body_predicates) = if chc.body.predicates.len() == 1 {
             let atom = &chc.body.predicates[0];
             let varnames = arguments.get(&atom.predicate).unwrap();
@@ -1057,6 +1069,7 @@ fn merge_chcs_with_same_head_linear(
         let (constraint, predicates) =
             remove_fvs(constraint, predicates, &echc.free_variables, eqs);
 
+        // generate new body and head
         let body = CHCBody {
             constraint,
             predicates: body_predicates,
@@ -1068,13 +1081,17 @@ fn merge_chcs_with_same_head_linear(
             CHCHead::Constraint(Constraint::mk_false())
         };
         let chc = CHC { head, body };
+
+        // calculate free variables
         let mut free_variables = Vec::new();
         filter_and_append_fvs(&mut free_variables, &echc.free_variables, &chc.fv());
+
         let echc = ExtendedCHC {
             free_variables,
             chc,
         };
 
+        // if the predicate is a goal, then pushes it to constraints; otherwise insert it to map
         if echc.chc.body.predicates.len() == 0 {
             constraints.push(echc);
         } else {
