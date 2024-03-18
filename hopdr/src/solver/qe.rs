@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use super::smt::{constraint_to_smt2_inner, encode_ident, z3_solver};
+use super::smt::{constraint_to_smt2_inner, encode_ident, ultimate_solver, z3_solver};
 use super::SMTSolverType;
 use crate::formula::chc::Model;
 use crate::formula::{Bot, Constraint, Fv, Ident, Logic, Negation, Op, OpKind, PredKind, Top};
@@ -286,14 +286,16 @@ pub fn default_solver() -> Box<dyn QESolver> {
     qe_solver(SMTSolverType::Z3)
 }
 
+fn gen_declare_fun<'a>(itr: impl Iterator<Item = &'a Ident> + 'a) -> String {
+    itr.map(|ident| format!("(declare-fun {} () Int)", encode_ident(ident)))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 impl QESolver for Z3 {
     fn to_smt(&self, formula: &Constraint) -> String {
         let fvs = formula.fv();
-        let declare_funs = fvs
-            .iter()
-            .map(|ident| format!("(declare-fun {} () Int)", encode_ident(ident)))
-            .collect::<Vec<_>>()
-            .join("\n");
+        let declare_funs = gen_declare_fun(fvs.iter());
         let c_str = constraint_to_smt2_inner(formula, SMTSolverType::Z3);
 
         format!(
@@ -332,20 +334,6 @@ impl QESolver for Z3 {
     }
     fn solve_string(&self, s: String) -> String {
         z3_solver(s)
-    }
-}
-
-impl QESolver for UltimateEliminator {
-    fn to_smt(&self, formula: &Constraint) -> String {
-        todo!()
-    }
-
-    fn solve_string(&self, s: String) -> String {
-        todo!()
-    }
-
-    fn parse(&self, s: &str) -> Result<Constraint, lexpr::parse::Error> {
-        todo!()
     }
 }
 
@@ -421,9 +409,55 @@ fn test_z3_qe_result() {
     z3_solver.parse(s).unwrap();
 }
 
+impl QESolver for UltimateEliminator {
+    fn to_smt(&self, formula: &Constraint) -> String {
+        let fvs = formula.fv();
+        let declare_funs = gen_declare_fun(fvs.iter());
+        let c_str = constraint_to_smt2_inner(formula, SMTSolverType::UltimateEliminator);
+        format!("{}\n (simplify {})\n", declare_funs, c_str)
+    }
+
+    fn solve_string(&self, s: String) -> String {
+        ultimate_solver(s)
+    }
+
+    fn parse(&self, s: &str) -> Result<Constraint, lexpr::parse::Error> {
+        debug!("qe parsing: {s}");
+        // filter lines `success` from s
+        let s = s
+            .lines()
+            .filter(|x| *x != "success")
+            .collect::<Vec<_>>()
+            .join("\n");
+        debug!("filtered: {s}");
+
+        let x = lexpr::from_str(&s)?;
+        let c = parse_constraint(&x, &mut HashMap::new());
+        Ok(c)
+    }
+}
+
+#[test]
+fn test_ultimate_parser() {
+    let s = "success
+success
+success
+success
+success
+success
+success
+(let ((.cse2 (= xx_1 1))) (let ((.cse0 (not .cse2))) (and (or .cse0 (= xx_2 (+ xx_3 1))) (let ((.cse1 (= xx_2 0))) (or (and (not .cse1) .cse2) (and .cse0 .cse1 (= xx_5 0)))) (or .cse0 (= xx_5 (+ xx_4 1))))))";
+    let ue_solver = qe_solver(SMTSolverType::UltimateEliminator);
+    let c = ue_solver.parse(s).unwrap();
+    debug!("result: {c}");
+}
+
 #[test]
 fn test_quantifier_elimination() {
     use crate::formula::{FirstOrderLogic, QuantifierKind};
+
+    let solver_types = vec![SMTSolverType::Z3, SMTSolverType::UltimateEliminator];
+
     // formula: ∃z. (z ≥ 1 ∧ x = 0) ∧ y − z ≥ 0
     let x = Ident::fresh();
     let y = Ident::fresh();
@@ -433,8 +467,10 @@ fn test_quantifier_elimination() {
     let c3 = Constraint::mk_geq(Op::mk_sub(Op::mk_var(y), Op::mk_var(z)), Op::mk_const(0));
     let c = Constraint::mk_conj(Constraint::mk_conj(c1, c2), c3);
     let c = Constraint::mk_quantifier_int(QuantifierKind::Existential, z, c);
-    let z3_solver = qe_solver(SMTSolverType::Z3);
-    let result = z3_solver.solve(&c);
-    let (v, _) = result.to_pnf_raw();
-    assert_eq!(v.len(), 0);
+    for t in solver_types {
+        let z3_solver = qe_solver(t);
+        let result = z3_solver.solve(&c);
+        let (v, _) = result.to_pnf_raw();
+        assert_eq!(v.len(), 0);
+    }
 }
