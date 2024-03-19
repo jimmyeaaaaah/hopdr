@@ -3,7 +3,7 @@ use super::safety::check_dual;
 /// For example, a formula ∀x. x != 0 \/ P(x, y) can be translated to P(0, y).
 use super::TypedPreprocessor;
 use crate::formula::hes::{self, GoalKind};
-use crate::formula::{self, Constraint, FormulaSize, Logic, Negation};
+use crate::formula::{self, Bot, Constraint, FormulaSize, Logic, Negation, Top};
 
 pub struct FindITETransform {}
 
@@ -18,28 +18,26 @@ fn get_smaller_condition(c1: Constraint, c2: Constraint) -> Constraint {
     }
 }
 
-fn get_ite_triple<'a>(
-    g11: &'a Goal,
-    g12: &'a Goal,
-    g21: &'a Goal,
-    g22: &'a Goal,
-) -> Option<(Constraint, &'a Goal, &'a Goal)> {
-    debug!("disjs: ({g11}) | ({g12}) vs ({g21}) | ({g22})");
-    if check_dual(g11, g21) {
-        let c = get_smaller_condition(g11.clone().into(), g21.clone().into());
-        Some((c, g12, g22))
-    } else if check_dual(g11, g22) {
-        let c = get_smaller_condition(g11.clone().into(), g22.clone().into());
-        Some((c, g12, g21))
-    } else if check_dual(g12, g21) {
-        let c = get_smaller_condition(g12.clone().into(), g21.clone().into());
-        Some((c, g11, g22))
-    } else if check_dual(g12, g22) {
-        let c = get_smaller_condition(g12.clone().into(), g22.clone().into());
-        Some((c, g11, g21))
-    } else {
-        return None;
+fn find_match(gs: &Vec<Goal>, gs2: &Vec<Goal>) -> Option<(Constraint, Goal, Goal)> {
+    fn aux(gs: &Vec<Goal>, idx: usize) -> Goal {
+        gs.iter()
+            .enumerate()
+            .filter(|(k, _)| *k != idx)
+            .fold(Goal::mk_false(), |acc, (_, g)| {
+                Goal::mk_disj_opt(acc, g.clone())
+            })
     }
+    for (i, g1) in gs.iter().enumerate() {
+        for (j, g2) in gs2.iter().enumerate() {
+            if check_dual(g1, g2) {
+                let c = get_smaller_condition(g1.clone().into(), g2.clone().into());
+                let g1 = aux(gs, i);
+                let g2 = aux(gs2, j);
+                return Some((c.clone(), g1, g2));
+            }
+        }
+    }
+    None
 }
 
 fn f(g: &Goal) -> Goal {
@@ -64,31 +62,35 @@ fn f(g: &Goal) -> Goal {
             let g2 = f(g2);
             Goal::mk_ite(c.clone(), g1, g2)
         }
-
-        GoalKind::Conj(g1, g2) => match (g1.kind(), g2.kind()) {
-            (GoalKind::Disj(g11, g12), GoalKind::Disj(g21, g22)) => {
-                match get_ite_triple(g11, g12, g21, g22) {
-                    Some((c, g1, g2)) => Goal::mk_ite(c, f(g1), f(g2)),
-                    None => Goal::mk_conj(f(g1), f(g2)),
-                }
-            }
-            (GoalKind::Disj(g11, g12), GoalKind::Constr(c))
-            | (GoalKind::Constr(c), GoalKind::Disj(g11, g12)) => match c.kind() {
-                formula::ConstraintExpr::Disj(c1, c2) => {
-                    match get_ite_triple(
-                        g11,
-                        g12,
-                        &Goal::mk_constr(c1.clone()),
-                        &Goal::mk_constr(c2.clone()),
-                    ) {
-                        Some((c, g1, g2)) => Goal::mk_ite(c, f(g1), f(g2)),
-                        None => Goal::mk_conj(f(g1), f(g2)),
+        GoalKind::Conj(_, _) => {
+            let mut gs: Vec<_> = g
+                .vec_of_conjs()
+                .iter()
+                .map(|g| f(g).vec_of_disjs().into_iter().cloned().collect())
+                .collect();
+            let mut gs2 = Vec::new();
+            while let Some(g) = gs.pop() {
+                let mut found = None;
+                for (i, g2) in gs.iter().enumerate() {
+                    if let Some((c, g, g2)) = find_match(&g, g2) {
+                        found = Some((i, c, g, g2));
+                        debug!("found");
+                        break;
                     }
                 }
-                _ => Goal::mk_conj(f(g1), f(g2)),
-            },
-            _ => Goal::mk_conj(f(g1), f(g2)),
-        },
+                if let Some((i, c, g, g2)) = found {
+                    gs.remove(i);
+                    gs2.push(Goal::mk_ite(c, g, g2));
+                } else {
+                    gs2.push(
+                        g.into_iter()
+                            .fold(Goal::mk_false(), |acc, g| Goal::mk_disj_opt(acc, g.clone())),
+                    );
+                }
+            }
+            gs2.into_iter()
+                .fold(Goal::mk_true(), |acc, g| Goal::mk_conj_opt(acc, g))
+        }
         GoalKind::Disj(g1, g2) => {
             let g1 = f(g1);
             let g2 = f(g2);
@@ -154,8 +156,8 @@ fn test_transform() {
     for g in gs {
         println!("before: {g}");
         let g = f(&g);
-        assert!(g.is_ite());
         println!("after: {g}");
+        assert!(g.is_ite());
     }
 
     let v = Variable::fresh_int();
