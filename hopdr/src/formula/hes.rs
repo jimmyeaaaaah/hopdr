@@ -388,21 +388,21 @@ impl<C, T> GoalBase<C, T> {
         }
     }
     /// internal function used by vec_conj_disj_inner
-    fn vec_conj_disj_inner<'a, F>(&'a self, v: &mut Vec<&'a Self>, f: F)
+    fn vec_conj_disj_inner<'a, F>(&'a self, v: &mut Vec<&'a Self>, f: &F)
     where
         F: Fn(&Self) -> either::Either<&Self, (&Self, &Self)>,
     {
         match f(self) {
             either::Either::Left(g) => v.push(g),
             either::Either::Right((g1, g2)) => {
-                g1.vec_conj_disj_inner(v, &f);
-                g2.vec_conj_disj_inner(v, &f);
+                g1.vec_conj_disj_inner(v, f);
+                g2.vec_conj_disj_inner(v, f);
             }
         }
     }
     pub fn vec_of_conjs(&self) -> Vec<&Self> {
         let mut r = Vec::new();
-        self.vec_conj_disj_inner(&mut r, |g| match g.kind() {
+        self.vec_conj_disj_inner(&mut r, &|g| match g.kind() {
             GoalKind::Constr(_)
             | GoalKind::Op(_)
             | GoalKind::Var(_)
@@ -417,7 +417,7 @@ impl<C, T> GoalBase<C, T> {
     }
     pub fn vec_of_disjs(&self) -> Vec<&Self> {
         let mut r = Vec::new();
-        self.vec_conj_disj_inner(&mut r, |g| match g.kind() {
+        self.vec_conj_disj_inner(&mut r, &|g| match g.kind() {
             GoalKind::Constr(_)
             | GoalKind::Op(_)
             | GoalKind::Var(_)
