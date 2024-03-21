@@ -56,13 +56,19 @@ fn parse_opkind(v: &Value) -> OpKind {
         "+" => OpKind::Add,
         "-" => OpKind::Sub,
         "*" => OpKind::Mul,
+        "div" => OpKind::Div,
         _ => panic!("failed to handle operator: {}", x),
     }
 }
 
-fn parse_op(v: &Value) -> Op {
+fn parse_op(v: &Value, env: &mut Env) -> Op {
     match v {
         Value::Number(n) => Op::mk_const(n.as_i64().unwrap()),
+        Value::Symbol(x) if env.contains_key(x.as_ref()) => {
+            let t = env.get(x.as_ref()).unwrap();
+            let mut e = t.env.clone();
+            parse_op(&t.expr, &mut e)
+        }
         Value::Symbol(x) => Op::mk_var(parse_variable(x)),
         Value::Cons(cons) => {
             let car = cons.car();
@@ -72,7 +78,7 @@ fn parse_op(v: &Value) -> Op {
                 .as_cons()
                 .unwrap_or_else(|| panic!("parse error: {:?}", v))
                 .iter()
-                .map(|v| parse_op(v.car()))
+                .map(|v| parse_op(v.car(), env))
                 .collect();
 
             // handle case (- 1)
@@ -80,11 +86,10 @@ fn parse_op(v: &Value) -> Op {
                 args = vec![Op::zero(), args[0].clone()];
             }
             // TODO: args.len() > 2
-            if args.len() > 2 {
-                panic!("failed to parse: {}", v)
-            }
-            assert_eq!(args.len(), 2);
-            Op::mk_bin_op(opkind, args[0].clone(), args[1].clone())
+            assert!(args.len() >= 2);
+            args.iter()
+                .skip(1)
+                .fold(args[0].clone(), |x, y| Op::mk_bin_op(opkind, x, y.clone()))
         }
         Value::Nil
         | Value::Null
@@ -100,10 +105,11 @@ fn parse_op(v: &Value) -> Op {
 #[test]
 fn test_parse_op() {
     use crate::formula::AlphaEquivalence;
+    let env = &mut HashMap::new();
     let s = "(+ x_x1 1)";
     let x = Ident::fresh();
     let o1 = Op::mk_add(Op::mk_var(x), Op::mk_const(1));
-    let o2 = parse_op(&lexpr::from_str(s).unwrap());
+    let o2 = parse_op(&lexpr::from_str(s).unwrap(), env);
     assert!(o1.alpha_equiv(&o2));
 
     let s = "(- x_x2 (+ x_x1 1))";
@@ -111,12 +117,12 @@ fn test_parse_op() {
     let x2 = Ident::fresh();
     let o1 = Op::mk_add(Op::mk_var(x1), Op::mk_const(1));
     let o1 = Op::mk_sub(Op::mk_var(x2), o1);
-    let o2 = parse_op(&lexpr::from_str(s).unwrap());
+    let o2 = parse_op(&lexpr::from_str(s).unwrap(), env);
     assert!(o1.alpha_equiv(&o2));
 
     let s = "(* (- 1) xx_2978)";
     let o1 = Op::mk_mul(Op::mk_sub(Op::mk_const(0), Op::mk_const(1)), Op::mk_var(x1));
-    let o2 = parse_op(&lexpr::from_str(s).unwrap());
+    let o2 = parse_op(&lexpr::from_str(s).unwrap(), env);
     assert!(o1.alpha_equiv(&o2));
 }
 
@@ -130,7 +136,16 @@ fn parse_predicate(kind_str: &str) -> PredKind {
         _ => panic!("unknown operator: {}", kind_str),
     }
 }
-fn parse_let_arg<'a>(v: &'a Value, env: &mut HashMap<String, Constraint>) -> (String, Constraint) {
+
+#[derive(Clone, Debug)]
+struct Thunk {
+    expr: Value,
+    env: Env,
+}
+
+type Env = HashMap<String, Box<Thunk>>;
+
+fn parse_let_arg<'a>(v: &'a Value) -> (String, Value) {
     debug!("let arg: {:?}", v);
     let cons = v
         .as_cons()
@@ -140,10 +155,10 @@ fn parse_let_arg<'a>(v: &'a Value, env: &mut HashMap<String, Constraint>) -> (St
         .car()
         .as_symbol()
         .unwrap_or_else(|| panic!("parse error: {:?}", v));
-    let expr = parse_constraint(cons.cdr().as_cons().unwrap().car(), env);
-    (varname.to_string(), expr)
+    let expr = cons.cdr().as_cons().unwrap().car();
+    (varname.to_string(), expr.clone())
 }
-fn parse_constraint_cons(cons: &Cons, env: &mut HashMap<String, Constraint>) -> Constraint {
+fn parse_constraint_cons<'a>(cons: &'a Cons, env: &'a mut Env) -> Constraint {
     let cons_str = cons
         .car()
         .as_symbol()
@@ -197,8 +212,12 @@ fn parse_constraint_cons(cons: &Cons, env: &mut HashMap<String, Constraint>) -> 
                     assert_eq!(args.len(), 2);
                     let mut olds = Vec::new();
                     for v in args[0].car().as_cons().unwrap().into_iter() {
-                        let (varname, expr) = parse_let_arg(v.car(), env);
-                        let old = env.insert(varname.clone(), expr);
+                        let (varname, expr) = parse_let_arg(v.car());
+                        let thunk = Thunk {
+                            expr,
+                            env: env.clone(),
+                        };
+                        let old = env.insert(varname.clone(), Box::new(thunk));
                         olds.push((varname, old));
                     }
                     debug!("parse_constriant: {:?}", args[1].car());
@@ -222,7 +241,7 @@ fn parse_constraint_cons(cons: &Cons, env: &mut HashMap<String, Constraint>) -> 
                         .as_cons()
                         .unwrap_or_else(|| panic!("parse error: {:?}", cons_str))
                         .iter()
-                        .map(|v| parse_op(v.car()))
+                        .map(|v| parse_op(v.car(), env))
                         .collect();
                     // currently, we don't care about the predicates that take more than
                     // two arguments; so if there is, then it must can cause some bugs.
@@ -234,18 +253,22 @@ fn parse_constraint_cons(cons: &Cons, env: &mut HashMap<String, Constraint>) -> 
     }
 }
 
-fn parse_constraint(v: &Value, env: &mut HashMap<String, Constraint>) -> Constraint {
+fn parse_constraint(v: &Value, env: &mut Env) -> Constraint {
     match v {
         Value::Bool(t) if *t => Constraint::mk_true(),
         Value::Symbol(s) if s.as_ref() == "true" => Constraint::mk_true(),
         Value::Bool(_) => Constraint::mk_false(),
         Value::Symbol(s) if s.as_ref() == "false" => Constraint::mk_false(),
         Value::Cons(cons) => parse_constraint_cons(cons, env),
-        Value::Symbol(s) if env.contains_key(s.as_ref()) => env.get(s.as_ref()).unwrap().clone(),
+        Value::Symbol(s) if env.contains_key(s.as_ref()) => {
+            let t = env.get(s.as_ref()).unwrap();
+            let mut e = t.env.clone();
+            parse_constraint(&t.expr, &mut e)
+        }
         Value::Symbol(s) => {
             println!("environments:");
             for (k, v) in env.iter() {
-                println!("{}: {}", k, v);
+                println!("{}: {:?}", k, v.expr);
             }
             panic!("failed to handle symbol: {:?}", s)
         }
