@@ -409,7 +409,17 @@ where
     A: Clone,
     T: Precedence + Pretty,
 {
-    paren(al, config, prec, left) + " " + op_str + " " + paren(al, config, prec, right)
+    let prec_l = if !prec.is_left_assoc() {
+        prec.inc()
+    } else {
+        prec
+    };
+    let prec_r = if !prec.is_right_assoc() {
+        prec.inc()
+    } else {
+        prec
+    };
+    paren(al, config, prec_l, left) + " " + op_str + " " + paren(al, config, prec_r, right)
 }
 
 fn pretty_bin_op_soft<'b, D, A, T>(
@@ -921,4 +931,21 @@ impl<T: Pretty> Pretty for tree::Tree<T> {
     {
         pretty_tree_inner(self, al, config, self.root().id)
     }
+}
+
+#[test]
+fn test_sub_add_string() {
+    let x = Ident::fresh();
+    let y = Ident::fresh();
+    let o = Op::mk_sub(Op::mk_var(x), Op::mk_add(Op::mk_var(x), Op::mk_var(y)));
+    let s = format!("{}", o.pretty_display());
+    let xs = format!("{}", x.pretty_display());
+    let ys = format!("{}", y.pretty_display());
+    println!("{s}");
+    println!("{}", format!("{xs} - {xs} + {ys}"));
+    assert_eq!(s, format!("{xs} - ({xs} + {ys})"));
+
+    let o2 = Op::mk_add(Op::mk_sub(Op::mk_var(x), Op::mk_var(x)), Op::mk_var(y));
+    let s = format!("{}", o2.pretty_display());
+    assert_eq!(s, format!("{xs} - {xs} + {ys}"));
 }

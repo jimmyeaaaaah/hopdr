@@ -2539,8 +2539,62 @@ pub enum PrecedenceKind {
     Atom,
 }
 
+impl PrecedenceKind {
+    pub fn is_left_assoc(&self) -> bool {
+        match self {
+            PrecedenceKind::Sequential
+            | PrecedenceKind::If
+            | PrecedenceKind::Not
+            | PrecedenceKind::Abs
+            | PrecedenceKind::Atom => false,
+            PrecedenceKind::Pred
+            | PrecedenceKind::Disj
+            | PrecedenceKind::Conj
+            | PrecedenceKind::Add
+            | PrecedenceKind::Mul
+            | PrecedenceKind::App => true,
+        }
+    }
+    pub fn is_right_assoc(&self) -> bool {
+        match self {
+            PrecedenceKind::Sequential
+            | PrecedenceKind::If
+            | PrecedenceKind::Not
+            | PrecedenceKind::Abs => true,
+            PrecedenceKind::Pred
+            | PrecedenceKind::Disj
+            | PrecedenceKind::Conj
+            | PrecedenceKind::Add
+            | PrecedenceKind::Mul
+            | PrecedenceKind::App
+            | PrecedenceKind::Atom => false,
+        }
+    }
+    pub fn inc(&self) -> Self {
+        match self {
+            PrecedenceKind::Sequential => PrecedenceKind::If,
+            PrecedenceKind::If => PrecedenceKind::Disj,
+            PrecedenceKind::Disj => PrecedenceKind::Conj,
+            PrecedenceKind::Conj => PrecedenceKind::Not,
+            PrecedenceKind::Not => PrecedenceKind::Pred,
+            PrecedenceKind::Pred => PrecedenceKind::Add,
+            PrecedenceKind::Add => PrecedenceKind::Mul,
+            PrecedenceKind::Mul => PrecedenceKind::Abs,
+            PrecedenceKind::Abs => PrecedenceKind::App,
+            PrecedenceKind::App => PrecedenceKind::Atom,
+            PrecedenceKind::Atom => PrecedenceKind::Atom,
+        }
+    }
+}
+
 pub trait Precedence {
     fn precedence(&self) -> PrecedenceKind;
+    fn is_left_assoc(&self) -> bool {
+        self.precedence().is_left_assoc()
+    }
+    fn is_right_assoc(&self) -> bool {
+        self.precedence().is_right_assoc()
+    }
 }
 
 impl Precedence for OpKind {
