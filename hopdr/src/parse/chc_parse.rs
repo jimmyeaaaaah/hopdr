@@ -483,7 +483,19 @@ fn translate(
     (clauses, pmap)
 }
 
-pub fn parse_chc(input: &str) -> Result<(Vec<ExtendedCHC>, VariableMap), &'static str> {
+#[derive(Clone, Debug)]
+pub enum CHCTranslateError {
+    ParseFail,
+    Unsat,
+}
+
+impl CHCTranslateError {
+    pub fn is_unsat(&self) -> bool {
+        matches!(self, CHCTranslateError::Unsat)
+    }
+}
+
+pub fn parse_chc(input: &str) -> Result<(Vec<ExtendedCHC>, VariableMap), CHCTranslateError> {
     let mut instance = Instance::new();
     let mut cxt = parse::ParserCxt::new();
     let res = match cxt
@@ -491,12 +503,19 @@ pub fn parse_chc(input: &str) -> Result<(Vec<ExtendedCHC>, VariableMap), &'stati
         .parse(&mut instance)
     {
         Ok(res) => res,
-        Err(_) => return Err("parse fail"),
+        Err(_) => return Err(CHCTranslateError::ParseFail),
     };
 
     // preprocess by hoice
     let profiler = Profiler::new();
-    preproc::work(&mut instance, &profiler).unwrap();
+    match preproc::work(&mut instance, &profiler) {
+        Ok(_) => (),
+        Err(r) => {
+            if r.is_unsat() {
+                return Err(CHCTranslateError::Unsat);
+            }
+        }
+    }
     assert_eq!(res, parse::Parsed::CheckSat);
     let mut var_map = HashMap::new();
     let (vc, vmmap) = translate(&instance, &mut var_map);
