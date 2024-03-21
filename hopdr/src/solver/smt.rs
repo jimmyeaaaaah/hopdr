@@ -176,7 +176,7 @@ fn opkind_2_smt2(o: &OpKind) -> &'static str {
         OpKind::Sub => "-",
         OpKind::Mul => "*",
         OpKind::Div => "/",
-        OpKind::Mod => "%",
+        OpKind::Mod => "mod",
     }
 }
 
@@ -524,6 +524,8 @@ impl SMTSolver for Z3Solver {
             SolverResult::Sat
         } else if s.starts_with("unsat") {
             SolverResult::Unsat
+        } else if s.starts_with("(error") {
+            panic!("z3 error: {}", s)
         } else {
             SolverResult::Unknown
         }
@@ -544,6 +546,8 @@ impl SMTSolver for Z3Solver {
             Ok(Model::from_z3_model_str(&s[pos..]).unwrap())
         } else if s.starts_with("unsat") {
             Err(SolverResult::Unsat)
+        } else if s.starts_with("(error") {
+            panic!("z3 error: {}", s)
         } else {
             Err(SolverResult::Unknown)
         }
