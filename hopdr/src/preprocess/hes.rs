@@ -227,6 +227,7 @@ pub fn preprocess_for_typed_problem(
     let problem = reorder_disj::transform(problem);
     let problem = reorder_conj::transform(problem);
     let problem = find_ite::transform(problem);
+    let problem = remove_tmp_var::transform(problem);
     debug!("transformed: {}", problem);
     problem
 }
