@@ -83,9 +83,19 @@ where
     W: Write,
     O: Precedence + DumpML,
 {
-    paren(writer, prec, left, ctx)?;
+    let prec_l = if prec.is_left_assoc() {
+        prec
+    } else {
+        prec.inc()
+    };
+    let prec_r = if prec.is_right_assoc() {
+        prec
+    } else {
+        prec.inc()
+    };
+    paren(writer, prec_l, left, ctx)?;
     write!(writer, " {} ", op)?;
-    paren(writer, prec, right, ctx)
+    paren(writer, prec_r, right, ctx)
 }
 
 impl PredKind {

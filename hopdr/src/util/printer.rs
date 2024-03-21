@@ -409,15 +409,15 @@ where
     A: Clone,
     T: Precedence + Pretty,
 {
-    let prec_l = if !prec.is_left_assoc() {
-        prec.inc()
-    } else {
+    let prec_l = if prec.is_left_assoc() {
         prec
+    } else {
+        prec.inc()
     };
-    let prec_r = if !prec.is_right_assoc() {
-        prec.inc()
-    } else {
+    let prec_r = if prec.is_right_assoc() {
         prec
+    } else {
+        prec.inc()
     };
     paren(al, config, prec_l, left) + " " + op_str + " " + paren(al, config, prec_r, right)
 }
