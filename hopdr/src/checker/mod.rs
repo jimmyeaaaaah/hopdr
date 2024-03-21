@@ -7,6 +7,7 @@ use crate::formula::hes::{GoalBase, GoalKind, Problem, ProblemBase};
 use crate::formula::{Bot, Constraint, Fv, Ident, Logic, Op, PredKind, Type as HFLType};
 use crate::ml::{optimize, Expr, Function, Program, Range, Type as SType, Variable};
 use crate::preprocess::Context;
+pub use executor::ExecResult;
 use mode::{Mode, ModeEnv};
 
 use std::collections::HashMap;
@@ -546,7 +547,7 @@ fn test_translate_predicate() {
     println!("{}", e.print_expr(&ctx));
 }
 
-pub fn run(problem: Problem<Constraint>, config: Config) {
+pub fn run(problem: Problem<Constraint>, config: Config) -> executor::ExecResult {
     if config.print_check_log {
         use crate::util::Pretty;
         println!("translated nu hflz");
@@ -566,13 +567,7 @@ pub fn run(problem: Problem<Constraint>, config: Config) {
         println!("(* Generated Program *)");
         println!("{s}");
     }
-
-    print!("Verification Result: ");
-    match executor::executor(s) {
-        executor::ExecResult::Unknown => println!("Unknown"),
-        executor::ExecResult::Invalid => println!("Invalid"),
-        executor::ExecResult::Fail(s) => println!("Fail\nReason: {s}"),
-    }
+    executor::executor(s)
 }
 
 /// This function is used to calculate the difficulty score of the problem.

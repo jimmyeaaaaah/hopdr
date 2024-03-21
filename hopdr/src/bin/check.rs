@@ -84,6 +84,15 @@ fn get_problem(
     (vc, ctx)
 }
 
+fn report_result(result: checker::ExecResult) {
+    print!("Verification Result: ");
+    match result {
+        checker::ExecResult::Unknown => println!("Unknown"),
+        checker::ExecResult::Invalid => println!("Invalid"),
+        checker::ExecResult::Fail(s) => println!("Fail\nReason: {s}"),
+    }
+}
+
 fn main() {
     // setting logs
     env_logger::builder()
@@ -116,7 +125,11 @@ fn main() {
             println!("data");
             println!("{data}");
         }
-        let (chcs, vmap) = parse::parse_chc(&data).unwrap();
+        let (chcs, vmap) = match parse::parse_chc(&data) {
+            Ok(x) => x,
+            Err(r) if r.is_unsat() => return report_result(checker::ExecResult::Invalid),
+            Err(r) => panic!("parse error: {:?}", r),
+        };
         let ctx = generate_context_for_chc(&vmap);
         if args.print_check_log {
             println!("CHCs");
@@ -169,5 +182,5 @@ fn main() {
 
     let config = checker::Config::new(&ctx, args.print_check_log);
 
-    checker::run(vc, config);
+    report_result(checker::run(vc, config))
 }
