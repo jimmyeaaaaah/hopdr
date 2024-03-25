@@ -27,6 +27,7 @@ pub struct Configuration {
     pub inlining: bool,
     pub remove_disjunction: bool,
     pub wait_every_step: bool,
+    pub ultimate: bool,
 }
 
 impl Default for Configuration {
@@ -35,6 +36,7 @@ impl Default for Configuration {
             inlining: true,
             remove_disjunction: false,
             wait_every_step: false,
+            ultimate: true,
         }
     }
 }
@@ -59,6 +61,12 @@ impl Configuration {
     /// set wait_every_step
     pub fn wait_every_step(mut self, wait_every_step: bool) -> Self {
         self.wait_every_step = wait_every_step;
+        self
+    }
+
+    /// set ultimate is enabled during the preprocess from CHC to HES
+    pub fn ultimate(mut self, ultimate: bool) -> Self {
+        self.ultimate = ultimate;
         self
     }
 }
