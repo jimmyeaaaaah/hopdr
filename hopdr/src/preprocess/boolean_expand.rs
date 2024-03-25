@@ -86,5 +86,4 @@ fn test_boolean_transform() {
     println!("{}", g);
     let g_after = handle_goal(&g, Vec::new());
     println!("{}", g_after);
-    assert!(false);
 }
