@@ -816,24 +816,14 @@ fn simplify_by_qe(fvs: &Vec<Variable>, constraint: &Constraint, predicates: &[At
         }
     }
     let mut used_by_pred = HashSet::new();
-    println!("predicates: ");
     for p in predicates.iter() {
-        print!("{}, ", p);
         p.fv_with_vec(&mut used_by_pred);
     }
-    println!();
     let mut constraint = constraint.clone();
     let mut flag = false;
     let actual_fvs = constraint.fv();
-    println!("constraint: {}", constraint);
     for fv in fvs.iter() {
-        println!("fv: {}", fv.id);
         if used_by_pred.contains(&fv.id) || !actual_fvs.contains(&fv.id) {
-            println!(
-                "used by pred: {}, actual_fvs: {}",
-                used_by_pred.contains(&fv.id),
-                !actual_fvs.contains(&fv.id)
-            );
             continue;
         }
         flag = true;
@@ -919,7 +909,6 @@ fn merge_chcs_with_same_head(
         let constraint = group_eq_constrs(&chc.chc.body.constraint, &mut eqs);
         let predicates = chc.chc.body.predicates.clone();
 
-        println!("qe target: {}", chc.chc);
         let (constraint, predicates) = remove_fvs(constraint, predicates, &chc.free_variables, eqs);
 
         let body = CHCBody {
@@ -1075,7 +1064,6 @@ fn merge_chcs_with_same_head_linear(
             CHCHead::Predicate(a) => vec![a.clone()],
         };
 
-        println!("qe target: {}", echc.chc);
         // remove fvs as much as possible
         let (constraint, predicates) =
             remove_fvs(constraint, predicates, &echc.free_variables, eqs);
@@ -1092,7 +1080,6 @@ fn merge_chcs_with_same_head_linear(
             CHCHead::Constraint(Constraint::mk_false())
         };
         let chc = CHC { head, body };
-        println!("result: {}", chc);
 
         // calculate free variables
         let mut free_variables = Vec::new();
