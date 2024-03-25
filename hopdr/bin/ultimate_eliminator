@@ -1,0 +1,16 @@
+#!/bin/sh
+
+ULTIMATE_DIR="${ULTIMATE_DIR:-~/misc/Ultimate}"
+
+[ $# -ge 1 -a -f "$1" ] && input="$1" || input="--"
+
+$ULTIMATE_DIR/jdk-11.0.2/bin/java \
+-Dosgi.configuration.area=$ULTIMATE_DIR/config/ \
+-Xmx40G \
+-Xss4m \
+-jar $ULTIMATE_DIR/plugins/org.eclipse.equinox.launcher_1.5.800.v20200727-1323.jar \
+-data "$TMPDIR" \
+-s $ULTIMATE_DIR/../mathsat.epf \
+-external-solver "$ULTIMATE_DIR/mathsat" \
+$input
+

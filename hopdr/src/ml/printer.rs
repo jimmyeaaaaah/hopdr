@@ -21,8 +21,9 @@ fn check_do_format() -> bool {
 }
 
 pub fn do_format(input: &str) -> String {
-    // ocamlformat  --impl -
-    let args = vec!["--impl", "-"];
+    // ocamlformat  --impl --enable-outside-detected-project -
+    // --enable-outside-detected-project is required for removing the warning
+    let args = vec!["--impl", "--enable-outside-detected-project", "-"];
     debug!("filename: {}", &args[0]);
     let out = util::exec_input_with_timeout(
         "ocamlformat",
