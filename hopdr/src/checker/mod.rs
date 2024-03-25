@@ -489,7 +489,7 @@ fn test_translate_predicate() {
             Op::mk_add(Op::mk_var(x), Op::mk_const(11)),
             gen_aux(Mode::mk_in()),
         ),
-        gen_aux(Mode::mk_prop()),
+        gen_aux(Mode::mk_fun(Mode::mk_out(), Mode::mk_prop())),
     );
     // P (x + 11) w
     let g3 = GoalBase::mk_app_t(

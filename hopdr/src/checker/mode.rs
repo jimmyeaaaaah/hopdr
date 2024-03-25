@@ -36,7 +36,7 @@ impl Mode {
     pub fn is_fun<'a>(&'a self) -> (&'a Mode, &'a Mode) {
         match self.kind() {
             ModeKind::Fun(t1, t2) => (t1, t2),
-            _ => panic!("not a function type"),
+            _ => panic!("not a function type: {}", self),
         }
     }
 
