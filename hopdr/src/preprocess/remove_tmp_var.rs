@@ -14,10 +14,8 @@ fn handle_constraint(
     c: &Constraint,
     eqs: &mut Vec<(Ident, Op)>,
     tmp_vars: &mut HashSet<Ident>,
-    inner_disj: bool, // for the simplicity, we don't consider the nesting of disj (conj (disj)). So we have to track whether we have already encountered disj.
 ) -> Constraint {
     match c.kind() {
-        formula::ConstraintExpr::True | formula::ConstraintExpr::False => c.clone(),
         formula::ConstraintExpr::Pred(p, l) if l.len() == 2 => match p {
             formula::PredKind::Neq => {
                 let (x, y) = (&l[0], &l[1]);
@@ -39,88 +37,81 @@ fn handle_constraint(
             }
             _ => c.clone(),
         },
-        formula::ConstraintExpr::Pred(_, _) => c.clone(),
-        formula::ConstraintExpr::Conj(c1, c2) => {
-            let c1 = handle_constraint(c1, eqs, tmp_vars, inner_disj);
-            let c2 = handle_constraint(c2, eqs, tmp_vars, inner_disj);
-            Constraint::mk_conj(c1, c2)
-        }
         formula::ConstraintExpr::Disj(c1, c2) => {
-            if inner_disj {
-                return c.clone();
-            }
-            let c1 = handle_constraint(c1, eqs, tmp_vars, true);
-            let c2 = handle_constraint(c2, eqs, tmp_vars, true);
+            let c1 = handle_constraint(c1, eqs, tmp_vars);
+            let c2 = handle_constraint(c2, eqs, tmp_vars);
             Constraint::mk_disj(c1, c2)
         }
-        formula::ConstraintExpr::Quantifier(_, _, _) => c.clone(),
+        formula::ConstraintExpr::True
+        | formula::ConstraintExpr::False
+        | formula::ConstraintExpr::Pred(_, _)
+        | formula::ConstraintExpr::Conj(_, _)
+        | formula::ConstraintExpr::Quantifier(_, _, _) => c.clone(),
     }
 }
 
-fn app_eqs(mut g: Goal, eqs: Vec<(Ident, Op)>) -> Goal {
+fn app_eqs(g: &Goal, eqs: &Vec<(Ident, Op)>) -> Goal {
+    let mut g = g.clone();
     for (x, o) in eqs {
-        g = g.isubst(&x, &o);
+        g = g.isubst(x, o);
     }
     g
 }
 
 // main function for the transformation
-fn f(g: &Goal, tmp_vars: &mut HashSet<Ident>) -> (Goal, Vec<(Ident, Op)>) {
+fn f(g: &Goal, tmp_vars: &mut HashSet<Ident>) -> Goal {
     match g.kind() {
-        GoalKind::Constr(_) | GoalKind::Op(_) | GoalKind::Var(_) => (g.clone(), Vec::new()),
+        GoalKind::Constr(_) | GoalKind::Op(_) | GoalKind::Var(_) => g.clone(),
         GoalKind::Abs(x, g) => {
-            let (g, eqs) = f(g, tmp_vars);
-            let g = app_eqs(g, eqs);
-            (Goal::mk_abs(x.clone(), g), Vec::new())
+            let g = f(g, tmp_vars);
+            Goal::mk_abs(x.clone(), g)
         }
         GoalKind::App(g1, g2) => {
-            let (g1, eqs) = f(g1, tmp_vars);
-            let g1 = app_eqs(g1, eqs);
-            let (g2, eqs) = f(g2, tmp_vars);
-            let g2 = app_eqs(g2, eqs);
-            (Goal::mk_app(g1, g2), Vec::new())
+            let g1 = f(g1, tmp_vars);
+            let g2 = f(g2, tmp_vars);
+            Goal::mk_app(g1, g2)
         }
         GoalKind::Conj(g1, g2) => {
-            let (g1, eqs) = f(g1, tmp_vars);
-            let g1 = app_eqs(g1, eqs);
-            let (g2, eqs) = f(g2, tmp_vars);
-            let g2 = app_eqs(g2, eqs);
-            (Goal::mk_conj_opt(g1, g2), Vec::new())
+            let g1 = f(g1, tmp_vars);
+            let g2 = f(g2, tmp_vars);
+            Goal::mk_conj_opt(g1, g2)
         }
-        GoalKind::Disj(_, _) => match g.disj_constr() {
-            either::Either::Left((c, g)) => {
-                let (g, mut eqs) = f(g, tmp_vars);
-                let c = handle_constraint(c, &mut eqs, tmp_vars, false);
-                (Goal::mk_disj_opt(Goal::mk_constr(c), g), eqs)
+        GoalKind::Disj(_, _) => {
+            let mut disjs: Vec<_> = g.vec_of_disjs().into_iter().cloned().collect();
+            let mut r = Goal::mk_false();
+            while let Some(g) = disjs.pop() {
+                let g = match g.kind() {
+                    GoalKind::Constr(c) => {
+                        let mut eqs = Vec::new();
+                        let g = handle_constraint(c, &mut eqs, tmp_vars);
+                        r = app_eqs(&r, &eqs);
+                        disjs.iter_mut().for_each(|g| {
+                            *g = app_eqs(g, &eqs);
+                        });
+                        Goal::mk_constr(g)
+                    }
+                    _ => g.clone(),
+                };
+                r = Goal::mk_disj_opt(r, g);
             }
-            either::Either::Right((g1, g2)) => {
-                let (g1, eqs1) = f(g1, tmp_vars);
-                let (g2, eqs2) = f(g2, tmp_vars);
-                let mut eqs = Vec::new();
-                eqs.extend(eqs1);
-                eqs.extend(eqs2);
-                (Goal::mk_disj_opt(g1, g2), eqs)
-            }
-        },
+            r
+        }
         GoalKind::Univ(x, g) => {
             let flag = tmp_vars.insert(x.id);
-            let (g, eqs) = f(g, tmp_vars);
-            let g = app_eqs(g, eqs);
+            let g = f(g, tmp_vars);
             if !flag {
                 tmp_vars.remove(&x.id);
             }
             if g.fv().contains(&x.id) {
-                (Goal::mk_univ(x.clone(), g), Vec::new())
+                Goal::mk_univ_opt(x.clone(), g)
             } else {
-                (g, Vec::new())
+                g
             }
         }
         GoalKind::ITE(c, g1, g2) => {
-            let (g1, eqs) = f(g1, tmp_vars);
-            let g1 = app_eqs(g1, eqs);
-            let (g2, eqs) = f(g2, tmp_vars);
-            let g2 = app_eqs(g2, eqs);
-            (Goal::mk_ite(c.clone(), g1, g2), Vec::new())
+            let g1 = f(g1, tmp_vars);
+            let g2 = f(g2, tmp_vars);
+            Goal::mk_ite_opt(c.clone(), g1, g2)
         }
     }
 }
@@ -133,8 +124,7 @@ impl TypedPreprocessor for RemoveTmpVarTransform {
         _env: &mut formula::TyEnv,
     ) -> formula::hes::Goal<formula::Constraint> {
         debug!("transform_goal: {goal}");
-        let (g, eqs) = f(goal, &mut HashSet::new());
-        let g = app_eqs(g, eqs);
+        let g = f(goal, &mut HashSet::new());
         debug!("translated: {g}");
         g
     }
