@@ -24,6 +24,7 @@ use crate::solver::{smt, SMTSolverType};
 use home::home_dir;
 
 use std::collections::{HashMap, HashSet};
+use std::ptr::addr_of;
 use std::time::Duration;
 
 type CHC = chc::CHC<chc::Atom, Constraint>;
@@ -36,9 +37,9 @@ pub fn set_smt_interpol_path(path: String) {
     }
 }
 fn get_smt_interpol_path() -> String {
-    match unsafe { &SMTINTERPOL_PATH } {
-        Some(s) => s.clone(),
-        None => {
+    match unsafe { addr_of!(SMTINTERPOL_PATH).as_ref() } {
+        Some(Some(s)) => s.clone(),
+        _ => {
             let mut home = home_dir().unwrap();
             home.push(".local/share/hopdr/smtinterpol.jar");
             home.into_os_string().into_string().unwrap()
@@ -382,8 +383,8 @@ impl InterpolationSolver {
 
 #[derive(Debug)]
 enum InterpolationError {
-    ParseError(String),
-    Satisfiable(String),
+    ParseError,
+    Satisfiable,
 }
 
 impl SMTInterpolSolver {
@@ -455,7 +456,7 @@ impl SMTInterpolSolver {
         loop {
             let line = match lines.next() {
                 Some(line) => line,
-                None => return Err(InterpolationError::ParseError(result.clone())),
+                None => return Err(InterpolationError::ParseError),
             };
             if line.starts_with("unsat") {
                 let line = lines.next().unwrap();
@@ -463,7 +464,7 @@ impl SMTInterpolSolver {
                 debug!("parsed: {}", parsed);
                 return Ok(parsed);
             } else if line.starts_with("sat") {
-                return Err(InterpolationError::Satisfiable(result.clone()));
+                return Err(InterpolationError::Satisfiable);
                 //panic!("program error: SMTInterpol concluded the constraint was sat (expected: unsat)\n[result of smtinterpol]\n{}", &r)
             }
         }
