@@ -60,7 +60,7 @@ fn f(g: &Goal) -> Goal {
         GoalKind::ITE(c, g1, g2) => {
             let g1 = f(g1);
             let g2 = f(g2);
-            Goal::mk_ite(c.clone(), g1, g2)
+            Goal::mk_ite_opt(c.clone(), g1, g2)
         }
         GoalKind::Conj(_, _) => {
             let mut gs: Vec<_> = g
@@ -80,7 +80,7 @@ fn f(g: &Goal) -> Goal {
                 }
                 if let Some((i, c, g, g2)) = found {
                     gs.remove(i);
-                    gs2.push(Goal::mk_ite(c, g, g2));
+                    gs2.push(Goal::mk_ite_opt(c, g, g2));
                 } else {
                     gs2.push(
                         g.into_iter()

@@ -557,10 +557,6 @@ pub fn run(problem: Problem<Constraint>, config: Config) -> executor::ExecResult
     let problem_with_mode = mode_infer::infer(problem);
     let prog = trans.translate(problem_with_mode);
 
-    if config.print_check_log {
-        println!("UnOptimized Program");
-        println!("{}", prog.dump_ml());
-    }
     let prog = optimize(prog);
     let s = prog.dump_ml();
     if config.print_check_log {

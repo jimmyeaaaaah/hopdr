@@ -33,6 +33,8 @@ struct Args {
     #[clap(long)]
     /// Interpret the input CHC problems is defined by least fixpoint
     chc_least: bool,
+    /// Don't use Ultimate as a preprocess
+    no_ultimate: bool,
 }
 
 fn gen_configuration_from_args(args: &Args) -> hopdr::Configuration {
@@ -41,6 +43,7 @@ fn gen_configuration_from_args(args: &Args) -> hopdr::Configuration {
         //.remove_disjunction(args.remove_disjunction)
         .remove_disjunction(false)
         .wait_every_step(false)
+        .ultimate(!args.no_ultimate)
 }
 
 fn get_preprocess_config() -> hopdr::preprocess::hes::Config {

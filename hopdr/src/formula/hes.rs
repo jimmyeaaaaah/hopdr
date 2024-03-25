@@ -548,6 +548,17 @@ impl<C: Bot + Top + Logic> Goal<C> {
             GoalBase::mk_univ(x, g)
         }
     }
+    pub fn mk_ite_opt(c: C, g1: Self, g2: Self) -> Self {
+        if c.is_true() {
+            g1
+        } else if c.is_false() {
+            g2
+        } else if g1.is_false() && g2.is_false() || g1.is_true() && g2.is_true() {
+            g1
+        } else {
+            GoalBase::mk_ite(c, g1, g2)
+        }
+    }
 }
 
 impl<C: Negation, T: Default> GoalBase<C, T> {
