@@ -183,6 +183,7 @@ fn quantify_validity_checking(vc: NuHFLzValidityChecking) -> NuHFLzValidityCheck
 pub struct Config {
     find_ite: bool,
     unpack_constr: bool,
+    is_checker: bool,
 }
 
 impl Config {
@@ -190,7 +191,10 @@ impl Config {
         Config::default()
     }
     pub fn checker_default() -> Config {
-        Config::new().find_ite(true).unpack_constr(true)
+        Config::new()
+            .find_ite(true)
+            .unpack_constr(true)
+            .is_checker(true)
     }
     pub fn find_ite(mut self, val: bool) -> Self {
         self.find_ite = val;
@@ -198,6 +202,10 @@ impl Config {
     }
     pub fn unpack_constr(mut self, val: bool) -> Self {
         self.unpack_constr = val;
+        self
+    }
+    pub fn is_checker(mut self, val: bool) -> Self {
+        self.is_checker = val;
         self
     }
 }
@@ -222,12 +230,14 @@ pub fn preprocess_for_typed_problem(
     if config.unpack_constr {
         problem = unpack_constr::transform(problem);
     }
-    let problem = remove_tmp_var::transform(problem);
-    let problem = boolean_expand::transform(problem);
-    let problem = reorder_disj::transform(problem);
-    let problem = reorder_conj::transform(problem);
-    let problem = find_ite::transform(problem);
-    let problem = remove_tmp_var::transform(problem);
+    if config.is_checker {
+        problem = remove_tmp_var::transform(problem);
+        problem = boolean_expand::transform(problem);
+        problem = reorder_disj::transform(problem);
+        problem = reorder_conj::transform(problem);
+        problem = find_ite::transform(problem);
+        problem = remove_tmp_var::transform(problem);
+    }
     debug!("transformed: {}", problem);
     problem
 }
