@@ -33,4 +33,3 @@ jobs:
       run: eval $(opam env) && cargo test --verbose
     - name: Functional Test
       run: eval $(opam env) && ./test.sh
-

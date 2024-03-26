@@ -1,0 +1,3 @@
+[submodule "hopdr/scripts/benchmark_scripts"]
+	path = hopdr/scripts/benchmark_scripts
+	url = https://github.com/moratorium08/benchmark_scripts
