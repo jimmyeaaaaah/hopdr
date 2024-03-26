@@ -33,3 +33,25 @@ jobs:
       run: eval $(opam env) && cargo test --verbose
     - name: Functional Test
       run: eval $(opam env) && ./test.sh
+    - name: Notify Slack
+      if: failure()
+      id: slack
+      uses: slackapi/slack-github-action@v1.25.0
+      env:
+        SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+      with:
+        channel-id: ${{ secrets.DEV_CHANNEL }}
+        payload: |
+          {
+            "attachments":
+              [
+                  {
+                      "mrkdwn_in": ["text"],
+                      "color": "danger",
+                      "author_name": "Github Actions",
+                      "title": "Test Failed",
+                      "title_link": "${{ github.event.pull_request.html_url || github.event.head_commit.url }}",
+                      "text": ":x: Test Failed\n Reason: ${{ github.event.pull_request.html_url || github.event.head_commit.url }}"
+                  }
+              ]
+          }
