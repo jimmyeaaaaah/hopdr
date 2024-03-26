@@ -1,0 +1,26 @@
+#!/bin/sh
+
+root=`dirname "${BASH_SOURCE[0]}"`/
+cd $root
+
+prefix="pdr-check"
+current_date=$(date +"%Y-%m-%d-%H")
+filename="$prefix-$current_date.json"
+csvname="$prefix-$current_date.csv"
+
+python3 bench.py golem_unsafe --timeout 30 --json results/$filename
+python3 ~/github.com/moratorium08/hflmc2/scripts/aggregate/trans2csv.py results/$filename
+golem_unsafe="$filename"
+echo results/$csvname
+
+
+prefix="pdr-check-safe"
+filename="$prefix-$current_date.json"
+csvname="$prefix-$current_date.csv"
+python3 bench.py golem_safe --json results/$filename
+python3 ~/github.com/moratorium08/hflmc2/scripts/aggregate/trans2csv.py results/$filename
+golem_safe="$filename"
+echo results/$csvname
+
+cd results
+python3 ../benchmark_scripts/slack-notify/slack_notify.py "manual benchmark" $golem_safe $golem_unsafe
