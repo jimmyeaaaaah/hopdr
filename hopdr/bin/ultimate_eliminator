@@ -10,7 +10,7 @@ $ULTIMATE_DIR/jdk-11.0.2/bin/java \
 -Xss4m \
 -jar $ULTIMATE_DIR/plugins/org.eclipse.equinox.launcher_1.5.800.v20200727-1323.jar \
 -data "$TMPDIR" \
--s $ULTIMATE_DIR/mathsat.epf \
+-s $ULTIMATE_DIR/../mathsat.epf \
 -external-solver "$ULTIMATE_DIR/mathsat" \
 $input
 

@@ -1,6 +1,6 @@
 FROM ubuntu:22.04
 
-RUN apt update && apt upgrade -y && apt install -y opam wget zip curl openjdk-11-jdk z3 
+RUN apt update && apt upgrade -y && apt install -y opam wget zip curl openjdk-11-jdk z3 libglpk-dev bubblewrap
 
 RUN opam init -a -y && eval $(opam env)
 
@@ -11,9 +11,10 @@ RUN mkdir /misc /root/bin
 WORKDIR /misc
 
 # Ultimate Eliminator
-RUN wget "https://starexec.org/starexec/secure/download?token=94640982&type=solver&id=44761" -O /misc/ue.zip \ 
+RUN wget "https://starexec.org/starexec/secure/download?token=94640982&type=solver&id=44761" -O /misc/ue.zip \
     && unzip ue.zip \
-    && chmod +x /misc/UltimateEliminator+MathSAT-5.6.9/Ultimate/jdk-11.0.2/bin/java
+    && chmod +x /misc/UltimateEliminator+MathSAT-5.6.9/Ultimate/jdk-11.0.2/bin/java \
+    && chmod +x /misc/UltimateEliminator+MathSAT-5.6.9/Ultimate/mathsat
 ENV ULTIMATE_DIR=/misc/UltimateEliminator+MathSAT-5.6.9/Ultimate
 
 # SMT Interpol
@@ -24,8 +25,6 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 
 # ocamlformat
 RUN opam install -y ocamlformat dune
-
-RUN apt install -y libglpk-dev
 
 # csisat
 RUN eval $(opam env) \
