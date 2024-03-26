@@ -1,6 +1,6 @@
 #!/bin/sh
 
-ULTIMATE_DIR="${ULTIMATE_DIR:-~/misc/Ultimate}"
+ULTIMATE_DIR="${ULTIMATE_DIR:-$HOME/misc/Ultimate}"
 
 [ $# -ge 1 -a -f "$1" ] && input="$1" || input="--"
 

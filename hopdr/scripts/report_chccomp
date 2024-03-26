@@ -1,0 +1,23 @@
+#!/bin/sh
+
+root=`dirname "${BASH_SOURCE[0]}"`/
+cd $root
+
+TIMEOUT=10
+prefix="pdr-check"
+current_date=$(date +"%Y-%m-%d-%H")
+filename="$prefix-$current_date.json"
+csvname="$prefix-$current_date.csv"
+
+python3 bench.py comp_LIA-nonlin --json results/nonlin-$filename --timeout $TIMEOUT
+python3 ~/github.com/moratorium08/hflmc2/scripts/aggregate/trans2csv.py results/nonlin-$filename
+
+python3 bench.py comp_LIA-lin --json results/lin-$filename --timeout $TIMEOUT
+python3 ~/github.com/moratorium08/hflmc2/scripts/aggregate/trans2csv.py results/lin-$filename
+echo results/lin-$csvname
+echo results/nonlin-$csvname
+
+#nageru results/lin-$csvname
+#nageru results/nonlin-$csvname
+cd results
+python3 ../benchmark_scripts/slack-notify/slack_notify.py "manual benchmark" lin-$filename nonlin-$filename
