@@ -8,6 +8,8 @@ use crate::formula::Logic;
 struct EtaTransform {}
 
 impl TypedPreprocessor for EtaTransform {
+    const PASS_NAME: &'static str = "eta";
+
     fn transform_goal(
         &self,
         goal: &hes::Goal<formula::Constraint>,

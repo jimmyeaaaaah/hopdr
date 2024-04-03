@@ -468,6 +468,8 @@ pub fn typing(
     toplevel: parse::Expr,
 ) -> ValidityChecking<parse::Ident, SimpleType> {
     // adhoc
+    crate::stat::preprocess::start_clock("typing");
+
     formulas.push(parse::Clause {
         id: "!!TOPLEVEL!!".to_string(),
         args: Vec::new(),
@@ -506,6 +508,8 @@ pub fn typing(
         .collect();
 
     let toplevel = formulas.pop().unwrap().expr;
+    crate::stat::preprocess::end_clock("typing");
+
     ValidityChecking {
         clauses: formulas,
         toplevel,
