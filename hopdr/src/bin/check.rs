@@ -160,8 +160,10 @@ fn main() {
             let least = crate::formula::chc::translate_to_hes(chcs);
             let least = crate::preprocess::hes::preprocess_for_typed_problem(least, &config);
 
-            println!("greatest style:\n {}", greatest);
-            println!("least style:\n {}", least);
+            if args.print_check_log {
+                println!("greatest style:\n {}", greatest);
+                println!("least style:\n {}", least);
+            }
 
             let lhs = crate::checker::difficulty_score(&greatest);
             let rhs = crate::checker::difficulty_score(&least);
