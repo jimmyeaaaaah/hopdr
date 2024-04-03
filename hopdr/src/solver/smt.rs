@@ -300,18 +300,12 @@ fn invoke_smt_solver(cmd: &str, smt_string: String) -> String {
     // debug
     debug!("filename: {}", &args[0]);
 
-    #[cfg(not(debug_assertions))]
-    {
-        crate::stat::smt::smt_count();
-        crate::stat::smt::start_clock();
-    }
+    crate::stat::smt::smt_count();
+    crate::stat::smt::start_clock();
 
     let out = util::exec_with_timeout(cmd, &args, Duration::from_secs(1));
 
-    #[cfg(not(debug_assertions))]
-    {
-        crate::stat::smt::end_clock();
-    }
+    crate::stat::smt::end_clock();
 
     String::from_utf8(out).unwrap()
 }

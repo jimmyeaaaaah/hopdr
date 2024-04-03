@@ -214,7 +214,7 @@ pub fn preprocess_for_typed_problem(
     problem: hes::Problem<formula::Constraint>,
     config: &Config,
 ) -> hes::Problem<formula::Constraint> {
-    debug!("[problem]\n{}\n", problem);
+    info!("[problem]\n{}\n", problem);
     let problem = safety::transform(problem);
     debug!("[safety::transform]\n{}\n", problem);
     let problem = eta::transform(problem);
@@ -238,7 +238,7 @@ pub fn preprocess_for_typed_problem(
         problem = find_ite::transform(problem);
         problem = remove_tmp_var::transform(problem);
     }
-    debug!("transformed: {}", problem);
+    info!("transformed: {}", problem);
     problem
 }
 
