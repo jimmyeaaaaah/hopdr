@@ -80,8 +80,6 @@ fn f(g: &Goal, mut env: formula::TyEnv) -> (Type, Vec<(QuantifierKind, Variable)
 }
 
 impl TypedPreprocessor for PrenexNormTransform {
-    const PASS_NAME: &'static str = "prenex normal form";
-
     fn transform_goal(
         &self,
         goal: &formula::hes::Goal<formula::Constraint>,

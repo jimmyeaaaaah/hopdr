@@ -14,9 +14,7 @@ fn transform_goal(goal: &hes::Goal<formula::Constraint>) -> hes::Goal<formula::C
 
 #[allow(dead_code)]
 pub fn transform(problem: hes::Problem<formula::Constraint>) -> hes::Problem<formula::Constraint> {
-    crate::stat::preprocess::start_clock("extravar");
     let top = transform_goal(&problem.top);
-    crate::stat::preprocess::end_clock("extravar");
     hes::Problem { top, ..problem }
 }
 

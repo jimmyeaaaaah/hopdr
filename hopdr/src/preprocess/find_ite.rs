@@ -100,8 +100,6 @@ fn f(g: &Goal) -> Goal {
 }
 
 impl TypedPreprocessor for FindITETransform {
-    const PASS_NAME: &'static str = "find ite";
-
     fn transform_goal(
         &self,
         goal: &formula::hes::Goal<formula::Constraint>,

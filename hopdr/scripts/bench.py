@@ -13,7 +13,7 @@ class ParseError(Exception):
 project_root = os.path.realpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../'))
 base = os.path.join(project_root, './benchmark')
 TARGET = '../target/release/check'
-cmd_template = TARGET + ' {} --print-stat --input {}'  # <option> <filename>
+cmd_template = TARGET + ' {} --input {}'  # <option> <filename>
 
 cfg = None
 
@@ -38,52 +38,6 @@ def gen_cmd(file):
     ag = ' '.join(args)
     return cmd_template.format(ag, file)
 
-def parse_preprocess_stat(data):
-    l = data.split("\n")
-    idx = None
-
-    for (i, x) in enumerate(l):
-        if x.startswith("[Preprocess]"):
-            idx = i
-            break
-    if idx is None:
-        print("preprocess data not found")
-        return None
-    entries = dict()
-    idx += 2
-    while l[idx].startswith("- ") and idx < len(l):
-        line = l[idx]
-        name = line.split(":")[0][2:]
-        data = line.split(":")[1].strip(" ").split(",")
-        cnt = data[0].split(" ")[0]
-        sec = data[1].strip(" ").split(" ")[0]
-        entries[name] = dict()
-        entries[name]["count"] = cnt
-        entries[name]["time"] = sec
-        idx += 1
-    return entries
-
-
-def parse_stat(data, title, keys):
-    l = data.split("\n")
-    idx = None
-    for (i, x) in enumerate(l):
-        if x.startswith(title):
-            idx = i
-            break
-    if idx is None:
-        print("{} data not found".format(title))
-        return None
-    idx += 1
-    entries = dict()
-    for (line, key) in zip(l[idx:], keys):
-        entries[key] = line.replace(key+":", '').strip(" ")
-    return entries
-
-smt_keys = ["number of invokes of SMT solver", "total time"]
-interpol_keys = ["count", "total time"]
-chc_keys = interpol_keys
-
 
 def parse_stdout(stdout):
     result_data = dict()
@@ -93,13 +47,6 @@ def parse_stdout(stdout):
       result_data['nonlinearity'] = int(m.group(1))
 
     result_data['result'] = 'invalid' if 'Verification Result: Invalid' in stdout else 'unknown' if 'Verification Result: Unknown' in stdout else 'fail'
-
-    preprocess = parse_preprocess_stat(stdout)
-    if preprocess is not None:
-        result_data['preprocess'] = preprocess
-    smt = parse_stat(stdout, "[SMT]", smt_keys)
-    interpol = parse_stat(stdout, "[Interpolation]", interpol_keys)
-    chc = parse_stat(stdout, "[CHC]", chc_keys)
     return result_data
 
 def p(file, result):

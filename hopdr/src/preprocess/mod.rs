@@ -52,7 +52,6 @@ impl Context {
 }
 
 pub trait TypedPreprocessor {
-    const PASS_NAME: &'static str;
     /// API for transforming a goal
     fn transform_goal(
         &self,
@@ -71,7 +70,7 @@ pub trait TypedPreprocessor {
     }
 
     /// API for transforming a problem
-    fn transform_internal(
+    fn transform(
         &self,
         problem: formula::hes::Problem<formula::Constraint>,
     ) -> formula::hes::Problem<formula::Constraint> {
@@ -83,16 +82,5 @@ pub trait TypedPreprocessor {
             .collect();
         let top = self.transform_goal(&problem.top, &formula::Type::mk_type_prop(), &mut env);
         formula::hes::Problem { top, clauses }
-    }
-
-    fn transform(
-        &self,
-        problem: formula::hes::Problem<formula::Constraint>,
-    ) -> formula::hes::Problem<formula::Constraint> {
-        crate::stat::preprocess::start_clock(Self::PASS_NAME);
-        info!("preprocessing: {}", Self::PASS_NAME);
-        let p = self.transform_internal(problem);
-        crate::stat::preprocess::end_clock(Self::PASS_NAME);
-        p
     }
 }

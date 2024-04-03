@@ -117,8 +117,6 @@ fn f(g: &Goal, tmp_vars: &mut HashSet<Ident>) -> Goal {
 }
 
 impl TypedPreprocessor for RemoveTmpVarTransform {
-    const PASS_NAME: &'static str = "remove tmp var";
-
     fn transform_goal(
         &self,
         goal: &formula::hes::Goal<formula::Constraint>,

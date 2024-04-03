@@ -36,8 +36,6 @@ fn check_contains_dual(disj: &[Goal]) -> bool {
 }
 
 impl TypedPreprocessor for ReorderDisjTransform {
-    const PASS_NAME: &'static str = "reorder disj";
-
     fn transform_goal(
         &self,
         goal: &Goal,

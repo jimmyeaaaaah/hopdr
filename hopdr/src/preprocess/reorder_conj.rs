@@ -43,8 +43,6 @@ pub(super) fn filter_redundant(conjs: Vec<Goal>) -> Vec<Goal> {
 }
 
 impl TypedPreprocessor for ReorderConjTransform {
-    const PASS_NAME: &'static str = "reorder conj";
-
     fn transform_goal(
         &self,
         goal: &Goal,

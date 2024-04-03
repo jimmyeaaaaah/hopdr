@@ -86,15 +86,12 @@ fn transform_clause(clause: hes::Clause<formula::Constraint>) -> hes::Clause<for
 }
 
 pub fn transform(problem: hes::Problem<formula::Constraint>) -> hes::Problem<formula::Constraint> {
-    crate::stat::preprocess::start_clock("forall_pass");
-
     let clauses = problem
         .clauses
         .into_iter()
         .map(|c| transform_clause(c))
         .collect();
     let top = transform_goal(&problem.top);
-    crate::stat::preprocess::end_clock("forall_pass");
     hes::Problem { top, clauses }
 }
 

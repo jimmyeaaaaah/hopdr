@@ -7,8 +7,6 @@ pub struct SimplifyConstrOpTransform {}
 type Goal = hes::Goal<formula::Constraint>;
 
 impl TypedPreprocessor for SimplifyConstrOpTransform {
-    const PASS_NAME: &'static str = "simplify constraint and op";
-
     fn transform_goal(
         &self,
         goal: &Goal,

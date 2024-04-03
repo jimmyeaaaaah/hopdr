@@ -7,10 +7,11 @@ extern crate ctrlc;
 
 use hopdr::util::Pretty;
 use hopdr::*;
-use nom::error::VerboseError;
 
 use clap::Parser;
-use colored::Colorize;
+use hopdr::checker;
+use hopdr::title;
+use nom::error::VerboseError;
 
 /// Validity checker for νHFL(Z)
 #[derive(Parser, Debug, Clone)]
@@ -34,8 +35,6 @@ struct Args {
     chc_least: bool,
     /// Don't use Ultimate as a preprocess
     no_ultimate: bool,
-    #[clap(long)]
-    print_stat: bool,
 }
 
 fn gen_configuration_from_args(args: &Args) -> hopdr::Configuration {
@@ -97,7 +96,30 @@ fn report_result(result: checker::ExecResult) {
     }
 }
 
-fn check_main(args: Args) {
+fn main() {
+    // setting logs
+    env_logger::builder()
+        .format_timestamp(None)
+        .format_module_path(false)
+        .format_level(false)
+        .format_indent(None)
+        .init();
+    // when the output is redirected to somewhere not a terminal, turn off `colored'
+    if !atty::is(atty::Stream::Stdout) || !atty::is(atty::Stream::Stderr) {
+        colored::control::set_override(false);
+        hopdr::util::set_colored(false);
+    } else {
+        match terminal_size::terminal_size() {
+            Some((width, _)) => hopdr::util::set_default_width(width.0 as usize),
+            None => (),
+        }
+    }
+
+    // parsing command line args
+    let args = Args::parse();
+
+    crate::ml::set_format(args.do_format);
+
     let config = gen_configuration_from_args(&args);
 
     let (vc, ctx) = if args.chc {
@@ -138,10 +160,8 @@ fn check_main(args: Args) {
             let least = crate::formula::chc::translate_to_hes(chcs);
             let least = crate::preprocess::hes::preprocess_for_typed_problem(least, &config);
 
-            if args.print_check_log {
-                println!("greatest style:\n {}", greatest);
-                println!("least style:\n {}", least);
-            }
+            println!("greatest style:\n {}", greatest);
+            println!("least style:\n {}", least);
 
             let lhs = crate::checker::difficulty_score(&greatest);
             let rhs = crate::checker::difficulty_score(&least);
@@ -162,51 +182,8 @@ fn check_main(args: Args) {
     } else {
         get_problem(&args.input, &config)
     };
+
     let config = checker::Config::new(&ctx, args.print_check_log);
+
     report_result(checker::run(vc, config))
-}
-
-fn main() {
-    // setting logs
-    env_logger::builder()
-        .format_timestamp(None)
-        .format_module_path(false)
-        .format_level(false)
-        .format_indent(None)
-        .init();
-    // when the output is redirected to somewhere not a terminal, turn off `colored'
-    if !atty::is(atty::Stream::Stdout) || !atty::is(atty::Stream::Stderr) {
-        colored::control::set_override(false);
-        hopdr::util::set_colored(false);
-    } else {
-        match terminal_size::terminal_size() {
-            Some((width, _)) => hopdr::util::set_default_width(width.0 as usize),
-            None => (),
-        }
-    }
-
-    // parsing command line args
-    let args = Args::parse();
-    let args_cloned = args.clone();
-
-    crate::ml::set_format(args.do_format);
-
-    match util::executes_with_timeout_and_ctrlc(move || check_main(args_cloned), None) {
-        Ok(()) => (),
-        Err(util::ExecutionError::Timeout) => {
-            println!("{}", "Timeout".red());
-        }
-        Err(util::ExecutionError::Panic) => {
-            println!("{}", "Fail".red());
-        }
-        Err(util::ExecutionError::Ctrlc) => {
-            println!("{}", "Execution terminated".white());
-        }
-    }
-
-    crate::stat::finalize();
-
-    if args.print_stat {
-        crate::stat::dump();
-    }
 }

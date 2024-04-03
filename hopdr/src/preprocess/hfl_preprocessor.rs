@@ -30,8 +30,6 @@ pub fn open_file_with_preprocess(
     filename: &str,
     config: &crate::Configuration,
 ) -> Result<String, Error> {
-    crate::stat::preprocess::start_clock("hfl_preprocessor");
-
     //let contents = fs::read_to_string(&args.input).expect("Something went wrong reading the file");
     const CMD: &str = "hfl-preprocessor";
 
@@ -45,7 +43,6 @@ pub fn open_file_with_preprocess(
     args.push(filename);
     let output = Command::new(CMD).args(args).output()?;
     let s = String::from_utf8(output.stdout)?;
-    crate::stat::preprocess::end_clock("hfl_preprocessor");
     if s.starts_with("%HES") {
         Ok(s)
     } else {

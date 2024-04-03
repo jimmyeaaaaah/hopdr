@@ -71,8 +71,6 @@ fn transform_goal(g: &Goal) -> Goal {
 }
 
 impl TypedPreprocessor for UnpackConstrTransform {
-    const PASS_NAME: &'static str = "unpack constraint";
-
     fn transform_goal(
         &self,
         goal: &formula::hes::Goal<formula::Constraint>,
