@@ -98,8 +98,14 @@ def parse_stdout(stdout):
     if preprocess is not None:
         result_data['preprocess'] = preprocess
     smt = parse_stat(stdout, "[SMT]", smt_keys)
+    if smt is not None:
+        result_data['smt'] = smt
     interpol = parse_stat(stdout, "[Interpolation]", interpol_keys)
+    if interpol is not None:
+        result_data['interpol'] = smt
     chc = parse_stat(stdout, "[CHC]", chc_keys)
+    if chc is not None:
+        result_data['chc'] = smt
     return result_data
 
 def p(file, result):
@@ -154,8 +160,16 @@ def run(cmd, timeout=None):
             return output, elapsed
         except subprocess.TimeoutExpired:
             try:
-                os.killpg(p.pid, signal.SIGKILL)
-            except:
+                p.send_signal(signal.SIGINT)
+                output, _ = p.communicate(timeout=10)
+                return output, timeout
+            except subprocess.TimeoutExpired:
+                try:
+                    p.kill()
+                except:
+                    pass
+            except Exception as e:
+                print(e)
                 pass
             raise
 
