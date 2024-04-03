@@ -4,6 +4,7 @@
 pub mod chc;
 pub mod interpolation;
 pub mod overall;
+pub mod preprocess;
 pub mod smt;
 
 use once_cell::sync::Lazy;
@@ -12,6 +13,7 @@ use std::sync::Mutex;
 use chc::CHCStatistics;
 use interpolation::InterpolationStatistics;
 use overall::OverallStatistics;
+use preprocess::PreprocessStatistics;
 use smt::SMTStatistics;
 
 struct Statistics {
@@ -19,6 +21,7 @@ struct Statistics {
     overall: OverallStatistics,
     interpolation: InterpolationStatistics,
     chc: CHCStatistics,
+    preprocess: PreprocessStatistics,
 }
 
 impl Statistics {
@@ -28,12 +31,15 @@ impl Statistics {
             smt: SMTStatistics::new(),
             overall: OverallStatistics::new(),
             interpolation: InterpolationStatistics::new(),
+            preprocess: PreprocessStatistics::new(),
         }
     }
 }
 
 impl std::fmt::Display for Statistics {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "[Preprocess]")?;
+        writeln!(f, "{}", self.preprocess)?;
         writeln!(f, "[SMT]")?;
         writeln!(f, "{}", self.smt)?;
         writeln!(f, "[Interpolation]")?;

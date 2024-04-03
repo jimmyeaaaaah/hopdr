@@ -42,6 +42,8 @@ fn handle_goal(goal: &Goal, mut fvbools: Vec<Ident>) -> Goal {
 }
 
 impl TypedPreprocessor for BooleanExpandTransform {
+    const PASS_NAME: &'static str = "boolean expand";
+
     fn transform_goal(&self, goal: &Goal, _t: &Type, _env: &mut TyEnv) -> Goal {
         debug!("transform_goal: {}", goal);
         let fvbools = Vec::new();
