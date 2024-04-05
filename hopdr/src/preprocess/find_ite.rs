@@ -3,7 +3,7 @@ use super::safety::check_dual;
 /// For example, a formula ∀x. x != 0 \/ P(x, y) can be translated to P(0, y).
 use super::TypedPreprocessor;
 use crate::formula::hes::{self, GoalKind};
-use crate::formula::{self, Bot, Constraint, FormulaSize, Logic, Negation, Top};
+use crate::formula::{self, Bot, Constraint, FormulaSize, Fv, Logic, Negation, Top};
 
 pub struct FindITETransform {}
 
@@ -18,6 +18,10 @@ fn get_smaller_condition(c1: Constraint, c2: Constraint) -> Constraint {
     }
 }
 
+fn contains_same_fv(g: &Goal, g2: &Goal) -> bool {
+    g.fv() == g2.fv()
+}
+
 fn find_match(gs: &Vec<Goal>, gs2: &Vec<Goal>) -> Option<(Constraint, Goal, Goal)> {
     fn aux(gs: &Vec<Goal>, idx: usize) -> Goal {
         gs.iter()
@@ -29,7 +33,7 @@ fn find_match(gs: &Vec<Goal>, gs2: &Vec<Goal>) -> Option<(Constraint, Goal, Goal
     }
     for (i, g1) in gs.iter().enumerate() {
         for (j, g2) in gs2.iter().enumerate() {
-            if check_dual(g1, g2) {
+            if contains_same_fv(g1, g2) && check_dual(g1, g2) {
                 let c = get_smaller_condition(g1.clone().into(), g2.clone().into());
                 let g1 = aux(gs, i);
                 let g2 = aux(gs2, j);

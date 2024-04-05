@@ -1198,6 +1198,12 @@ impl From<Clause<Constraint>> for Clause<fofml::Atom> {
     }
 }
 
+impl PartialEq for Clause<Constraint> {
+    fn eq(&self, other: &Self) -> bool {
+        self.body == other.body && self.head == other.head
+    }
+}
+
 impl<C: Fv<Id = Ident>> Fv for Clause<C> {
     type Id = Ident;
 
@@ -1254,6 +1260,12 @@ impl From<Problem<Constraint>> for Problem<fofml::Atom> {
 impl<C: Pretty + Precedence> fmt::Display for Problem<C> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.pretty_display())
+    }
+}
+
+impl PartialEq for Problem<Constraint> {
+    fn eq(&self, other: &Self) -> bool {
+        self.clauses == other.clauses && self.top == other.top
     }
 }
 
