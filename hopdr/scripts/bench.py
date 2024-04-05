@@ -38,16 +38,16 @@ def gen_cmd(file):
     ag = ' '.join(args)
     return cmd_template.format(ag, file)
 
-def parse_preprocess_stat(data):
+def parse_dict_stat(title, data):
     l = data.split("\n")
     idx = None
 
     for (i, x) in enumerate(l):
-        if x.startswith("[Preprocess]"):
+        if x.startswith(title):
             idx = i
             break
     if idx is None:
-        print("preprocess data not found")
+        print("{} data not found".format(title))
         return None
     entries = dict()
     idx += 2
@@ -63,6 +63,11 @@ def parse_preprocess_stat(data):
         idx += 1
     return entries
 
+def parse_preprocess_stat(data):
+    return parse_dict_stat("[Preprocess]", data)
+
+def parse_check_stat(data):
+    return parse_dict_stat("[Check]", data)
 
 def parse_stat(data, title, keys):
     l = data.split("\n")
@@ -83,6 +88,7 @@ def parse_stat(data, title, keys):
 smt_keys = ["number of invokes of SMT solver", "total time"]
 interpol_keys = ["count", "total time"]
 chc_keys = interpol_keys
+qe_keys = ["number of invokes of SMT solver", "total time"]
 
 
 def parse_stdout(stdout):
@@ -97,15 +103,21 @@ def parse_stdout(stdout):
     preprocess = parse_preprocess_stat(stdout)
     if preprocess is not None:
         result_data['preprocess'] = preprocess
+    check = parse_check_stat(stdout)
+    if check is not None:
+        result_data['check'] = check 
     smt = parse_stat(stdout, "[SMT]", smt_keys)
     if smt is not None:
         result_data['smt'] = smt
     interpol = parse_stat(stdout, "[Interpolation]", interpol_keys)
     if interpol is not None:
-        result_data['interpol'] = smt
+        result_data['interpol'] = interpol
     chc = parse_stat(stdout, "[CHC]", chc_keys)
     if chc is not None:
-        result_data['chc'] = smt
+        result_data['chc'] = chc
+    qe = parse_stat(stdout, "[QE]", chc_keys)
+    if qe is not None:
+        result_data['qe'] = qe
     return result_data
 
 def p(file, result):
