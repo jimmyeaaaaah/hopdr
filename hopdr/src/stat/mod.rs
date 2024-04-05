@@ -2,6 +2,7 @@
 //! By utilizing the functions for updating the statistics, users can register their data.
 
 pub mod chc;
+pub mod check;
 pub mod interpolation;
 pub mod overall;
 pub mod preprocess;
@@ -12,12 +13,12 @@ use once_cell::sync::Lazy;
 use std::sync::Mutex;
 
 use chc::CHCStatistics;
+use check::CheckStatistics;
 use interpolation::InterpolationStatistics;
 use overall::OverallStatistics;
 use preprocess::PreprocessStatistics;
+use qe::QEStatistics;
 use smt::SMTStatistics;
-
-use self::qe::QEStatistics;
 
 struct Statistics {
     smt: SMTStatistics,
@@ -26,6 +27,7 @@ struct Statistics {
     chc: CHCStatistics,
     preprocess: PreprocessStatistics,
     qe: QEStatistics,
+    check: CheckStatistics,
 }
 
 impl Statistics {
@@ -37,6 +39,7 @@ impl Statistics {
             interpolation: InterpolationStatistics::new(),
             preprocess: PreprocessStatistics::new(),
             qe: QEStatistics::new(),
+            check: CheckStatistics::new(),
         }
     }
 }
@@ -53,6 +56,8 @@ impl std::fmt::Display for Statistics {
         writeln!(f, "{}", self.chc)?;
         writeln!(f, "[QE]")?;
         writeln!(f, "{}", self.qe)?;
+        writeln!(f, "[Check]")?;
+        writeln!(f, "{}", self.check)?;
         writeln!(f, "[Overall]")?;
         writeln!(f, "{}", self.overall)?;
         Ok(())

@@ -7,6 +7,7 @@ use crate::formula::hes::{GoalBase, GoalKind, Problem, ProblemBase};
 use crate::formula::{Bot, Constraint, Fv, Ident, Logic, Op, PredKind, Type as HFLType};
 use crate::ml::{optimize, Expr, Function, Program, Range, Type as SType, Variable};
 use crate::preprocess::Context;
+use crate::stat::check::stat;
 pub use executor::ExecResult;
 use mode::{Mode, ModeEnv};
 
@@ -554,16 +555,16 @@ pub fn run(problem: Problem<Constraint>, config: Config) -> executor::ExecResult
         println!("{}", problem.pretty_display_with_context(&config.context));
     }
     let mut trans = Translator::new(config.clone(), &problem);
-    let problem_with_mode = mode_infer::infer(problem);
-    let prog = trans.translate(problem_with_mode);
+    let problem_with_mode = stat("mode infer", || mode_infer::infer(problem));
+    let prog = stat("translate", || trans.translate(problem_with_mode));
 
-    let prog = optimize(prog);
-    let s = prog.dump_ml();
+    let prog = stat("optimize", || optimize(prog));
+    let s = stat("dump_ml", || prog.dump_ml());
     if config.print_check_log {
         println!("(* Generated Program *)");
         println!("{s}");
     }
-    executor::executor(s)
+    stat("execute", || executor::executor(s))
 }
 
 /// This function is used to calculate the difficulty score of the problem.
