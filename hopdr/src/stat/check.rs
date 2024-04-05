@@ -1,15 +1,16 @@
 // TODO: There are a lot of duplicate codes in stat like check.rs and qe.rs, which should be merged
-use super::STAT;
 use std::time::{Duration, Instant};
 
 use std::collections::HashMap;
 
 pub struct State {
+    #[allow(dead_code)]
     in_progress: Option<Instant>,
     duration: Duration,
     count: usize,
 }
 
+#[cfg(not(test))]
 impl State {
     fn new() -> State {
         State {
@@ -79,16 +80,24 @@ impl Default for CheckStatistics {
     }
 }
 
+#[allow(unused_variables)]
 pub fn start_clock(name: &'static str) {
-    let now = Instant::now();
-    let s = &mut STAT.lock().unwrap().check;
-    s.sub_clocks.entry(name).or_insert(State::new()).in_progress = Some(now);
+    #[cfg(not(test))]
+    {
+        let now = Instant::now();
+        let s = &mut super::STAT.lock().unwrap().check;
+        s.sub_clocks.entry(name).or_insert(State::new()).in_progress = Some(now);
+    }
 }
 
+#[allow(unused_variables)]
 pub fn end_clock(name: &'static str) {
-    let stat = &mut STAT.lock().unwrap().check;
-    let st = stat.sub_clocks.get_mut(name).expect("program error");
-    st.end_clock();
+    #[cfg(not(test))]
+    {
+        let stat = &mut super::STAT.lock().unwrap().check;
+        let st = stat.sub_clocks.get_mut(name).expect("program error");
+        st.end_clock();
+    }
 }
 
 pub fn stat<T, F: FnOnce() -> T>(name: &'static str, f: F) -> T {
@@ -99,10 +108,13 @@ pub fn stat<T, F: FnOnce() -> T>(name: &'static str, f: F) -> T {
 }
 
 pub fn finalize() {
-    let stat = &mut STAT.lock().unwrap().check;
-    stat.sub_clocks.iter_mut().for_each(|(_, state)| {
-        if state.is_in_progress() {
-            state.end_clock()
-        }
-    })
+    #[cfg(not(test))]
+    {
+        let stat = &mut super::STAT.lock().unwrap().check;
+        stat.sub_clocks.iter_mut().for_each(|(_, state)| {
+            if state.is_in_progress() {
+                state.end_clock()
+            }
+        })
+    }
 }

@@ -1,4 +1,3 @@
-use super::STAT;
 use std::time::Duration;
 pub struct CHCStatistics {
     count: usize,
@@ -29,9 +28,16 @@ impl Default for CHCStatistics {
 }
 
 pub fn count() {
-    STAT.lock().unwrap().chc.count += 1;
+    #[cfg(not(test))]
+    {
+        super::STAT.lock().unwrap().chc.count += 1;
+    }
 }
 
+#[allow(unused_variables)]
 pub fn total_time(total_time: Duration) {
-    STAT.lock().unwrap().chc.total_time += total_time
+    #[cfg(not(test))]
+    {
+        super::STAT.lock().unwrap().chc.total_time += total_time
+    }
 }
