@@ -50,7 +50,9 @@ pub fn end_clock() {
             .expect("program error")
     };
     let dur = st.elapsed();
-    STAT.lock().unwrap().smt.smt_duration += dur;
+    let smt = &mut STAT.lock().unwrap().smt;
+    smt.smt_duration += dur;
+    smt.clock_starts_at = None;
 }
 
 pub fn finalize() {

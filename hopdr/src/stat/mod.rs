@@ -75,4 +75,5 @@ pub fn finalize() {
     self::interpolation::finalize();
     self::smt::finalize();
     self::qe::finalize();
+    self::check::finalize();
 }
