@@ -5,6 +5,7 @@ pub mod chc;
 pub mod interpolation;
 pub mod overall;
 pub mod preprocess;
+pub mod qe;
 pub mod smt;
 
 use once_cell::sync::Lazy;
@@ -16,12 +17,15 @@ use overall::OverallStatistics;
 use preprocess::PreprocessStatistics;
 use smt::SMTStatistics;
 
+use self::qe::QEStatistics;
+
 struct Statistics {
     smt: SMTStatistics,
     overall: OverallStatistics,
     interpolation: InterpolationStatistics,
     chc: CHCStatistics,
     preprocess: PreprocessStatistics,
+    qe: QEStatistics,
 }
 
 impl Statistics {
@@ -32,6 +36,7 @@ impl Statistics {
             overall: OverallStatistics::new(),
             interpolation: InterpolationStatistics::new(),
             preprocess: PreprocessStatistics::new(),
+            qe: QEStatistics::new(),
         }
     }
 }
@@ -46,6 +51,8 @@ impl std::fmt::Display for Statistics {
         writeln!(f, "{}", self.interpolation)?;
         writeln!(f, "[CHC]")?;
         writeln!(f, "{}", self.chc)?;
+        writeln!(f, "[QE]")?;
+        writeln!(f, "{}", self.qe)?;
         writeln!(f, "[Overall]")?;
         writeln!(f, "{}", self.overall)?;
         Ok(())
@@ -62,4 +69,5 @@ pub fn finalize() {
     crate::stat::overall::finalize();
     self::interpolation::finalize();
     self::smt::finalize();
+    self::qe::finalize();
 }

@@ -160,12 +160,16 @@ def run(cmd, timeout=None):
             return output, elapsed
         except subprocess.TimeoutExpired:
             try:
-                p.send_signal(signal.SIGINT)
+                os.killpg(p.pid, signal.SIGINT)
                 output, _ = p.communicate(timeout=10)
+                try:
+                    os.killpg(p.pid, signal.SIGKILL)
+                except:
+                    pass
                 return output, timeout
             except subprocess.TimeoutExpired:
                 try:
-                    p.kill()
+                    os.killpg(p.pid, signal.SIGKILL)
                 except:
                     pass
             except Exception as e:

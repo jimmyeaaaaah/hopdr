@@ -89,10 +89,16 @@ pub trait TypedPreprocessor {
         &self,
         problem: formula::hes::Problem<formula::Constraint>,
     ) -> formula::hes::Problem<formula::Constraint> {
-        crate::stat::preprocess::start_clock(Self::PASS_NAME);
         info!("preprocessing: {}", Self::PASS_NAME);
-        let p = self.transform_internal(problem);
+        crate::stat::preprocess::start_clock(Self::PASS_NAME);
+        let p = self.transform_internal(problem.clone());
         crate::stat::preprocess::end_clock(Self::PASS_NAME);
+
+        if problem != p {
+            info!("{}", problem);
+            info!("translated result: ");
+            info!("{}", p);
+        }
         p
     }
 }

@@ -355,7 +355,11 @@ impl QESolver for Z3 {
         Ok(c)
     }
     fn solve_string(&self, s: String) -> String {
-        z3_solver(s)
+        crate::stat::smt::smt_count();
+        crate::stat::smt::start_clock();
+        let result = z3_solver(s);
+        crate::stat::smt::end_clock();
+        result
     }
 }
 
@@ -444,7 +448,13 @@ impl QESolver for UltimateEliminator {
 
     fn solve_string(&self, s: String) -> String {
         debug!("smt2: {s}");
-        ultimate_solver(s)
+        crate::stat::smt::smt_count();
+        crate::stat::smt::start_clock();
+
+        let result = ultimate_solver(s);
+
+        crate::stat::smt::end_clock();
+        result
     }
 
     fn parse(&self, s: &str) -> Result<Constraint, lexpr::parse::Error> {
