@@ -1,9 +1,9 @@
-use super::STAT;
 use std::time::{Duration, Instant};
 
 pub struct SMTStatistics {
     smt_count: usize,
     smt_duration: Duration,
+    #[allow(dead_code)]
     clock_starts_at: Option<Instant>,
 }
 
@@ -32,34 +32,47 @@ impl Default for SMTStatistics {
 }
 
 pub fn smt_count() {
-    STAT.lock().unwrap().smt.smt_count += 1
+    #[cfg(not(test))]
+    {
+        super::STAT.lock().unwrap().smt.smt_count += 1
+    }
 }
 
 pub fn start_clock() {
-    let now = Instant::now();
-    let s = &mut STAT.lock().unwrap().smt.clock_starts_at;
-    assert!(s.is_none());
+    #[cfg(not(test))]
+    {
+        let now = Instant::now();
+        let s = &mut super::STAT.lock().unwrap().smt.clock_starts_at;
+        assert!(s.is_none());
 
-    *s = Some(now);
+        *s = Some(now);
+    }
 }
 
 pub fn end_clock() {
-    let st = {
-        STAT.lock()
-            .unwrap()
-            .smt
-            .clock_starts_at
-            .expect("program error")
-    };
-    let dur = st.elapsed();
-    let smt = &mut STAT.lock().unwrap().smt;
-    smt.smt_duration += dur;
-    smt.clock_starts_at = None;
+    #[cfg(not(test))]
+    {
+        let st = {
+            super::STAT
+                .lock()
+                .unwrap()
+                .smt
+                .clock_starts_at
+                .expect("program error")
+        };
+        let dur = st.elapsed();
+        let smt = &mut super::STAT.lock().unwrap().smt;
+        smt.smt_duration += dur;
+        smt.clock_starts_at = None;
+    }
 }
 
 pub fn finalize() {
-    let r = { STAT.lock().unwrap().smt.clock_starts_at };
-    if r.is_some() {
-        end_clock()
+    #[cfg(not(test))]
+    {
+        let r = { super::STAT.lock().unwrap().smt.clock_starts_at };
+        if r.is_some() {
+            end_clock()
+        }
     }
 }

@@ -1,4 +1,3 @@
-use super::STAT;
 use either::Either;
 use std::time::{Duration, Instant};
 pub struct OverallStatistics {
@@ -36,9 +35,12 @@ impl Default for OverallStatistics {
 }
 
 pub fn finalize() {
-    let duration = match STAT.lock().unwrap().overall.total_time {
-        Either::Left(now) => now.elapsed(),
-        Either::Right(dur) => dur,
-    };
-    STAT.lock().unwrap().overall.total_time = Either::Right(duration);
+    #[cfg(not(test))]
+    {
+        let duration = match super::STAT.lock().unwrap().overall.total_time {
+            Either::Left(now) => now.elapsed(),
+            Either::Right(dur) => dur,
+        };
+        super::STAT.lock().unwrap().overall.total_time = Either::Right(duration);
+    }
 }

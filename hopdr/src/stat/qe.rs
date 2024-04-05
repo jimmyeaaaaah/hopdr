@@ -1,9 +1,9 @@
-use super::STAT;
 use std::time::{Duration, Instant};
 
 pub struct QEStatistics {
     qe_count: usize,
     qe_duration: Duration,
+    #[allow(dead_code)]
     clock_starts_at: Option<Instant>,
 }
 
@@ -32,32 +32,45 @@ impl Default for QEStatistics {
 }
 
 pub fn qe_count() {
-    STAT.lock().unwrap().qe.qe_count += 1
+    #[cfg(not(test))]
+    {
+        super::STAT.lock().unwrap().qe.qe_count += 1
+    }
 }
 
 pub fn start_clock() {
-    let now = Instant::now();
+    #[cfg(not(test))]
+    {
+        let now = Instant::now();
 
-    STAT.lock().unwrap().qe.clock_starts_at = Some(now)
+        super::STAT.lock().unwrap().qe.clock_starts_at = Some(now)
+    }
 }
 
 pub fn end_clock() {
-    let st = {
-        STAT.lock()
-            .unwrap()
-            .qe
-            .clock_starts_at
-            .expect("program error")
-    };
-    let dur = st.elapsed();
-    let qe = &mut STAT.lock().unwrap().qe;
-    qe.qe_duration += dur;
-    qe.clock_starts_at = None;
+    #[cfg(not(test))]
+    {
+        let st = {
+            super::STAT
+                .lock()
+                .unwrap()
+                .qe
+                .clock_starts_at
+                .expect("program error")
+        };
+        let dur = st.elapsed();
+        let qe = &mut super::STAT.lock().unwrap().qe;
+        qe.qe_duration += dur;
+        qe.clock_starts_at = None;
+    }
 }
 
 pub fn finalize() {
-    let r = { STAT.lock().unwrap().qe.clock_starts_at };
-    if r.is_some() {
-        end_clock()
+    #[cfg(not(test))]
+    {
+        let r = { super::STAT.lock().unwrap().qe.clock_starts_at };
+        if r.is_some() {
+            end_clock()
+        }
     }
 }

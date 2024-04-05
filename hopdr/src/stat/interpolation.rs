@@ -1,9 +1,9 @@
-use super::STAT;
 use std::time::Duration;
 use std::time::Instant;
 pub struct InterpolationStatistics {
     count: usize,
     total_time: Duration,
+    #[allow(dead_code)]
     clock_starts_at: Option<Instant>,
 }
 
@@ -32,26 +32,38 @@ impl Default for InterpolationStatistics {
 }
 
 pub fn count() {
-    STAT.lock().unwrap().interpolation.count += 1;
+    #[cfg(not(test))]
+    {
+        super::STAT.lock().unwrap().interpolation.count += 1;
+    }
 }
 
 pub fn start_clock() {
-    let now = Instant::now();
+    #[cfg(not(test))]
+    {
+        let now = Instant::now();
 
-    STAT.lock().unwrap().interpolation.clock_starts_at = Some(now)
+        super::STAT.lock().unwrap().interpolation.clock_starts_at = Some(now)
+    }
 }
 
 pub fn end_clock() {
-    let mut stat = STAT.lock().unwrap();
-    let st = stat.interpolation.clock_starts_at.expect("program error");
-    let dur = st.elapsed();
-    stat.interpolation.total_time += dur;
-    stat.interpolation.clock_starts_at = None;
+    #[cfg(not(test))]
+    {
+        let mut stat = super::STAT.lock().unwrap();
+        let st = stat.interpolation.clock_starts_at.expect("program error");
+        let dur = st.elapsed();
+        stat.interpolation.total_time += dur;
+        stat.interpolation.clock_starts_at = None;
+    }
 }
 
 pub fn finalize() {
-    let r = { STAT.lock().unwrap().interpolation.clock_starts_at };
-    if r.is_some() {
-        end_clock()
+    #[cfg(not(test))]
+    {
+        let r = { super::STAT.lock().unwrap().interpolation.clock_starts_at };
+        if r.is_some() {
+            end_clock()
+        }
     }
 }

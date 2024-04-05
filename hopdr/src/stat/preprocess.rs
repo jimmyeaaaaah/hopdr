@@ -1,14 +1,15 @@
-use super::STAT;
 use std::time::{Duration, Instant};
 
 use std::collections::HashMap;
 
 pub struct State {
+    #[allow(dead_code)]
     in_progress: Option<Instant>,
     duration: Duration,
     count: usize,
 }
 
+#[allow(dead_code)]
 impl State {
     fn new() -> State {
         State {
@@ -78,23 +79,34 @@ impl Default for PreprocessStatistics {
     }
 }
 
+#[allow(unused_variables)]
 pub fn start_clock(name: &'static str) {
-    let now = Instant::now();
-    let s = &mut STAT.lock().unwrap().preprocess;
-    s.sub_clocks.entry(name).or_insert(State::new()).in_progress = Some(now);
+    #[cfg(not(test))]
+    {
+        let now = Instant::now();
+        let s = &mut super::STAT.lock().unwrap().preprocess;
+        s.sub_clocks.entry(name).or_insert(State::new()).in_progress = Some(now);
+    }
 }
 
+#[allow(unused_variables)]
 pub fn end_clock(name: &'static str) {
-    let stat = &mut STAT.lock().unwrap().preprocess;
-    let st = stat.sub_clocks.get_mut(name).expect("program error");
-    st.end_clock();
+    #[cfg(not(test))]
+    {
+        let stat = &mut super::STAT.lock().unwrap().preprocess;
+        let st = stat.sub_clocks.get_mut(name).expect("program error");
+        st.end_clock();
+    }
 }
 
 pub fn finalize() {
-    let stat = &mut STAT.lock().unwrap().preprocess;
-    stat.sub_clocks.iter_mut().for_each(|(_, state)| {
-        if state.is_in_progress() {
-            state.end_clock()
-        }
-    })
+    #[cfg(not(test))]
+    {
+        let stat = &mut super::STAT.lock().unwrap().preprocess;
+        stat.sub_clocks.iter_mut().for_each(|(_, state)| {
+            if state.is_in_progress() {
+                state.end_clock()
+            }
+        })
+    }
 }
