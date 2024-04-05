@@ -448,12 +448,12 @@ impl QESolver for UltimateEliminator {
 
     fn solve_string(&self, s: String) -> String {
         debug!("smt2: {s}");
-        crate::stat::smt::smt_count();
-        crate::stat::smt::start_clock();
+        crate::stat::qe::qe_count();
+        crate::stat::qe::start_clock();
 
         let result = ultimate_solver(s);
 
-        crate::stat::smt::end_clock();
+        crate::stat::qe::end_clock();
         result
     }
 

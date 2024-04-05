@@ -37,8 +37,10 @@ pub fn smt_count() {
 
 pub fn start_clock() {
     let now = Instant::now();
+    let s = &mut STAT.lock().unwrap().smt.clock_starts_at;
+    assert!(s.is_none());
 
-    STAT.lock().unwrap().smt.clock_starts_at = Some(now)
+    *s = Some(now);
 }
 
 pub fn end_clock() {
