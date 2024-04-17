@@ -34,6 +34,7 @@ struct Args {
     chc_least: bool,
     /// Don't use Ultimate as a preprocess
     no_ultimate: bool,
+    #[cfg(feature = "stat")]
     #[clap(long)]
     print_stat: bool,
 }
@@ -206,6 +207,7 @@ fn main() {
 
     crate::stat::finalize();
 
+    #[cfg(feature = "stat")]
     if args.print_stat {
         crate::stat::dump();
     }

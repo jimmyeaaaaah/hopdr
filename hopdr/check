@@ -6,4 +6,4 @@ export PATH=$d/bin:$PATH
 
 #hopdr-check-runner
 
-cargo run --features "no_simplify_by_finding_eq" --bin check -- --do-format --print-check-log --input $@
+cargo run --features stat --features "no_simplify_by_finding_eq" --bin check -- --do-format --print-check-log --input $@
