@@ -133,10 +133,16 @@ fn check_main(args: Args) {
         let problem = if !args.chc_least
             && crate::formula::chc::is_linear(chcs.iter().map(|echc| &echc.chc))
         {
+            stat::preprocess::start_clock("translate_to_hes_linear");
             let greatest = crate::formula::chc::translate_to_hes_linear(chcs.clone());
+            stat::preprocess::end_clock("translate_to_hes_linear");
+
             let greatest = crate::preprocess::hes::preprocess_for_typed_problem(greatest, &config);
 
+            stat::preprocess::start_clock("translate_to_hes");
             let least = crate::formula::chc::translate_to_hes(chcs);
+            stat::preprocess::end_clock("translate_to_hes");
+
             let least = crate::preprocess::hes::preprocess_for_typed_problem(least, &config);
 
             if args.print_check_log {
@@ -155,7 +161,10 @@ fn check_main(args: Args) {
                 least
             }
         } else {
+            stat::preprocess::start_clock("translate_to_hes");
             let problem = crate::formula::chc::translate_to_hes(chcs);
+            stat::preprocess::end_clock("translate_to_hes");
+
             crate::preprocess::hes::preprocess_for_typed_problem(problem, &config)
         };
 
