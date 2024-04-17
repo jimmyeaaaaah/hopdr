@@ -28,7 +28,7 @@ impl Default for CHCStatistics {
 }
 
 pub fn count() {
-    #[cfg(not(test))]
+    #[cfg(feature = "stat")]
     {
         super::STAT.lock().unwrap().chc.count += 1;
     }
@@ -36,7 +36,7 @@ pub fn count() {
 
 #[allow(unused_variables)]
 pub fn total_time(total_time: Duration) {
-    #[cfg(not(test))]
+    #[cfg(feature = "stat")]
     {
         super::STAT.lock().unwrap().chc.total_time += total_time
     }

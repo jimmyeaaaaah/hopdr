@@ -20,6 +20,8 @@ path = "src/lib.rs"
 
 [features]
 no_simplify_by_finding_eq = []
+# stat feature enables stat on the usage of various background solvers. Assumption: library does not run concurrently
+stat = []
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

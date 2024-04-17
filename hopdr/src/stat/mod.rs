@@ -1,5 +1,8 @@
 //! Singleton Object Statistics is initialized when the program is loaded.
 //! By utilizing the functions for updating the statistics, users can register their data.
+//!
+//! Stat module does not assume that it runs concurrently.
+//! The stat result can be broken if it is executed concurrently.
 
 pub mod chc;
 pub mod check;

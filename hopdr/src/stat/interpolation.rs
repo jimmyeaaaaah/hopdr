@@ -32,14 +32,14 @@ impl Default for InterpolationStatistics {
 }
 
 pub fn count() {
-    #[cfg(not(test))]
+    #[cfg(feature = "stat")]
     {
         super::STAT.lock().unwrap().interpolation.count += 1;
     }
 }
 
 pub fn start_clock() {
-    #[cfg(not(test))]
+    #[cfg(feature = "stat")]
     {
         let now = Instant::now();
 
@@ -48,7 +48,7 @@ pub fn start_clock() {
 }
 
 pub fn end_clock() {
-    #[cfg(not(test))]
+    #[cfg(feature = "stat")]
     {
         let mut stat = super::STAT.lock().unwrap();
         let st = stat.interpolation.clock_starts_at.expect("program error");
@@ -59,7 +59,7 @@ pub fn end_clock() {
 }
 
 pub fn finalize() {
-    #[cfg(not(test))]
+    #[cfg(feature = "stat")]
     {
         let r = { super::STAT.lock().unwrap().interpolation.clock_starts_at };
         if r.is_some() {

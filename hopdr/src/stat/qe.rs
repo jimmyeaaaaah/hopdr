@@ -32,14 +32,14 @@ impl Default for QEStatistics {
 }
 
 pub fn qe_count() {
-    #[cfg(not(test))]
+    #[cfg(feature = "stat")]
     {
         super::STAT.lock().unwrap().qe.qe_count += 1
     }
 }
 
 pub fn start_clock() {
-    #[cfg(not(test))]
+    #[cfg(feature = "stat")]
     {
         let now = Instant::now();
 
@@ -48,7 +48,7 @@ pub fn start_clock() {
 }
 
 pub fn end_clock() {
-    #[cfg(not(test))]
+    #[cfg(feature = "stat")]
     {
         let st = {
             super::STAT
@@ -66,7 +66,7 @@ pub fn end_clock() {
 }
 
 pub fn finalize() {
-    #[cfg(not(test))]
+    #[cfg(feature = "stat")]
     {
         let r = { super::STAT.lock().unwrap().qe.clock_starts_at };
         if r.is_some() {

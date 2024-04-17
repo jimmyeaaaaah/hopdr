@@ -81,7 +81,7 @@ impl Default for PreprocessStatistics {
 
 #[allow(unused_variables)]
 pub fn start_clock(name: &'static str) {
-    #[cfg(not(test))]
+    #[cfg(feature = "stat")]
     {
         let now = Instant::now();
         let s = &mut super::STAT.lock().unwrap().preprocess;
@@ -91,7 +91,7 @@ pub fn start_clock(name: &'static str) {
 
 #[allow(unused_variables)]
 pub fn end_clock(name: &'static str) {
-    #[cfg(not(test))]
+    #[cfg(feature = "stat")]
     {
         let stat = &mut super::STAT.lock().unwrap().preprocess;
         let st = stat.sub_clocks.get_mut(name).expect("program error");
@@ -100,7 +100,7 @@ pub fn end_clock(name: &'static str) {
 }
 
 pub fn finalize() {
-    #[cfg(not(test))]
+    #[cfg(feature = "stat")]
     {
         let stat = &mut super::STAT.lock().unwrap().preprocess;
         stat.sub_clocks.iter_mut().for_each(|(_, state)| {

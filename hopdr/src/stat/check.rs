@@ -10,7 +10,7 @@ pub struct State {
     count: usize,
 }
 
-#[cfg(not(test))]
+#[cfg(feature = "stat")]
 impl State {
     fn new() -> State {
         State {
@@ -82,7 +82,7 @@ impl Default for CheckStatistics {
 
 #[allow(unused_variables)]
 pub fn start_clock(name: &'static str) {
-    #[cfg(not(test))]
+    #[cfg(feature = "stat")]
     {
         let now = Instant::now();
         let s = &mut super::STAT.lock().unwrap().check;
@@ -92,7 +92,7 @@ pub fn start_clock(name: &'static str) {
 
 #[allow(unused_variables)]
 pub fn end_clock(name: &'static str) {
-    #[cfg(not(test))]
+    #[cfg(feature = "stat")]
     {
         let stat = &mut super::STAT.lock().unwrap().check;
         let st = stat.sub_clocks.get_mut(name).expect("program error");
@@ -108,7 +108,7 @@ pub fn stat<T, F: FnOnce() -> T>(name: &'static str, f: F) -> T {
 }
 
 pub fn finalize() {
-    #[cfg(not(test))]
+    #[cfg(feature = "stat")]
     {
         let stat = &mut super::STAT.lock().unwrap().check;
         stat.sub_clocks.iter_mut().for_each(|(_, state)| {

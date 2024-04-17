@@ -32,14 +32,14 @@ impl Default for SMTStatistics {
 }
 
 pub fn smt_count() {
-    #[cfg(not(test))]
+    #[cfg(feature = "stat")]
     {
         super::STAT.lock().unwrap().smt.smt_count += 1
     }
 }
 
 pub fn start_clock() {
-    #[cfg(not(test))]
+    #[cfg(feature = "stat")]
     {
         let now = Instant::now();
         let s = &mut super::STAT.lock().unwrap().smt.clock_starts_at;
@@ -50,7 +50,7 @@ pub fn start_clock() {
 }
 
 pub fn end_clock() {
-    #[cfg(not(test))]
+    #[cfg(feature = "stat")]
     {
         let st = {
             super::STAT
@@ -68,7 +68,7 @@ pub fn end_clock() {
 }
 
 pub fn finalize() {
-    #[cfg(not(test))]
+    #[cfg(feature = "stat")]
     {
         let r = { super::STAT.lock().unwrap().smt.clock_starts_at };
         if r.is_some() {

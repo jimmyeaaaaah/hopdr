@@ -35,7 +35,7 @@ impl Default for OverallStatistics {
 }
 
 pub fn finalize() {
-    #[cfg(not(test))]
+    #[cfg(feature = "stat")]
     {
         let duration = match super::STAT.lock().unwrap().overall.total_time {
             Either::Left(now) => now.elapsed(),
