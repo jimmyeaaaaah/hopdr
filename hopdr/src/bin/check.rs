@@ -37,6 +37,10 @@ struct Args {
     #[cfg(feature = "stat")]
     #[clap(long)]
     print_stat: bool,
+
+    #[clap(long)]
+    /// Enables HoIce's preprocessing after spacer's preprocessing
+    do_hoice_preprocess: bool,
 }
 
 fn gen_configuration_from_args(args: &Args) -> hopdr::Configuration {
@@ -102,12 +106,12 @@ fn check_main(args: Args) {
     let config = gen_configuration_from_args(&args);
 
     let (vc, ctx) = if args.chc {
-        let data = std::fs::read_to_string(&args.input).unwrap();
+        let data = preprocess::chc::open_file_with_preprocess(&args.input).unwrap();
         if args.print_check_log {
             println!("data");
             println!("{data}");
         }
-        let (chcs, vmap) = match parse::parse_chc(&data) {
+        let (chcs, vmap) = match parse::parse_chc(&data, args.do_hoice_preprocess) {
             Ok(x) => x,
             Err(r) if r.is_unsat() => return report_result(checker::ExecResult::Invalid),
             Err(r) => panic!("parse error: {:?}", r),
@@ -124,11 +128,6 @@ fn check_main(args: Args) {
             }
         }
 
-        //let chcs = crate::formula::chc::expand_ite(chcs);
-        //println!("translated:");
-        //for chc in chcs.iter() {
-        //    println!("{}", chc);
-        //}
         let config = get_preprocess_config();
         let problem = if !args.chc_least
             && crate::formula::chc::is_linear(chcs.iter().map(|echc| &echc.chc))

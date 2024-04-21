@@ -114,7 +114,7 @@ fn test_transform() {
 (assert (forall ((x0 Int) (y0 Int))
   (=> (and (inv x0 y0) (= x0 10000) (= y0 x0)) false)))
 (check-sat)";
-    let chcs = parse_chc(s).unwrap().0;
+    let chcs = parse_chc(s, false).unwrap().0;
     let problem = crate::formula::chc::translate_to_hes(chcs);
     assert_eq!(problem.clauses.len(), 1);
     let c = problem.clauses[0].clone();

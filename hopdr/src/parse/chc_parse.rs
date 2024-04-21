@@ -495,7 +495,10 @@ impl CHCTranslateError {
     }
 }
 
-pub fn parse_chc(input: &str) -> Result<(Vec<ExtendedCHC>, VariableMap), CHCTranslateError> {
+pub fn parse_chc(
+    input: &str,
+    do_preprocess: bool,
+) -> Result<(Vec<ExtendedCHC>, VariableMap), CHCTranslateError> {
     const PARSE_STAT_NAME: &'static str = "parse_chc";
     let mut instance = Instance::new();
     let mut cxt = parse::ParserCxt::new();
@@ -508,22 +511,27 @@ pub fn parse_chc(input: &str) -> Result<(Vec<ExtendedCHC>, VariableMap), CHCTran
 
     let res = match res {
         Ok(res) => res,
-        Err(_) => return Err(CHCTranslateError::ParseFail),
+        Err(s) => {
+            debug!("{s}");
+            return Err(CHCTranslateError::ParseFail);
+        }
     };
     assert_eq!(res, parse::Parsed::CheckSat);
 
     const PREPROCESS_STAT_NAME: &'static str = "preprocess by hoice";
 
     // preprocess by hoice
-    let profiler = Profiler::new();
-    crate::stat::preprocess::start_clock(PREPROCESS_STAT_NAME);
-    let preproc_result = preproc::work(&mut instance, &profiler);
-    crate::stat::preprocess::end_clock(PREPROCESS_STAT_NAME);
-    match preproc_result {
-        Ok(_) => (),
-        Err(r) => {
-            if r.is_unsat() {
-                return Err(CHCTranslateError::Unsat);
+    if do_preprocess {
+        let profiler = Profiler::new();
+        crate::stat::preprocess::start_clock(PREPROCESS_STAT_NAME);
+        let preproc_result = preproc::work(&mut instance, &profiler);
+        crate::stat::preprocess::end_clock(PREPROCESS_STAT_NAME);
+        match preproc_result {
+            Ok(_) => (),
+            Err(r) => {
+                if r.is_unsat() {
+                    return Err(CHCTranslateError::Unsat);
+                }
             }
         }
     }
@@ -558,7 +566,7 @@ pub fn get_mc91() -> Vec<ExtendedCHC> {
 ))
 (check-sat)
     ";
-    parse_chc(input).unwrap().0
+    parse_chc(input, false).unwrap().0
 }
 
 pub fn get_linear() -> Vec<ExtendedCHC> {
@@ -568,7 +576,7 @@ pub fn get_linear() -> Vec<ExtendedCHC> {
     (assert (forall ((x Int) ) (=> (and (< x 10000) (P x)) (P (+ x 1)))))
     (assert (forall ((x Int) ) (=> (and (>= x 10000) (P x)) (> x 10000))))
     (check-sat)";
-    parse_chc(input).unwrap().0
+    parse_chc(input, false).unwrap().0
 }
 
 #[test]
