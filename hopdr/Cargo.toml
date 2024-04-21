@@ -44,7 +44,7 @@ home = "0.5.3"
 ctrlc = "3.2.3"
 pretty = { version = "0.11", features = ["termcolor"] }
 terminal_size = "0.2"
-hoice = { git = "https://github.com/moratorium08/hoice", ref = "c187d5585c56964ca263f3585cfd6338b2195982"}
+hoice = { git = "https://github.com/moratorium08/hoice", rev = "c187d5585c56964ca263f3585cfd6338b2195982"}
 
 
 [dev-dependencies]
