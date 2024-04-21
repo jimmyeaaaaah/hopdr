@@ -1,5 +1,6 @@
 mod alpha;
 mod boolean_expand;
+pub mod chc;
 mod eta;
 mod extravar;
 mod find_ite;
@@ -16,7 +17,6 @@ mod simplify_constr_op;
 mod transform;
 mod typing;
 mod unpack_constr;
-
 use crate::formula;
 use crate::formula::Type as SimpleType;
 use crate::parse;
