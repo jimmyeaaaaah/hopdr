@@ -13,7 +13,7 @@ class ParseError(Exception):
 project_root = os.path.realpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../'))
 base = os.path.join(project_root, './benchmark')
 TARGET = '../target/release/check'
-cmd_template = TARGET + ' {} --print-stat --input {}'  # <option> <filename>
+cmd_template = TARGET + ' {} --do-hoice-preprocess --print-stat --input {}'  # <option> <filename>
 
 cfg = None
 

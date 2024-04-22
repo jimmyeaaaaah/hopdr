@@ -347,10 +347,10 @@ impl<'a> Program<'a> {
         let mut s = String::new();
 
         self.dump_library_func(&mut s).unwrap();
-        s += "let rec ";
         let mut first = true;
         for f in self.functions.iter() {
             if first {
+                s += "let rec ";
                 first = false;
             } else {
                 s += "and ";
