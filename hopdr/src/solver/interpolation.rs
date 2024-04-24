@@ -367,6 +367,8 @@ struct SMTInterpolSolver {}
 struct CsisatSolver {}
 struct SpacerSolver {}
 struct HoiceSolver {}
+struct SVMInterpol {}
+
 impl InterpolationSolver {
     pub fn get_solver(sol: InterpolationSolver) -> Box<dyn Interpolation> {
         match sol {
@@ -526,6 +528,54 @@ fn test_csisat() {
     let c1 = Constraint::mk_eq(Op::mk_var(x), Op::mk_const(1));
     let c2 = Constraint::mk_eq(Op::mk_var(x), Op::mk_const(2));
     let mut sol = CsisatSolver {};
+    let s = sol.interpolate(&c1, &c2).unwrap();
+    println!("{}", s);
+}
+
+impl SVMInterpol {
+    fn execute_solver(&mut self, input1: &str, input2: &str) -> String {
+        let mut vs = Vec::new();
+        vs.push("--input1");
+        vs.push(input1);
+        vs.push("--input2");
+        vs.push(input2);
+
+        let out = interp_execution!({
+            util::exec_input_with_timeout("svminterpol", &vs, b"", Duration::from_secs(1))
+        });
+        String::from_utf8(out).unwrap()
+    }
+    fn parse_result(&mut self, result: String) -> Option<Constraint> {
+        super::csisat::parse(&result)
+    }
+}
+impl Interpolation for SVMInterpol {
+    fn interpolate(&mut self, left: &Constraint, right: &Constraint) -> Option<Constraint> {
+        let lefts = super::csisat::constraint_to_csisat(left);
+        let rights = super::csisat::constraint_to_csisat(right);
+
+        let s = self.execute_solver(&lefts, &rights);
+        crate::title!("svminterpol ");
+        debug!("left: {}", lefts);
+        debug!("right: {}", rights);
+        debug!("result: {}", s);
+        let r = self.parse_result(s.clone());
+        match r {
+            Some(r) => Some(r),
+            None => {
+                debug!("interpolation failed: {left} ; {right}, solver's output: {s}");
+                None
+            }
+        }
+    }
+}
+
+#[test]
+fn test_svminterpol() {
+    let x = Ident::fresh();
+    let c1 = Constraint::mk_eq(Op::mk_var(x), Op::mk_const(1));
+    let c2 = Constraint::mk_eq(Op::mk_var(x), Op::mk_const(2));
+    let mut sol = SVMInterpol {};
     let s = sol.interpolate(&c1, &c2).unwrap();
     println!("{}", s);
 }
