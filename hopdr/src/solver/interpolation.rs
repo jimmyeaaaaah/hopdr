@@ -51,6 +51,7 @@ pub enum InterpolationSolver {
     Csisat,
     Spacer,
     Hoice,
+    SVMInterpol,
 }
 
 // topological sort
@@ -376,6 +377,7 @@ impl InterpolationSolver {
             InterpolationSolver::Csisat => Box::new(CsisatSolver {}),
             InterpolationSolver::Spacer => Box::new(SpacerSolver {}),
             InterpolationSolver::Hoice => Box::new(HoiceSolver {}),
+            InterpolationSolver::SVMInterpol => Box::new(SVMInterpol {}),
         }
     }
     pub fn default_solver() -> Box<dyn Interpolation> {
