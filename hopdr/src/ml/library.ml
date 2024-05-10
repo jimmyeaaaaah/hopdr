@@ -21,6 +21,7 @@ let set_large () =
 let n_recursion = ref 0
 let hopdr_count_recursion () = n_recursion := !n_recursion + 1
 let check_recursion n = if !n_recursion > n then raise RecursionExceeded
+let reset_n_recursion () = n_recursion := 0
 
 let event_integer_overflow () =
   if !check_mx > 10 then check_mx := !check_mx / 2;
@@ -69,6 +70,7 @@ let ( mod ) a b =
 let loop f n =
   for i = 1 to n do
     Printf.printf "epoch %d...\n" i;
+    reset_n_recursion ();
     try
       (* if it terminates, it means that the program is *NOT* safe *)
       let () = f () in
