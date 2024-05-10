@@ -318,27 +318,14 @@ impl DumpML for Function {
 }
 
 impl<'a> Program<'a> {
+    fn dump_fail_func<W: Write>(&self, f: &mut W) -> Result<(), fmt::Error> {
+        write!(f, "let fail_hopdr () = Printf.printf \"{}\"", FAIL_STRING)
+    }
     fn dump_main_ml<W: Write>(&self, f: &mut W) -> Result<(), fmt::Error> {
-        write!(
-            f,
-            "let () = for i = 1 to 1000 do (Printf.printf \"epoch %d...\\n\" i; try "
-        )?;
+        self.dump_fail_func(f)?;
+        write!(f, "let () = main_hopdr (fun () -> ")?;
         self.main.dump_ml(f, &self.ctx)?;
-        // if it terminates, it means that the program is *NOT* safe
-        write!(f, "; raise FalseExc ")?;
-        write!(
-            f,
-            " with IntegerOverflow -> begin\n
-                Printf.printf \"int overflow\n\";
-                event_integer_overflow ()
-              end
-              | Stack_overflow -> begin
-                Printf.printf \"stack overflow\n\";
-                event_stack_overflow ()
-              end "
-        )?;
-        write!(f, " | TrueExc -> ()")?;
-        writeln!(f, ") done; Printf.printf \"{}\"", super::FAIL_STRING)
+        writeln!(f, ") fail_hopdr")
     }
     fn dump_library_func<W: Write>(&self, f: &mut W) -> Result<(), fmt::Error> {
         writeln!(f, "{}", LIBRARY)
