@@ -1,6 +1,7 @@
 exception TrueExc
 exception FalseExc
 exception IntegerOverflow
+exception RecursionExceeded
 
 let check_mx = ref 100000
 let check_mn = ref (-100000)
@@ -16,6 +17,10 @@ let set_small () =
 let set_large () =
   check_mx := 100000;
   check_mn := -100000
+
+let n_recursion = ref 0
+let hopdr_count_recursion () = n_recursion := !n_recursion + 1
+let check_recursion n = if !n_recursion > n then raise RecursionExceeded
 
 let event_integer_overflow () =
   if !check_mx > 10 then check_mx := !check_mx / 2;
@@ -75,16 +80,21 @@ let loop f n =
     | Stack_overflow ->
         Printf.printf "stack overflow\n";
         event_stack_overflow ()
+    | RecursionExceeded -> ()
     | TrueExc -> ()
   done
 
-let main_hopdr f fail =
+let hopdr_main f fail =
+  let n_recs = [ 1000; 10000; 10000000000 ] in
   let configs = [ set_min; set_small; set_large ] in
   List.iter
-    (fun config ->
-      config ();
-      loop f 1000)
-    configs;
+    (fun n_rec ->
+      List.iter
+        (fun config ->
+          config ();
+          loop f 1000)
+        configs)
+    n_recs;
   fail ()
 
 (*** The program body starts here! ***)

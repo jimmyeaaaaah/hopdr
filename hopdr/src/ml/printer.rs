@@ -312,6 +312,7 @@ impl DumpML for Function {
     fn dump_ml<W: Write>(&self, f: &mut W, ctx: &Context) -> Result<(), fmt::Error> {
         self.name.dump_ml(f, ctx)?;
         write!(f, " = ")?;
+        write!(f, "hopdr_count_recursion ();")?;
         self.body.dump_ml(f, ctx)?;
         writeln!(f, "")
     }
@@ -319,13 +320,13 @@ impl DumpML for Function {
 
 impl<'a> Program<'a> {
     fn dump_fail_func<W: Write>(&self, f: &mut W) -> Result<(), fmt::Error> {
-        write!(f, "let fail_hopdr () = Printf.printf \"{}\"", FAIL_STRING)
+        write!(f, "let hopdr_fail () = Printf.printf \"{}\"", FAIL_STRING)
     }
     fn dump_main_ml<W: Write>(&self, f: &mut W) -> Result<(), fmt::Error> {
         self.dump_fail_func(f)?;
-        write!(f, "let () = main_hopdr (fun () -> ")?;
+        write!(f, "let () = hopdr_main (fun () -> ")?;
         self.main.dump_ml(f, &self.ctx)?;
-        writeln!(f, ") fail_hopdr")
+        writeln!(f, ") hopdr_fail")
     }
     fn dump_library_func<W: Write>(&self, f: &mut W) -> Result<(), fmt::Error> {
         writeln!(f, "{}", LIBRARY)
