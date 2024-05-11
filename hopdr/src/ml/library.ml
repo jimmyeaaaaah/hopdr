@@ -19,8 +19,13 @@ let set_large () =
   check_mn := -100000
 
 let n_recursion = ref 0
-let hopdr_count_recursion () = n_recursion := !n_recursion + 1
-let check_recursion n = if !n_recursion > n then raise RecursionExceeded
+let n_recursion_limit = ref 1000
+
+let hopdr_count_recursion () =
+  n_recursion := !n_recursion + 1;
+  if !n_recursion > !n_recursion_limit then raise RecursionExceeded
+
+let set_n_recursion_limit n = n_recursion_limit := n
 let reset_n_recursion () = n_recursion := 0
 
 let event_integer_overflow () =
@@ -93,6 +98,7 @@ let hopdr_main f fail =
     (fun n_rec ->
       List.iter
         (fun config ->
+          set_n_recursion_limit n_rec;
           config ();
           loop f 1000)
         configs)
