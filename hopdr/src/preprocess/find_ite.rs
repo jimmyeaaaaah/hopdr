@@ -5,7 +5,9 @@ use super::TypedPreprocessor;
 use crate::formula::hes::{self, GoalKind};
 use crate::formula::{self, Bot, Constraint, FormulaSize, Fv, Logic, Negation, Top};
 
-pub struct FindITETransform {}
+pub struct FindITETransform {
+    lightweight: bool,
+}
 
 type Goal = hes::Goal<Constraint>;
 
@@ -22,87 +24,87 @@ fn contains_same_fv(g: &Goal, g2: &Goal) -> bool {
     g.fv() == g2.fv()
 }
 
-fn find_match(gs: &Vec<Goal>, gs2: &Vec<Goal>) -> Option<(Constraint, Goal, Goal)> {
-    fn aux(gs: &Vec<Goal>, idx: usize) -> Goal {
-        gs.iter()
-            .enumerate()
-            .filter(|(k, _)| *k != idx)
-            .fold(Goal::mk_false(), |acc, (_, g)| {
-                Goal::mk_disj_opt(acc, g.clone())
-            })
-    }
-    for (i, g1) in gs.iter().enumerate() {
-        for (j, g2) in gs2.iter().enumerate() {
-            if contains_same_fv(g1, g2) && check_dual(g1, g2) {
-                let c = get_smaller_condition(g1.clone().into(), g2.clone().into());
-                let g1 = aux(gs, i);
-                let g2 = aux(gs2, j);
-                return Some((c.clone(), g1, g2));
+impl FindITETransform {
+    fn find_match(&self, gs: &Vec<Goal>, gs2: &Vec<Goal>) -> Option<(Constraint, Goal, Goal)> {
+        fn aux(gs: &Vec<Goal>, idx: usize) -> Goal {
+            gs.iter()
+                .enumerate()
+                .filter(|(k, _)| *k != idx)
+                .fold(Goal::mk_false(), |acc, (_, g)| {
+                    Goal::mk_disj_opt(acc, g.clone())
+                })
+        }
+        for (i, g1) in gs.iter().enumerate() {
+            for (j, g2) in gs2.iter().enumerate() {
+                if contains_same_fv(g1, g2) && check_dual(g1, g2, self.lightweight) {
+                    let c = get_smaller_condition(g1.clone().into(), g2.clone().into());
+                    let g1 = aux(gs, i);
+                    let g2 = aux(gs2, j);
+                    return Some((c.clone(), g1, g2));
+                }
             }
         }
+        None
     }
-    None
-}
-
-fn f(g: &Goal) -> Goal {
-    debug!("target: {g}");
-    match g.kind() {
-        GoalKind::Constr(_) | GoalKind::Op(_) | GoalKind::Var(_) => g.clone(),
-        GoalKind::Abs(x, g) => {
-            let g = f(g);
-            Goal::mk_abs(x.clone(), g)
-        }
-        GoalKind::App(g1, g2) => {
-            let g1 = f(g1);
-            let g2 = f(g2);
-            Goal::mk_app(g1, g2)
-        }
-        GoalKind::Univ(x, g) => {
-            let g = f(g);
-            Goal::mk_univ(x.clone(), g)
-        }
-        GoalKind::ITE(c, g1, g2) => {
-            let g1 = f(g1);
-            let g2 = f(g2);
-            Goal::mk_ite_opt(c.clone(), g1, g2)
-        }
-        GoalKind::Conj(_, _) => {
-            let mut gs: Vec<_> = g
-                .vec_of_conjs()
-                .iter()
-                .map(|g| f(g).vec_of_disjs().into_iter().cloned().collect())
-                .collect();
-            let mut gs2 = Vec::new();
-            while let Some(g) = gs.pop() {
-                let mut found = None;
-                for (i, g2) in gs.iter().enumerate() {
-                    if let Some((c, g, g2)) = find_match(&g, g2) {
-                        found = Some((i, c, g, g2));
-                        debug!("found");
-                        break;
+    fn f(&self, g: &Goal) -> Goal {
+        debug!("target: {g}");
+        match g.kind() {
+            GoalKind::Constr(_) | GoalKind::Op(_) | GoalKind::Var(_) => g.clone(),
+            GoalKind::Abs(x, g) => {
+                let g = self.f(g);
+                Goal::mk_abs(x.clone(), g)
+            }
+            GoalKind::App(g1, g2) => {
+                let g1 = self.f(g1);
+                let g2 = self.f(g2);
+                Goal::mk_app(g1, g2)
+            }
+            GoalKind::Univ(x, g) => {
+                let g = self.f(g);
+                Goal::mk_univ(x.clone(), g)
+            }
+            GoalKind::ITE(c, g1, g2) => {
+                let g1 = self.f(g1);
+                let g2 = self.f(g2);
+                Goal::mk_ite_opt(c.clone(), g1, g2)
+            }
+            GoalKind::Conj(_, _) => {
+                let mut gs: Vec<_> = g
+                    .vec_of_conjs()
+                    .iter()
+                    .map(|g| self.f(g).vec_of_disjs().into_iter().cloned().collect())
+                    .collect();
+                let mut gs2 = Vec::new();
+                while let Some(g) = gs.pop() {
+                    let mut found = None;
+                    for (i, g2) in gs.iter().enumerate() {
+                        if let Some((c, g, g2)) = self.find_match(&g, g2) {
+                            found = Some((i, c, g, g2));
+                            debug!("found");
+                            break;
+                        }
+                    }
+                    if let Some((i, c, g, g2)) = found {
+                        gs.remove(i);
+                        gs2.push(Goal::mk_ite_opt(c, g, g2));
+                    } else {
+                        gs2.push(
+                            g.into_iter()
+                                .fold(Goal::mk_false(), |acc, g| Goal::mk_disj_opt(acc, g.clone())),
+                        );
                     }
                 }
-                if let Some((i, c, g, g2)) = found {
-                    gs.remove(i);
-                    gs2.push(Goal::mk_ite_opt(c, g, g2));
-                } else {
-                    gs2.push(
-                        g.into_iter()
-                            .fold(Goal::mk_false(), |acc, g| Goal::mk_disj_opt(acc, g.clone())),
-                    );
-                }
+                gs2.into_iter()
+                    .fold(Goal::mk_true(), |acc, g| Goal::mk_conj_opt(acc, g))
             }
-            gs2.into_iter()
-                .fold(Goal::mk_true(), |acc, g| Goal::mk_conj_opt(acc, g))
-        }
-        GoalKind::Disj(g1, g2) => {
-            let g1 = f(g1);
-            let g2 = f(g2);
-            Goal::mk_disj(g1, g2)
+            GoalKind::Disj(g1, g2) => {
+                let g1 = self.f(g1);
+                let g2 = self.f(g2);
+                Goal::mk_disj(g1, g2)
+            }
         }
     }
 }
-
 impl TypedPreprocessor for FindITETransform {
     const PASS_NAME: &'static str = "find ite";
 
@@ -113,15 +115,18 @@ impl TypedPreprocessor for FindITETransform {
         _env: &mut formula::TyEnv,
     ) -> formula::hes::Goal<formula::Constraint> {
         debug!("transform_goal: {goal}");
-        let g = f(goal);
+        let g = self.f(goal);
         debug!("translated: {g}");
         g
     }
 }
 
-pub fn transform(problem: hes::Problem<formula::Constraint>) -> hes::Problem<formula::Constraint> {
+pub fn transform(
+    problem: hes::Problem<formula::Constraint>,
+    lightweight: bool,
+) -> hes::Problem<formula::Constraint> {
     crate::title!("find_ite");
-    let t = FindITETransform {};
+    let t = FindITETransform { lightweight };
     t.transform(problem)
 }
 
@@ -159,9 +164,11 @@ fn test_transform() {
     let a2 = Goal::mk_disj(a22.clone(), a21.clone());
     gs.push(Goal::mk_conj(a1, a2));
 
+    let trans = FindITETransform { lightweight: false };
+
     for g in gs {
         println!("before: {g}");
-        let g = f(&g);
+        let g = trans.f(&g);
         println!("after: {g}");
         assert!(g.is_ite());
     }
@@ -169,7 +176,7 @@ fn test_transform() {
     let v = Variable::fresh_int();
     let g = Goal::mk_abs(v.clone(), a);
     println!("before: {g}");
-    let g = f(&g);
+    let g = trans.f(&g);
     println!("after: {g}");
     match g.kind() {
         hes::GoalKind::Abs(v2, g) if &v == v2 => {

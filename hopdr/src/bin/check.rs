@@ -128,7 +128,15 @@ fn check_main(args: Args) {
             }
         }
 
-        let config = get_preprocess_config();
+        let mut config = get_preprocess_config();
+
+        // currently, the size measure is soooo heuristic.
+        let is_huge = data.len() > 100000;
+
+        if is_huge {
+            config = config.lightweight_find_ite(true)
+        }
+
         let problem = if !args.chc_least
             && crate::formula::chc::is_linear(chcs.iter().map(|echc| &echc.chc))
         {

@@ -7,13 +7,16 @@
 use crate::formula;
 use crate::formula::hes;
 use crate::formula::Logic;
+use crate::formula::Negation;
 use crate::solver::smt::check_dual_semantically;
 use hes::GoalKind;
 
 // these functions are used also in src/preprocess/find_ite.rs, so the visibility is pub(super)
 pub(super) type Goal = hes::Goal<formula::Constraint>;
-pub(super) fn check_dual(g1: &Goal, g2: &Goal) -> bool {
+pub(super) fn check_dual(g1: &Goal, g2: &Goal, lightweight: bool) -> bool {
+    debug!("check_dual: {g1} vs {g2}");
     match (g1.kind(), g2.kind()) {
+        (GoalKind::Constr(c1), GoalKind::Constr(c2)) if lightweight => &c1.negate().unwrap() == c2,
         (GoalKind::Constr(c1), GoalKind::Constr(c2)) => check_dual_semantically(c1, c2),
         _ => false,
     }
@@ -25,22 +28,22 @@ fn transform_goal(goal: &hes::Goal<formula::Constraint>) -> hes::Goal<formula::C
     match goal.kind() {
         GoalKind::Disj(g1, g2) => match (g1.kind(), g2.kind()) {
             (GoalKind::Conj(g11, g12), GoalKind::Conj(g21, g22)) => {
-                if check_dual(g11, g21) {
+                if check_dual(g11, g21, false) {
                     Goal::mk_conj(
                         Goal::mk_disj(g21.clone(), g12.clone()),
                         Goal::mk_disj(g11.clone(), g22.clone()),
                     )
-                } else if check_dual(g11, g22) {
+                } else if check_dual(g11, g22, false) {
                     Goal::mk_conj(
                         Goal::mk_disj(g22.clone(), g12.clone()),
                         Goal::mk_disj(g11.clone(), g21.clone()),
                     )
-                } else if check_dual(g12, g21) {
+                } else if check_dual(g12, g21, false) {
                     Goal::mk_conj(
                         Goal::mk_disj(g21.clone(), g11.clone()),
                         Goal::mk_disj(g12.clone(), g22.clone()),
                     )
-                } else if check_dual(g12, g22) {
+                } else if check_dual(g12, g22, false) {
                     Goal::mk_conj(
                         Goal::mk_disj(g22.clone(), g11.clone()),
                         Goal::mk_disj(g12.clone(), g21.clone()),

@@ -184,6 +184,7 @@ pub struct Config {
     find_ite: bool,
     unpack_constr: bool,
     is_checker: bool,
+    lightweight_find_ite: bool,
 }
 
 impl Config {
@@ -195,6 +196,7 @@ impl Config {
             .find_ite(true)
             .unpack_constr(true)
             .is_checker(true)
+            .lightweight_find_ite(false)
     }
     pub fn find_ite(mut self, val: bool) -> Self {
         self.find_ite = val;
@@ -206,6 +208,10 @@ impl Config {
     }
     pub fn is_checker(mut self, val: bool) -> Self {
         self.is_checker = val;
+        self
+    }
+    pub fn lightweight_find_ite(mut self, val: bool) -> Self {
+        self.lightweight_find_ite = val;
         self
     }
 }
@@ -225,7 +231,7 @@ pub fn preprocess_for_typed_problem(
     //let problem = ite_expand::transform(problem);
     if config.find_ite {
         problem = reorder_disj::transform(problem);
-        problem = find_ite::transform(problem);
+        problem = find_ite::transform(problem, config.lightweight_find_ite);
     }
     if config.unpack_constr {
         problem = unpack_constr::transform(problem);
@@ -235,10 +241,9 @@ pub fn preprocess_for_typed_problem(
         problem = boolean_expand::transform(problem);
         problem = reorder_disj::transform(problem);
         problem = reorder_conj::transform(problem);
-        problem = find_ite::transform(problem);
+        problem = find_ite::transform(problem, config.lightweight_find_ite);
         problem = remove_tmp_var::transform(problem);
     }
-    info!("transformed: {}", problem);
     problem
 }
 
