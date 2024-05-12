@@ -308,12 +308,37 @@ impl Expr {
     }
 }
 
+fn handle_fun<W: Write>(
+    f: &mut W,
+    o: &Expr,
+    ctx: &Context,
+    t: &crate::ml::Type,
+) -> Result<(), fmt::Error> {
+    match t.kind() {
+        crate::ml::TypeKind::Arrow(_, t) => match o.kind() {
+            ExprKind::Fun { ident, body } => {
+                write!(f, "fun ")?;
+                ident.ident.dump_ml(f, ctx)?;
+                write!(f, " -> ")?;
+                handle_fun(f, body, ctx, t)
+            }
+            _ => {
+                write!(f, "hopdr_count_recursion ();")?;
+                o.dump_ml(f, ctx)
+            }
+        },
+        _ => {
+            write!(f, "hopdr_count_recursion ();")?;
+            o.dump_ml(f, ctx)
+        }
+    }
+}
+
 impl DumpML for Function {
     fn dump_ml<W: Write>(&self, f: &mut W, ctx: &Context) -> Result<(), fmt::Error> {
         self.name.dump_ml(f, ctx)?;
         write!(f, " = ")?;
-        write!(f, "hopdr_count_recursion ();")?;
-        self.body.dump_ml(f, ctx)?;
+        handle_fun(f, &self.body, ctx, &self.ty)?;
         writeln!(f, "")
     }
 }
