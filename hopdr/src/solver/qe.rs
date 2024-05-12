@@ -57,6 +57,7 @@ fn parse_opkind(v: &Value) -> OpKind {
         "-" => OpKind::Sub,
         "*" => OpKind::Mul,
         "div" => OpKind::Div,
+        "mod" => OpKind::Mod,
         _ => panic!("failed to handle operator: {}", x),
     }
 }
