@@ -234,8 +234,10 @@ pub fn preprocess_for_typed_problem(
         problem = remove_tmp_var::transform(problem);
         problem = boolean_expand::transform(problem);
         problem = reorder_disj::transform(problem);
-        problem = reorder_conj::transform(problem);
-        problem = find_ite::transform(problem);
+        if config.find_ite {
+            problem = reorder_conj::transform(problem);
+            problem = find_ite::transform(problem);
+        }
         problem = remove_tmp_var::transform(problem);
     }
     info!("transformed: {}", problem);

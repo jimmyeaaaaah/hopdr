@@ -128,10 +128,13 @@ fn check_main(args: Args) {
             }
         }
 
-        let config = get_preprocess_config();
-        let problem = if !args.chc_least
-            && crate::formula::chc::is_linear(chcs.iter().map(|echc| &echc.chc))
-        {
+        let is_linear = crate::formula::chc::is_linear(chcs.iter().map(|echc| &echc.chc));
+        let mut config = get_preprocess_config();
+        if is_linear {
+            config = config.find_ite(false);
+        }
+
+        let problem = if !args.chc_least && is_linear {
             stat::preprocess::start_clock("translate_to_hes_linear");
             let greatest = crate::formula::chc::translate_to_hes_linear(chcs.clone());
             stat::preprocess::end_clock("translate_to_hes_linear");
