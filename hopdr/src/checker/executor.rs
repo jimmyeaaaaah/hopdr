@@ -3,6 +3,7 @@ use crate::solver::util;
 
 use std::time::Duration;
 use tempfile::NamedTempFile;
+
 pub enum ExecResult {
     Unknown,
     Invalid,
