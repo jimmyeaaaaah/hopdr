@@ -179,7 +179,7 @@ fn quantify_validity_checking(vc: NuHFLzValidityChecking) -> NuHFLzValidityCheck
 
 /// the algorithm of preprocess can be reordered, called more than once.
 /// to do so, config is in the future, a sequence of algorithms.
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct Config {
     find_ite: bool,
     unpack_constr: bool,

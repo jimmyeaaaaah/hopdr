@@ -178,13 +178,15 @@ def run(cmd, timeout=None):
                 output, _ = p.communicate(timeout=10)
                 try:
                     os.killpg(p.pid, signal.SIGKILL)
-                except:
+                except Exception as e:
+                    print(e)
                     pass
                 return output, timeout
             except subprocess.TimeoutExpired:
                 try:
                     os.killpg(p.pid, signal.SIGKILL)
-                except:
+                except Exception as e:
+                    print(e)
                     pass
             except Exception as e:
                 print(e)

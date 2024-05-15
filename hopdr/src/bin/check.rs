@@ -108,15 +108,19 @@ fn report_result(result: checker::ExecResult) {
 
 #[cfg(not(feature = "stat"))]
 fn run_multiple(
-    problems: Vec<hes::Problem<crate::formula::Constraint>>,
-    config: checker::Config,
+    problems: Vec<(
+        hes::Problem<crate::formula::Constraint>,
+        crate::preprocess::Context,
+    )>,
+    print_check_log: bool,
 ) -> checker::ExecResult {
     println!("run parallel");
     let rt = runtime::Runtime::new().unwrap();
     rt.block_on(async {
         let mut set = JoinSet::new();
 
-        for problem in problems {
+        for (problem, ctx) in problems {
+            let config = checker::Config::new(&ctx, print_check_log);
             let t = checker::run(problem, config.clone());
             set.spawn(t);
         }
@@ -143,13 +147,17 @@ fn run_multiple(
 
 #[cfg(feature = "stat")]
 fn run_multiple(
-    problems: Vec<hes::Problem<crate::formula::Constraint>>,
-    config: checker::Config,
+    problems: Vec<(
+        hes::Problem<crate::formula::Constraint>,
+        crate::preprocess::Context,
+    )>,
+    print_check_log: bool,
 ) -> checker::ExecResult {
     info!("run sequentially");
     let rt = runtime::Runtime::new().unwrap();
     rt.block_on(async {
-        for problem in problems {
+        for (problem, ctx) in problems {
+            let config = checker::Config::new(&ctx, print_check_log);
             let t = checker::run(problem, config.clone()).await;
             match t {
                 checker::ExecResult::Invalid => {
@@ -166,88 +174,105 @@ fn run_multiple(
         checker::ExecResult::Unknown
     })
 }
+
+fn handle_chc_data(
+    problems: &mut Vec<(
+        hes::Problem<crate::formula::Constraint>,
+        crate::preprocess::Context,
+    )>,
+    data: &str,
+    do_hoice_preprocess: bool,
+    args: &Args,
+) {
+    let (chcs, vmap) = match parse::parse_chc(&data, do_hoice_preprocess) {
+        Ok(x) => x,
+        Err(r) if r.is_unsat() => return report_result(checker::ExecResult::Invalid),
+        Err(r) => panic!("parse error: {:?}", r),
+    };
+    let ctx = generate_context_for_chc(&vmap);
+    if args.print_check_log {
+        println!("CHCs");
+        println!(
+            "linearity check {}",
+            crate::formula::chc::nonliniality(chcs.iter().map(|echc| &echc.chc))
+        );
+        for echc in chcs.iter() {
+            println!("{}", echc.chc.pretty_display_with_context(&ctx));
+        }
+    }
+
+    let mut config = get_preprocess_config();
+
+    // currently, the size measure is soooo heuristic.
+    let is_huge = data.len() > 100000;
+
+    if is_huge {
+        config = config.lightweight_find_ite(true)
+    }
+
+    if !args.chc_least && crate::formula::chc::is_linear(chcs.iter().map(|echc| &echc.chc)) {
+        stat::preprocess::start_clock("translate_to_hes_linear");
+        let greatest = crate::formula::chc::translate_to_hes_linear(chcs.clone());
+        stat::preprocess::end_clock("translate_to_hes_linear");
+
+        let greatest = crate::preprocess::hes::preprocess_for_typed_problem(greatest, &config);
+
+        stat::preprocess::start_clock("translate_to_hes");
+        let least = crate::formula::chc::translate_to_hes(chcs);
+        stat::preprocess::end_clock("translate_to_hes");
+
+        let least = crate::preprocess::hes::preprocess_for_typed_problem(least, &config);
+
+        if args.print_check_log {
+            println!("greatest style:\n {}", greatest);
+            println!("least style:\n {}", least);
+        }
+
+        let lhs = crate::checker::difficulty_score(&greatest);
+        let rhs = crate::checker::difficulty_score(&least);
+        if args.print_check_log {
+            println!("difficulty score: {} vs {}", lhs, rhs);
+        }
+        if lhs < rhs {
+            problems.push((greatest, ctx.clone()));
+            problems.push((least, ctx.clone()));
+        } else {
+            problems.push((least, ctx.clone()));
+            problems.push((greatest, ctx.clone()));
+        }
+    } else {
+        stat::preprocess::start_clock("translate_to_hes");
+        let problem = crate::formula::chc::translate_to_hes(chcs);
+        stat::preprocess::end_clock("translate_to_hes");
+
+        let t = crate::preprocess::hes::preprocess_for_typed_problem(problem, &config);
+        problems.push((t, ctx.clone()));
+    };
+}
 fn check_main(args: Args) {
     let config = gen_configuration_from_args(&args);
 
-    let (vcs, ctx) = if args.chc {
+    let vcs = if args.chc {
         let data = preprocess::chc::open_file_with_preprocess(&args.input).unwrap();
         if args.print_check_log {
             println!("data");
             println!("{data}");
         }
-        let (chcs, vmap) = match parse::parse_chc(&data, args.do_hoice_preprocess) {
-            Ok(x) => x,
-            Err(r) if r.is_unsat() => return report_result(checker::ExecResult::Invalid),
-            Err(r) => panic!("parse error: {:?}", r),
-        };
-        let ctx = generate_context_for_chc(&vmap);
-        if args.print_check_log {
-            println!("CHCs");
-            println!(
-                "linearity check {}",
-                crate::formula::chc::nonliniality(chcs.iter().map(|echc| &echc.chc))
-            );
-            for echc in chcs.iter() {
-                println!("{}", echc.chc.pretty_display_with_context(&ctx));
-            }
+        let mut do_hoice_preprocess_or_not = vec![false];
+        if args.do_hoice_preprocess {
+            do_hoice_preprocess_or_not.push(true);
         }
-
-        let mut config = get_preprocess_config();
-
-        // currently, the size measure is soooo heuristic.
-        let is_huge = data.len() > 100000;
-
-        if is_huge {
-            config = config.lightweight_find_ite(true)
+        let mut vcs = Vec::new();
+        for do_hoice_preprocess in do_hoice_preprocess_or_not {
+            handle_chc_data(&mut vcs, &data, do_hoice_preprocess, &args);
         }
-
-        let problem = if !args.chc_least
-            && crate::formula::chc::is_linear(chcs.iter().map(|echc| &echc.chc))
-        {
-            stat::preprocess::start_clock("translate_to_hes_linear");
-            let greatest = crate::formula::chc::translate_to_hes_linear(chcs.clone());
-            stat::preprocess::end_clock("translate_to_hes_linear");
-
-            let greatest = crate::preprocess::hes::preprocess_for_typed_problem(greatest, &config);
-
-            stat::preprocess::start_clock("translate_to_hes");
-            let least = crate::formula::chc::translate_to_hes(chcs);
-            stat::preprocess::end_clock("translate_to_hes");
-
-            let least = crate::preprocess::hes::preprocess_for_typed_problem(least, &config);
-
-            if args.print_check_log {
-                println!("greatest style:\n {}", greatest);
-                println!("least style:\n {}", least);
-            }
-
-            let lhs = crate::checker::difficulty_score(&greatest);
-            let rhs = crate::checker::difficulty_score(&least);
-            if args.print_check_log {
-                println!("difficulty score: {} vs {}", lhs, rhs);
-            }
-            if lhs < rhs {
-                vec![greatest, least]
-            } else {
-                vec![least, greatest]
-            }
-        } else {
-            stat::preprocess::start_clock("translate_to_hes");
-            let problem = crate::formula::chc::translate_to_hes(chcs);
-            stat::preprocess::end_clock("translate_to_hes");
-
-            vec![crate::preprocess::hes::preprocess_for_typed_problem(
-                problem, &config,
-            )]
-        };
-
-        (problem, ctx)
+        vcs
     } else {
         let (problem, ctx) = get_problem(&args.input, &config);
-        (vec![problem], ctx)
+        vec![(problem, ctx)]
     };
-    let config = checker::Config::new(&ctx, args.print_check_log);
-    report_result(run_multiple(vcs, config))
+
+    report_result(run_multiple(vcs, args.print_check_log))
 }
 
 fn main() {
