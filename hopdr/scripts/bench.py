@@ -13,13 +13,15 @@ class ParseError(Exception):
 project_root = os.path.realpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../'))
 base = os.path.join(project_root, './benchmark')
 TARGET = '../target/release/check'
-cmd_template = TARGET + ' {} --do-hoice-preprocess --print-stat --input {}'  # <option> <filename>
+#cmd_template = TARGET + ' {} --do-hoice-preprocess --print-stat --input {}'  # <option> <filename>
+cmd_template = TARGET + ' {} --do-hoice-preprocess --input {}'  # <option> <filename>
 
 cfg = None
 
 
 def pre_cmd():
-    return 'cargo build --features stat --features "no_simplify_by_finding_eq" --bin check --release'
+    #return 'cargo build --features stat --features "no_simplify_by_finding_eq" --bin check --release'
+    return 'cargo build --features "no_simplify_by_finding_eq" --bin check --release'
 
 
 def config(c):

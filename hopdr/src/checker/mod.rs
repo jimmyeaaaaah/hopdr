@@ -14,22 +14,22 @@ use mode::{Mode, ModeEnv};
 use std::collections::HashMap;
 
 #[derive(Clone)]
-pub struct Config<'a> {
-    context: &'a Context,
+pub struct Config {
+    context: Context,
     print_check_log: bool,
 }
 
-impl<'a> Config<'a> {
-    pub fn new(context: &'a Context, print_check_log: bool) -> Self {
+impl Config {
+    pub fn new(context: &Context, print_check_log: bool) -> Self {
         Config {
-            context,
+            context: context.clone(),
             print_check_log,
         }
     }
 }
 
-struct Translator<'a> {
-    config: Config<'a>,
+struct Translator {
+    config: Config,
     clause_idents: HashMap<Ident, HFLType>,
 }
 
@@ -91,8 +91,8 @@ impl Aux {
 type GoalM = GoalBase<Constraint, Aux>;
 type ProblemM = ProblemBase<Constraint, Aux>;
 
-impl<'a> Translator<'a> {
-    fn new(config: Config<'a>, problem: &Problem<Constraint>) -> Self {
+impl<'a> Translator {
+    fn new(config: Config, problem: &Problem<Constraint>) -> Self {
         Self {
             config,
             clause_idents: problem
@@ -103,7 +103,7 @@ impl<'a> Translator<'a> {
         }
     }
     #[cfg(test)]
-    fn new_with_clause_idents(config: Config<'a>, clause_idents: HashMap<Ident, HFLType>) -> Self {
+    fn new_with_clause_idents(config: Config, clause_idents: HashMap<Ident, HFLType>) -> Self {
         Self {
             config,
             clause_idents,
@@ -548,7 +548,7 @@ fn test_translate_predicate() {
     println!("{}", e.print_expr(&ctx));
 }
 
-pub fn run(problem: Problem<Constraint>, config: Config) -> executor::ExecResult {
+pub async fn run(problem: Problem<Constraint>, config: Config) -> executor::ExecResult {
     if config.print_check_log {
         use crate::util::Pretty;
         println!("translated nu hflz");
@@ -564,7 +564,7 @@ pub fn run(problem: Problem<Constraint>, config: Config) -> executor::ExecResult
         println!("(* Generated Program *)");
         println!("{s}");
     }
-    stat("execute", || executor::executor(s))
+    stat("execute", || executor::executor(s)).await
 }
 
 /// This function is used to calculate the difficulty score of the problem.

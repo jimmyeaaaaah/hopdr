@@ -1,11 +1,12 @@
+use std::fmt;
 use std::io;
 use std::io::BufRead;
 use std::marker::PhantomData;
 use std::ops::Deref;
 use std::sync::mpsc;
+use std::sync::Arc;
 use std::thread;
 use std::time;
-use std::{fmt, rc::Rc};
 
 pub mod info;
 pub mod printer;
@@ -20,13 +21,13 @@ pub use printer::{set_colored, set_default_width, Pretty};
 // readonly pointer
 #[derive(Debug, Eq, PartialEq, Hash)]
 pub struct P<T: ?Sized> {
-    ptr: Rc<T>,
+    ptr: Arc<T>,
 }
 
 #[allow(non_snake_case)]
 pub fn P<T: 'static>(value: T) -> P<T> {
     P {
-        ptr: Rc::new(value),
+        ptr: Arc::new(value),
     }
 }
 
@@ -50,7 +51,7 @@ fn test_id() {
 
 impl<T> P<T> {
     pub fn new(v: T) -> P<T> {
-        P { ptr: Rc::new(v) }
+        P { ptr: Arc::new(v) }
     }
 }
 
@@ -83,7 +84,7 @@ impl<T> From<T> for P<T> {
 }
 
 // unique pointer
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Clone)]
 pub struct Unique<T: ?Sized> {
     ptr: Box<T>,
 }
@@ -128,14 +129,14 @@ impl<T: ?Sized> Deref for Unique<T> {
 
 #[derive(Debug, Eq, PartialEq, Hash)]
 pub struct PhantomPtr<T: ?Sized, S> {
-    ptr: Rc<T>,
+    ptr: Arc<T>,
     __phantom: PhantomData<S>,
 }
 
 #[allow(non_snake_case)]
 pub fn PhantomPtr<T: 'static, S>(value: T) -> PhantomPtr<T, S> {
     PhantomPtr {
-        ptr: Rc::new(value),
+        ptr: Arc::new(value),
         __phantom: PhantomData,
     }
 }
@@ -149,7 +150,7 @@ impl<T, S> PhantomPtr<T, S> {
 impl<T, S> PhantomPtr<T, S> {
     pub fn new(v: T) -> PhantomPtr<T, S> {
         PhantomPtr {
-            ptr: Rc::new(v),
+            ptr: Arc::new(v),
             __phantom: PhantomData,
         }
     }

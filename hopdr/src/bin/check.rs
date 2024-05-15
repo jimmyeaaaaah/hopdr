@@ -5,12 +5,16 @@ extern crate lazy_static;
 extern crate log;
 extern crate ctrlc;
 
+use crate::formula::hes;
 use hopdr::util::Pretty;
 use hopdr::*;
 use nom::error::VerboseError;
 
 use clap::Parser;
 use colored::Colorize;
+
+use tokio::runtime;
+use tokio::task::JoinSet;
 
 /// Validity checker for νHFL(Z)
 #[derive(Parser, Debug, Clone)]
@@ -102,10 +106,70 @@ fn report_result(result: checker::ExecResult) {
     }
 }
 
+#[cfg(not(feature = "stat"))]
+fn run_multiple(
+    problems: Vec<hes::Problem<crate::formula::Constraint>>,
+    config: checker::Config,
+) -> checker::ExecResult {
+    println!("run parallel");
+    let rt = runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        let mut set = JoinSet::new();
+
+        for problem in problems {
+            let t = checker::run(problem, config.clone());
+            set.spawn(t);
+        }
+
+        while let Some(res) = set.join_next().await {
+            match res {
+                Ok(checker::ExecResult::Invalid) => {
+                    return checker::ExecResult::Invalid;
+                }
+                Ok(checker::ExecResult::Unknown) => {
+                    info!("result: unknown");
+                }
+                Ok(checker::ExecResult::Fail(s)) => {
+                    return checker::ExecResult::Fail(s);
+                }
+                Err(e) => {
+                    warn!("join error: {e}");
+                }
+            }
+        }
+        checker::ExecResult::Unknown
+    })
+}
+
+#[cfg(feature = "stat")]
+fn run_multiple(
+    problems: Vec<hes::Problem<crate::formula::Constraint>>,
+    config: checker::Config,
+) -> checker::ExecResult {
+    info!("run sequentially");
+    let rt = runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        for problem in problems {
+            let t = checker::run(problem, config.clone()).await;
+            match t {
+                checker::ExecResult::Invalid => {
+                    return checker::ExecResult::Invalid;
+                }
+                checker::ExecResult::Unknown => {
+                    info!("result: unknown");
+                }
+                checker::ExecResult::Fail(s) => {
+                    return checker::ExecResult::Fail(s);
+                }
+            }
+        }
+        checker::ExecResult::Unknown
+    })
+}
 fn check_main(args: Args) {
     let config = gen_configuration_from_args(&args);
 
-    let (vc, ctx) = if args.chc {
+    let (vcs, ctx) = if args.chc {
         let data = preprocess::chc::open_file_with_preprocess(&args.input).unwrap();
         if args.print_check_log {
             println!("data");
@@ -162,25 +226,28 @@ fn check_main(args: Args) {
             if args.print_check_log {
                 println!("difficulty score: {} vs {}", lhs, rhs);
             }
-            if lhs <= rhs {
-                greatest
+            if lhs < rhs {
+                vec![greatest, least]
             } else {
-                least
+                vec![least, greatest]
             }
         } else {
             stat::preprocess::start_clock("translate_to_hes");
             let problem = crate::formula::chc::translate_to_hes(chcs);
             stat::preprocess::end_clock("translate_to_hes");
 
-            crate::preprocess::hes::preprocess_for_typed_problem(problem, &config)
+            vec![crate::preprocess::hes::preprocess_for_typed_problem(
+                problem, &config,
+            )]
         };
 
         (problem, ctx)
     } else {
-        get_problem(&args.input, &config)
+        let (problem, ctx) = get_problem(&args.input, &config);
+        (vec![problem], ctx)
     };
     let config = checker::Config::new(&ctx, args.print_check_log);
-    report_result(checker::run(vc, config))
+    report_result(run_multiple(vcs, config))
 }
 
 fn main() {

@@ -24,7 +24,7 @@ use crate::parse::NuHFLzValidityChecking;
 use std::collections::HashSet;
 use std::fmt;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ExprKind<Id, Ty> {
     Var(Id),
     Num(i64),
@@ -117,14 +117,14 @@ impl<Id, Ty> VariableS<Id, Ty> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Clause<Id, Ty> {
     pub id: VariableS<Id, Ty>,
     pub args: Vec<Id>,
     pub expr: Expr<Id, Ty>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ValidityChecking<Id, Ty> {
     pub clauses: Vec<Clause<Id, Ty>>,
     pub toplevel: Expr<Id, Ty>,

@@ -24,12 +24,17 @@ fn parse(s: &str) -> ExecResult {
     }
 }
 
-pub fn executor(s: String) -> ExecResult {
+pub async fn executor(s: String) -> ExecResult {
     let f = save_prog(s);
     let args = vec![f.path().to_str().unwrap()];
     debug!("filename: {}", &args[0]);
-    let out =
-        util::exec_input_with_timeout("hopdr-check-runner", &args, &[], Duration::from_secs(1));
+    let out = util::exec_input_with_timeout_async(
+        "hopdr-check-runner",
+        &args,
+        &[],
+        Duration::from_secs(1),
+    )
+    .await;
     let s = String::from_utf8(out).unwrap();
     debug!("result: {s}");
     parse(&s)

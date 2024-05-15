@@ -24,6 +24,7 @@ use hes::ValidityChecking;
 use std::collections::HashMap;
 
 type IdentMap = HashMap<parse::Ident, formula::Ident>;
+#[derive(Clone)]
 pub struct Context {
     pub ident_map: IdentMap,
     pub inverse_map: HashMap<formula::Ident, parse::Ident>,
