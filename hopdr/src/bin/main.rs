@@ -45,6 +45,8 @@ struct Args {
     detailed_results: bool,
     #[clap(long)]
     debug_wait_every_step: bool,
+    #[clap(long)]
+    default_interpolation_solver: Option<String>,
 }
 
 fn report_result(args: &Args, r: VerificationResult, ctx: &Context) {
@@ -120,6 +122,15 @@ fn main() {
     // FIXME: adhoc
     match &args.smt_interpol {
         Some(s) => hopdr::solver::interpolation::set_smt_interpol_path(s.clone()),
+        None => (),
+    }
+
+    match &args.default_interpolation_solver {
+        Some(s) => {
+            if !hopdr::solver::interpolation::set_default_solver(s) {
+                panic!("Unknown interpolation solver: {}", s)
+            }
+        }
         None => (),
     }
 

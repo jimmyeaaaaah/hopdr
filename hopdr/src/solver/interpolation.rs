@@ -46,12 +46,29 @@ fn get_smt_interpol_path() -> String {
         }
     }
 }
+
+#[derive(Copy, Clone)]
 pub enum InterpolationSolver {
     SMTInterpol,
     Csisat,
     Spacer,
     Hoice,
     SVMInterpol,
+}
+
+static mut DEFAULT_SOLVER: Option<InterpolationSolver> = None;
+
+pub fn set_default_solver(solver_name: &str) -> bool {
+    let sol = match solver_name {
+        "smtinterpol" => InterpolationSolver::SMTInterpol,
+        "csisat" => InterpolationSolver::Csisat,
+        "spacer" => InterpolationSolver::Spacer,
+        "hoice" => InterpolationSolver::Hoice,
+        "svminterpol" => InterpolationSolver::SVMInterpol,
+        _ => return false,
+    };
+    unsafe { DEFAULT_SOLVER = Some(sol) }
+    true
 }
 
 // topological sort
@@ -381,7 +398,11 @@ impl InterpolationSolver {
         }
     }
     pub fn default_solver() -> Box<dyn Interpolation> {
-        Self::get_solver(InterpolationSolver::Csisat)
+        let sol = match unsafe { DEFAULT_SOLVER } {
+            Some(sol) => sol,
+            None => InterpolationSolver::Csisat,
+        };
+        Self::get_solver(sol)
     }
 }
 

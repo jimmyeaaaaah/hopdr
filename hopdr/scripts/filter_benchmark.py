@@ -1,6 +1,6 @@
 import os
 
-THRESHOLD = 2000000
+THRESHOLD = 20000000000
 
 lists = "/home/katsura/github.com/moratorium08/hopdr/hopdr/benchmark/lists"
 inputs = "/home/katsura/github.com/moratorium08/hopdr/hopdr/benchmark/inputs"
