@@ -114,7 +114,7 @@ fn run_multiple(
     )>,
     print_check_log: bool,
 ) -> checker::ExecResult {
-    println!("run parallel");
+    info!("run parallel");
     let rt = runtime::Runtime::new().unwrap();
     rt.block_on(async {
         let mut set = JoinSet::new();
