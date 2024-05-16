@@ -284,8 +284,15 @@ pub fn wait_for_line() {
 }
 
 pub fn sanitize_ident(id: &str) -> String {
-    id.to_lowercase()
+    let s: String = id
+        .to_lowercase()
         .chars()
         .filter(|c| c.is_alphanumeric())
-        .collect()
+        .collect();
+
+    if s.starts_with(char::is_numeric) {
+        format!("id{}", s)
+    } else {
+        s
+    }
 }
