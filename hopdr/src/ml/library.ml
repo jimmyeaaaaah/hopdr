@@ -14,6 +14,10 @@ let set_small () =
   check_mx := 6;
   check_mn := -5
 
+let set_med () =
+  check_mx := 151;
+  check_mn := -150
+
 let set_large () =
   check_mx := 100000;
   check_mn := -100000
@@ -92,8 +96,8 @@ let loop f n =
   done
 
 let hopdr_main f fail =
-  let n_recs = [ 1000; 10000; 10000000000 ] in
-  let configs = [ set_min; set_small; set_large ] in
+  let n_recs = [ 1000; 10000; 100000; 1000000; 10000000000 ] in
+  let configs = [ set_min; set_small; set_med; set_large ] in
   List.iter
     (fun n_rec ->
       List.iter

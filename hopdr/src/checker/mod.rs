@@ -184,7 +184,6 @@ impl<'a> Translator {
                 }
                 _ => {
                     // case where the argument is not just an argument
-                    println!("o: {}", o);
                     let tmp_variable = Ident::fresh();
                     let tmp_var = Op::mk_var(tmp_variable);
 
