@@ -179,7 +179,10 @@ impl<'a> Translator {
             };
             match o.kind() {
                 crate::formula::OpExpr::Var(v) => rets.push(*v),
-                _ => panic!("program error"),
+                o => {
+                    // solve for a variable
+                    unimplemented!()
+                }
             }
         }
 
