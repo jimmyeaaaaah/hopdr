@@ -522,7 +522,7 @@ fn gen_template_goal(
                     _ => {
                         let dummy_ident = Ident::fresh();
                         let dummy_var = Op::mk_var(dummy_ident);
-                        let env = env.insert(dummy_ident, template_from_mode(&Mode::mk_in()));
+                        let env = env.insert(dummy_ident, Mode::mk_in());
 
                         // we view A e as z != e \/ A z and
                         gen_template_neq(&op, &dummy_var, env, constraints, Some(arg_mode.clone()));
