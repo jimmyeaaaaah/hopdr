@@ -332,6 +332,7 @@ impl PossibleConstraints {
         }
 
         self.remove_invalid();
+        //println!("pushed {self} ({c})");
     }
     fn insert_false(&mut self) {
         for cs in self.constraints.iter_mut() {
@@ -429,7 +430,9 @@ fn gen_template_neq(lhs: &Op, rhs: &Op, env: ModeEnv, constraints: &mut Possible
     }
     // case where all the variables are inputs.
     let dummy_op = Op::mk_sub(lhs.clone(), rhs.clone());
-    set_input(&dummy_op, env, constraints);
+    let mut pc = pc.clone();
+    set_input(&dummy_op, env, &mut pc);
+    constraints.append(pc)
 }
 
 fn gen_template_constraint(c: &Constraint, env: ModeEnv, constraints: &mut PossibleConstraints) {
@@ -487,23 +490,28 @@ fn gen_template_goal(
             GoalBase::mk_abs_t(v.clone(), g, f(abs_mode))
         }
         GoalKind::App(g1, g2) => {
+            //let g1 = gen_template_goal(g1, env.clone(), constraints, coarse);
+            //let g1_clone = g1.clone();
+            //let (arg_mode, ret_mode) = g1.aux.mode.is_fun().unwrap();
+            //let g2 = if arg_mode.is_fun().is_some() {
+            //    let g2 = gen_template_goal(g2, env.clone(), constraints, coarse);
+            //    append_constraint_leq(arg_mode, &g2.aux.mode, constraints);
+            //    g2
+            //} else {
+            //    let op: Op = g2.clone().into();
+            //    let dummy_ident = Ident::fresh();
+            //    let dummy_var = Op::mk_var(dummy_ident);
+            //    let env = env.insert(dummy_ident, template_from_mode(&Mode::mk_in()));
+
+            //    // we view A e as z != e \/ A z and
+            //    gen_template_neq(&op, &dummy_var, env, constraints);
+            //    GoalBase::mk_op_t(op, f(arg_mode.clone()))
+            //};
             let g1 = gen_template_goal(g1, env.clone(), constraints, coarse);
+            let g2 = gen_template_goal(g2, env.clone(), constraints, coarse);
             let g1_clone = g1.clone();
             let (arg_mode, ret_mode) = g1.aux.mode.is_fun().unwrap();
-            let g2 = if arg_mode.is_fun().is_some() {
-                let g2 = gen_template_goal(g2, env.clone(), constraints, coarse);
-                append_constraint_leq(arg_mode, &g2.aux.mode, constraints);
-                g2
-            } else {
-                let op: Op = g2.clone().into();
-                let dummy_ident = Ident::fresh();
-                let dummy_var = Op::mk_var(dummy_ident);
-                let env = env.insert(dummy_ident, template_from_mode(&Mode::mk_in()));
-
-                // we view A e as z != e \/ A z and
-                gen_template_neq(&op, &dummy_var, env, constraints);
-                GoalBase::mk_op_t(op, f(arg_mode.clone()))
-            };
+            append_constraint_leq(arg_mode, &g2.aux.mode, constraints);
             GoalBase::mk_app_t(g1_clone, g2, f(ret_mode.clone()))
         }
         GoalKind::Conj(g1, g2) => {
