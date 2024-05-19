@@ -191,7 +191,7 @@ impl<'a> Translator {
         loop {
             match pred.kind() {
                 GoalKind::App(g1, g2) => {
-                    let pred_arg_mode = g1.aux.mode.is_fun().0;
+                    let pred_arg_mode = g1.aux.mode.is_fun().unwrap().0;
                     match pred_arg_mode.kind() {
                         mode::ModeKind::Out => match g2.aux.mode.kind() {
                             mode::ModeKind::Out => handle_out_arg(g2, &mut rets),
@@ -256,7 +256,7 @@ impl<'a> Translator {
         match goal.kind() {
             GoalKind::Var(x) => Expr::mk_var(*x),
             GoalKind::Abs(v, g) if v.ty.is_int() => {
-                let arg = m.is_fun().0;
+                let arg = m.is_fun().unwrap().0;
                 match arg.kind() {
                     mode::ModeKind::In => {
                         let v = Variable::mk(v.id, self.translate_type_arg(arg, &v.ty));
@@ -277,7 +277,7 @@ impl<'a> Translator {
                 }
             }
             GoalKind::Abs(v, g) => {
-                let arg = m.is_fun().0;
+                let arg = m.is_fun().unwrap().0;
                 let v = Variable::mk(v.id, self.translate_type(arg, &v.ty));
                 let body = self.translate_predicates(g, variables);
                 Expr::mk_fun(v, body)

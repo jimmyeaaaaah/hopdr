@@ -185,6 +185,8 @@ fn postprocess_smt2_for_hoice(data: &[u8]) -> Result<String, Error> {
 /// which transforms hfls with some heuristics without changing the validity (inlining, removing disjunctions, etc)
 /// These functionalities should be implemented in hopdr in the future.
 pub fn open_file_with_preprocess(filename: &str) -> Result<String, Error> {
+    
+
     crate::stat::preprocess::start_clock("spacer-preprocessor");
 
     const CMD: &str = "z3";
