@@ -378,7 +378,13 @@ fn try_solve_and_add_constraint(
     }
 }
 
-fn gen_template_neq(lhs: &Op, rhs: &Op, env: ModeEnv, constraints: &mut PossibleConstraints) {
+fn gen_template_neq(
+    lhs: &Op,
+    rhs: &Op,
+    env: ModeEnv,
+    constraints: &mut PossibleConstraints,
+    arg_mode: Option<Mode>,
+) {
     let mut fvs = HashSet::new();
     lhs.fv_with_vec(&mut fvs);
     rhs.fv_with_vec(&mut fvs);
@@ -422,15 +428,25 @@ fn gen_template_neq(lhs: &Op, rhs: &Op, env: ModeEnv, constraints: &mut Possible
     *constraints = PossibleConstraints::empty();
     for target in vars {
         let mut pc = pc.clone();
+        match &arg_mode {
+            Some(arg_mode) => pc.push(ModeConstraint::mode_out(arg_mode)),
+            None => (),
+        }
         if try_solve_and_add_constraint(target, lhs, rhs, &mut pc, env.clone()) {
             constraints.append(pc);
         }
     }
     // case where all the variables are inputs.
-    // let dummy_op = Op::mk_sub(lhs.clone(), rhs.clone());
-    // let mut pc = pc.clone();
-    // set_input(&dummy_op, env, &mut pc);
-    // constraints.append(pc)
+    match &arg_mode {
+        Some(arg_mode) => {
+            let mut pc = pc.clone();
+            set_input(lhs, env.clone(), &mut pc);
+            set_input(rhs, env.clone(), &mut pc);
+            pc.push(ModeConstraint::mode_in(arg_mode));
+            constraints.append(pc);
+        }
+        None => (),
+    }
 }
 
 fn gen_template_constraint(c: &Constraint, env: ModeEnv, constraints: &mut PossibleConstraints) {
@@ -439,7 +455,7 @@ fn gen_template_constraint(c: &Constraint, env: ModeEnv, constraints: &mut Possi
         crate::formula::ConstraintExpr::Pred(PredKind::Neq, l) if l.len() == 2 => {
             let lhs = &l[0];
             let rhs = &l[1];
-            gen_template_neq(lhs, rhs, env, constraints)
+            gen_template_neq(lhs, rhs, env, constraints, None)
         }
         crate::formula::ConstraintExpr::Pred(_, l) => {
             let mut fvs = HashSet::new();
@@ -509,7 +525,8 @@ fn gen_template_goal(
                         let env = env.insert(dummy_ident, template_from_mode(&Mode::mk_in()));
 
                         // we view A e as z != e \/ A z and
-                        gen_template_neq(&op, &dummy_var, env, constraints);
+                        gen_template_neq(&op, &dummy_var, env, constraints, Some(arg_mode.clone()));
+
                         GoalBase::mk_op_t(op, f(arg_mode.clone()))
                     }
                 }
