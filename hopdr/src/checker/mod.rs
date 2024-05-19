@@ -168,20 +168,39 @@ impl<'a> Translator {
         }
     }
     fn handle_app(&mut self, goal: GoalM, p: Ident, cont: Expr) -> Expr {
-        fn handle_out_arg(g: &GoalM, rets: &mut Vec<Ident>) {
+        fn handle_out_arg(g: &GoalM, rets: &mut Vec<Ident>, env: &ModeEnv) -> Option<(Ident, Op)> {
             let o = match g.kind() {
                 GoalKind::Var(v) => {
                     rets.push(*v);
-                    return;
+                    return None;
                 }
                 GoalKind::Op(o) => o,
                 _ => panic!("mode inference error?: {}", g),
             };
             match o.kind() {
-                crate::formula::OpExpr::Var(v) => rets.push(*v),
-                o => {
-                    // solve for a variable
-                    unimplemented!()
+                crate::formula::OpExpr::Var(v) => {
+                    rets.push(*v);
+                    None
+                }
+                _ => {
+                    // case where the argument is not just an argument
+                    println!("o: {}", o);
+                    let tmp_variable = Ident::fresh();
+                    let tmp_var = Op::mk_var(tmp_variable);
+
+                    let fv = o.fv();
+                    let mut target = None;
+                    // find the target output variable, which must be unique
+                    for i in fv.iter() {
+                        if env.get(i).unwrap().is_out() {
+                            assert!(target.is_none());
+                            target = Some(*i);
+                        }
+                    }
+                    let target = target.unwrap();
+                    let o = Op::solve_for(&target, &tmp_var, &o).unwrap();
+                    rets.push(tmp_variable);
+                    Some((target, o.clone()))
                 }
             }
         }
@@ -191,13 +210,21 @@ impl<'a> Translator {
         let mut pred = goal;
         let mut checks = Vec::new();
 
+        // this vector handles the continuation of the application for handling non-variable arguments
+        // E.g.
+        // A y (x + 1) -> let z = A y in let x = z - 1 in ...
+        let mut cont_lets = Vec::new();
+
         loop {
             match pred.kind() {
                 GoalKind::App(g1, g2) => {
                     let pred_arg_mode = g1.aux.mode.is_fun().unwrap().0;
+                    let env = &g1.aux.env;
                     match pred_arg_mode.kind() {
                         mode::ModeKind::Out => match g2.aux.mode.kind() {
-                            mode::ModeKind::Out => handle_out_arg(g2, &mut rets),
+                            mode::ModeKind::Out => handle_out_arg(g2, &mut rets, env)
+                                .into_iter()
+                                .for_each(|t| cont_lets.push(t)),
                             mode::ModeKind::In => {
                                 let temp_var = Ident::fresh();
                                 rets.push(temp_var);
@@ -229,7 +256,7 @@ impl<'a> Translator {
         for arg in args.into_iter().rev() {
             body = Expr::mk_app(body, arg);
         }
-        // For handling delay
+        // case for handling subsumption (passing input variables as the output)
         body = Expr::mk_app(body, Expr::mk_var(p));
         let mut cont = cont;
         if checks.len() > 0 {
@@ -239,6 +266,10 @@ impl<'a> Translator {
                     Constraint::mk_disj(acc, Constraint::mk_neq(Op::mk_var(v), o))
                 });
             cont = Expr::mk_if(Expr::mk_constraint(check), Expr::mk_raise(), cont);
+        }
+        // case for handling non-variable outputs
+        for (t, o) in cont_lets.into_iter().rev() {
+            cont = Expr::mk_let(t, Expr::mk_op(o), cont);
         }
         Expr::mk_let_tuple(rets, body, cont)
     }
