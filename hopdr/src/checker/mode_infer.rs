@@ -1,5 +1,3 @@
-use hoice::term::cst;
-
 /// Mode inference
 /// Algorithm
 /// 1. First set all the integer variables as `in`
@@ -283,7 +281,7 @@ fn simplify(f: &Vec<ModeConstraint>) -> Vec<ModeConstraint> {
             _ => (),
         }
     }
-    let mut r: Vec<_> = r
+    let r: Vec<_> = r
         .iter()
         .cloned()
         .filter(|m| match m {
@@ -465,7 +463,7 @@ fn gen_template_goal(
     goal: &Goal,
     env: ModeEnv,
     constraints: &mut PossibleConstraints,
-    coarse: bool,
+    coarse: bool, // whether the universal quantifiers are treated as out
 ) -> Goal {
     let f = |mode| Aux::new(env.clone(), mode);
     let g = match goal.kind() {
@@ -499,13 +497,22 @@ fn gen_template_goal(
                 g2
             } else {
                 let op: Op = g2.clone().into();
-                let dummy_ident = Ident::fresh();
-                let dummy_var = Op::mk_var(dummy_ident);
-                let env = env.insert(dummy_ident, template_from_mode(&Mode::mk_in()));
+                match op.kind() {
+                    OpExpr::Var(x) => {
+                        let m = env.get(&x).unwrap();
+                        append_constraint_eq(arg_mode, m, constraints);
+                        GoalBase::mk_op_t(op, f(m.clone()))
+                    }
+                    _ => {
+                        let dummy_ident = Ident::fresh();
+                        let dummy_var = Op::mk_var(dummy_ident);
+                        let env = env.insert(dummy_ident, template_from_mode(&Mode::mk_in()));
 
-                // we view A e as z != e \/ A z and
-                gen_template_neq(&op, &dummy_var, env, constraints);
-                GoalBase::mk_op_t(op, f(arg_mode.clone()))
+                        // we view A e as z != e \/ A z and
+                        gen_template_neq(&op, &dummy_var, env, constraints);
+                        GoalBase::mk_op_t(op, f(arg_mode.clone()))
+                    }
+                }
             };
             GoalBase::mk_app_t(g1_clone, g2, f(ret_mode.clone()))
         }
