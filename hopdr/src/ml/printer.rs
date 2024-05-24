@@ -345,7 +345,11 @@ impl DumpML for Function {
 
 impl<'a> Program<'a> {
     fn dump_fail_func<W: Write>(&self, f: &mut W) -> Result<(), fmt::Error> {
-        write!(f, "let hopdr_fail () = Printf.printf \"{}\"", FAIL_STRING)
+        write!(
+            f,
+            "let hopdr_fail () = Printf.printf \"{}\"; true\n",
+            FAIL_STRING
+        )
     }
     fn dump_main_ml<W: Write>(&self, f: &mut W) -> Result<(), fmt::Error> {
         self.dump_fail_func(f)?;

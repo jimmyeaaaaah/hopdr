@@ -95,7 +95,7 @@ let loop f n =
     | TrueExc -> ()
   done
 
-let hopdr_main f fail =
+let rec hopdr_main f fail =
   let n_recs = [ 1000; 10000; 100000; 1000000; 10000000000 ] in
   let configs = [ set_min; set_small; set_med; set_large ] in
   List.iter
@@ -107,6 +107,6 @@ let hopdr_main f fail =
           loop f 1000)
         configs)
     n_recs;
-  fail ()
+  if fail () then hopdr_main f fail
 
 (*** The program body starts here! ***)

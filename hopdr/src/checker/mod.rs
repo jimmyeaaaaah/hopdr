@@ -17,13 +17,15 @@ use std::collections::HashMap;
 pub struct Config {
     context: Context,
     print_check_log: bool,
+    no_mode_analysis: bool,
 }
 
 impl Config {
-    pub fn new(context: &Context, print_check_log: bool) -> Self {
+    pub fn new(context: &Context, print_check_log: bool, no_mode_analysis: bool) -> Self {
         Config {
             context: context.clone(),
             print_check_log,
+            no_mode_analysis,
         }
     }
 }
@@ -576,7 +578,7 @@ fn test_translate_predicate() {
     );
     println!("{g8}");
     let ctx = Context::empty();
-    let mut tr = Translator::new_with_clause_idents(Config::new(&ctx, true), HashMap::new());
+    let mut tr = Translator::new_with_clause_idents(Config::new(&ctx, true, false), HashMap::new());
     let e = tr.translate_predicates(&g8, Vec::new());
     println!("{}", e.print_expr(&ctx));
 }
@@ -588,7 +590,9 @@ pub async fn run(problem: Problem<Constraint>, config: Config) -> executor::Exec
         println!("{}", problem.pretty_display_with_context(&config.context));
     }
     let mut trans = Translator::new(config.clone(), &problem);
-    let problem_with_mode = stat("mode infer", || mode_infer::infer(problem));
+    let problem_with_mode = stat("mode infer", || {
+        mode_infer::infer(problem, config.no_mode_analysis)
+    });
     let prog = stat("translate", || trans.translate(problem_with_mode));
 
     let prog = stat("optimize", || optimize(prog));

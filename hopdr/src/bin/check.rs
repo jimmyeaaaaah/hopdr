@@ -45,6 +45,8 @@ struct Args {
     #[clap(long)]
     /// Enables HoIce's preprocessing after spacer's preprocessing
     do_hoice_preprocess: bool,
+    #[clap(long)]
+    no_mode_analysis: bool,
 }
 
 fn gen_configuration_from_args(args: &Args) -> hopdr::Configuration {
@@ -113,6 +115,7 @@ fn run_multiple(
         crate::preprocess::Context,
     )>,
     print_check_log: bool,
+    no_mode_analysis: bool,
 ) -> checker::ExecResult {
     info!("run parallel");
     let rt = runtime::Runtime::new().unwrap();
@@ -120,7 +123,7 @@ fn run_multiple(
         let mut set = JoinSet::new();
 
         for (problem, ctx) in problems {
-            let config = checker::Config::new(&ctx, print_check_log);
+            let config = checker::Config::new(&ctx, print_check_log, no_mode_analysis);
             let t = checker::run(problem, config.clone());
             set.spawn(t);
         }
@@ -152,12 +155,13 @@ fn run_multiple(
         crate::preprocess::Context,
     )>,
     print_check_log: bool,
+    no_mode_analysis: bool,
 ) -> checker::ExecResult {
     info!("run sequentially");
     let rt = runtime::Runtime::new().unwrap();
     rt.block_on(async {
         for (problem, ctx) in problems {
-            let config = checker::Config::new(&ctx, print_check_log);
+            let config = checker::Config::new(&ctx, print_check_log, no_mode_analysis);
             let t = checker::run(problem, config.clone()).await;
             match t {
                 checker::ExecResult::Invalid => {
@@ -272,7 +276,11 @@ fn check_main(args: Args) {
         vec![(problem, ctx)]
     };
 
-    report_result(run_multiple(vcs, args.print_check_log))
+    report_result(run_multiple(
+        vcs,
+        args.print_check_log,
+        args.no_mode_analysis,
+    ))
 }
 
 fn main() {

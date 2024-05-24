@@ -849,7 +849,7 @@ fn apply_model(problem: &Problem, model: HashMap<Ident, Mode>) -> Option<Problem
 // 2. set all the univ variables' mode as var
 // 3. gen templates for all the clauses
 
-pub(super) fn infer(problem: Input) -> Output {
+pub(super) fn infer(problem: Input, no_mode_analysis: bool) -> Output {
     let clause_names: Vec<Ident> = problem
         .clauses
         .iter()
@@ -858,6 +858,9 @@ pub(super) fn infer(problem: Input) -> Output {
         .into_iter()
         .collect();
     let mut problem = translate_to_problem(problem);
+    if no_mode_analysis {
+        return output_problem(problem);
+    }
     for name in clause_names {
         let (new_problem, constraint) = gen_template_problem(&problem, name);
         match solve(constraint) {
@@ -952,8 +955,10 @@ fn test_generate_template() {
     let translated = apply_model(&new_problem, model).unwrap();
 
     let ctx = super::Context::empty();
-    let mut tr =
-        super::Translator::new_with_clause_idents(super::Config::new(&ctx, true), HashMap::new());
+    let mut tr = super::Translator::new_with_clause_idents(
+        super::Config::new(&ctx, true, false),
+        HashMap::new(),
+    );
     let e = tr.translate_predicates(&translated.clauses[0].body.clone(), Vec::new());
     println!("[translated program]");
     println!("{}", e.print_expr(&ctx));
