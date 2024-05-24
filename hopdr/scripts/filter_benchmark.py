@@ -6,8 +6,8 @@ lists = "/home/katsura/github.com/moratorium08/hopdr/hopdr/benchmark/lists"
 inputs = "/home/katsura/github.com/moratorium08/hopdr/hopdr/benchmark/inputs"
 results = "/home/katsura/github.com/moratorium08/hopdr/hopdr/results/checker"
 
-lin = ("comp_LIA-lin", "lin-spacer-2023-12-31-01.csv", "lin-golem-2023-12-31-01.csv")
-nonlin = ("comp_LIA-nonlin", "nonlin-spacer-2023-12-31-01.csv", "nonlin-golem-2023-12-31-01.csv")
+lin = ("comp_LIA-lin", ["lin-spacer-2023-12-31-01.csv", "lin-golem-2023-12-31-01.csv", "lin-eldarica-2024-05-18-17.csv", "lin-hoice-2024-05-17-00.csv"])
+nonlin = ("comp_LIA-nonlin", ["nonlin-spacer-2023-12-31-01.csv", "nonlin-golem-2023-12-31-01.csv", "nonlin-eldarica-2024-05-18-17.json", "nonlin-hoice-2024-05-17-00.csv"])
 
 
 def gen_dict(p):
@@ -33,32 +33,34 @@ def main(bench):
     with open(p) as f:
         instances = f.read().strip().split("\n")
 
-    p = os.path.join(results, bench[1])
-    spacer_data, spacer_keys = gen_dict(p)
-    p = os.path.join(results, bench[2])
-    golem_data, golem_keys = gen_dict(p)
+    datas = []
+    keys = []
+    for filename in bench[1]:
+        p = os.path.join(results, filename)
+        d, k= gen_dict(p)
+        datas.append(d)
+        keys.append(k)
 
-    spacer_new_data = []
-    golem_new_data = []
+    
+    new_datas = [[] for _ in datas]
 
     result = []
 
-    assert(set(instances) == set(spacer_keys))
-    assert(set(instances) == set(golem_keys))
-    keys = golem_keys
+    #assert(set(instances) == set(spacer_keys))
+    #assert(set(instances) == set(golem_keys))
+    # use keys in bench[1][0]
+    keys = keys[0]
 
     for instance in keys:
-        sp = spacer_data[instance]
-        gl = golem_data[instance]
-        if sp[2] == 'valid' or gl[2] == 'valid':
+        if any(x[instance] == 'valid' for x in datas):
             continue
 
         size = get_size(instance)
         if size > THRESHOLD:
             continue
         result.append(instance)
-        spacer_new_data.append(sp)
-        golem_new_data.append(gl)
+        for idx, data in enumerate(datas):
+            new_datas[idx].append(data[instance])
 
     p = os.path.join(lists, bench[0] + '-small')
     print(p, len(result))
