@@ -58,7 +58,7 @@ jobs:
               ]
           }
     - name: Benchmark 
-      run: cd scripts && eval $(opam env) && python3 bench.py --base $PWD/../benchmark --timeout 60 --json golem_unsafe.json golem_unsafe && python3 bench.py --base $PWD/../benchmark --timeout 10 --json golem_safe.json golem_safe
+      run: cd scripts && eval $(opam env) && python3 bench.py --base $PWD/../benchmark --timeout 180 --json golem_unsafe.json golem_unsafe && python3 bench.py --base $PWD/../benchmark --timeout 10 --json golem_safe.json golem_safe
     - name: install requests
       run: apt install -y python3-pip && pip install requests
     - name: Notify

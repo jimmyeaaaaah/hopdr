@@ -65,6 +65,12 @@ impl Type {
             TypeKind::Arrow(x, y) => std::cmp::max(x.order() + 1, y.order()),
         }
     }
+    pub fn arity(&self) -> usize {
+        match self.kind() {
+            TypeKind::Arrow(_, y) => 1 + y.arity(),
+            _ => 0,
+        }
+    }
     pub fn arrow<'a>(&'a self) -> (&'a Self, &'a Self) {
         match self.kind() {
             TypeKind::Arrow(x, y) => (x, y),

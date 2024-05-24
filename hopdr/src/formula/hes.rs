@@ -236,6 +236,17 @@ impl<C, T: Default> GoalBase<C, T> {
     pub fn is_ite(&self) -> bool {
         matches!(self.kind(), GoalKind::ITE(_, _, _))
     }
+    pub fn is_constr(&self) -> bool {
+        match self.kind() {
+            GoalKind::Constr(_) => true,
+            GoalKind::Op(_) => panic!("program error"),
+            GoalKind::Var(_) | GoalKind::Abs(_, _) | GoalKind::App(_, _) => false,
+            GoalKind::Conj(g1, g2) | GoalKind::Disj(g1, g2) | GoalKind::ITE(_, g1, g2) => {
+                g1.is_constr() && g2.is_constr()
+            }
+            GoalKind::Univ(_, g) => g.is_constr(),
+        }
+    }
 }
 
 impl<C: Bot + Top, T: Clone + Default> Logic for GoalBase<C, T> {
@@ -976,7 +987,10 @@ impl Goal<Constraint> {
             GoalKind::App(g1, g2) => {
                 let g1 = g1.simplify();
                 let g2 = g2.simplify();
-                Goal::mk_app(g1, g2)
+                match g1.kind() {
+                    GoalKind::Abs(v, g) => g.subst(v, &g2).simplify(),
+                    _ => Goal::mk_app(g1, g2),
+                }
             }
             GoalKind::Conj(g1, g2) => {
                 let g1 = g1.simplify();
@@ -996,7 +1010,7 @@ impl Goal<Constraint> {
                 let c = c.simplify();
                 let g1 = g1.simplify();
                 let g2 = g2.simplify();
-                Goal::mk_ite(c, g1, g2)
+                Goal::mk_ite_opt(c, g1, g2)
             }
         }
     }

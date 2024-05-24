@@ -7,6 +7,7 @@ mod find_ite;
 mod forall_pass;
 pub mod hes;
 pub mod hfl_preprocessor;
+mod inline_leaf_call;
 mod ite_expand;
 mod prenex_norm;
 mod remove_tmp_var;
