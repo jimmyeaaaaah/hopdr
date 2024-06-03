@@ -46,6 +46,8 @@ pretty = { version = "0.11", features = ["termcolor"] }
 terminal_size = "0.2"
 hoice = { git = "https://github.com/moratorium08/hoice", rev = "c187d5585c56964ca263f3585cfd6338b2195982"}
 tokio = { version = "1.37.0", features = ["full"] }
+thiserror = "1.0.61"
+anyhow = "1.0.86"
 
 
 [dev-dependencies]

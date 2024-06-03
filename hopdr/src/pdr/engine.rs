@@ -4,21 +4,14 @@ use crate::formula::hes::Problem;
 use crate::formula::{hes, Constraint, TeXPrinter};
 use crate::pdr::derivation;
 
+use anyhow::Result;
 use colored::Colorize;
+use thiserror::Error;
 
-use std::fmt;
-
-#[derive(Debug, Copy, Clone)]
-pub enum Error {
+#[derive(Debug, Error)]
+pub enum PDRError {
+    #[error("Type inference from cex failed")]
     TypeInference,
-}
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Error::TypeInference => write!(f, "Type Inference from cex failed"),
-        }
-    }
 }
 
 pub enum PDRResult {
@@ -169,7 +162,7 @@ impl HoPDR {
         &self.envs[level]
     }
 
-    fn check_feasible(&mut self) -> Result<bool, Error> {
+    fn check_feasible(&mut self) -> Result<bool, PDRError> {
         debug!("[PDR]check feasible");
         loop {
             if self.config.config.wait_every_step {
@@ -214,7 +207,7 @@ impl HoPDR {
     // Assumption 1: self.models.len() > 0
     // Assumption 2: ℱ(⌊Γ⌋) ⊧ ψ
     // Assumption 3: self.get_current_cex_level() < N
-    fn conflict(&mut self, mut tyenv_new: TyEnv) -> Result<(), Error> {
+    fn conflict(&mut self, mut tyenv_new: TyEnv) -> Result<(), PDRError> {
         info!("{}", "conflict".blue());
         debug!("{}", tyenv_new);
         if self.config.dump_tex_progress {
@@ -273,7 +266,7 @@ impl HoPDR {
         panic!("decide: fail. Assumption ℱ(⌊Γ⌋) not⊧ ψ is not satisfied")
     }
 
-    fn run(&mut self) -> Result<PDRResult, Error> {
+    fn run(&mut self) -> Result<PDRResult, PDRError> {
         info!("[PDR] target formula");
         info!("{}", self.problem);
 

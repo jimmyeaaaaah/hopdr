@@ -21,7 +21,9 @@ use crate::solver::smt::ident_2_smt2;
 use crate::solver::util;
 use crate::solver::{smt, SMTSolverType};
 
+use anyhow::{bail, Result};
 use home::home_dir;
+use thiserror::Error;
 
 use std::collections::{HashMap, HashSet};
 use std::ptr::addr_of;
@@ -87,7 +89,7 @@ fn topological_sort(l: &[CHC]) -> Option<(Vec<Ident>, HashMap<Ident, usize>)> {
         unchecked: &mut HashSet<Ident>,
         is_temporary: &mut HashSet<Ident>,
         cur: Ident,
-    ) -> Result<(), ()> {
+    ) -> Result<()> {
         match graph.get(&cur) {
             Some(s) => {
                 for i in s.iter() {
@@ -98,7 +100,7 @@ fn topological_sort(l: &[CHC]) -> Option<(Vec<Ident>, HashMap<Ident, usize>)> {
                         is_temporary.remove(i);
                     } else if is_temporary.contains(i) {
                         // a cycle has been found.
-                        return Err(());
+                        bail!("cycle detected");
                     }
                 }
             }
@@ -121,7 +123,7 @@ fn topological_sort(l: &[CHC]) -> Option<(Vec<Ident>, HashMap<Ident, usize>)> {
             is_temporary.insert(cur);
             match dfs(graph, &mut sorted, &mut unchecked, &mut is_temporary, cur) {
                 Ok(()) => (),
-                Err(()) => return None,
+                Err(_) => return None,
             }
             is_temporary.remove(&cur);
         }
@@ -406,9 +408,11 @@ impl InterpolationSolver {
     }
 }
 
-#[derive(Debug)]
+#[derive(Error, Debug)]
 enum InterpolationError {
+    #[error("parse failed")]
     ParseError,
+    #[error("Given constraints are satisfiable")]
     Satisfiable,
 }
 
@@ -490,7 +494,6 @@ impl SMTInterpolSolver {
                 return Ok(parsed);
             } else if line.starts_with("sat") {
                 return Err(InterpolationError::Satisfiable);
-                //panic!("program error: SMTInterpol concluded the constraint was sat (expected: unsat)\n[result of smtinterpol]\n{}", &r)
             }
         }
     }
@@ -557,6 +560,8 @@ fn test_csisat() {
 
 impl SVMInterpol {
     fn execute_solver(&mut self, input1: &str, input2: &str) -> String {
+        println!("input1: {input1}");
+        println!("input2: {input2}");
         let mut vs = Vec::new();
         vs.push("--input1");
         vs.push(input1);
@@ -566,7 +571,9 @@ impl SVMInterpol {
         let out = interp_execution!({
             util::exec_input_with_timeout("svminterpol", &vs, b"", Duration::from_secs(1))
         });
-        String::from_utf8(out).unwrap()
+        let s = String::from_utf8(out).unwrap();
+        println!("result: {s}");
+        s
     }
     fn parse_result(&mut self, result: String) -> Option<Constraint> {
         super::csisat::parse(&result)
