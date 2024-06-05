@@ -11,6 +11,7 @@ use crate::{formula::*, highlight};
 use rpds::{HashTrieMap, Stack};
 
 const PRINT_ASSUMPTION: bool = true;
+const OMIT_EXPR: bool = true;
 
 #[derive(Clone, Debug)]
 pub(super) struct DeriveNode {
@@ -114,24 +115,24 @@ impl crate::util::printer::Pretty for DeriveNode {
                 .append("}}")
                 .hang(2)
                 .group(),
-            _ => self
-                .expr
-                .pretty(al, config)
-                .append(al.line())
-                .append(":")
-                .append(al.line())
-                .append(self.ty.pretty(al, config))
-                .hang(2)
-                .group(),
+            _ => if OMIT_EXPR {
+                al.text("e")
+            } else {
+                self.expr.pretty(al, config)
+            }
+            .append(al.space())
+            .append(":")
+            .append(al.line())
+            .append(self.ty.pretty(al, config))
+            .hang(2)
+            .group(),
         };
         let doc = al.text("(").append(self.rule.to_string()).append(")");
         if PRINT_ASSUMPTION {
-            doc.append(al.line())
-                .append(al.intersperse(self.context.iter().map(|x| x.pretty(al, config)), " ∧ "))
+            doc.append(al.intersperse(self.context.iter().map(|x| x.pretty(al, config)), " ∧ "))
         } else {
             doc
         }
-        .append(al.line())
         .append("|-")
         .append(al.line())
         .append(body)
@@ -645,192 +646,172 @@ impl Derivation {
         self.tree = tree;
         derivations
     }
+}
 
+/// aux function for Derivation::update_parents
+fn handle_rule_in_update_parents(
+    t: &Tree<DeriveNode>,
+    cur: ID,
+    prev: ID,
+) -> either::Either<Ty, (bool, DeriveNode)> {
+    let n = t.get_node_by_id(cur).item;
+    let ty = match &n.rule {
+        Rule::Conjoin => {
+            let cnstr = t
+                .get_children(t.get_node_by_id(cur))
+                .map(|child| match child.item.ty.kind() {
+                    TauKind::Proposition(c) => c.clone(),
+                    TauKind::PTy(_, _) | TauKind::IArrow(_, _) | TauKind::Arrow(_, _) => {
+                        panic!("not conjoin")
+                    }
+                })
+                .fold(Atom::mk_true(), Atom::mk_conj);
+            Ty::mk_prop_ty(cnstr)
+        }
+        Rule::Disjoin => {
+            let cnstr = t
+                .get_children(t.get_node_by_id(cur))
+                .map(|child| match child.item.ty.kind() {
+                    TauKind::Proposition(c) => c.clone(),
+                    TauKind::PTy(_, _) | TauKind::IArrow(_, _) | TauKind::Arrow(_, _) => {
+                        panic!("not disjoin")
+                    }
+                })
+                .fold(Atom::mk_false(), Atom::mk_disj);
+            Ty::mk_prop_ty(cnstr)
+        }
+        Rule::Univ => {
+            let children: Vec<_> = t
+                .get_children(t.get_node_by_id(cur))
+                .map(|child| child.item)
+                .collect();
+            assert_eq!(children.len(), 1);
+            let cnstr = match children[0].ty.kind() {
+                TauKind::Proposition(c) => c.clone(),
+                TauKind::PTy(_, _) | TauKind::IArrow(_, _) | TauKind::Arrow(_, _) => {
+                    panic!("not conjoin")
+                }
+            };
+            let x = n.expr.univ().0;
+            Ty::mk_prop_ty(Atom::mk_univ_int(x.id, cnstr))
+        }
+        Rule::IAbs => {
+            let children: Vec<_> = t
+                .get_children(t.get_node_by_id(cur))
+                .map(|child| child.item)
+                .collect();
+            assert_eq!(children.len(), 1);
+            let x = n.expr.abs().0;
+            Ty::mk_iarrow(x.id, children[0].ty.clone())
+        }
+        Rule::Poly(x) => {
+            let children: Vec<_> = t
+                .get_children(t.get_node_by_id(cur))
+                .map(|child| child.item)
+                .collect();
+            assert_eq!(children.len(), 1);
+            Ty::mk_poly_ty(*x, children[0].ty.clone())
+        }
+        Rule::Abs(x) => {
+            let children: Vec<_> = t
+                .get_children(t.get_node_by_id(cur))
+                .map(|child| child.item)
+                .collect();
+            assert_eq!(children.len(), 1);
+            Ty::mk_arrow(x.clone(), children[0].ty.clone())
+        }
+        Rule::IApp(o) => {
+            let children: Vec<_> = t
+                .get_children(t.get_node_by_id(cur))
+                .map(|child| child.item)
+                .collect();
+            assert_eq!(children.len(), 1);
+            match children[0].ty.kind() {
+                TauKind::IArrow(x, t) => t.subst(&x, &o),
+                _ => panic!("program error"),
+            }
+        }
+        Rule::App => {
+            let children: Vec<_> = t
+                .get_children(t.get_node_by_id(cur))
+                .map(|child| child)
+                .collect();
+            assert!(children.len() >= 1);
+            let node = t.get_node_by_id(prev).item;
+
+            // case1: the updated child was in pred
+            if node.expr.aux.id == children[0].item.expr.aux.id {
+                // then we retrieve the updated children
+                let children: Vec<_> = t
+                    .get_children(t.get_node_by_id(cur))
+                    .map(|child| child)
+                    .collect();
+                let pred = children[0].item.ty.clone();
+                let body_tys: Vec<_> = children[1..]
+                    .iter()
+                    .map(|child| child.item.ty.clone())
+                    .collect();
+                let (arg_ty, ret_ty) = match pred.kind() {
+                    TauKind::Arrow(arg, t) => (arg.clone(), t.clone()),
+                    TauKind::PTy(_, _) | TauKind::Proposition(_) | TauKind::IArrow(_, _) => {
+                        panic!("program error")
+                    }
+                };
+
+                if !body_tys
+                    .iter()
+                    .filter(|x| !x.is_bot())
+                    .zip(arg_ty.iter().filter(|x| !x.is_bot()))
+                    .all(|(t1, t2)| t1 == t2)
+                {
+                    debug!("subsumption");
+                    for body_ty in body_tys.iter() {
+                        crate::pdebug!(body_ty);
+                    }
+                    debug!("<:");
+                    for body_ty in arg_ty.iter() {
+                        crate::pdebug!(body_ty);
+                    }
+                    panic!("subsumption invalid")
+                }
+                ret_ty.clone()
+            }
+            // case2: the updated child was in body
+            else {
+                // insert subsumption here
+                for child in children[1..].iter() {
+                    if node.expr.aux.id == child.item.expr.aux.id {
+                        todo!();
+                        //return (true, n.clone());
+                    }
+                }
+                panic!("program error")
+            }
+        }
+        Rule::Equivalence | Rule::Subsumption => {
+            let children: Vec<_> = t
+                .get_children(t.get_node_by_id(cur))
+                .map(|child| child.item)
+                .collect();
+            assert_eq!(children.len(), 1);
+            return either::Right((true, n.clone()));
+        }
+        Rule::Var(_, _) | Rule::Atom => panic!("program error"),
+    };
+    either::Left(ty)
+}
+
+impl Derivation {
     fn update_parents(&mut self, target_id: ID) {
         self.tree
             .update_parent_until(target_id, |t, cur, prev| {
                 let n = t.get_node_by_id(cur).item;
-                //pdebug!("update_parent_until", n);
                 let ty = match prev {
                     None => n.ty.clone(),
-                    Some(prev) => {
-                        match &n.rule {
-                            Rule::Conjoin => {
-                                let cnstr = t
-                                    .get_children(t.get_node_by_id(cur))
-                                    .map(|child| match child.item.ty.kind() {
-                                        TauKind::Proposition(c) => c.clone(),
-                                        TauKind::PTy(_, _)
-                                        | TauKind::IArrow(_, _)
-                                        | TauKind::Arrow(_, _) => {
-                                            panic!("not conjoin")
-                                        }
-                                    })
-                                    .fold(Atom::mk_true(), Atom::mk_conj);
-                                Ty::mk_prop_ty(cnstr)
-                            }
-                            Rule::Disjoin => {
-                                let cnstr = t
-                                    .get_children(t.get_node_by_id(cur))
-                                    .map(|child| match child.item.ty.kind() {
-                                        TauKind::Proposition(c) => c.clone(),
-                                        TauKind::PTy(_, _)
-                                        | TauKind::IArrow(_, _)
-                                        | TauKind::Arrow(_, _) => {
-                                            panic!("not disjoin")
-                                        }
-                                    })
-                                    .fold(Atom::mk_false(), Atom::mk_disj);
-                                Ty::mk_prop_ty(cnstr)
-                            }
-                            Rule::Univ => {
-                                let children: Vec<_> = t
-                                    .get_children(t.get_node_by_id(cur))
-                                    .map(|child| child.item)
-                                    .collect();
-                                assert_eq!(children.len(), 1);
-                                let cnstr = match children[0].ty.kind() {
-                                    TauKind::Proposition(c) => c.clone(),
-                                    TauKind::PTy(_, _)
-                                    | TauKind::IArrow(_, _)
-                                    | TauKind::Arrow(_, _) => {
-                                        panic!("not conjoin")
-                                    }
-                                };
-                                let x = n.expr.univ().0;
-                                Ty::mk_prop_ty(Atom::mk_univ_int(x.id, cnstr))
-                            }
-                            Rule::IAbs => {
-                                let children: Vec<_> = t
-                                    .get_children(t.get_node_by_id(cur))
-                                    .map(|child| child.item)
-                                    .collect();
-                                assert_eq!(children.len(), 1);
-                                let x = n.expr.abs().0;
-                                Ty::mk_iarrow(x.id, children[0].ty.clone())
-                            }
-                            Rule::Poly(x) => {
-                                let children: Vec<_> = t
-                                    .get_children(t.get_node_by_id(cur))
-                                    .map(|child| child.item)
-                                    .collect();
-                                assert_eq!(children.len(), 1);
-                                Ty::mk_poly_ty(*x, children[0].ty.clone())
-                            }
-                            Rule::Abs(x) => {
-                                let children: Vec<_> = t
-                                    .get_children(t.get_node_by_id(cur))
-                                    .map(|child| child.item)
-                                    .collect();
-                                assert_eq!(children.len(), 1);
-                                Ty::mk_arrow(x.clone(), children[0].ty.clone())
-                            }
-                            Rule::IApp(o) => {
-                                let children: Vec<_> = t
-                                    .get_children(t.get_node_by_id(cur))
-                                    .map(|child| child.item)
-                                    .collect();
-                                assert_eq!(children.len(), 1);
-                                match children[0].ty.kind() {
-                                    TauKind::IArrow(x, t) => t.subst(&x, &o),
-                                    _ => panic!("program error"),
-                                }
-                            }
-                            Rule::App => {
-                                let children: Vec<_> = t
-                                    .get_children(t.get_node_by_id(cur))
-                                    .map(|child| child)
-                                    .collect();
-                                //assert_eq!(children.len(), 2);
-                                // todo?
-                                assert!(children.len() >= 1);
-                                let node = t.get_node_by_id(prev).item;
-
-                                // case1: the updated child was in pred
-                                if node.expr.aux.id == children[0].item.expr.aux.id {
-                                    // first we update other children
-                                    // match &int_substitution {
-                                    //     Some((x, o)) => {
-                                    //         for child_id in children[1..]
-                                    //             .into_iter()
-                                    //             .map(|child| child.id)
-                                    //             .collect::<Vec<_>>()
-                                    //         {
-                                    //             update_app_branchs(t, child_id, &x, &o);
-                                    //         }
-                                    //     }
-                                    //     None => (),
-                                    // }
-
-                                    // then we retrieve the updated children
-                                    let children: Vec<_> = t
-                                        .get_children(t.get_node_by_id(cur))
-                                        .map(|child| child)
-                                        .collect();
-                                    let pred = children[0].item.ty.clone();
-                                    let body_tys: Vec<_> = children[1..]
-                                        .iter()
-                                        .map(|child| child.item.ty.clone())
-                                        .collect();
-                                    let (arg_ty, ret_ty) = match pred.kind() {
-                                        TauKind::Arrow(arg, t) => (arg.clone(), t.clone()),
-                                        TauKind::PTy(_, _)
-                                        | TauKind::Proposition(_)
-                                        | TauKind::IArrow(_, _) => {
-                                            panic!("program error")
-                                        }
-                                    };
-                                    // subsumption
-                                    //t.update_node_by_id(children[0].id).ty =
-                                    //    Ty::mk_arrow(body_tys, ret_ty.clone());
-                                    // for (body_ty, arg_ty) in body_tys
-                                    //     .iter()
-                                    //     .filter(|x| !x.is_bot())
-                                    //     .zip(arg_ty.iter().filter(|x| !x.is_bot())) {
-                                    //
-                                    //     }
-
-                                    if !body_tys
-                                        .iter()
-                                        .filter(|x| !x.is_bot())
-                                        .zip(arg_ty.iter().filter(|x| !x.is_bot()))
-                                        .all(|(t1, t2)| t1 == t2)
-                                    {
-                                        debug!("subsumption");
-                                        for body_ty in body_tys.iter() {
-                                            crate::pdebug!(body_ty);
-                                        }
-                                        debug!("<:");
-                                        for body_ty in arg_ty.iter() {
-                                            crate::pdebug!(body_ty);
-                                        }
-                                        panic!("subsumption invalid")
-                                    }
-                                    ret_ty.clone()
-                                }
-                                // case2: the updated child was in body
-                                else {
-                                    // insert subsumption here
-                                    for child in children[1..].iter() {
-                                        if node.expr.aux.id == child.item.expr.aux.id {
-                                            todo!();
-                                            //return (true, n.clone());
-                                        }
-                                    }
-                                    panic!("program error")
-                                }
-                            }
-                            Rule::Equivalence | Rule::Subsumption => {
-                                let children: Vec<_> = t
-                                    .get_children(t.get_node_by_id(cur))
-                                    .map(|child| child.item)
-                                    .collect();
-                                assert_eq!(children.len(), 1);
-                                return (true, n.clone());
-                            }
-                            Rule::Var(_, _) | Rule::Atom => panic!("program error"),
-                        }
-                    }
+                    Some(prev) => match handle_rule_in_update_parents(t, cur, prev) {
+                        either::Either::Left(ty) => ty,
+                        either::Either::Right(ret) => return ret,
+                    },
                 };
                 let n = t.get_node_by_id(cur).item;
                 let n = DeriveNode {
@@ -843,44 +824,28 @@ impl Derivation {
             })
             .unwrap();
     }
-    fn update_expr_inner(
+}
+/// aux function for Derivation::update_expr_inner
+fn retrieve_ty_alpha_renaming(t: &Ty, map: Stack<(Ident, Ident)>) -> Ty {
+    let mut ty = t.clone();
+    for (x, y) in map.iter() {
+        ty = ty.rename(x, y);
+    }
+    ty
+}
+impl Derivation {
+    fn handle_rule_in_update_expr_inner(
         &mut self,
         context: Stack<Atom>,
+        mut alpha_renaming_map: Stack<(Ident, Ident)>,
+        children: Vec<ID>,
         node_id: ID,
         expr: &G,
-        mut alpha_renaming_map: Stack<(Ident, Ident)>,
-    ) {
-        fn retrieve_ty_alpha_renaming(t: &Ty, map: Stack<(Ident, Ident)>) -> Ty {
-            let mut ty = t.clone();
-            for (x, y) in map.iter() {
-                ty = ty.rename(x, y);
-            }
-            ty
-        }
-        let old_expr = self.tree.get_node_by_id(node_id).item.expr.clone();
-        let old_ty = self.tree.get_node_by_id(node_id).item.ty.clone();
-
-        let node = self.tree.update_node_by_id(node_id);
-        node.expr = expr.clone();
-        node.ty = retrieve_ty_alpha_renaming(&old_ty, alpha_renaming_map.clone());
-
-        // update context
-        let mut context = context.clone();
-        for (x, y) in alpha_renaming_map.iter() {
-            context = context.iter().map(|a| a.rename(x, y)).collect();
-        }
-        node.context = context.clone();
-
-        let children: Vec<_> = self
-            .tree
-            .get_children(node_id.to_node(&self.tree))
-            .map(|child| child.id)
-            .collect();
+        old_expr: &G,
+        old_ty: &Ty,
+    ) -> Rule {
         let n = self.get_node_by_id(node_id).item;
-        //crate::title!("update_expr_inner");
-        //crate::pdebug!(n);
-        //crate::pdebug!(expr);
-        self.tree.update_node_by_id(node_id).rule = match &n.rule {
+        match &n.rule {
             Rule::Conjoin => {
                 let (g1, g2) = expr.conj();
                 assert_eq!(children.len(), 2);
@@ -1018,11 +983,45 @@ impl Derivation {
                 self.tree.update_node_by_id(children[0]).expr = expr.clone();
                 Rule::Equivalence
             }
-        };
+        }
+    }
+    fn update_expr_inner(
+        &mut self,
+        context: Stack<Atom>,
+        node_id: ID,
+        expr: &G,
+        alpha_renaming_map: Stack<(Ident, Ident)>,
+    ) {
+        let old_expr = self.tree.get_node_by_id(node_id).item.expr.clone();
+        let old_ty = self.tree.get_node_by_id(node_id).item.ty.clone();
+
+        let node = self.tree.update_node_by_id(node_id);
+        node.expr = expr.clone();
+        node.ty = retrieve_ty_alpha_renaming(&old_ty, alpha_renaming_map.clone());
+
+        // update context
+        let mut context = context.clone();
+        for (x, y) in alpha_renaming_map.iter() {
+            context = context.iter().map(|a| a.rename(x, y)).collect();
+        }
+        node.context = context.clone();
+
+        let children: Vec<_> = self
+            .tree
+            .get_children(node_id.to_node(&self.tree))
+            .map(|child| child.id)
+            .collect();
+        self.tree.update_node_by_id(node_id).rule = self.handle_rule_in_update_expr_inner(
+            context,
+            alpha_renaming_map,
+            children,
+            node_id,
+            expr,
+            &old_expr,
+            &old_ty,
+        );
     }
     fn update_expr(&mut self, expr: &G) {
-        //pdebug!("update_expr");
-        //pdebug!(self.tree);
         let root_id = self.tree.root().id;
         self.update_expr_inner(Stack::new(), root_id, expr, Stack::new());
     }
