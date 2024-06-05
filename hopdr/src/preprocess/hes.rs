@@ -239,7 +239,7 @@ pub fn preprocess_for_typed_problem(
     if config.is_checker {
         problem = remove_tmp_var::transform(problem);
         problem = boolean_expand::transform(problem);
-        problem = inline_leaf_call::transform(problem);
+//        problem = inline_leaf_call::transform(problem);
         problem = reorder_disj::transform(problem);
         problem = reorder_conj::transform(problem);
         problem = find_ite::transform(problem, config.lightweight_find_ite);

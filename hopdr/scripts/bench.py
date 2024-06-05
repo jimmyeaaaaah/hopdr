@@ -14,7 +14,7 @@ project_root = os.path.realpath(os.path.join(os.path.dirname(os.path.abspath(__f
 base = os.path.join(project_root, './benchmark')
 TARGET = '../target/release/check'
 #cmd_template = TARGET + ' {} --do-hoice-preprocess --print-stat --input {}'  # <option> <filename>
-cmd_template = TARGET + ' {} --do-hoice-preprocess --input {}'  # <option> <filename>
+cmd_template = TARGET + ' {} --no-mode-analysis --do-hoice-preprocess --input {}'  # <option> <filename>
 
 cfg = None
 

@@ -586,309 +586,242 @@ impl GoalBase<Constraint, TypeMemory> {
     }
 }
 
+/// Generates a reduction sequence to the normal form of the given goal.
+/// Returns a tuple of the sequence and the normal form.
 fn generate_reduction_sequence(goal: &G, optimizer: &mut dyn Optimizer) -> (Vec<Reduction>, G) {
-    /// returns
-    /// 1. Some(Candidate): substituted an app
-    /// 2. None: not yet
-    fn go(optimizer: &mut dyn Optimizer, goal: &G, level: &mut usize) -> Option<(G, Reduction)> {
-        /// returns Some(_) if reduction happens in goal; otherwise None
-        /// left of the return value: the reduced term
-        /// right of the return value: the abstraction in the redux.
-        fn go_(
-            optimizer: &mut dyn Optimizer,
-            goal: &G,
-            level: usize,
-            fvints: &mut HashSet<Ident>,
-            argints: &mut HashSet<Ident>,
-            constraint: Constraint,
-            args: Stack<G>,
-            // third elem is true if it is just reduced
-        ) -> Option<(G, Reduction, bool)> {
-            fn reduction(
-                optimizer: &mut dyn Optimizer,
-                mut level: usize,
-                idents: &HashSet<Ident>, // idents passed to optimizer when generating a shared type template
-                args: Stack<G>,
-                predicate: &G,
-            ) -> (G, Vec<ReductionInfo>) {
-                let mut predicate = predicate.clone();
-                let mut reduction_infos = Vec::new();
-                let mut int_reduction_pairs = Stack::new();
-                for arg in args.iter() {
-                    let mut arg = arg.clone();
-                    // track the type of argument
-                    arg.aux.add_arg_level(level);
-                    let p = predicate.clone();
-                    let (arg_var, body) = p.abs();
+    // aux function: do a reduction with multiple arguments
+    fn reduction(
+        optimizer: &mut dyn Optimizer,
+        mut level: usize,
+        idents: &HashSet<Ident>, // idents passed to optimizer when generating a shared type template
+        args: Stack<G>,
+        predicate: &G,
+    ) -> (G, Vec<ReductionInfo>) {
+        let mut predicate = predicate.clone();
+        let mut reduction_infos = Vec::new();
+        let mut int_reduction_pairs = Stack::new();
+        for arg in args.iter() {
+            let mut arg = arg.clone();
+            // track the type of argument
+            arg.aux.add_arg_level(level);
+            let p = predicate.clone();
+            let (arg_var, body) = p.abs();
 
-                    // [feature shared_ty]
-                    // introduce type sharing
-                    match arg.aux.tys {
-                        // if a shared type exists, we reuse it.
-                        Some(_) => (),
-                        None => {
-                            let vi = variable_info(level, arg_var.clone(), idents);
-                            let tys = optimizer.gen_type(&vi);
-                            arg.aux.set_tys(tys);
-                        }
-                    }
-
-                    let reduction_type = if arg_var.ty.is_int() {
-                        let op: Op = arg.clone().into();
-                        let x = arg_var.id;
-                        int_reduction_pairs.push_mut((x, op));
-                        predicate = body.clone();
-                        ReductionType::int()
-                    } else {
-                        predicate = body.subst(&arg_var, &arg);
-                        ReductionType::pred()
-                    };
-
-                    let reduction_info = ReductionInfo::new(
-                        level,
-                        arg.clone(),
-                        arg_var.clone(),
-                        arg_var.id,
-                        reduction_type,
-                    );
-                    reduction_infos.push(reduction_info);
-                    level += 1;
-                }
-                predicate = predicate.update_ids();
-
-                debug_assert!(predicate.aux.sty.clone().unwrap().is_prop());
-
-                for (x, v) in int_reduction_pairs.iter() {
-                    let guard = Constraint::mk_eq(Op::mk_var(*x), v.clone());
-                    let mut tm = TypeMemory::new();
-                    tm.sty = Some(STy::mk_type_prop());
-                    predicate = G::mk_imply_t(guard, predicate, tm).unwrap();
-
-                    let mut tm = TypeMemory::new();
-                    tm.sty = Some(STy::mk_type_prop());
-                    predicate = G::mk_univ_t(Variable::mk(*x, STy::mk_type_int()), predicate, tm);
-                }
-                (predicate, reduction_infos)
-            }
-
-            fn generate_reduction_info(
-                optimizer: &mut dyn Optimizer,
-                level: usize,
-                predicate: &G,
-                idents: &HashSet<Ident>, // idents passed to optimizer when generating a shared type template
-                args: Stack<G>,
-            ) -> Option<(G, Vec<ReductionInfo>)> {
-                match predicate.kind() {
-                    GoalKind::Abs(_x, _g) => {
-                        Some(reduction(optimizer, level, idents, args, predicate))
-                    }
-                    _ => None,
+            // [feature shared_ty]
+            // introduce type sharing
+            match arg.aux.tys {
+                // if a shared type exists, we reuse it.
+                Some(_) => (),
+                None => {
+                    let vi = variable_info(level, arg_var.clone(), idents);
+                    let tys = optimizer.gen_type(&vi);
+                    arg.aux.set_tys(tys);
                 }
             }
-            match goal.kind() {
-                GoalKind::App(predicate, arg) => {
-                    // TODO: fvints & argints <- polymorphic_type config should be used to determine which to use
-                    match generate_reduction_info(
-                        optimizer,
-                        level,
-                        predicate,
-                        fvints,
-                        args.push(arg.clone()),
-                    ) {
-                        // App(App(...(Abs(...) arg1) .. argn)
-                        Some((ret, reduction_infos)) => {
-                            let reduction = Reduction::new(
-                                goal.clone(),
-                                predicate.clone(),
-                                ret.clone(),
-                                reduction_infos,
-                                fvints.clone(),
-                                argints.clone(),
-                                constraint.clone(),
-                            );
 
-                            return Some((ret.clone(), reduction, true));
-                        }
-                        None => (),
-                    };
-                    // case where App(pred, arg) cannot be reduced.
-                    // then, we try to reduce pred or arg.
-                    go_(
-                        optimizer,
-                        predicate,
-                        level,
-                        fvints,
-                        argints,
-                        constraint.clone(),
-                        args.push(arg.clone()),
-                    )
-                    .map(|(ret, reduction, just_reduced)| {
-                        if just_reduced {
-                            (ret, reduction, true)
-                        } else {
-                            (
-                                G::mk_app_t(ret, arg.clone(), goal.aux.clone()),
-                                reduction,
-                                just_reduced,
-                            )
-                        }
-                    })
-                    .or_else(|| {
-                        go_(
-                            optimizer,
-                            arg,
-                            level,
-                            fvints,
-                            argints,
-                            constraint.clone(),
-                            Stack::new(),
-                        )
-                        .map(|(arg, pred, _)| {
-                            (
-                                G::mk_app_t(predicate.clone(), arg, goal.aux.clone()),
-                                pred,
-                                false,
-                            )
-                        })
-                    })
-                }
-                GoalKind::Conj(g1, g2) => go_(
-                    optimizer,
-                    g1,
-                    level,
+            let reduction_type = if arg_var.ty.is_int() {
+                let op: Op = arg.clone().into();
+                let x = arg_var.id;
+                int_reduction_pairs.push_mut((x, op));
+                predicate = body.clone();
+                ReductionType::int()
+            } else {
+                predicate = body.subst(&arg_var, &arg);
+                ReductionType::pred()
+            };
+
+            let reduction_info = ReductionInfo::new(
+                level,
+                arg.clone(),
+                arg_var.clone(),
+                arg_var.id,
+                reduction_type,
+            );
+            reduction_infos.push(reduction_info);
+            level += 1;
+        }
+        predicate = predicate.update_ids();
+
+        debug_assert!(predicate.aux.sty.clone().unwrap().is_prop());
+
+        for (x, v) in int_reduction_pairs.iter() {
+            let guard = Constraint::mk_eq(Op::mk_var(*x), v.clone());
+            let mut tm = TypeMemory::new();
+            tm.sty = Some(STy::mk_type_prop());
+            predicate = G::mk_imply_t(guard, predicate, tm).unwrap();
+
+            let mut tm = TypeMemory::new();
+            tm.sty = Some(STy::mk_type_prop());
+            predicate = G::mk_univ_t(Variable::mk(*x, STy::mk_type_int()), predicate, tm);
+        }
+        (predicate, reduction_infos)
+    }
+    // if (abs, arg1, arg2, ...) then, do the reduction
+    fn generate_reduction_info(
+        optimizer: &mut dyn Optimizer,
+        level: usize,
+        predicate: &G,
+        idents: &HashSet<Ident>, // idents passed to optimizer when generating a shared type template
+        args: Stack<G>,
+    ) -> Option<(G, Vec<ReductionInfo>)> {
+        match predicate.kind() {
+            GoalKind::Abs(_x, _g) => Some(reduction(optimizer, level, idents, args, predicate)),
+            _ => None,
+        }
+    }
+    /// returns Some(_) if reduction happens in goal; otherwise None
+    /// left of the return value: the reduced term
+    /// right of the return value: the abstraction in the redux.
+    fn go_(
+        opt: &mut dyn Optimizer,
+        goal: &G,
+        lv: usize,
+        fvints: &mut HashSet<Ident>,
+        argints: &mut HashSet<Ident>,
+        cnstr: &Constraint,
+        args: Stack<G>,
+        // third elem is true if it is just reduced in this call
+    ) -> Option<(G, Reduction, bool)> {
+        match goal.kind() {
+            GoalKind::App(predicate, arg) => {
+                // TODO: fvints & argints <- polymorphic_type config should be used to determine which to use
+                match generate_reduction_info(opt, lv, predicate, fvints, args.push(arg.clone())) {
+                    // App(App(...(Abs(...) arg1) .. argn)
+                    Some((ret, reduction_infos)) => {
+                        let reduction = Reduction::new(
+                            goal.clone(),
+                            predicate.clone(),
+                            ret.clone(),
+                            reduction_infos,
+                            fvints.clone(),
+                            argints.clone(),
+                            cnstr.clone(),
+                        );
+
+                        return Some((ret.clone(), reduction, true));
+                    }
+                    None => (),
+                };
+                // case where App(pred, arg) cannot be reduced.
+                // then, we try to reduce pred or arg.
+                go_(
+                    opt,
+                    predicate,
+                    lv,
                     fvints,
                     argints,
-                    constraint.clone(),
-                    Stack::new(),
+                    cnstr,
+                    args.push(arg.clone()),
                 )
+                .map(|(ret, reduction, just_reduced)| {
+                    if just_reduced {
+                        (ret, reduction, true)
+                    } else {
+                        (
+                            G::mk_app_t(ret, arg.clone(), goal.aux.clone()),
+                            reduction,
+                            just_reduced,
+                        )
+                    }
+                })
+                .or_else(|| {
+                    go_(opt, arg, lv, fvints, argints, cnstr, Stack::new()).map(|(arg, pred, _)| {
+                        (
+                            G::mk_app_t(predicate.clone(), arg, goal.aux.clone()),
+                            pred,
+                            false,
+                        )
+                    })
+                })
+            }
+            GoalKind::Conj(g1, g2) => go_(opt, g1, lv, fvints, argints, cnstr, Stack::new())
                 .map(|(g1, p, _)| (G::mk_conj_t(g1, g2.clone(), goal.aux.clone()), p, false))
                 .or_else(|| {
-                    go_(
-                        optimizer,
-                        g2,
-                        level,
-                        fvints,
-                        argints,
-                        constraint.clone(),
-                        Stack::new(),
-                    )
-                    .map(|(g2, p, _)| (G::mk_conj_t(g1.clone(), g2, goal.aux.clone()), p, false))
+                    go_(opt, g2, lv, fvints, argints, cnstr, Stack::new()).map(|(g2, p, _)| {
+                        (G::mk_conj_t(g1.clone(), g2, goal.aux.clone()), p, false)
+                    })
                 }),
-                GoalKind::Disj(g1, g2) => {
-                    let c1: Option<Constraint> = g1.clone().into();
-                    match c1 {
-                        Some(c1) => {
-                            let constraint = Constraint::mk_conj(c1.negate().unwrap(), constraint);
-                            go_(
-                                optimizer,
-                                g2,
-                                level,
-                                fvints,
-                                argints,
-                                constraint,
-                                Stack::new(),
-                            )
-                            .map(|(g2, p, _)| {
+            GoalKind::Disj(g1, g2) => {
+                let c1: Option<Constraint> = g1.clone().into();
+                match c1 {
+                    Some(c1) => {
+                        let constraint = Constraint::mk_conj(c1.negate().unwrap(), cnstr.clone());
+                        go_(opt, g2, lv, fvints, argints, &constraint, Stack::new()).map(
+                            |(g2, p, _)| {
                                 (
                                     G::mk_disj_t(g1.clone(), g2.clone(), goal.aux.clone()),
                                     p,
                                     false,
                                 )
-                            })
-                        }
-                        None => {
-                            let c2: Option<Constraint> = g2.clone().into();
-                            match c2 {
-                                Some(c2) => {
-                                    let constraint =
-                                        Constraint::mk_conj(c2.negate().unwrap(), constraint);
-                                    go_(
-                                        optimizer,
-                                        g1,
-                                        level,
-                                        fvints,
-                                        argints,
-                                        constraint,
-                                        Stack::new(),
-                                    )
-                                    .map(|(g1, p, _)| {
-                                        (
-                                            G::mk_disj_t(g1.clone(), g2.clone(), goal.aux.clone()),
-                                            p,
-                                            false,
-                                        )
-                                    })
-                                }
-                                None => {
-                                    panic!("fatal: g1 = {}, g2 = {}", g1, g2)
-                                }
-                            }
-                        }
+                            },
+                        )
+                    }
+                    None => {
+                        let c2: Option<Constraint> = g2.clone().into();
+                        let c2 = c2.unwrap_or_else(|| panic!("fatal: g1 = {}, g2 = {}", g1, g2));
+                        let constraint = Constraint::mk_conj(c2.negate().unwrap(), cnstr.clone());
+                        go_(opt, g1, lv, fvints, argints, &constraint, Stack::new()).map(
+                            |(g1, p, _)| {
+                                (
+                                    G::mk_disj_t(g1.clone(), g2.clone(), goal.aux.clone()),
+                                    p,
+                                    false,
+                                )
+                            },
+                        )
                     }
                 }
-                GoalKind::Univ(x, g) => {
-                    let mut saved = false;
-                    if x.ty.is_int() && !fvints.insert(x.id) {
-                        // x is type int and fvints already has x.id
-                        saved = true;
-                    }
-                    let r = go_(
-                        optimizer,
-                        g,
-                        level,
-                        fvints,
-                        argints,
-                        constraint,
-                        Stack::new(),
-                    )
-                    .map(|(g, p, _)| (G::mk_univ_t(x.clone(), g, goal.aux.clone()), p, false));
-                    if x.ty.is_int() && !saved {
-                        fvints.remove(&x.id);
-                    }
-                    r
-                }
-                GoalKind::Abs(x, g) => {
-                    let mut saved = false;
-                    let mut saved_arg = false;
-                    if x.ty.is_int() && !fvints.insert(x.id) {
-                        // x is type int and fvints already has x.id
-                        saved = true;
-                    }
-                    if x.ty.is_int() && !argints.insert(x.id) {
-                        // x is type int and fvints already has x.id
-                        saved_arg = true;
-                    }
-
-                    let r = go_(
-                        optimizer,
-                        g,
-                        level,
-                        fvints,
-                        argints,
-                        constraint,
-                        Stack::new(),
-                    )
-                    .map(|(g, p, _)| (G::mk_abs_t(x.clone(), g, goal.aux.clone()), p, false));
-                    if x.ty.is_int() && !saved {
-                        fvints.remove(&x.id);
-                    }
-                    if x.ty.is_int() && !saved_arg {
-                        argints.remove(&x.id);
-                    }
-                    //debug!("abs={} ({})", r.is_some(), goal);
-                    r
-                }
-                GoalKind::Constr(_) | GoalKind::Var(_) | GoalKind::Op(_) => None,
-                GoalKind::ITE(_, _, _) => todo!(),
             }
+            GoalKind::Univ(x, g) => {
+                let mut saved = false;
+                if x.ty.is_int() && !fvints.insert(x.id) {
+                    // x is type int and fvints already has x.id
+                    saved = true;
+                }
+                let r = go_(opt, g, lv, fvints, argints, cnstr, Stack::new())
+                    .map(|(g, p, _)| (G::mk_univ_t(x.clone(), g, goal.aux.clone()), p, false));
+                if x.ty.is_int() && !saved {
+                    fvints.remove(&x.id);
+                }
+                r
+            }
+            GoalKind::Abs(x, g) => {
+                let mut saved = false;
+                let mut saved_arg = false;
+                if x.ty.is_int() && !fvints.insert(x.id) {
+                    // x is type int and fvints already has x.id
+                    saved = true;
+                }
+                if x.ty.is_int() && !argints.insert(x.id) {
+                    // x is type int and fvints already has x.id
+                    saved_arg = true;
+                }
+
+                let r = go_(opt, g, lv, fvints, argints, cnstr, Stack::new())
+                    .map(|(g, p, _)| (G::mk_abs_t(x.clone(), g, goal.aux.clone()), p, false));
+                if x.ty.is_int() && !saved {
+                    fvints.remove(&x.id);
+                }
+                if x.ty.is_int() && !saved_arg {
+                    argints.remove(&x.id);
+                }
+                r
+            }
+            GoalKind::Constr(_) | GoalKind::Var(_) | GoalKind::Op(_) => None,
+            GoalKind::ITE(_, _, _) => todo!(),
         }
+    }
+    /// returns
+    /// 1. Some(Candidate): substituted an app
+    /// 2. None: not yet
+    fn go(optimizer: &mut dyn Optimizer, goal: &G, level: &mut usize) -> Option<(G, Reduction)> {
         go_(
             optimizer,
             goal,
             *level,
             &mut HashSet::new(),
             &mut HashSet::new(),
-            Constraint::mk_true(),
+            &Constraint::mk_true(),
             Stack::new(),
         )
         .map(|(ret, reduction, _)| {
@@ -907,8 +840,6 @@ fn generate_reduction_sequence(goal: &G, optimizer: &mut dyn Optimizer) -> (Vec<
         r.after_reduction = g.clone();
 
         reduced = g.clone();
-        //debug!("-> {}", reduced);
-        //debug!("-> {}", r);
         pdebug!("->  ", reduced);
 
         seq.push(r);
@@ -1006,17 +937,12 @@ impl Context {
             }
         }
         debug!("infer_with_shared_type: unsat");
-        //panic!("unimplmeneted");
         None
     }
     fn infer_type_with_subject_expansion(
         &mut self,
         derivation: Derivation,
     ) -> Option<(Model, Vec<chc::CHC<chc::Atom, Constraint>>, Derivation)> {
-        //let c1 = derive_tree::CloneConfiguration::new()
-        //    .mode_shared(false)
-        //    .polymorphic(true);
-        //let d = derivation.clone_with_template(c1);
         let d = derivation.clone();
         title!("interpolation");
         let clauses: Vec<_> = d.collect_chcs(true).collect();
@@ -1025,7 +951,6 @@ impl Context {
         }
         // TODO: insert template types for each use of lambda abstraction
 
-        // 4. solve the constraints by using the interpolation solver
         match solver::chc::default_solver().solve(&clauses) {
             solver::chc::CHCResult::Sat(m) => Some((m, clauses, derivation)),
             solver::chc::CHCResult::Unsat => {
@@ -1051,7 +976,6 @@ impl Context {
             pdebug!(derivation);
             debug!("checking sanity... {}", derivation.check_sanity(false));
         }
-        //debug!("checking sanity... {}", derivation.check_sanity(false));
 
         // try to infer a type with shared type.
         let (m, clauses, derivation) = match self.infer_with_shared_type(&derivation) {
@@ -1258,26 +1182,8 @@ fn handle_app(
                             //   3. ?
                             assert!(ct.len() == 1);
                             unimplemented!()
-                            //let d = Derivation::rule_var(
-                            //    cty.clone(),
-                            //    pred_expr.clone(),
-                            //    ct[0].clone(),
-                            //    unimplemented!(),
-                            //    Stack::new(),
-                            //    unimplemented!(),
-                            //);
-                            //vec![d]
                         }
                     };
-                    // we introduce context_ty's information to the predicate's type
-                    // let c = cty.rty_no_exists();
-                    // let types = types
-                    //     .into_iter()
-                    //     .map(|d| {
-                    //         let t = d.root_ty().conjoin_constraint(&c);
-                    //         Derivation::rule_subsumption(d, t)
-                    //     })
-                    //     .collect();
                     PossibleDerivation::new(types)
                 }
                 None => PossibleDerivation::empty(),
@@ -1390,11 +1296,6 @@ fn type_check_inner(
         expr: &G,
         context_ty: &Stack<Atom>,
     ) -> (PossibleDerivation, bool) {
-        // [pruning]: since we can always derive ψ: ⊥, we do not have to care about this part
-        //if !config.construct_derivation && context_ty.is_bot() {
-        //    let cd = Derivation::rule_atom(expr.clone(), context_ty.clone());
-        //    return (PossibleDerivation::singleton(cd), false);
-        //}
         // for App, we delegate the procedure to `handle_app`
         // and in that procedure, it saves the types
         let mut already_registered = false;
@@ -1435,7 +1336,6 @@ fn type_check_inner(
                             tys
                         }
                         TCFlag::Shared(d) => {
-                            //let ct: Vec<_> = d.derivation.get_types_by_id(&expr.aux.id).collect();
                             // TODO: actually we have to consider the case where multiple types are assigned to one expr
                             // This happens when intersection types are inferred; however, in the current setting,
                             // if shared type is enabled, there is no intersection types.
@@ -1680,17 +1580,6 @@ fn reduce_until_normal_form(
 struct PossibleDerivation {
     types: Vec<Derivation>,
 }
-// impl<C: Refinement> fmt::Display for PossibleDerivation<C> {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         if self.types.len() > 0 {
-//             write!(f, "{}", self.types[0])?;
-//             for t in self.types[1..].iter() {
-//                 write!(f, " /\\ {}", t)?;
-//             }
-//         }
-//         Ok(())
-//     }
-// }
 
 impl Pretty for PossibleDerivation {
     fn pretty<'b, D, A>(
