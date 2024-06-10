@@ -90,16 +90,18 @@ impl Subst for Rule {
     }
 }
 
-impl crate::util::printer::Pretty for DeriveNode {
-    fn pretty<'b, D, A>(
+impl DeriveNode {
+    fn pretty_helper<'b, D, A, F>(
         &'b self,
         al: &'b D,
         config: &mut crate::util::printer::Config,
+        f: &F,
     ) -> pretty::DocBuilder<'b, D, A>
     where
         D: pretty::DocAllocator<'b, A>,
         D::Doc: Clone,
         A: Clone,
+        F: Fn(&'b D, &mut crate::util::printer::Config, &'b Ty) -> pretty::DocBuilder<'b, D, A>,
     {
         let body = match &self.rule {
             Rule::Var(_, original_ty) => self
@@ -108,7 +110,7 @@ impl crate::util::printer::Pretty for DeriveNode {
                 .append(al.line())
                 .append(":")
                 .append(al.line())
-                .append(self.ty.pretty(al, config))
+                .append(f(al, config, &self.ty))
                 .append(al.line())
                 .append("{{")
                 .append(original_ty.pretty(al, config))
@@ -123,7 +125,7 @@ impl crate::util::printer::Pretty for DeriveNode {
             .append(al.space())
             .append(":")
             .append(al.line())
-            .append(self.ty.pretty(al, config))
+            .append(f(al, config, &self.ty))
             .hang(2)
             .group(),
         };
@@ -137,6 +139,37 @@ impl crate::util::printer::Pretty for DeriveNode {
         .append(al.line())
         .append(body)
         .group()
+    }
+}
+
+impl crate::util::printer::Pretty for DeriveNode {
+    fn pretty<'b, D, A>(
+        &'b self,
+        al: &'b D,
+        config: &mut crate::util::printer::Config,
+    ) -> pretty::DocBuilder<'b, D, A>
+    where
+        D: pretty::DocAllocator<'b, A>,
+        D::Doc: Clone,
+        A: Clone,
+    {
+        self.pretty_helper(al, config, &|al, config, ty| ty.pretty(al, config))
+    }
+
+    fn pretty_color<'b, D>(
+        &'b self,
+        al: &'b D,
+        config: &mut crate::util::printer::Config,
+    ) -> pretty::DocBuilder<'b, D, pretty::termcolor::ColorSpec>
+    where
+        D: pretty::DocAllocator<'b, pretty::termcolor::ColorSpec>,
+        D::Doc: Clone,
+    {
+        self.pretty_helper(al, config, &|al, config, ty| {
+            let mut cs = pretty::termcolor::ColorSpec::new();
+            cs.set_fg(Some(pretty::termcolor::Color::Green));
+            ty.pretty_color(al, config).annotate(cs)
+        })
     }
 }
 
@@ -299,6 +332,17 @@ impl crate::util::printer::Pretty for Derivation {
         A: Clone,
     {
         self.tree.pretty(al, config)
+    }
+    fn pretty_color<'b, D>(
+        &'b self,
+        al: &'b D,
+        config: &mut crate::util::printer::Config,
+    ) -> pretty::DocBuilder<'b, D, pretty::termcolor::ColorSpec>
+    where
+        D: pretty::DocAllocator<'b, pretty::termcolor::ColorSpec>,
+        D::Doc: Clone,
+    {
+        self.tree.pretty_color(al, config)
     }
 }
 

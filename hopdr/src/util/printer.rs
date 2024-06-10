@@ -86,6 +86,14 @@ pub trait Pretty {
         D::Doc: Clone,
         A: Clone;
 
+    fn pretty_color<'b, D>(&'b self, al: &'b D, config: &mut Config) -> DocBuilder<'b, D, ColorSpec>
+    where
+        D: DocAllocator<'b, ColorSpec>,
+        D::Doc: Clone,
+    {
+        self.pretty(al, config).annotate(ColorSpec::new())
+    }
+
     fn pretty_display(&self) -> PrettyDisplay<Self>
     where
         Self: Sized,
@@ -121,6 +129,8 @@ pub trait Pretty {
         self.pretty_display_with_width_and_context(get_default_width(), Some(ctx))
     }
 }
+
+pub trait PrettyColor {}
 
 impl Pretty for str {
     fn pretty<'b, D, A>(&'b self, al: &'b D, _config: &mut Config) -> DocBuilder<'b, D, A>
@@ -215,7 +225,7 @@ macro_rules! _pdebug {
             $(
                 $crate::util::printer::$deco(&mut cs);
             )*
-            $e.pretty(&$al, &mut $config).annotate(cs)
+            $e.pretty_color(&$al, &mut $config).annotate(cs)
         }
     };
 
@@ -228,7 +238,7 @@ macro_rules! _pdebug {
             $(
                 $crate::util::printer::$deco(&mut cs);
             )*
-            $e.pretty(&$al, &mut $config).annotate(cs) + $al.softline()
+            $e.pretty_color(&$al, &mut $config).annotate(cs) + $al.softline()
         })
         +
         $crate::_pdebug! ($al, $config $(, $es $(; $deco2)*)+ ).nest(2)
@@ -257,11 +267,13 @@ macro_rules! _print_stderr {
             use crate::util::printer::Config;
             use pretty::termcolor::StandardStream;
             use pretty::BoxAllocator;
+            use pretty::DocAllocator;
             use pretty::termcolor::ColorChoice;
             let al = BoxAllocator;
             let mut config = Config::default();
             crate::_pdebug!(al, config $(, $es $(; $deco)*)+ )
                 .group()
+                .append(al.hardline())
                 .1
                 .render_colored($crate::util::printer::get_default_width(), StandardStream::stderr(ColorChoice::Auto).lock())
                 .unwrap();
@@ -865,20 +877,22 @@ impl<T: Pretty> Pretty for rtype::TypeEnvironment<T> {
     }
 }
 
-fn pretty_tree_inner<'b, D, A, T>(
+fn pretty_tree_inner<'b, D, A, T, F>(
     t: &'b tree::Tree<T>,
     al: &'b D,
     config: &mut Config,
     node_id: tree::ID,
+    f: &F,
 ) -> DocBuilder<'b, D, A>
 where
     D: DocAllocator<'b, A>,
     D::Doc: Clone,
     A: Clone,
     T: Pretty,
+    F: Fn(&'b D, &mut Config, &'b T) -> DocBuilder<'b, D, A>,
 {
     let cur = t.get_node_by_id(node_id);
-    let cur_node = cur.item.pretty(al, config);
+    let cur_node = f(al, config, &cur.item);
     let mut children = t.get_children(cur).peekable();
     if children.peek().is_none() {
         cur_node
@@ -889,7 +903,7 @@ where
                 al.intersperse(
                     children
                         .into_iter()
-                        .map(|child| pretty_tree_inner(t, al, config, child.id)),
+                        .map(|child| pretty_tree_inner(t, al, config, child.id, f)),
                     al.hardline(),
                 ),
             )
@@ -905,7 +919,18 @@ impl<T: Pretty> Pretty for tree::Tree<T> {
         D::Doc: Clone,
         A: Clone,
     {
-        pretty_tree_inner(self, al, config, self.root().id)
+        pretty_tree_inner(self, al, config, self.root().id, &|al, config, x| {
+            x.pretty(al, config)
+        })
+    }
+    fn pretty_color<'b, D>(&'b self, al: &'b D, config: &mut Config) -> DocBuilder<'b, D, ColorSpec>
+    where
+        D: DocAllocator<'b, ColorSpec>,
+        D::Doc: Clone,
+    {
+        pretty_tree_inner(self, al, config, self.root().id, &|al, config, x| {
+            x.pretty_color(al, config)
+        })
     }
 }
 
