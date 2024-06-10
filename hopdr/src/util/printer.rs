@@ -195,26 +195,6 @@ pub fn bold(c: &mut ColorSpec) -> &mut ColorSpec {
     c.set_bold(true)
 }
 
-// #[macro_export]
-// macro_rules! _pdebug {
-//     ($al:ident, $config:ident, $e:expr) => {
-//         {
-//             use $crate::util::Pretty;
-//             $e.pretty(&$al, &mut $config)
-//         }
-//     };
-//
-//     ($al:ident, $config:ident, $e:expr  $(,$es:expr)+) => {{
-//         ({
-//             use $crate::util::Pretty;
-//             use pretty::DocAllocator;
-//             $e.pretty(&$al, &mut $config) + $al.softline()
-//         })
-//         +
-//         $crate::_pdebug! ($al, $config $(, $es )+ ).nest(2)
-//     }};
-// }
-
 #[macro_export]
 macro_rules! _pdebug {
     ($al:ident, $config:ident, $e:expr $(; $deco:ident)*) => {
@@ -263,19 +243,24 @@ macro_rules! _plog {
 #[macro_export]
 macro_rules! _print_stderr {
     ($lv:expr, $($es:expr $(; $deco:ident)* ,)+) => {{
+        use crate::util::printer::Config;
+        use pretty::termcolor::StandardStream;
+        use pretty::BoxAllocator;
+        use pretty::DocAllocator;
+        use pretty::termcolor::ColorChoice;
+        let choice = if $crate::util::printer::colored() {
+            ColorChoice::Auto
+        } else {
+            ColorChoice::Never
+        };
         if log_enabled!($lv) {
-            use crate::util::printer::Config;
-            use pretty::termcolor::StandardStream;
-            use pretty::BoxAllocator;
-            use pretty::DocAllocator;
-            use pretty::termcolor::ColorChoice;
             let al = BoxAllocator;
             let mut config = Config::default();
             crate::_pdebug!(al, config $(, $es $(; $deco)*)+ )
                 .group()
                 .append(al.hardline())
                 .1
-                .render_colored($crate::util::printer::get_default_width(), StandardStream::stderr(ColorChoice::Auto).lock())
+                .render_colored($crate::util::printer::get_default_width(), StandardStream::stderr(choice).lock())
                 .unwrap();
         }
     }};
