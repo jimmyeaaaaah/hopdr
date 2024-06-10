@@ -91,7 +91,7 @@ pub trait Pretty {
         D: DocAllocator<'b, ColorSpec>,
         D::Doc: Clone,
     {
-        self.pretty(al, config).annotate(ColorSpec::new())
+        self.pretty(al, config)
     }
 
     fn pretty_display(&self) -> PrettyDisplay<Self>

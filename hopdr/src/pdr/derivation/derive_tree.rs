@@ -91,17 +91,21 @@ impl Subst for Rule {
 }
 
 impl DeriveNode {
-    fn pretty_helper<'b, D, A, F>(
+    fn pretty_helper<'b, D, A, F, G>(
         &'b self,
         al: &'b D,
         config: &mut crate::util::printer::Config,
+        // printer for types.
         f: &F,
+        // printer for rules
+        g: &G,
     ) -> pretty::DocBuilder<'b, D, A>
     where
         D: pretty::DocAllocator<'b, A>,
         D::Doc: Clone,
         A: Clone,
         F: Fn(&'b D, &mut crate::util::printer::Config, &'b Ty) -> pretty::DocBuilder<'b, D, A>,
+        G: Fn(&'b D, &mut crate::util::printer::Config, &'b Rule) -> pretty::DocBuilder<'b, D, A>,
     {
         let body = match &self.rule {
             Rule::Var(_, original_ty) => self
@@ -129,7 +133,7 @@ impl DeriveNode {
             .hang(2)
             .group(),
         };
-        let doc = al.text("(").append(self.rule.to_string()).append(")");
+        let doc = al.text("(").append(g(al, config, &self.rule)).append(")");
         if PRINT_ASSUMPTION {
             doc.append(al.intersperse(self.context.iter().map(|x| x.pretty(al, config)), " ∧ "))
         } else {
@@ -153,7 +157,12 @@ impl crate::util::printer::Pretty for DeriveNode {
         D::Doc: Clone,
         A: Clone,
     {
-        self.pretty_helper(al, config, &|al, config, ty| ty.pretty(al, config))
+        self.pretty_helper(
+            al,
+            config,
+            &|al, config, ty| ty.pretty(al, config),
+            &|al, _config, rule| al.text(rule.to_string()),
+        )
     }
 
     fn pretty_color<'b, D>(
@@ -165,11 +174,20 @@ impl crate::util::printer::Pretty for DeriveNode {
         D: pretty::DocAllocator<'b, pretty::termcolor::ColorSpec>,
         D::Doc: Clone,
     {
-        self.pretty_helper(al, config, &|al, config, ty| {
-            let mut cs = pretty::termcolor::ColorSpec::new();
-            cs.set_fg(Some(pretty::termcolor::Color::Green));
-            ty.pretty_color(al, config).annotate(cs)
-        })
+        self.pretty_helper(
+            al,
+            config,
+            &|al, config, ty| {
+                let mut cs = pretty::termcolor::ColorSpec::new();
+                cs.set_fg(Some(pretty::termcolor::Color::Green));
+                ty.pretty(al, config).annotate(cs)
+            },
+            &|al, _config, rule| {
+                let mut cs = pretty::termcolor::ColorSpec::new();
+                cs.set_fg(Some(pretty::termcolor::Color::Blue));
+                al.text(rule.to_string()).annotate(cs)
+            },
+        )
     }
 }
 
