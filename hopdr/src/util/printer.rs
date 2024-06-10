@@ -185,28 +185,28 @@ pub fn bold(c: &mut ColorSpec) -> &mut ColorSpec {
     c.set_bold(true)
 }
 
+// #[macro_export]
+// macro_rules! _pdebug {
+//     ($al:ident, $config:ident, $e:expr) => {
+//         {
+//             use $crate::util::Pretty;
+//             $e.pretty(&$al, &mut $config)
+//         }
+//     };
+//
+//     ($al:ident, $config:ident, $e:expr  $(,$es:expr)+) => {{
+//         ({
+//             use $crate::util::Pretty;
+//             use pretty::DocAllocator;
+//             $e.pretty(&$al, &mut $config) + $al.softline()
+//         })
+//         +
+//         $crate::_pdebug! ($al, $config $(, $es )+ ).nest(2)
+//     }};
+// }
+
 #[macro_export]
 macro_rules! _pdebug {
-    ($al:ident, $config:ident, $e:expr) => {
-        {
-            use $crate::util::Pretty;
-            $e.pretty(&$al, &mut $config)
-        }
-    };
-
-    ($al:ident, $config:ident, $e:expr  $(,$es:expr)+) => {{
-        ({
-            use $crate::util::Pretty;
-            use pretty::DocAllocator;
-            $e.pretty(&$al, &mut $config) + $al.softline()
-        })
-        +
-        $crate::_pdebug! ($al, $config $(, $es )+ ).nest(2)
-    }};
-}
-
-#[macro_export]
-macro_rules! _pdebug_colored {
     ($al:ident, $config:ident, $e:expr $(; $deco:ident)*) => {
         {
             use $crate::util::Pretty;
@@ -231,46 +231,15 @@ macro_rules! _pdebug_colored {
             $e.pretty(&$al, &mut $config).annotate(cs) + $al.softline()
         })
         +
-        $crate::_pdebug_colored! ($al, $config $(, $es $(; $deco2)*)+ ).nest(2)
+        $crate::_pdebug! ($al, $config $(, $es $(; $deco2)*)+ ).nest(2)
     }};
 }
 
-#[macro_export]
-macro_rules! plog_colored {
-    ($lvl:expr $(, $es:expr $(; $deco:ident)*)+) => {{
-        use $crate::util::printer::Config;
-        use pretty::termcolor::{StandardStream, ColorChoice};
-        use pretty::BoxAllocator;
-        let lvl = $lvl;
-        let al = BoxAllocator;
-        let mut config = Config::default();
-
-        if lvl <= log::STATIC_MAX_LEVEL && lvl <= log::max_level() {
-            let choice = if $crate::util::printer::colored() { ColorChoice::Auto } else { ColorChoice::Never };
-
-            $crate::_pdebug!(al, config $(, $es $(; $deco)*)+, "\n" ).group()
-                .1
-                .render_colored($crate::util::printer::get_default_width(), StandardStream::stdout(choice))
-                .unwrap()
-        }
-    }};
-}
-
-pub struct PLog<'a, A>
+pub struct PLog<'a>
 where
-    BoxDoc<'a>: pretty::DocPtr<'a, A>,
+    BoxDoc<'a>: pretty::DocPtr<'a, ColorSpec> + 'a,
 {
-    pub doc: pretty::BuildDoc<'a, BoxDoc<'a>, A>,
-}
-
-impl<'a, A> Display for PLog<'a, A>
-where
-    BoxDoc<'a>: pretty::DocPtr<'a, A>,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.doc.render_fmt(get_default_width(), f)?;
-        Ok(())
-    }
+    pub doc: pretty::BuildDoc<'a, BoxDoc<'a>, ColorSpec>,
 }
 
 #[macro_export]
@@ -282,35 +251,42 @@ macro_rules! _plog {
 }
 
 #[macro_export]
+macro_rules! _print_stderr {
+    ($lv:expr, $($es:expr $(; $deco:ident)* ,)+) => {{
+        if log_enabled!($lv) {
+            use crate::util::printer::Config;
+            use pretty::termcolor::StandardStream;
+            use pretty::BoxAllocator;
+            use pretty::termcolor::ColorChoice;
+            let al = BoxAllocator;
+            let mut config = Config::default();
+            crate::_pdebug!(al, config $(, $es $(; $deco)*)+ )
+                .group()
+                .1
+                .render_colored($crate::util::printer::get_default_width(), StandardStream::stderr(ColorChoice::Auto).lock())
+                .unwrap();
+        }
+    }};
+}
+
+#[macro_export]
 macro_rules! pdebug {
     ($($es:expr $(; $deco:ident)* $(,)?)+) => {{
-        use $crate::util::printer::Config;
-        use pretty::BoxAllocator;
-        let al = BoxAllocator;
-        let mut config = Config::default();
-        debug!("{}", $crate::_plog!(al, config, $($es $(; $deco)* ,)+));
+        $crate::_print_stderr!(log::Level::Debug, $($es $(; $deco)* ,)+)
     }};
 }
 
 #[macro_export]
 macro_rules! pinfo {
     ($($es:expr $(; $deco:ident)* $(,)?)+) => {{
-        use $crate::util::printer::Config;
-        use pretty::BoxAllocator;
-        let al = BoxAllocator;
-        let mut config = Config::default();
-        info!("{}", $crate::_plog!(al, config, $($es $(; $deco)* ,)+));
+        $crate::_print_stderr!(log::Level::Info, $($es $(; $deco)* ,)+)
     }};
 }
 
 #[macro_export]
 macro_rules! pwarn {
     ($($es:expr $(; $deco:ident)* $(,)?)+) => {{
-        use $crate::util::printer::Config;
-        use pretty::BoxAllocator;
-        let al = BoxAllocator;
-        let mut config = Config::default();
-        warn!("{}", $crate::_plog!(al, config, $($es $(; $deco)* ,)+));
+        $crate::_print_stderr!(log::Level::Warn, $($es $(; $deco)* ,)+)
     }};
 }
 

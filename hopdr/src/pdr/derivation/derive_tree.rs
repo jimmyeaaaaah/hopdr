@@ -11,7 +11,7 @@ use crate::{formula::*, highlight};
 use rpds::{HashTrieMap, Stack};
 
 const PRINT_ASSUMPTION: bool = true;
-const OMIT_EXPR: bool = true;
+const OMIT_EXPR: bool = false;
 
 #[derive(Clone, Debug)]
 pub(super) struct DeriveNode {
