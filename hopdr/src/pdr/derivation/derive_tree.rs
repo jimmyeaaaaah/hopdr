@@ -91,7 +91,7 @@ impl Subst for Rule {
 }
 
 impl DeriveNode {
-    fn pretty_helper<'b, D, A, F, G>(
+    fn pretty_helper<'b, D, A, F, G, H>(
         &'b self,
         al: &'b D,
         config: &mut crate::util::printer::Config,
@@ -99,6 +99,8 @@ impl DeriveNode {
         f: &F,
         // printer for rules
         g: &G,
+        // printer for assumptions
+        h: &H,
     ) -> pretty::DocBuilder<'b, D, A>
     where
         D: pretty::DocAllocator<'b, A>,
@@ -106,6 +108,7 @@ impl DeriveNode {
         A: Clone,
         F: Fn(&'b D, &mut crate::util::printer::Config, &'b Ty) -> pretty::DocBuilder<'b, D, A>,
         G: Fn(&'b D, &mut crate::util::printer::Config, &'b Rule) -> pretty::DocBuilder<'b, D, A>,
+        H: Fn(pretty::DocBuilder<'b, D, A>) -> pretty::DocBuilder<'b, D, A>,
     {
         let body = match &self.rule {
             Rule::Var(_, original_ty) => self
@@ -133,12 +136,18 @@ impl DeriveNode {
             .hang(2)
             .group(),
         };
-        let doc = al.text("(").append(g(al, config, &self.rule)).append(")");
+        let doc = al
+            .text("(")
+            .append(g(al, config, &self.rule))
+            .append(")")
+            .append(al.space());
         if PRINT_ASSUMPTION {
-            doc.append(al.intersperse(self.context.iter().map(|x| x.pretty(al, config)), " ∧ "))
+            let x = al.intersperse(self.context.iter().map(|x| x.pretty(al, config)), " ∧ ");
+            doc.append(h(x))
         } else {
             doc
         }
+        .append(al.space())
         .append("|-")
         .append(al.line())
         .append(body)
@@ -162,6 +171,7 @@ impl crate::util::printer::Pretty for DeriveNode {
             config,
             &|al, config, ty| ty.pretty(al, config),
             &|al, _config, rule| al.text(rule.to_string()),
+            &|x| x,
         )
     }
 
@@ -186,6 +196,11 @@ impl crate::util::printer::Pretty for DeriveNode {
                 let mut cs = pretty::termcolor::ColorSpec::new();
                 cs.set_fg(Some(pretty::termcolor::Color::Blue));
                 al.text(rule.to_string()).annotate(cs)
+            },
+            &|x| {
+                let mut cs = pretty::termcolor::ColorSpec::new();
+                cs.set_fg(Some(pretty::termcolor::Color::Red));
+                x.annotate(cs)
             },
         )
     }
