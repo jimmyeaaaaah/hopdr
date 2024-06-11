@@ -27,7 +27,10 @@ pub(crate) type Ty = Tau<Atom>;
 type Env = TypeEnvironment<Ty>;
 type Problem = ProblemBase<Constraint>;
 
-/// track_idents maps predicate in Problem to the idents of lambda abstraction exprs
+/// Calculate D φ while tracking the places where fixpoint variables are substituted.
+/// (D is a set of fixpoint equations and φ is a candidate)
+///
+/// `track_idents` maps predicate in Problem to the idents of lambda abstraction exprs.
 ///
 /// we can name each expr by using `aux.id`. for each expansion of a predicate, we memorize
 /// this id.
@@ -47,7 +50,7 @@ fn subst_predicate(
         formula::hes::GoalKind::Constr(_) | formula::hes::GoalKind::Op(_) => candidate.clone(),
         formula::hes::GoalKind::Var(x) => match problem.get_clause(x) {
             Some(clause) => {
-                let body: G = clause.body.alpha_renaming().into(); // assign a fresh id translating Candidate -> G
+                let body: G = clause.body.alpha_renaming().into(); // assign a fresh id by translating Candidate -> G
                 track_idents
                     .entry(*x)
                     .or_insert_with(|| Vec::new())
@@ -92,6 +95,7 @@ fn subst_predicate(
 }
 type Level = usize;
 
+/// Reserved for future use, but not used in the current implementation
 struct IntReduction {}
 
 struct PredReduction {}
@@ -114,6 +118,7 @@ impl ReductionType {
     }
 }
 
+/// Represents a single step of beta reduction
 struct ReductionInfo {
     level: Level,
     arg: G,
@@ -139,7 +144,12 @@ impl ReductionInfo {
     }
 }
 
-// perhaps we will attach auxiliary information so we prepare another struct for reduction sequence
+/// Represents a reduction which can be composed of multiple applications
+///
+/// For example Reduction can represent the following reduction:
+/// (\x. \y. Φ) arg1 arg2 -> [arg1/x, arg2/y] Φ.
+/// In this case, `reduction_infos.len()` must be 2, `before_reduction` must be `(\x. \y. Φ) arg1 arg2`,
+/// and `after_reduction` must be `[arg1/x, arg2/y] Φ`.
 struct Reduction {
     #[allow(dead_code)]
     app_expr: G,
@@ -340,10 +350,12 @@ impl TypeMemory {
     }
 }
 
+/// Some utility functions for goal
 impl GoalBase<Constraint, TypeMemory> {
-    // returns the pair of alpha-renamed expr and the map used for renaming.
-    // map is a map from the id of the expr that introduces a new variable
-    // to the pair of the old id and the new id.
+    /// Returns the pair of alpha-renamed expr and the map used for renaming.
+    ///
+    /// The map is a map from the id of the expr that introduces a new variable
+    /// to the pair of the old id and the new id.
     pub fn alpha_renaming_with_map(&self, map: &mut HashMap<Ident, (Ident, Ident)>) -> Self {
         fn aux(
             v: &Variable,
@@ -390,6 +402,7 @@ impl GoalBase<Constraint, TypeMemory> {
         go(self, map)
     }
 
+    /// Assign a fresh id to each subexpression of the given goal
     fn update_ids(&self) -> Self {
         let mut expr = match self.kind() {
             GoalKind::Constr(_) | GoalKind::Op(_) | GoalKind::Var(_) => self.clone(),
@@ -421,6 +434,7 @@ impl GoalBase<Constraint, TypeMemory> {
         expr.aux = self.aux.update_id();
         expr
     }
+    /// Walks through subexpressions, and fills their free variables of type int
     fn calculate_free_variables(self) -> G {
         fn go(g: &G, ints: Stack<Ident>) -> G {
             let mut g = match g.kind() {
@@ -467,6 +481,8 @@ impl GoalBase<Constraint, TypeMemory> {
         }
         go(&self, Stack::new())
     }
+
+    /// Walks through subexpressions of the given problem, and fills the type information (TypeMemory.sty) in TypeMemory
     fn calculate_sty(self, problem: &Problem) -> G {
         fn go(g: &G, env: HashTrieMap<Ident, STy>) -> (G, STy) {
             let (mut g, sty) = match g.kind() {
@@ -1575,6 +1591,8 @@ fn reduce_until_normal_form(
     Context::new(normal_form, track_idents, reduction_sequence)
 }
 
+/// Represents a set of derivations
+///
 /// Since type environment can contain multiple candidate types,
 /// we make sure that which one is suitable by considering them parallely.
 struct PossibleDerivation {
@@ -1599,6 +1617,7 @@ impl Pretty for PossibleDerivation {
     }
 }
 
+/// Utilities for `PossibleDerivation`
 impl PossibleDerivation {
     fn new(types: Vec<Derivation>) -> Self {
         PossibleDerivation { types }
@@ -1669,6 +1688,7 @@ impl PossibleDerivation {
         PossibleDerivation { types }
     }
 }
+
 impl PossibleDerivation {
     fn coarse_type(mut self, context: Stack<Atom>, t: &Ty) -> Self {
         self.types = self
@@ -1678,7 +1698,7 @@ impl PossibleDerivation {
             .collect();
         self
     }
-    /// check if there is a valid derivation by solving constraints generated
+    /// Checks if there is a valid derivation by solving constraints generated
     /// on subsumptions, and returns one if exists.
     fn check_derivation(self) -> Option<Derivation> {
         title!("check derivation");
@@ -1744,6 +1764,9 @@ impl InferenceConfig {
     }
 }
 
+/// Entry point of the type inference in HoPDR's Conflict
+/// Infers a type environment Γ' s.t. Γ |- D: Γ' and Γ' |- ψ: *<T>, (here, Γ is tenv)
+/// given a candidate φ (candidate) and a set of clauses D (problem).
 pub fn search_for_type(
     candidate: &Candidate,
     problem: &Problem,
@@ -1792,7 +1815,7 @@ pub fn search_for_type(
     }
 }
 
-// Γ ⊢ Γ
+/// Takes a type environment Γ and a problem (D, φ), and check if Γ |- D: Γ.
 pub fn check_inductive(env: &TyEnv, problem: &Problem) -> bool {
     let tenv: Env = env.into();
     for (id, ts) in env.map.iter() {
@@ -1813,6 +1836,10 @@ pub fn check_inductive(env: &TyEnv, problem: &Problem) -> bool {
     true
 }
 
+/// Takes a type environment Γ and a problem (D, φ), and returns a type environment Γ'
+/// s.t. Γ' |- D: Γ' and Γ' ⊆ Γ.
+/// In other words, it returns the inductive subset of Γ.
+/// Note that Γ' |- φ: *<T> does not necessarily hold.
 pub fn saturate(env: &TyEnv, problem: &Problem) -> TyEnv {
     let mut current_env = env.clone();
     loop {
