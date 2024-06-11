@@ -460,11 +460,6 @@ impl Derivation {
         }
         inner(self, id, self.tree.root().id, 0).map(|(n, _)| n)
     }
-    pub fn get_types_by_goal_id<'a>(&'a self, id: &'a Ident) -> impl Iterator<Item = Ty> + 'a {
-        self.tree
-            .filter(move |n| n.expr.aux.id == *id)
-            .map(|n| n.item.ty.clone())
-    }
     #[allow(dead_code)]
     fn get_node_by_level<'a>(
         &'a self,

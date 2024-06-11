@@ -1151,59 +1151,9 @@ fn handle_app(
         cty: &Stack<Atom>, // context
     ) -> PossibleDerivation {
         match pred_expr.kind() {
-            formula::hes::GoalKind::Var(x) => match tenv.get(x) {
-                Some(ts) => {
-                    // [feature shared_ty] if shared type mode is enabled, instantiate the polymorphic types
-                    // in the same way as the previous instantiation that succeeded.
-                    let types = match &config.tc_mode {
-                        TCFlag::Normal => {
-                            debug!("search {x} from tenv");
-                            let mut coefficients = Stack::new();
-                            let types = ts
-                                .iter()
-                                .map(|original_ty| {
-                                    let (t_instantiated, instantiations) = original_ty
-                                        .instantiate_with_linear_template(ienv, &mut coefficients);
-                                    debug!("instantiate_type ienv: {:?}", ienv);
-                                    debug!("instantiated: {t_instantiated}");
-                                    Derivation::rule_var(
-                                        cty.clone(),
-                                        pred_expr.clone(),
-                                        t_instantiated.clone(),
-                                        original_ty.clone(),
-                                        coefficients.clone(),
-                                        instantiations,
-                                    )
-                                })
-                                .collect();
-                            coefficients.into_iter().for_each(|c| {
-                                all_coefficients.insert(*c);
-                            });
-                            types
-                        }
-                        // replay the previous instantiation here
-                        TCFlag::Shared(d) => {
-                            let ct: Vec<_> = d
-                                .derivation
-                                .get_types_by_goal_id(&pred_expr.aux.id)
-                                .collect();
-                            // TODO: actually we have to consider the case where multiple types are assigned to one expr
-                            // This happens when intersection types are inferred; however, in the current setting,
-                            // if shared type is enabled, there is no intersection types.
-                            // So I just leave it as a future work.
-                            // To tackle this issue, there are multiple methods:
-                            //   1. track the current branches that we have passed so far every time intersection rules have been applied
-                            //   2. track the current node of the previous derivation in d, so that corresponding node of d can easily be
-                            //      retrieved
-                            //   3. ?
-                            assert!(ct.len() == 1);
-                            unimplemented!()
-                        }
-                    };
-                    PossibleDerivation::new(types)
-                }
-                None => PossibleDerivation::empty(),
-            },
+            formula::hes::GoalKind::Var(x) => {
+                handle_var(config, tenv, ienv, all_coefficients, pred_expr, cty, x)
+            }
             formula::hes::GoalKind::App(predg, argg) => {
                 let pred_pt = handle_app(config, tenv, ienv, all_coefficients, predg, cty);
                 // Case: the argument is integer
@@ -1291,8 +1241,68 @@ fn handle_app(
     pt
 }
 
-// body of type checking;  tenv; ienv |- c : contex_ty
-// do some check in bottom up manner
+/// Internal function for `type_check_inner` for handling variables
+fn handle_var(
+    config: &TCConfig,
+    tenv: &mut Env,
+    ienv: &mut HashSet<Ident>,
+    all_coefficients: &mut HashSet<Ident>,
+    expr: &G,
+    context_ty: &Stack<Atom>,
+    x: &Ident,
+) -> PossibleDerivation {
+    match tenv.get(x) {
+        Some(ts) => {
+            // [feature shared_ty] if shared type mode is enabled, instantiate the polymorphic types
+            // in the same way as the previous instantiation that succeeded.
+            let tys = match &config.tc_mode {
+                TCFlag::Normal => {
+                    let mut tys = Vec::new();
+                    for original_ty in ts {
+                        let mut coefficients = Stack::new();
+                        let (ty, instantiations) =
+                            original_ty.instantiate_with_linear_template(ienv, &mut coefficients);
+                        debug!("instantiate_type ienv: {:?}", ienv);
+                        debug!("instantiated: {ty}");
+                        coefficients.iter().for_each(|c| {
+                            all_coefficients.insert(*c);
+                        });
+
+                        let cd = Derivation::rule_var(
+                            context_ty.clone(),
+                            expr.clone(),
+                            ty,
+                            original_ty.clone(),
+                            coefficients,
+                            instantiations,
+                        );
+                        tys.push(cd);
+                    }
+                    tys
+                }
+                TCFlag::Shared(d) => {
+                    // TODO: actually we have to consider the case where multiple types are assigned to one expr
+                    // This happens when intersection types are inferred; however, in the current setting,
+                    // if shared type is enabled, there is no intersection types.
+                    // So I just leave it as a future work.
+                    // To tackle this issue, there are multiple methods:
+                    //   1. track the current branches that we have passed so far every time intersection rules have been applied
+                    //   2. track the current node of the previous derivation in d, so that corresponding node of d can easily be
+                    //      retrieved
+                    //   3. ?
+                    let nodes: Vec<_> = d.derivation.get_nodes_by_goal_id(&expr.aux.id).collect();
+                    assert!(nodes.len() == 1);
+                    vec![Derivation::single_node(nodes[0].item.clone())]
+                }
+            };
+            PossibleDerivation::new(tys)
+        }
+        None => PossibleDerivation::empty(),
+    }
+}
+
+/// body of type checking;  tenv; ienv |- c : contex_ty
+/// do some check in bottom up manner
 fn type_check_inner(
     config: &TCConfig,
     tenv: &mut Env,
@@ -1304,7 +1314,7 @@ fn type_check_inner(
     // the second element of the returned value is whether the expr was app.
     // since app is delegated to `handle_app`, after go_inner, you don't have to register the result
     // to the derivation tree again.
-    fn go_inner(
+    fn go(
         config: &TCConfig,
         tenv: &mut Env,
         ienv: &mut HashSet<Ident>,
@@ -1322,55 +1332,9 @@ fn type_check_inner(
                 let cd = Derivation::rule_atom(context_ty.clone(), expr.clone(), t);
                 PossibleDerivation::singleton(cd)
             }
-            formula::hes::GoalKind::Var(x) => match tenv.get(x) {
-                Some(ts) => {
-                    // [feature shared_ty] if shared type mode is enabled, instantiate the polymorphic types
-                    // in the same way as the previous instantiation that succeeded.
-                    let tys = match &config.tc_mode {
-                        TCFlag::Normal => {
-                            let mut tys = Vec::new();
-                            for original_ty in ts {
-                                let mut coefficients = Stack::new();
-                                let (ty, instantiations) = original_ty
-                                    .instantiate_with_linear_template(ienv, &mut coefficients);
-                                debug!("instantiate_type ienv: {:?}", ienv);
-                                debug!("instantiated: {ty}");
-                                coefficients.iter().for_each(|c| {
-                                    all_coefficients.insert(*c);
-                                });
-
-                                let cd = Derivation::rule_var(
-                                    context_ty.clone(),
-                                    expr.clone(),
-                                    ty,
-                                    original_ty.clone(),
-                                    coefficients,
-                                    instantiations,
-                                );
-                                tys.push(cd);
-                            }
-                            tys
-                        }
-                        TCFlag::Shared(d) => {
-                            // TODO: actually we have to consider the case where multiple types are assigned to one expr
-                            // This happens when intersection types are inferred; however, in the current setting,
-                            // if shared type is enabled, there is no intersection types.
-                            // So I just leave it as a future work.
-                            // To tackle this issue, there are multiple methods:
-                            //   1. track the current branches that we have passed so far every time intersection rules have been applied
-                            //   2. track the current node of the previous derivation in d, so that corresponding node of d can easily be
-                            //      retrieved
-                            //   3. ?
-                            let nodes: Vec<_> =
-                                d.derivation.get_nodes_by_goal_id(&expr.aux.id).collect();
-                            assert!(nodes.len() == 1);
-                            vec![Derivation::single_node(nodes[0].item.clone())]
-                        }
-                    };
-                    PossibleDerivation::new(tys)
-                }
-                None => PossibleDerivation::empty(),
-            },
+            formula::hes::GoalKind::Var(x) => {
+                handle_var(config, tenv, ienv, all_coefficients, expr, context_ty, x)
+            }
             formula::hes::GoalKind::Conj(g1, g2) => {
                 let t1 = type_check_inner(config, tenv, ienv, all_coefficients, g1, context_ty);
                 let t2 = type_check_inner(config, tenv, ienv, all_coefficients, g2, context_ty);
@@ -1446,7 +1410,7 @@ fn type_check_inner(
         };
         (result_pt, already_registered)
     }
-    let (pt, _) = go_inner(config, tenv, ienv, all_coefficients, c, context_ty);
+    let (pt, _) = go(config, tenv, ienv, all_coefficients, c, context_ty);
 
     pdebug!("type_check_go(", c.aux.id, ") |- ", c, " : ", pt ; bold);
     pt
@@ -1570,6 +1534,8 @@ pub fn type_check_top(candidate: &Candidate, tenv: &TyEnv) -> bool {
     b
 }
 
+/// Reduces the given candidate to the normal form
+/// and appends auxiliary information to the candidate.
 fn reduce_until_normal_form(
     candidate: &Candidate,
     problem: &Problem,
@@ -1619,18 +1585,23 @@ impl Pretty for PossibleDerivation {
 
 /// Utilities for `PossibleDerivation`
 impl PossibleDerivation {
+    /// Creates a new `PossibleDerivation` with the given derivations
     fn new(types: Vec<Derivation>) -> Self {
         PossibleDerivation { types }
     }
 
+    /// Creates an empty `PossibleDerivation`
     fn empty() -> Self {
         PossibleDerivation::new(Vec::new())
     }
 
+    /// Creates a singleton `PossibleDerivation` from the given derivation
     fn singleton(cd: Derivation) -> Self {
         Self::new(vec![cd])
     }
 
+    /// Generate a new `PossibleDerivation` from two `PossibleDerivation`s by
+    /// introducing Conjoin rule to each pair of derivations.
     fn conjoin(context: Stack<Atom>, expr: G, pt1: Self, pt2: Self) -> Self {
         let mut ts = Vec::new();
         for d1 in pt1.types.iter() {
@@ -1647,6 +1618,9 @@ impl PossibleDerivation {
         }
         PossibleDerivation::new(ts)
     }
+
+    /// Generate a new `PossibleDerivation` from two `PossibleDerivation`s by
+    /// introducing Disjoin rule to each pair of derivations.
     fn disjoin(context: Stack<Atom>, expr: G, pt1: Self, pt2: Self) -> Self {
         let mut ts = Vec::new();
         for d1 in pt1.types.iter() {
@@ -1663,6 +1637,8 @@ impl PossibleDerivation {
         }
         PossibleDerivation::new(ts)
     }
+
+    /// Introduces Univ Rule to each derivation in the `PossibleDerivation`
     fn quantify(&mut self, context: Stack<Atom>, expr: G, x: &Ident) {
         self.types = self
             .types
@@ -1671,6 +1647,8 @@ impl PossibleDerivation {
             .map(|d| Derivation::rule_quantifier(context.clone(), expr.clone(), d, x))
             .collect();
     }
+
+    /// Introduces IApp rule to each derivation in the `PossibleDerivation`
     fn iarrow(self, context: Stack<Atom>, expr: G, x: &Ident) -> Self {
         let types = self
             .types
@@ -1679,6 +1657,8 @@ impl PossibleDerivation {
             .collect();
         PossibleDerivation { types }
     }
+
+    /// Introduces Arrow rule to each derivation in the `PossibleDerivation`
     fn arrow(self, context: Stack<Atom>, expr: G, ts: &Vec<Ty>) -> Self {
         let types = self
             .types
@@ -1750,6 +1730,9 @@ impl PossibleDerivation {
 
 #[derive(Clone, Copy)]
 pub struct InferenceConfig {
+    /// Enable inferring polymorphic types. If this is disabled, we restrict the variables
+    /// avaialble in each template predicate so that type of predicates will not depend on
+    /// variables introduced by universal quantifiers.
     pub infer_polymorphic_type: bool,
 }
 impl InferenceConfig {
@@ -1758,6 +1741,8 @@ impl InferenceConfig {
             infer_polymorphic_type: true,
         }
     }
+
+    /// Enable or disable inferring polymorphic types.
     pub fn infer_polymorphic_type(mut self, infer_polymorphic_type: bool) -> InferenceConfig {
         self.infer_polymorphic_type = infer_polymorphic_type;
         self
@@ -1767,6 +1752,7 @@ impl InferenceConfig {
 /// Entry point of the type inference in HoPDR's Conflict
 /// Infers a type environment Γ' s.t. Γ |- D: Γ' and Γ' |- ψ: *<T>, (here, Γ is tenv)
 /// given a candidate φ (candidate) and a set of clauses D (problem).
+///
 pub fn search_for_type(
     candidate: &Candidate,
     problem: &Problem,
@@ -1778,14 +1764,12 @@ pub fn search_for_type(
     let infer_polymorphic_type = config.infer_polymorphic_type;
     // TODO: expand candidate once based on problem.
     const SHARED: bool = false;
-    // transform candidate so that App(App(_)) always has *
     let mut optimizer = optimizer::VoidOptimizer::new();
     while optimizer.continuable() {
         let mut ctx = reduce_until_normal_form(candidate, problem, &mut optimizer);
         debug!("{}", ctx.normal_form);
-        // If type_check_top_with_derivation fails, it's not related to
-        // optimizers or shared_type issues. Instead, it indicates that
-        // normal_form is untypable. In this case, the function returns None.
+        // When `type_check_top_with_derivation` fails, `normal_form` is untypeable.
+        // In this case, we return None.
         let derivation = type_check_top_with_derivation(&ctx.normal_form, tenv)?;
         let derivation = if SHARED {
             type_check_top_with_derivation_and_constraints(derivation, &ctx.normal_form, tenv)
@@ -1796,7 +1780,6 @@ pub fn search_for_type(
         pdebug!("[derivation]");
         pdebug!(derivation);
         debug!("checking sanity... {}", derivation.check_sanity(false));
-        //crate::util::wait_for_line();
         match ctx.infer_type(derivation) {
             Some(x) => {
                 optimizer.report_inference_result(InferenceResult::new(true));
