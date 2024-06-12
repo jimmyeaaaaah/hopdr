@@ -900,7 +900,6 @@ impl Context {
         }
         result_env
     }
-    ///// aux functions end
     fn infer_type_inner(&self, derivation: &mut Derivation, reduction: &Reduction) {
         title!("Reduction");
         pdebug!(reduction);
