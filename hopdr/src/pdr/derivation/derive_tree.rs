@@ -73,11 +73,14 @@ impl Subst for Rule {
             | Rule::Univ
             | Rule::IAbs
             | Rule::Subsumption
-            | Rule::Equivalence(_)
             | Rule::App
             | Rule::IApp(_)
             | Rule::Poly(_)
             | Rule::Atom => self.clone(),
+            Rule::Equivalence(c) => {
+                let c = c.iter().map(|c| c.subst(x, v)).collect();
+                Rule::Equivalence(c)
+            }
             Rule::Var(instantiation, ty) => {
                 let ty = ty.subst(x, v);
                 Rule::Var(instantiation.clone(), ty)
@@ -1265,6 +1268,22 @@ impl Derivation {
             match ri.reduction_type {
                 super::ReductionType::Int(_) => {
                     subtree = self.append_int_app(context.clone(), subtree, ri);
+                    let op: Op = ri.arg.clone().into();
+                    let x = ri.arg_var.id;
+                    for (k, v) in derivation_map.iter_mut() {
+                        if k > &idx {
+                            for d in v.iter_mut() {
+                                // subst x in types and contexts with its argument
+                                // recursively apply susbt to the rules
+                                d.tree.iter_mut(|n| {
+                                    n.ty = n.ty.subst(&x, &op);
+                                    n.rule = n.rule.subst(&x, &op);
+                                    n.context =
+                                        n.context.iter().map(|a| a.subst(&x, &op)).collect();
+                                });
+                            }
+                        }
+                    }
                 }
                 super::ReductionType::Pred(_) => {
                     let derivations = derivation_map.remove(&idx).unwrap();
