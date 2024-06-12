@@ -37,8 +37,16 @@ cd $INPUTS && find golem_unsafe -type f > $LISTS/golem_unsafe
 cd $tmp_dir
 git clone $CHC_COMP && cd chc-comp23-benchmarks && git checkout $CHC_COMP_COMMIT 
 find . -type f -name '*.gz' -exec gunzip {} +
-mkdir -p $INPUTS/comp_LIA-nonlin $INPUTS/comp_LIA-lin
+mkdir -p $INPUTS/comp_LIA-nonlin $INPUTS/comp_LIA-lin $INPUTS/comp_ADT-LIA-nonlin
 cp LIA-nonlin/*.smt2 $INPUTS/comp_LIA-nonlin
 cp LIA-lin/*.smt2 $INPUTS/comp_LIA-lin
+cp ADT-LIA-nonlin/*.smt2 $INPUTS/comp_ADT-LIA-nonlin
 cd $INPUTS && find comp_LIA-nonlin -type f > $LISTS/comp_LIA-nonlin
 cd $INPUTS && find comp_LIA-lin -type f > $LISTS/comp_LIA-lin
+cd $INPUTS && find comp_ADT-LIA-nonlin -type f > $LISTS/comp_ADT-LIA-nonlin
+
+echo "comp_LIA-lin" > $INPUTS/.gitignore
+echo "comp_LIA-nonlin" >> $INPUTS/.gitignore
+echo "comp_ADT-LIA-nonlin" >> $INPUTS/.gitignore
+
+cp $INPUTS/.gitignore $LISTS/.gitignore
