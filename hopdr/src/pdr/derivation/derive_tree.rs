@@ -1030,9 +1030,10 @@ impl Derivation {
                 let (x, y) = expr.app();
                 assert!(children.len() >= 1);
                 self.update_expr_inner(context.clone(), children[0], x, alpha_renaming_map.clone());
+                let c = self.get_node_by_id(children[0]).item.ty.rty();
                 for i in 1..children.len() {
                     self.update_expr_inner(
-                        context.clone(),
+                        context.push(c.clone()),
                         children[i],
                         y,
                         alpha_renaming_map.clone(),

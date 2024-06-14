@@ -921,6 +921,26 @@ impl Context {
 
         for node_id in node_ids.iter() {
             derivation.expand_node(*node_id, reduction);
+
+            // check if the reduction is valid
+            #[cfg(debug_assertions)]
+            {
+                let clauses: Vec<_> = derivation.collect_chcs(true).collect();
+                if !solver::chc::default_solver().solve(&clauses).is_sat() {
+                    pdebug!("failed to apply subject expansion"; red);
+                    pdebug!(derivation);
+                    for c in clauses.iter() {
+                        if !solver::chc::default_solver()
+                            .solve(&vec![c.clone()])
+                            .is_sat()
+                        {
+                            pdebug!("the following clause is unsat "; blue);
+                            pdebug!(c);
+                        }
+                    }
+                    panic!("fatal");
+                }
+            }
         }
     }
     fn infer_with_shared_type(
@@ -955,7 +975,7 @@ impl Context {
         None
     }
     fn infer_type_with_subject_expansion(
-        &mut self,
+        &self,
         derivation: Derivation,
     ) -> Option<(Model, Vec<chc::CHC<chc::Atom, Constraint>>, Derivation)> {
         let d = derivation.clone();
@@ -1186,7 +1206,6 @@ fn handle_app(
                     let arg_pts = arg_t.iter().map(|t| {
                         // check if arg_constraint |- argg: arg_t
                         debug!("arg_t: {t}");
-                        let cty = cty.push(t.rty_no_exists());
                         handle_abs(config, tenv, ienv, all_coefficients, argg, t, &cty)
                     });
                     // Assume pred_pt = t1 /\ t2 -> t
