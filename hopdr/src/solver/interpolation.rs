@@ -755,7 +755,7 @@ fn interpolate_preds(
                         c2 = c2.rename(id, replaced);
                     }
                     debug!("now try to check if {c2} implies {c}");
-                    let check = Constraint::mk_implies(c2, c.clone());
+                    let check = Constraint::mk_implies(c2.clone(), c.clone());
                     debug!("{check}");
                     if !solver.solve_with_universal_quantifiers(&check).is_sat() {
                         use colored::Colorize;
@@ -768,7 +768,7 @@ fn interpolate_preds(
                                 None => merged.model.insert(*k, v.clone()),
                             };
                         }
-                        debug!(
+                        println!(
                             "merged: {}",
                             solver
                                 .solve_with_universal_quantifiers(
@@ -777,7 +777,7 @@ fn interpolate_preds(
                                 .is_sat()
                         );
 
-                        debug!(
+                        println!(
                             "{}",
                             solver
                                 .solve_with_universal_quantifiers(
@@ -785,6 +785,11 @@ fn interpolate_preds(
                                 )
                                 .is_sat()
                         );
+                        println!("clauses");
+                        for clause in chc {
+                            println!("- {}", clause);
+                        }
+                        println!("and failed: {c2} implies {c}");
                         panic!("fail!")
                     }
                 }
