@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::ops::Sub;
 
 use super::tree::*;
 use super::{Atom, Ty, G};
@@ -592,8 +593,7 @@ impl Derivation {
     pub fn rule_subsumption(context: Stack<Atom>, d: Self, ty: Ty) -> Self {
         let child = d.tree.root();
         let root = DeriveNode::subsumption(context, child.item, ty);
-        let d = Self::rule_one_arg_inner(root, d);
-        d
+        Self::rule_one_arg_inner(root, d)
     }
     pub fn rule_equivalence(context: Stack<Atom>, mut d: Self, ty: Ty) -> Self {
         let child_id = d.tree.root().id;
@@ -613,8 +613,7 @@ impl Derivation {
         }
         let root = DeriveNode::equivalence(context, added, d.tree.root().item, ty);
         reset_expr_for_subsumption(&mut d.tree.update_node_by_id(child_id).expr);
-        let d = Self::rule_one_arg_inner(root, d);
-        d
+        Self::rule_one_arg_inner(root, d)
     }
     pub fn rule_app<I>(context: Stack<Atom>, expr: G, d1: Self, args: I) -> Self
     where
@@ -891,6 +890,7 @@ fn handle_rule_in_update_parents(
 }
 
 impl Derivation {
+    /// Updates the types in the parents of the node `target_id` according to the updated types of the node `target_id`.
     fn update_parents(&mut self, target_id: ID) {
         self.tree
             .update_parent_until(target_id, |t, cur, prev| {
@@ -1111,14 +1111,20 @@ impl Derivation {
             &old_ty,
         );
     }
+
+    //// Updates the expressions, contexts, and variables used in types in the derivation tree.
     fn update_expr(&mut self, expr: &G) {
         let root_id = self.tree.root().id;
         self.update_expr_inner(Stack::new(), root_id, expr, Stack::new());
     }
 
     fn finalize_subject_expansion(&mut self, reduction: &super::Reduction, target_node: ID) {
+        pdebug!("before update parents"; red);
+        pdebug!(self);
         self.update_parents(target_node);
         // finally replace the expressions in the derivation with the expr before the reduction
+        pdebug!("before update expr"; red);
+        pdebug!(self);
         self.update_expr(&reduction.before_reduction);
     }
 
@@ -1270,7 +1276,7 @@ impl Derivation {
                 super::ReductionType::Int(_) => {
                     subtree = self.append_int_app(context.clone(), subtree, ri);
                     let op: Op = ri.arg.clone().into();
-                    let x = ri.arg_var.id;
+                    let x = ri.old_id;
                     for (k, v) in derivation_map.iter_mut() {
                         if k > &idx {
                             for d in v.iter_mut() {
@@ -1299,11 +1305,16 @@ impl Derivation {
         let mut derivation_map = HashMap::new();
         let mut int_arg_count = 0;
         let context = target_node.to_node(&self.tree).item.context.clone();
+        let mut added = Stack::new();
         for (idx, ri) in reduction.reduction_infos.iter().enumerate() {
             match ri.reduction_type {
                 super::ReductionType::Int(_) => {
                     //self.subject_expansion_int(target_node, reduction, idx);
                     int_arg_count += 1;
+                    added.push_mut(Atom::mk_constraint(Constraint::mk_eq(
+                        Op::mk_var(ri.old_id),
+                        ri.arg.clone().into(),
+                    )))
                 }
                 super::ReductionType::Pred(_) => {
                     let arg_derivation =
@@ -1313,10 +1324,20 @@ impl Derivation {
             }
         }
         let subtree = self.extract_body_derivation(target_node, int_arg_count);
+
+        let constr = added.iter().cloned().fold(Atom::mk_true(), Atom::mk_conj);
+        let ty = &subtree.root().item.ty;
+        let ty = ty.conjoin_constraint_to_rty(&constr);
+        let root = DeriveNode::equivalence(context.clone(), added, &subtree.root().item, ty);
+        let subtree = Tree::tree_with_child(root, subtree);
+
         let subtree = self.append_abs(context.clone(), subtree, reduction, &derivation_map);
         let subtree = self.append_app(context.clone(), subtree, reduction, derivation_map);
         // top_id must be a fresh id assigned by the dummy expr
         let top_id = subtree.root().item.expr.aux.id;
+        pdebug!("subtree"; red);
+        pdebug!(subtree);
+
         self.tree = self.tree.insert_partial_tree(target_node, |_| subtree).0;
 
         let target_node = self
