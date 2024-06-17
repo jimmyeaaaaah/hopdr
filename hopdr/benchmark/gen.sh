@@ -8,7 +8,9 @@ GOLEM_BENCH="https://github.com/blishko/chc-benchmarks"
 GOLEM_COMMIT="200d7efc0b8621de19127f10715cec8c41ece363"
 
 CHC_COMP="https://github.com/chc-comp/chc-comp23-benchmarks"
+CHC_COMP24="https://github.com/chc-comp/chc-comp24-benchmarks"
 CHC_COMP_COMMIT="cca5a86a4939e406b714cb5a55f35a8a2f581a48"
+CHC_COMP_COMMIT24="1e8596fb798baafb55fb1a693afc31b12553d281"
 
 rm -rf inputs lists
 mkdir -p inputs lists
@@ -48,5 +50,21 @@ cd $INPUTS && find comp_ADT-LIA-nonlin -type f > $LISTS/comp_ADT-LIA-nonlin
 echo "comp_LIA-lin" > $INPUTS/.gitignore
 echo "comp_LIA-nonlin" >> $INPUTS/.gitignore
 echo "comp_ADT-LIA-nonlin" >> $INPUTS/.gitignore
+
+##### CHC_COMP 24
+cd $tmp_dir
+git clone $CHC_COMP24 && cd chc-comp24-benchmarks && git checkout $CHC_COMP_COMMIT24
+find . -type f -name '*.gz' -exec gunzip {} +
+mkdir -p $INPUTS/24comp_LIA-Lin $INPUTS/24comp_LIA $INPUTS/24comp_ADT-LIA
+cp LIA-Lin/*.smt2 $INPUTS/24comp_LIA-Lin
+cp LIA/*.smt2 $INPUTS/24comp_LIA
+cp ADT-LIA/*.smt2 $INPUTS/24comp_ADT-LIA
+cd $INPUTS && find 24comp_LIA-Lin -type f > $LISTS/24comp_LIA-Lin
+cd $INPUTS && find 24comp_LIA -type f > $LISTS/24comp_LIA
+cd $INPUTS && find 24comp_ADT-LIA -type f > $LISTS/24comp_ADT-LIA
+
+echo "24comp_LIA-Lin" >> $INPUTS/.gitignore
+echo "24comp_LIA" >> $INPUTS/.gitignore
+echo "24comp_ADT-LIA" >> $INPUTS/.gitignore
 
 cp $INPUTS/.gitignore $LISTS/.gitignore
