@@ -675,7 +675,6 @@ impl Derivation {
     // and returns [π]
     pub fn replace_derivation_at_level_with_var(
         &mut self,
-        context: &Stack<Atom>,
         node_id: ID,
         level: &usize,
         var: Ident,
@@ -696,23 +695,8 @@ impl Derivation {
             let fvs = instantiated_ty.fv();
             let mut instantiations = Stack::new();
 
-            // introduce the difference of the context to the result type
-            let context_original = sub_derivation.tree.root().item.context.clone();
-
-            let mut constraint = Atom::mk_true();
-            for cnstr in context_original.iter() {
-                if !context.iter().any(|c| c == cnstr) {
-                    constraint = Atom::mk_conj(constraint, cnstr.clone());
-                }
-            }
-            if !constraint.is_true() {
-                let new_ty = instantiated_ty.conjoin_constraint_to_rty(&constraint);
-                sub_derivation =
-                    Self::rule_equivalence(context.clone(), sub_derivation, new_ty.clone());
-            }
-
             for id in fvs.difference(fvints) {
-                sub_derivation = Self::rule_polymorphic_type(context.clone(), sub_derivation, *id);
+                sub_derivation = Self::rule_polymorphic_type(Stack::new(), sub_derivation, *id);
                 instantiations.push_mut(Instantiation {
                     ident: *id,
                     op: Op::mk_var(*id),
@@ -720,7 +704,7 @@ impl Derivation {
             }
 
             let d = Self::rule_var(
-                context_original,
+                Stack::new(),
                 var_expr.clone(),
                 instantiated_ty,
                 sub_derivation.root_ty().clone(),
@@ -902,13 +886,8 @@ impl Derivation {
                         either::Either::Right(ret) => return ret,
                     },
                 };
-                let n = t.get_node_by_id(cur).item;
-                let n = DeriveNode {
-                    context: n.context.clone(),
-                    ty,
-                    rule: n.rule.clone(),
-                    expr: n.expr.clone(),
-                };
+                let n = t.get_node_by_id(cur).item.clone();
+                let n = DeriveNode { ty, ..n };
                 (false, n)
             })
             .unwrap();
@@ -944,10 +923,6 @@ impl Derivation {
             Rule::Disjoin => {
                 let (g1, g2) = expr.disj();
                 assert_eq!(children.len(), 2);
-
-                let c: Option<Constraint> = g1.clone().into();
-                let c = c.unwrap();
-
                 self.update_expr_inner(children[0], g1, alpha_renaming_map.clone());
                 self.update_expr_inner(children[1], g2, alpha_renaming_map.clone());
                 Rule::Disjoin
@@ -1017,7 +992,6 @@ impl Derivation {
                 let (x, y) = expr.app();
                 assert!(children.len() >= 1);
                 self.update_expr_inner(children[0], x, alpha_renaming_map.clone());
-                let c = self.get_node_by_id(children[0]).item.ty.rty();
                 for i in 1..children.len() {
                     self.update_expr_inner(children[i], y, alpha_renaming_map.clone());
                 }
@@ -1090,7 +1064,6 @@ impl Derivation {
 
     pub fn subject_expansion_pred(
         &mut self,
-        context: &Stack<Atom>,
         node_id: ID,
         reduction: &super::Reduction,
         reduction_idx: usize,
@@ -1098,7 +1071,6 @@ impl Derivation {
         //let ri = &reduction.reduction_info;
         let ri = &reduction.reduction_infos[reduction_idx];
         let arg_derivations = self.replace_derivation_at_level_with_var(
-            context,
             node_id,
             &ri.level,
             ri.arg_var.id,
@@ -1136,13 +1108,12 @@ impl Derivation {
 
     fn append_int_abs(
         &self,
-        context: Stack<Atom>,
         tree: Tree<DeriveNode>,
         ri: &super::ReductionInfo,
     ) -> Tree<DeriveNode> {
         let dummy = G::mk_true();
         let n = DeriveNode {
-            context,
+            context: Stack::new(),
             rule: Rule::IAbs,
             expr: dummy.clone(),
             ty: Tau::mk_iarrow(ri.old_id, tree.root().item.ty.clone()),
@@ -1152,7 +1123,6 @@ impl Derivation {
 
     fn append_int_app(
         &self,
-        context: Stack<Atom>,
         tree: Tree<DeriveNode>,
         ri: &super::ReductionInfo,
     ) -> Tree<DeriveNode> {
@@ -1160,7 +1130,7 @@ impl Derivation {
         let op: Op = ri.arg.clone().into();
         let (x, ty) = tree.root().item.ty.iarrow();
         let n = DeriveNode {
-            context: context,
+            context: Stack::new(),
             rule: Rule::IApp(op.clone()),
             expr: dummy.clone(),
             ty: ty.subst(x, &op),
@@ -1170,7 +1140,6 @@ impl Derivation {
 
     fn append_pred_abs(
         &self,
-        context: Stack<Atom>,
         tree: Tree<DeriveNode>,
         arg_derivations: &Vec<Derivation>,
     ) -> Tree<DeriveNode> {
@@ -1180,7 +1149,7 @@ impl Derivation {
             .collect();
         let dummy = G::mk_true();
         let n = DeriveNode {
-            context: context,
+            context: Stack::new(),
             rule: Rule::Abs(arg_tys.clone()),
             expr: dummy.clone(),
             ty: Tau::mk_arrow(arg_tys.clone(), tree.root().item.ty.clone()),
@@ -1190,7 +1159,6 @@ impl Derivation {
 
     fn append_pred_app(
         &self,
-        context: Stack<Atom>,
         tree: Tree<DeriveNode>,
         arg_derivations: Vec<Derivation>,
     ) -> Tree<DeriveNode> {
@@ -1199,12 +1167,17 @@ impl Derivation {
             tree: tree,
         };
         let dummy = G::mk_true();
-        Derivation::rule_app(context, dummy, pred_derivation, arg_derivations.into_iter()).tree
+        Derivation::rule_app(
+            Stack::new(),
+            dummy,
+            pred_derivation,
+            arg_derivations.into_iter(),
+        )
+        .tree
     }
 
     pub fn append_abs(
         &self,
-        context: Stack<Atom>,
         t: Tree<DeriveNode>,
         reduction: &super::Reduction,
         derivation_map: &HashMap<usize, Vec<Derivation>>,
@@ -1213,11 +1186,11 @@ impl Derivation {
         for (idx, ri) in reduction.reduction_infos.iter().enumerate().rev() {
             match ri.reduction_type {
                 super::ReductionType::Int(_) => {
-                    subtree = self.append_int_abs(context.clone(), subtree, ri);
+                    subtree = self.append_int_abs(subtree, ri);
                 }
                 super::ReductionType::Pred(_) => {
                     let derivations = derivation_map.get(&idx).unwrap();
-                    subtree = self.append_pred_abs(context.clone(), subtree, derivations);
+                    subtree = self.append_pred_abs(subtree, derivations);
                 }
             }
         }
@@ -1225,7 +1198,6 @@ impl Derivation {
     }
     pub fn append_app(
         &self,
-        context: Stack<Atom>,
         t: Tree<DeriveNode>,
         reduction: &super::Reduction,
         mut derivation_map: HashMap<usize, Vec<Derivation>>,
@@ -1234,19 +1206,17 @@ impl Derivation {
         for (idx, ri) in reduction.reduction_infos.iter().enumerate() {
             match ri.reduction_type {
                 super::ReductionType::Int(_) => {
-                    subtree = self.append_int_app(context.clone(), subtree, ri);
+                    subtree = self.append_int_app(subtree, ri);
                     let op: Op = ri.arg.clone().into();
                     let x = ri.old_id;
                     for (k, v) in derivation_map.iter_mut() {
                         if k > &idx {
                             for d in v.iter_mut() {
-                                // subst x in types and contexts with its argument
+                                // subst x in types with its argument
                                 // recursively apply susbt to the rules
                                 d.tree.iter_mut(|n| {
                                     n.ty = n.ty.subst(&x, &op);
                                     n.rule = n.rule.subst(&x, &op);
-                                    n.context =
-                                        n.context.iter().map(|a| a.subst(&x, &op)).collect();
                                 });
                             }
                         }
@@ -1254,7 +1224,7 @@ impl Derivation {
                 }
                 super::ReductionType::Pred(_) => {
                     let derivations = derivation_map.remove(&idx).unwrap();
-                    subtree = self.append_pred_app(context.clone(), subtree, derivations);
+                    subtree = self.append_pred_app(subtree, derivations);
                 }
             }
         }
@@ -1264,7 +1234,7 @@ impl Derivation {
     pub fn expand_node(&mut self, target_node: ID, reduction: &super::Reduction) {
         let mut derivation_map = HashMap::new();
         let mut int_arg_count = 0;
-        let context = target_node.to_node(&self.tree).item.context.clone();
+        let empty_ctx = Stack::new();
         let mut added = Stack::new();
         for (idx, ri) in reduction.reduction_infos.iter().enumerate() {
             match ri.reduction_type {
@@ -1277,8 +1247,7 @@ impl Derivation {
                     )))
                 }
                 super::ReductionType::Pred(_) => {
-                    let arg_derivation =
-                        self.subject_expansion_pred(&context, target_node, reduction, idx);
+                    let arg_derivation = self.subject_expansion_pred(target_node, reduction, idx);
                     derivation_map.insert(idx, arg_derivation);
                 }
             }
@@ -1288,11 +1257,11 @@ impl Derivation {
         let constr = added.iter().cloned().fold(Atom::mk_true(), Atom::mk_conj);
         let ty = &subtree.root().item.ty;
         let ty = ty.conjoin_constraint_to_rty(&constr);
-        let root = DeriveNode::equivalence(context.clone(), added, &subtree.root().item, ty);
+        let root = DeriveNode::equivalence(empty_ctx.clone(), added, &subtree.root().item, ty);
         let subtree = Tree::tree_with_child(root, subtree);
 
-        let subtree = self.append_abs(context.clone(), subtree, reduction, &derivation_map);
-        let subtree = self.append_app(context.clone(), subtree, reduction, derivation_map);
+        let subtree = self.append_abs(subtree, reduction, &derivation_map);
+        let subtree = self.append_app(subtree, reduction, derivation_map);
         // top_id must be a fresh id assigned by the dummy expr
         let top_id = subtree.root().item.expr.aux.id;
 
@@ -1454,7 +1423,7 @@ impl Derivation {
         // aux function for clone_wit template_inner
         let n = self.get_node_by_id(node_id);
         let expr = n.item.expr.clone();
-        let context = Stack::new();
+        let empty_ctx = Stack::new();
         let t = match &n.item.rule {
             Rule::Conjoin => {
                 let (child1, child2) = self.tree.get_two_children(n);
@@ -1472,7 +1441,7 @@ impl Derivation {
                     ints.clone(),
                     univ_ints.clone(),
                 );
-                Self::rule_conjoin(context, expr, d1, d2)
+                Self::rule_conjoin(empty_ctx, expr, d1, d2)
             }
             Rule::Disjoin => {
                 let (child1, child2) = self.tree.get_two_children(n);
@@ -1490,7 +1459,7 @@ impl Derivation {
                     ints.clone(),
                     univ_ints.clone(),
                 );
-                Self::rule_disjoin(context, expr, d1, d2)
+                Self::rule_disjoin(empty_ctx, expr, d1, d2)
             }
             Rule::Var(instantiations, original_ty) => {
                 let v = expr.var();
@@ -1519,7 +1488,14 @@ impl Derivation {
                         )
                     });
                 self.tree.get_no_child(n);
-                Self::rule_var(context, expr, ty, original_ty, Stack::new(), instantiations)
+                Self::rule_var(
+                    empty_ctx,
+                    expr,
+                    ty,
+                    original_ty,
+                    Stack::new(),
+                    instantiations,
+                )
             }
             Rule::Univ => {
                 let v = expr.univ().0;
@@ -1537,7 +1513,7 @@ impl Derivation {
                     ints.clone(),
                     univ_ints.clone(),
                 );
-                Self::rule_quantifier(context, expr, d, &x)
+                Self::rule_quantifier(empty_ctx, expr, d, &x)
             }
             Rule::IAbs => {
                 let x = expr.abs().0.id;
@@ -1549,7 +1525,7 @@ impl Derivation {
                     ints.push(x),
                     univ_ints.clone(),
                 );
-                Self::rule_iarrow(context, expr, d, &x)
+                Self::rule_iarrow(empty_ctx, expr, d, &x)
             }
             Rule::Abs(_) => {
                 let x = expr.abs().0;
@@ -1586,7 +1562,7 @@ impl Derivation {
                     env.insert(x.id, ty);
                 }
 
-                Self::rule_arrow(context, expr, d, arg_template_tys)
+                Self::rule_arrow(empty_ctx, expr, d, arg_template_tys)
             }
             Rule::IApp(_) => {
                 let (_, e) = expr.app();
@@ -1599,7 +1575,7 @@ impl Derivation {
                     ints,
                     univ_ints.clone(),
                 );
-                Self::rule_iapp(context, expr, d, &o)
+                Self::rule_iapp(empty_ctx, expr, d, &o)
             }
             Rule::Poly(_) => {
                 // skip poly
@@ -1637,7 +1613,7 @@ impl Derivation {
                 let (arg_tys, ret_ty) = ty1.arrow();
 
                 if derivations.len() == 0 {
-                    return Self::rule_app(context, expr, d1, derivations.into_iter());
+                    return Self::rule_app(empty_ctx, expr, d1, derivations.into_iter());
                 }
 
                 if configuration.mode_shared {
@@ -1668,9 +1644,9 @@ impl Derivation {
                 let ret_tmp_ty = ret_ty.clone_with_template(&mut fvs);
                 let ty3 = Ty::mk_arrow(new_arg_tys, ret_tmp_ty);
 
-                let d3 = Self::rule_subsumption(context.clone(), d1, ty3);
+                let d3 = Self::rule_subsumption(empty_ctx.clone(), d1, ty3);
 
-                Self::rule_app(context, expr, d3, derivations.into_iter())
+                Self::rule_app(empty_ctx, expr, d3, derivations.into_iter())
             }
             // skip subsumption and equivalence
             Rule::Equivalence(_) => {
@@ -1683,12 +1659,6 @@ impl Derivation {
                     univ_ints.clone(),
                 );
                 d
-                //if d.root_ty() != &before_ty {
-                //    //Self::rule_subsumption(context, d, ty)
-                //    panic!()
-                //} else {
-                //    Self::rule_equivalence(context, d, ty)
-                //}
             }
             Rule::Subsumption => {
                 let child = self.tree.get_one_child(n);
@@ -1701,7 +1671,7 @@ impl Derivation {
                 );
                 d
             }
-            Rule::Atom => Self::rule_atom(context, expr, n.item.ty.clone()),
+            Rule::Atom => Self::rule_atom(empty_ctx, expr, n.item.ty.clone()),
         };
         Derivation {
             tree: t.tree,
