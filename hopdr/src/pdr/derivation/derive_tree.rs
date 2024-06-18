@@ -1,5 +1,4 @@
 use std::collections::{HashMap, HashSet};
-use std::ops::Sub;
 
 use super::tree::*;
 use super::{Atom, Ty, G};
@@ -39,7 +38,6 @@ pub enum Rule {
     IApp(Op),
     App,
     Subsumption, // Atom: rty
-    Equivalence(Stack<Atom>),
     Atom,
     Poly(Ident),
 }
@@ -56,7 +54,6 @@ impl std::fmt::Display for Rule {
             Rule::IApp(_) => "IApp",
             Rule::App => "App",
             Rule::Subsumption => "Sub",
-            Rule::Equivalence(_) => "Equi",
             Rule::Atom => "Atom",
             Rule::Poly(_) => "Poly",
         };
@@ -78,10 +75,6 @@ impl Subst for Rule {
             | Rule::IApp(_)
             | Rule::Poly(_)
             | Rule::Atom => self.clone(),
-            Rule::Equivalence(c) => {
-                let c = c.iter().map(|c| c.subst(x, v)).collect();
-                Rule::Equivalence(c)
-            }
             Rule::Var(instantiation, ty) => {
                 let ty = ty.subst(x, v);
                 Rule::Var(instantiation.clone(), ty)
@@ -301,16 +294,6 @@ impl DeriveNode {
         let mut expr = node.expr.clone();
         // reset the information
         reset_expr_for_subsumption(&mut expr);
-        DeriveNode {
-            context,
-            rule,
-            expr,
-            ty,
-        }
-    }
-    fn equivalence(context: Stack<Atom>, added: Stack<Atom>, node: &Self, ty: Ty) -> Self {
-        let rule = Rule::Equivalence(added);
-        let expr = node.expr.clone();
         DeriveNode {
             context,
             rule,
@@ -595,26 +578,6 @@ impl Derivation {
         let root = DeriveNode::subsumption(context, child.item, ty);
         Self::rule_one_arg_inner(root, d)
     }
-    pub fn rule_equivalence(context: Stack<Atom>, mut d: Self, ty: Ty) -> Self {
-        let child_id = d.tree.root().id;
-        let original_context = &d.tree.root().item.context;
-        let mut added = Stack::new();
-        for c in original_context.iter() {
-            let mut flag = true;
-            for c2 in context.iter() {
-                if c == c2 {
-                    flag = false;
-                    break;
-                }
-            }
-            if flag {
-                added.push_mut(c.clone());
-            }
-        }
-        let root = DeriveNode::equivalence(context, added, d.tree.root().item, ty);
-        reset_expr_for_subsumption(&mut d.tree.update_node_by_id(child_id).expr);
-        Self::rule_one_arg_inner(root, d)
-    }
     pub fn rule_app<I>(context: Stack<Atom>, expr: G, d1: Self, args: I) -> Self
     where
         I: Iterator<Item = Self>,
@@ -860,7 +823,7 @@ fn handle_rule_in_update_parents(
                 panic!("program error")
             }
         }
-        Rule::Equivalence(_) | Rule::Subsumption => {
+        Rule::Subsumption => {
             let children: Vec<_> = t
                 .get_children(t.get_node_by_id(cur))
                 .map(|child| child.item)
@@ -1006,19 +969,6 @@ impl Derivation {
                 reset_expr_for_subsumption(&mut expr);
                 self.tree.update_node_by_id(node_id).expr = expr.clone();
                 rule
-            }
-            Rule::Equivalence(s) => {
-                assert_eq!(children.len(), 1);
-                let s = s.clone();
-                self.update_expr_inner(children[0], &expr, alpha_renaming_map.clone());
-
-                let mut expr = expr.clone();
-                reset_expr_for_subsumption(&mut expr);
-
-                // Unlike the case for subsumption, we replace the original one
-                // so that we can refer to the more general type afterwards.
-                self.tree.update_node_by_id(children[0]).expr = expr.clone();
-                Rule::Equivalence(s)
             }
         }
     }
@@ -1234,17 +1184,11 @@ impl Derivation {
     pub fn expand_node(&mut self, target_node: ID, reduction: &super::Reduction) {
         let mut derivation_map = HashMap::new();
         let mut int_arg_count = 0;
-        let empty_ctx = Stack::new();
-        let mut added = Stack::new();
         for (idx, ri) in reduction.reduction_infos.iter().enumerate() {
             match ri.reduction_type {
                 super::ReductionType::Int(_) => {
                     //self.subject_expansion_int(target_node, reduction, idx);
                     int_arg_count += 1;
-                    added.push_mut(Atom::mk_constraint(Constraint::mk_eq(
-                        Op::mk_var(ri.old_id),
-                        ri.arg.clone().into(),
-                    )))
                 }
                 super::ReductionType::Pred(_) => {
                     let arg_derivation = self.subject_expansion_pred(target_node, reduction, idx);
@@ -1253,12 +1197,6 @@ impl Derivation {
             }
         }
         let subtree = self.extract_body_derivation(target_node, int_arg_count);
-
-        let constr = added.iter().cloned().fold(Atom::mk_true(), Atom::mk_conj);
-        let ty = &subtree.root().item.ty;
-        let ty = ty.conjoin_constraint_to_rty(&constr);
-        let root = DeriveNode::equivalence(empty_ctx.clone(), added, &subtree.root().item, ty);
-        let subtree = Tree::tree_with_child(root, subtree);
 
         let subtree = self.append_abs(subtree, reduction, &derivation_map);
         let subtree = self.append_app(subtree, reduction, derivation_map);
@@ -1648,18 +1586,6 @@ impl Derivation {
 
                 Self::rule_app(empty_ctx, expr, d3, derivations.into_iter())
             }
-            // skip subsumption and equivalence
-            Rule::Equivalence(_) => {
-                let child = self.tree.get_one_child(n);
-                let d = self.clone_with_template_inner(
-                    child.id,
-                    env,
-                    configuration,
-                    ints,
-                    univ_ints.clone(),
-                );
-                d
-            }
             Rule::Subsumption => {
                 let child = self.tree.get_one_child(n);
                 let d = self.clone_with_template_inner(
@@ -1827,8 +1753,6 @@ impl Derivation {
             Rule::Poly(_) => {
                 unimplemented!()
             }
-            // skip subsumption and equivalence
-            Rule::Equivalence(_) => panic!("program error"),
         };
         Derivation {
             tree: t.tree,
@@ -1913,7 +1837,7 @@ impl Derivation {
                     let child = d.tree.get_one_child(n);
                     go(d, child.id, &ints, strict, env)
                 }
-                Rule::IApp(_) | Rule::Subsumption | Rule::Equivalence(_) => {
+                Rule::IApp(_) | Rule::Subsumption => {
                     let child = d.tree.get_one_child(n);
                     go(d, child.id, ints, strict, env)
                 }
