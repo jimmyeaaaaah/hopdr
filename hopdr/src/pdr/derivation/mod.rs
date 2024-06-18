@@ -1004,6 +1004,7 @@ impl Context {
         }
     }
     fn infer_type(&mut self, mut derivation: Derivation) -> Option<TyEnv> {
+        derivation = derivation.prepare_for_subject_expansion();
         title!("infer_type");
         for reduction in self.reduction_sequence.iter().rev() {
             let level = reduction.level();
