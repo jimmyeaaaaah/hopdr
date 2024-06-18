@@ -1729,14 +1729,9 @@ impl Derivation {
     fn prepare_fse_abs(&self, node_id: ID, cfg: PSFE, t: &Ty) -> Self {
         let n = self.get_node_by_id(node_id);
         let expr = n.item.expr.clone();
-        match t.kind() {
-            TauKind::Proposition(_) => {
-                let d = self.prepare_fse_inner(node_id, cfg);
-                Self::rule_subsumption(Stack::new(), d, t.clone())
-            }
-            TauKind::PTy(_, _) => todo!(),
-            TauKind::IArrow(x, t) => {
-                let v = expr.abs().0;
+        match expr.kind() {
+            hes::GoalKind::Abs(v, _) if v.ty.is_int() => {
+                let (x, t) = t.iarrow();
                 assert!(v.ty.is_int());
                 let t = t.rename(x, &v.id);
                 let x = v.id;
@@ -1745,7 +1740,8 @@ impl Derivation {
                 let d = self.prepare_fse_abs(child.id, cfg, &t);
                 Self::rule_iarrow(Stack::new(), expr, d, &x)
             }
-            TauKind::Arrow(arg_ty, _) => {
+            hes::GoalKind::Abs(_, _) => {
+                let (arg_ty, t) = t.arrow();
                 let x = expr.abs().0;
                 let original_ty = n.item.ty.arrow().0.clone();
                 let cfg = cfg.push_env(
@@ -1758,6 +1754,10 @@ impl Derivation {
                 let child = self.tree.get_one_child(n);
                 let d = self.prepare_fse_abs(child.id, cfg, t);
                 Self::rule_arrow(Stack::new(), expr, d, arg_ty.clone())
+            }
+            _ => {
+                let d = self.prepare_fse_inner(node_id, cfg);
+                Self::rule_subsumption(Stack::new(), d, t.clone())
             }
         }
     }
