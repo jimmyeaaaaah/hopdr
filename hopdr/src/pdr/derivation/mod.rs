@@ -900,7 +900,8 @@ impl Context {
         }
         result_env
     }
-    fn infer_type_inner(&self, derivation: &mut Derivation, reduction: &Reduction) {
+    /// Subject expansion with respect to the given reduction
+    fn subject_expansion_wrt_reduction(&self, derivation: &mut Derivation, reduction: &Reduction) {
         title!("Reduction");
         pdebug!(reduction);
         let node_ids: Stack<_> = derivation
@@ -1007,7 +1008,7 @@ impl Context {
         for reduction in self.reduction_sequence.iter().rev() {
             let level = reduction.level();
             pdebug!("derivation ", level);
-            self.infer_type_inner(&mut derivation, reduction);
+            self.subject_expansion_wrt_reduction(&mut derivation, reduction);
             pdebug!(derivation);
             debug!("checking sanity... {}", derivation.check_sanity(false));
         }

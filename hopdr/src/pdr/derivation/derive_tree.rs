@@ -1119,12 +1119,8 @@ impl Derivation {
     }
 
     fn finalize_subject_expansion(&mut self, reduction: &super::Reduction, target_node: ID) {
-        pdebug!("before update parents"; red);
-        pdebug!(self);
         self.update_parents(target_node);
         // finally replace the expressions in the derivation with the expr before the reduction
-        pdebug!("before update expr"; red);
-        pdebug!(self);
         self.update_expr(&reduction.before_reduction);
     }
 
@@ -1335,8 +1331,6 @@ impl Derivation {
         let subtree = self.append_app(context.clone(), subtree, reduction, derivation_map);
         // top_id must be a fresh id assigned by the dummy expr
         let top_id = subtree.root().item.expr.aux.id;
-        pdebug!("subtree"; red);
-        pdebug!(subtree);
 
         self.tree = self.tree.insert_partial_tree(target_node, |_| subtree).0;
 
