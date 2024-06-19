@@ -1347,6 +1347,7 @@ fn calc_fv(
 }
 
 impl Derivation {
+    // TODO: rewrite this function by using IntroduceTemplateConfiguration
     fn clone_with_template_inner(
         &self,
         node_id: ID,

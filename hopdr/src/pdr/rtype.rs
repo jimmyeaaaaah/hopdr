@@ -531,7 +531,11 @@ impl<C: Refinement> Tau<C> {
                     None
                 }
             }
-            (_, _) => panic!("fatal"),
+            (_, _) => panic!(
+                "program error: {} <: {}",
+                t.pretty_display(),
+                s.pretty_display()
+            ),
         }
     }
     pub fn check_subtype_structural(context: C, t: &Tau<C>, s: &Tau<C>) -> Option<C> {
@@ -864,7 +868,7 @@ impl Tau<Constraint> {
     /// traverse all the prop types, and reduce the constraint by `Constraint::reduction_trivial`
     fn optimize_constraint_reduction(&self) -> Self {
         match self.kind() {
-            TauKind::Proposition(c) => Ty::mk_prop_ty(c.simplify()),
+            TauKind::Proposition(c) => Ty::mk_prop_ty(c.simplify_with_smt()),
             TauKind::IArrow(x, t) => Ty::mk_iarrow(*x, t.optimize_constraint_reduction()),
             TauKind::Arrow(ts, t) => {
                 let ts = ts

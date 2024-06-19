@@ -12,6 +12,7 @@ use rpds::Stack;
 
 pub use crate::formula::ty::*;
 use crate::parse::ExprKind;
+use crate::solver;
 use crate::util::global_counter;
 use crate::util::Pretty;
 pub use crate::util::P;
@@ -2069,6 +2070,12 @@ impl Constraint {
         debug!("simplify_same_clause {c}");
         c
     }
+    pub fn simplify_with_smt(&self) -> Self {
+        let c = self.simplify();
+        let ue = solver::qe::qe_solver(solver::SMTSolverType::UltimateEliminator);
+        let c = ue.solve(&c);
+        c
+    }
 }
 
 #[test]
@@ -2298,6 +2305,21 @@ fn test_simplify_same_clause() {
     for c in dnf {
         assert_eq!(c.to_cnf().len(), 1);
     }
+}
+
+#[test]
+fn test_simplify_with_smt() {
+    // x = 0 /\ x != 0
+    let x = Ident::fresh();
+    let c = Constraint::mk_conj(
+        Constraint::mk_eq(Op::mk_var(x), Op::zero()),
+        Constraint::mk_neq(Op::mk_var(x), Op::zero()),
+    );
+    let c1 = c.simplify();
+    let c2 = c.simplify_with_smt();
+    println!("c1: {c1}");
+    println!("c2: {c2}");
+    assert_ne!(c1, c2)
 }
 
 // // Generate Template with the configuration
