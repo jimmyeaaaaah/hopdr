@@ -1864,16 +1864,16 @@ impl Derivation {
                         .zip(arg_tys.iter().filter(|x| !x.is_bot()))
                         .all(|(t1, t2)| t1 == t2)
                     {
-                        debug!("subsumption");
-                        debug!("{}", d.get_node_by_id(node_id).item.expr);
+                        println!("subsumption");
+                        println!("{}", d.get_node_by_id(node_id).item.expr);
                         for body_ty in body_tys.iter() {
                             crate::pdebug!(body_ty);
                         }
-                        debug!("<:");
+                        println!("<:");
                         for body_ty in arg_tys.iter() {
                             crate::pdebug!(body_ty);
                         }
-                        debug!("is wrong");
+                        println!("is wrong");
                         panic!();
                     }
 
