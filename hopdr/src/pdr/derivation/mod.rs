@@ -14,7 +14,7 @@ use crate::formula::{
 };
 use crate::solver;
 use crate::util::Pretty;
-use crate::{pdebug, title};
+use crate::{pdebug, pinfo, title};
 
 use rpds::{HashTrieMap, Stack};
 
@@ -1005,12 +1005,12 @@ impl Context {
     }
     fn infer_type(&mut self, mut derivation: Derivation) -> Option<TyEnv> {
         derivation = derivation.prepare_for_subject_expansion();
-        title!("infer_type");
+        pinfo!("infer_type"; title);
         for reduction in self.reduction_sequence.iter().rev() {
             let level = reduction.level();
-            pdebug!("derivation ", level);
+            pinfo!("derivation ", level);
             self.subject_expansion_wrt_reduction(&mut derivation, reduction);
-            pdebug!(derivation);
+            pinfo!(derivation);
             debug!("checking sanity... {}", derivation.check_sanity(false));
         }
 
@@ -1109,7 +1109,7 @@ fn handle_abs(
             if flag {
                 ienv.remove(x);
             }
-            pt
+            pt.pty(context.clone(), x)
         }
         _ => handle_abs_inner(config, tenv, ienv, all_coefficients, arg_expr, t, context),
     }
@@ -1643,6 +1643,16 @@ impl PossibleDerivation {
             .types
             .into_iter()
             .map(|d| Derivation::rule_arrow(context.clone(), expr.clone(), d, ts.to_vec()))
+            .collect();
+        PossibleDerivation { types }
+    }
+
+    /// Introduces pty rule to each derivation in the `PossibleDerivation`
+    fn pty(self, context: Stack<Atom>, x: &Ident) -> Self {
+        let types = self
+            .types
+            .into_iter()
+            .map(|d| Derivation::rule_polymorphic_type(context.clone(), d, *x))
             .collect();
         PossibleDerivation { types }
     }
