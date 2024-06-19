@@ -543,7 +543,8 @@ impl<C: Refinement> Tau<C> {
             (TauKind::Proposition(c1), TauKind::Proposition(c2)) => {
                 Some(C::mk_implies_opt(C::mk_conj(context, c2.clone()), c1.clone()).unwrap())
             }
-            (TauKind::IArrow(x1, t1), TauKind::IArrow(x2, t2)) => {
+            (TauKind::IArrow(x1, t1), TauKind::IArrow(x2, t2))
+            | (TauKind::PTy(x1, t1), TauKind::PTy(x2, t2)) => {
                 let t2 = t2.rename(x2, x1);
                 Tau::check_subtype_structural(context, t1, &t2)
             }
@@ -561,7 +562,13 @@ impl<C: Refinement> Tau<C> {
                     })
             }
             (TauKind::Arrow(_, _), TauKind::Arrow(_, _)) => None,
-            (_, _) => panic!("fatal"),
+            (_, _) => {
+                panic!(
+                    "program error: {} <: {}",
+                    t.pretty_display(),
+                    s.pretty_display()
+                )
+            }
         }
     }
     /// Create template without any polymorphic types

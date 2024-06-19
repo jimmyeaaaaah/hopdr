@@ -1624,6 +1624,15 @@ impl Derivation {
 
     /// prepare_for_subject_expansion_inner for abs expressions
     fn prepare_fse_abs(&self, node_id: ID, cfg: PSFE, t: &Ty) -> Self {
+        match t.kind() {
+            TauKind::PTy(x, t) => {
+                let child = self.tree.get_one_child(self.get_node_by_id(node_id));
+                let cfg = cfg.push_int(x);
+                let d = self.prepare_fse_abs(child.id, cfg, t);
+                return Self::rule_polymorphic_type(Stack::new(), d, *x);
+            }
+            _ => (),
+        }
         let n = self.get_node_by_id(node_id);
         let expr = n.item.expr.clone();
         match expr.kind() {
