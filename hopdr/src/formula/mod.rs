@@ -2073,7 +2073,7 @@ impl Constraint {
     pub fn simplify_with_smt(&self) -> Self {
         let c = self.simplify();
         let ue = solver::qe::qe_solver(solver::SMTSolverType::UltimateEliminator);
-        let c = ue.solve(&c);
+        let c = ue.try_solve(&c).unwrap_or(c);
         c
     }
 }

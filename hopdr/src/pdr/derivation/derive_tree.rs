@@ -897,6 +897,8 @@ impl Derivation {
             }
             Rule::Atom => Rule::Atom,
             Rule::Univ => {
+                debug!("old_expr {}", old_expr);
+                debug!("expr {}", expr);
                 let (v, _) = old_expr.univ();
                 let (w, g) = expr.univ();
                 if v.ty.is_int() && v.id != w.id {
@@ -1009,6 +1011,9 @@ impl Derivation {
     fn finalize_subject_expansion(&mut self, reduction: &super::Reduction, target_node: ID) {
         self.update_parents(target_node);
         // finally replace the expressions in the derivation with the expr before the reduction
+        pdebug!("before_update_expr"; title);
+        pdebug!(self);
+
         self.update_expr(&reduction.before_reduction);
     }
 

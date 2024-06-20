@@ -1022,6 +1022,10 @@ impl Context {
 
         crate::title!("model from CHC solver");
         debug!("{}", m);
+        crate::title!("clauses:");
+        for c in clauses.iter() {
+            debug!("{}", c);
+        }
         let config = solver::interpolation::InterpolationConfig::new().use_chc_if_requied();
         let model = solver::interpolation::solve(&clauses, &config);
         debug!("interpolated:");

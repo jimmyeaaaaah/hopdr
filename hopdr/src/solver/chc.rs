@@ -144,7 +144,7 @@ fn gen_def(id: &Ident, nargs: usize) -> String {
     format!("(declare-fun {} ({}) Bool)", ident_2_smt2(id), arg)
 }
 
-fn chcs_to_smt2(chcs: &[CHC], style: CHCStyle) -> String {
+pub fn chcs_to_smt2(chcs: &[CHC], style: CHCStyle) -> String {
     let mut preds = HashMap::new();
     for c in chcs {
         c.collect_predicates(&mut preds);

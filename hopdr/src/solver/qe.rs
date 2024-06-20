@@ -7,18 +7,31 @@ use crate::formula::{Bot, Constraint, Fv, Ident, Logic, Negation, Op, OpKind, Pr
 use lexpr::Value;
 use lexpr::{self, Cons};
 
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum QEError {
+    #[error("QE Result Parse Failed: `{0}` ")]
+    FailedToParse(String),
+}
+
 pub trait QESolver {
     fn to_smt(&self, formula: &Constraint) -> String;
     fn solve_string(&self, s: String) -> String;
     fn parse(&self, s: &str) -> Result<Constraint, lexpr::parse::Error>;
 
-    fn solve(&self, formula: &Constraint) -> Constraint {
+    fn try_solve(&self, formula: &Constraint) -> Result<Constraint, QEError> {
         debug!("trying quantifier elimination: {formula}");
         let smt_string = self.to_smt(formula);
         let result = self.solve_string(smt_string);
-        let r = self
-            .parse(&result)
-            .unwrap_or_else(|_| panic!("qe result parse failed: {}", result));
+        match self.parse(&result) {
+            Ok(r) => Ok(r),
+            Err(_) => Err(QEError::FailedToParse(result)),
+        }
+    }
+
+    fn solve(&self, formula: &Constraint) -> Constraint {
+        let r = self.try_solve(formula).unwrap();
         debug!("result: {r}");
         r
     }
