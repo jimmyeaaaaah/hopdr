@@ -897,8 +897,6 @@ impl Derivation {
             }
             Rule::Atom => Rule::Atom,
             Rule::Univ => {
-                debug!("old_expr {}", old_expr);
-                debug!("expr {}", expr);
                 let (v, _) = old_expr.univ();
                 let (w, g) = expr.univ();
                 if v.ty.is_int() && v.id != w.id {
@@ -1011,9 +1009,6 @@ impl Derivation {
     fn finalize_subject_expansion(&mut self, reduction: &super::Reduction, target_node: ID) {
         self.update_parents(target_node);
         // finally replace the expressions in the derivation with the expr before the reduction
-        pdebug!("before_update_expr"; title);
-        pdebug!(self);
-
         self.update_expr(&reduction.before_reduction);
     }
 
@@ -1233,7 +1228,7 @@ impl Derivation {
                 assert_eq!(children.len(), 1);
                 let child = &children[0];
                 // conjoin constraint of the rule
-                pdebug!(child.item.ty, " <: " ty);
+                pdebug!(child.item.ty, " <: "; red, ty);
                 if structural {
                     Ty::check_subtype_structural(constraints.clone(), &child.item.ty, &ty).expect(
                         &format!("failed to check subtype: {} <: {}", child.item.ty, ty),
@@ -1902,5 +1897,32 @@ impl Derivation {
             strict,
             &HashTrieMap::new(),
         )
+    }
+
+    #[allow(dead_code)]
+    /// Checks if the derivation is well-formed in the sense that all the sumpsumptions are correct
+    pub fn check_subsumption_correct(&self) {
+        let clauses: Vec<_> = self.collect_chcs(true).collect();
+        if !solver::chc::default_solver().solve(&clauses).is_sat() {
+            pdebug!("failed to apply subject expansion"; red);
+            pdebug!(self);
+
+            pdebug!("clauses"; title);
+            for c in clauses.iter() {
+                pdebug!(c);
+            }
+
+            pdebug!("here is the reason for unsat");
+            for c in clauses.iter() {
+                if !solver::chc::default_solver()
+                    .solve(&vec![c.clone()])
+                    .is_sat()
+                {
+                    pdebug!("the following clause is unsat "; blue);
+                    pdebug!(c);
+                }
+            }
+            panic!("fatal");
+        }
     }
 }

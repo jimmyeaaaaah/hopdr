@@ -923,25 +923,8 @@ impl Context {
         for node_id in node_ids.iter() {
             derivation.expand_node(*node_id, reduction);
 
-            // check if the reduction is valid
             #[cfg(debug_assertions)]
-            {
-                let clauses: Vec<_> = derivation.collect_chcs(true).collect();
-                if !solver::chc::default_solver().solve(&clauses).is_sat() {
-                    pdebug!("failed to apply subject expansion"; red);
-                    pdebug!(derivation);
-                    for c in clauses.iter() {
-                        if !solver::chc::default_solver()
-                            .solve(&vec![c.clone()])
-                            .is_sat()
-                        {
-                            pdebug!("the following clause is unsat "; blue);
-                            pdebug!(c);
-                        }
-                    }
-                    panic!("fatal");
-                }
-            }
+            derivation.check_subsumption_correct();
         }
     }
     fn infer_with_shared_type(
@@ -1005,6 +988,13 @@ impl Context {
     }
     fn infer_type(&mut self, mut derivation: Derivation) -> Option<TyEnv> {
         derivation = derivation.prepare_for_subject_expansion();
+
+        pdebug!("derivation with templates"; title);
+        pdebug!(derivation);
+
+        #[cfg(debug_assertions)]
+        derivation.check_subsumption_correct();
+
         pinfo!("infer_type"; title);
         for reduction in self.reduction_sequence.iter().rev() {
             let level = reduction.level();
@@ -1020,16 +1010,16 @@ impl Context {
             None => self.infer_type_with_subject_expansion(derivation)?,
         };
 
-        crate::title!("model from CHC solver");
-        debug!("{}", m);
-        crate::title!("clauses:");
+        pdebug!("model from CHC solver"; title);
+        pdebug!(m);
+        pdebug!("clauses"; title);
         for c in clauses.iter() {
             debug!("{}", c);
         }
         let config = solver::interpolation::InterpolationConfig::new().use_chc_if_requied();
         let model = solver::interpolation::solve(&clauses, &config);
-        debug!("interpolated:");
-        debug!("{}", model);
+        pdebug!("interpolated"; title);
+        pdebug!(model);
 
         // ** check if the returned model is "tractable" **
         // Here, tracktable means no constraint in model does not contain existential quantifier.
