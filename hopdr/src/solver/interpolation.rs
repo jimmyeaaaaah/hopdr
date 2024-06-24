@@ -638,9 +638,14 @@ fn interpolate_by_chc(left: &Constraint, right: &Constraint, style: CHCStyle) ->
     let mut solver = chc_solver(style);
     let (idents, mut c) = match solver.solve(&clauses) {
         solver::chc::CHCResult::Sat(m) => m.model.get(&p).unwrap().clone(),
-        solver::chc::CHCResult::Unsat
-        | solver::chc::CHCResult::Unknown
-        | solver::chc::CHCResult::Timeout => panic!("interpolation failed"),
+        solver::chc::CHCResult::Unsat => {
+            let s = solver::chc::chcs_to_smt2(&clauses, style);
+            println!("solver: {}", s);
+            panic!("interpolation: unsat, failed")
+        }
+        solver::chc::CHCResult::Unknown | solver::chc::CHCResult::Timeout => {
+            panic!("interpolation failed")
+        }
     };
     assert_eq!(idents.len(), args.len());
     for (i, o) in idents.into_iter().zip(args.into_iter()) {

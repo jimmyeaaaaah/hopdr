@@ -14,7 +14,7 @@ use crate::formula::{
 };
 use crate::solver;
 use crate::util::Pretty;
-use crate::{pdebug, title};
+use crate::{pdebug, pinfo, title};
 
 use rpds::{HashTrieMap, Stack};
 
@@ -900,7 +900,8 @@ impl Context {
         }
         result_env
     }
-    fn infer_type_inner(&self, derivation: &mut Derivation, reduction: &Reduction) {
+    /// Subject expansion with respect to the given reduction
+    fn subject_expansion_wrt_reduction(&self, derivation: &mut Derivation, reduction: &Reduction) {
         title!("Reduction");
         pdebug!(reduction);
         let node_ids: Stack<_> = derivation
@@ -922,25 +923,8 @@ impl Context {
         for node_id in node_ids.iter() {
             derivation.expand_node(*node_id, reduction);
 
-            // check if the reduction is valid
             #[cfg(debug_assertions)]
-            {
-                let clauses: Vec<_> = derivation.collect_chcs(true).collect();
-                if !solver::chc::default_solver().solve(&clauses).is_sat() {
-                    pdebug!("failed to apply subject expansion"; red);
-                    pdebug!(derivation);
-                    for c in clauses.iter() {
-                        if !solver::chc::default_solver()
-                            .solve(&vec![c.clone()])
-                            .is_sat()
-                        {
-                            pdebug!("the following clause is unsat "; blue);
-                            pdebug!(c);
-                        }
-                    }
-                    panic!("fatal");
-                }
-            }
+            derivation.check_subsumption_correct();
         }
     }
     fn infer_with_shared_type(
@@ -1003,12 +987,20 @@ impl Context {
         }
     }
     fn infer_type(&mut self, mut derivation: Derivation) -> Option<TyEnv> {
-        title!("infer_type");
+        derivation = derivation.prepare_for_subject_expansion();
+
+        pdebug!("derivation with templates"; title);
+        pdebug!(derivation);
+
+        #[cfg(debug_assertions)]
+        derivation.check_subsumption_correct();
+
+        pinfo!("infer_type"; title);
         for reduction in self.reduction_sequence.iter().rev() {
             let level = reduction.level();
-            pdebug!("derivation ", level);
-            self.infer_type_inner(&mut derivation, reduction);
-            pdebug!(derivation);
+            pinfo!("derivation ", level);
+            self.subject_expansion_wrt_reduction(&mut derivation, reduction);
+            pinfo!(derivation);
             debug!("checking sanity... {}", derivation.check_sanity(false));
         }
 
@@ -1018,12 +1010,16 @@ impl Context {
             None => self.infer_type_with_subject_expansion(derivation)?,
         };
 
-        crate::title!("model from CHC solver");
-        debug!("{}", m);
+        pdebug!("model from CHC solver"; title);
+        pdebug!(m);
+        pdebug!("clauses"; title);
+        for c in clauses.iter() {
+            debug!("{}", c);
+        }
         let config = solver::interpolation::InterpolationConfig::new().use_chc_if_requied();
         let model = solver::interpolation::solve(&clauses, &config);
-        debug!("interpolated:");
-        debug!("{}", model);
+        pdebug!("interpolated"; title);
+        pdebug!(model);
 
         // ** check if the returned model is "tractable" **
         // Here, tracktable means no constraint in model does not contain existential quantifier.
@@ -1092,7 +1088,7 @@ fn handle_abs(
                 _ => panic!("fatal"),
             },
             _ => {
-                let pt = type_check_inner(config, tenv, ienv, all_coefficients, arg_expr, context);
+                let pt = type_check_body(config, tenv, ienv, all_coefficients, arg_expr, context);
                 // skip the continuation of this inner function
                 return pt.coarse_type(context.clone(), t);
             }
@@ -1107,7 +1103,7 @@ fn handle_abs(
             if flag {
                 ienv.remove(x);
             }
-            pt
+            pt.pty(context.clone(), x)
         }
         _ => handle_abs_inner(config, tenv, ienv, all_coefficients, arg_expr, t, context),
     }
@@ -1321,117 +1317,76 @@ fn handle_var(
 
 /// body of type checking;  tenv; ienv |- c : contex_ty
 /// do some check in bottom up manner
-fn type_check_inner(
+fn type_check_body(
     config: &TCConfig,
     tenv: &mut Env,
     ienv: &mut HashSet<Ident>, // V
-    all_coefficients: &mut HashSet<Ident>,
-    c: &G,
+    all_coefs: &mut HashSet<Ident>,
+    expr: &G,
     context_ty: &Stack<Atom>,
 ) -> PossibleDerivation {
-    // the second element of the returned value is whether the expr was app.
-    // since app is delegated to `handle_app`, after go_inner, you don't have to register the result
-    // to the derivation tree again.
-    fn go(
-        config: &TCConfig,
-        tenv: &mut Env,
-        ienv: &mut HashSet<Ident>,
-        all_coefficients: &mut HashSet<Ident>,
-        expr: &G,
-        context_ty: &Stack<Atom>,
-    ) -> (PossibleDerivation, bool) {
-        // for App, we delegate the procedure to `handle_app`
-        // and in that procedure, it saves the types
-        let mut already_registered = false;
-        let result_pt = match expr.kind() {
-            formula::hes::GoalKind::Constr(constraint) => {
-                let constraint = constraint.clone().into();
-                let t = Ty::mk_prop_ty(constraint);
-                let cd = Derivation::rule_atom(context_ty.clone(), expr.clone(), t);
-                PossibleDerivation::singleton(cd)
-            }
-            formula::hes::GoalKind::Var(x) => {
-                handle_var(config, tenv, ienv, all_coefficients, expr, context_ty, x)
-            }
-            formula::hes::GoalKind::Conj(g1, g2) => {
-                let t1 = type_check_inner(config, tenv, ienv, all_coefficients, g1, context_ty);
-                let t2 = type_check_inner(config, tenv, ienv, all_coefficients, g2, context_ty);
-                PossibleDerivation::conjoin(context_ty.clone(), expr.clone(), t1, t2)
-            }
-            formula::hes::GoalKind::Disj(g1, g2) => {
-                let c1: Option<Constraint> = g1.clone().into();
-                let c2: Option<Constraint> = g2.clone().into();
-                match (c1, c2) {
-                    (Some(c1), _) => {
-                        let t1 = type_check_inner(
-                            config,
-                            tenv,
-                            ienv,
-                            all_coefficients,
-                            g1,
-                            &context_ty.push(c1.clone().into()),
-                        );
-                        let t2 = type_check_inner(
-                            config,
-                            tenv,
-                            ienv,
-                            all_coefficients,
-                            g2,
-                            &context_ty.push(c1.negate().unwrap().into()),
-                        );
-                        PossibleDerivation::disjoin(context_ty.clone(), expr.clone(), t1, t2)
-                    }
-                    (_, Some(c2)) => {
-                        let t1 = type_check_inner(
-                            config,
-                            tenv,
-                            ienv,
-                            all_coefficients,
-                            g1,
-                            &context_ty.push(c2.negate().unwrap().into()),
-                        );
-                        let t2 = type_check_inner(
-                            config,
-                            tenv,
-                            ienv,
-                            all_coefficients,
-                            g2,
-                            &context_ty.push(c2.into()),
-                        );
-                        PossibleDerivation::disjoin(context_ty.clone(), expr.clone(), t1, t2)
-                    }
-                    (_, _) => {
-                        panic!("program error")
-                    }
+    // for App, we delegate the procedure to `handle_app`
+    // and in that procedure, it saves the types
+    let result_pt = match expr.kind() {
+        formula::hes::GoalKind::Constr(constraint) => {
+            let constraint = constraint.clone().into();
+            let t = Ty::mk_prop_ty(constraint);
+            let cd = Derivation::rule_atom(context_ty.clone(), expr.clone(), t);
+            PossibleDerivation::singleton(cd)
+        }
+        formula::hes::GoalKind::Var(x) => {
+            handle_var(config, tenv, ienv, all_coefs, expr, context_ty, x)
+        }
+        formula::hes::GoalKind::Conj(g1, g2) => {
+            let t1 = type_check_body(config, tenv, ienv, all_coefs, g1, context_ty);
+            let t2 = type_check_body(config, tenv, ienv, all_coefs, g2, context_ty);
+            PossibleDerivation::conjoin(context_ty.clone(), expr.clone(), t1, t2)
+        }
+        formula::hes::GoalKind::Disj(g1, g2) => {
+            let c1: Option<Constraint> = g1.clone().into();
+            let c2: Option<Constraint> = g2.clone().into();
+            match (c1, c2) {
+                (Some(c1), _) => {
+                    let ctx = context_ty.push(c1.clone().into());
+                    let t1 = type_check_body(config, tenv, ienv, all_coefs, g1, &ctx);
+                    let ctx = context_ty.push(c1.negate().unwrap().into());
+                    let t2 = type_check_body(config, tenv, ienv, all_coefs, g2, &ctx);
+                    PossibleDerivation::disjoin(context_ty.clone(), expr.clone(), t1, t2)
+                }
+                (_, Some(c2)) => {
+                    let ctx = context_ty.push(c2.negate().unwrap().into());
+                    let t1 = type_check_body(config, tenv, ienv, all_coefs, g1, &ctx);
+                    let ctx = context_ty.push(c2.into());
+                    let t2 = type_check_body(config, tenv, ienv, all_coefs, g2, &ctx);
+                    PossibleDerivation::disjoin(context_ty.clone(), expr.clone(), t1, t2)
+                }
+                (_, _) => {
+                    panic!("program error")
                 }
             }
-            formula::hes::GoalKind::Univ(x, g) => {
-                let b = ienv.insert(x.id);
-                let mut pt = type_check_inner(config, tenv, ienv, all_coefficients, &g, context_ty);
-                if b {
-                    ienv.remove(&x.id);
-                }
-                // quantify all the constraint.
-                pt.quantify(context_ty.clone(), expr.clone(), &x.id);
-                pt
+        }
+        formula::hes::GoalKind::Univ(x, g) => {
+            let b = ienv.insert(x.id);
+            let mut pt = type_check_body(config, tenv, ienv, all_coefs, &g, context_ty);
+            if b {
+                ienv.remove(&x.id);
             }
-            formula::hes::GoalKind::App(_, _) => {
-                already_registered = true;
-                handle_app(config, tenv, ienv, all_coefficients, expr, context_ty)
-            }
-            formula::hes::GoalKind::Abs(_v, _g) => {
-                panic!("fatal error")
-            }
-            // op is always handled by App(x, op)
-            formula::hes::GoalKind::Op(_) => panic!("fatal error"),
-            formula::hes::GoalKind::ITE(_, _, _) => todo!(),
-        };
-        (result_pt, already_registered)
-    }
-    let (pt, _) = go(config, tenv, ienv, all_coefficients, c, context_ty);
-
-    pdebug!("type_check_go(", c.aux.id, ") |- ", c, " : ", pt ; bold);
-    pt
+            // quantify all the constraint.
+            pt.quantify(context_ty.clone(), expr.clone(), &x.id);
+            pt
+        }
+        formula::hes::GoalKind::App(_, _) => {
+            handle_app(config, tenv, ienv, all_coefs, expr, context_ty)
+        }
+        formula::hes::GoalKind::Abs(_v, _g) => {
+            panic!("fatal error")
+        }
+        // op is always handled by App(x, op)
+        formula::hes::GoalKind::Op(_) => panic!("fatal error"),
+        formula::hes::GoalKind::ITE(_, _, _) => todo!(),
+    };
+    pdebug!("type_check_go(", expr.aux.id, ") |- ", expr, " : ", result_pt ; bold);
+    result_pt
 }
 
 // we assume conjunction normal form and has the form (θ => a₁ a₂ ⋯) ∧ ⋯
@@ -1482,7 +1437,7 @@ fn type_check_top_with_derivation(psi: &G, tenv: &mut Env) -> Option<Derivation>
         tc_mode: TCFlag::Normal,
         construct_derivation: true,
     };
-    let pt = type_check_inner(
+    let pt = type_check_body(
         &config,
         tenv,
         &mut ienv,
@@ -1521,7 +1476,7 @@ fn type_check_top_with_derivation_and_constraints(
         tc_mode: TCFlag::Shared(ic),
         construct_derivation: true,
     };
-    let pt = type_check_inner(
+    let pt = type_check_body(
         &config,
         tenv,
         &mut ienv,
@@ -1682,6 +1637,16 @@ impl PossibleDerivation {
             .types
             .into_iter()
             .map(|d| Derivation::rule_arrow(context.clone(), expr.clone(), d, ts.to_vec()))
+            .collect();
+        PossibleDerivation { types }
+    }
+
+    /// Introduces pty rule to each derivation in the `PossibleDerivation`
+    fn pty(self, context: Stack<Atom>, x: &Ident) -> Self {
+        let types = self
+            .types
+            .into_iter()
+            .map(|d| Derivation::rule_polymorphic_type(context.clone(), d, *x))
             .collect();
         PossibleDerivation { types }
     }

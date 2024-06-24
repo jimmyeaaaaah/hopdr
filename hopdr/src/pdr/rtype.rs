@@ -531,7 +531,11 @@ impl<C: Refinement> Tau<C> {
                     None
                 }
             }
-            (_, _) => panic!("fatal"),
+            (_, _) => panic!(
+                "program error: {} <: {}",
+                t.pretty_display(),
+                s.pretty_display()
+            ),
         }
     }
     pub fn check_subtype_structural(context: C, t: &Tau<C>, s: &Tau<C>) -> Option<C> {
@@ -539,7 +543,8 @@ impl<C: Refinement> Tau<C> {
             (TauKind::Proposition(c1), TauKind::Proposition(c2)) => {
                 Some(C::mk_implies_opt(C::mk_conj(context, c2.clone()), c1.clone()).unwrap())
             }
-            (TauKind::IArrow(x1, t1), TauKind::IArrow(x2, t2)) => {
+            (TauKind::IArrow(x1, t1), TauKind::IArrow(x2, t2))
+            | (TauKind::PTy(x1, t1), TauKind::PTy(x2, t2)) => {
                 let t2 = t2.rename(x2, x1);
                 Tau::check_subtype_structural(context, t1, &t2)
             }
@@ -557,7 +562,13 @@ impl<C: Refinement> Tau<C> {
                     })
             }
             (TauKind::Arrow(_, _), TauKind::Arrow(_, _)) => None,
-            (_, _) => panic!("fatal"),
+            (_, _) => {
+                panic!(
+                    "program error: {} <: {}",
+                    t.pretty_display(),
+                    s.pretty_display()
+                )
+            }
         }
     }
     /// Create template without any polymorphic types
@@ -864,7 +875,7 @@ impl Tau<Constraint> {
     /// traverse all the prop types, and reduce the constraint by `Constraint::reduction_trivial`
     fn optimize_constraint_reduction(&self) -> Self {
         match self.kind() {
-            TauKind::Proposition(c) => Ty::mk_prop_ty(c.simplify()),
+            TauKind::Proposition(c) => Ty::mk_prop_ty(c.simplify_with_smt()),
             TauKind::IArrow(x, t) => Ty::mk_iarrow(*x, t.optimize_constraint_reduction()),
             TauKind::Arrow(ts, t) => {
                 let ts = ts
