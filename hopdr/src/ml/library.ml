@@ -3,6 +3,45 @@ exception FalseExc
 exception IntegerOverflow
 exception RecursionExceeded
 
+(* trace *)
+type id = int
+type value = int
+
+type trace =
+  | Conj of id * trace
+  | Disj of trace * trace
+  | Univ of value * trace
+  | App of string * value list * trace
+
+let mk_conj x t = Conj (x, t)
+let mk_disj t1 t2 = Disj (t1, t2)
+let mk_univ v t = Univ (v, t)
+let mk_app f vs t = App (f, vs, t)
+
+let rec print_trace t =
+  match t with
+  | Conj (x, t) ->
+      Printf.printf "(conj %d " x;
+      print_trace t;
+      Printf.printf ")"
+  | Disj (t1, t2) ->
+      Printf.printf "(disj ";
+      print_trace t1;
+      Printf.printf " ";
+      print_trace t2;
+      Printf.printf ")"
+  | Univ (v, t) ->
+      Printf.printf "(univ %d " v;
+      print_trace t;
+      Printf.printf ")"
+  | App (f, vs, t) ->
+      Printf.printf "(app %s [" f;
+      List.iter (fun v -> Printf.printf "%d " v) vs;
+      Printf.printf "] ";
+      print_trace t;
+      Printf.printf ")"
+
+(* random generator *)
 let check_mx = ref 100000
 let check_mn = ref (-100000)
 
