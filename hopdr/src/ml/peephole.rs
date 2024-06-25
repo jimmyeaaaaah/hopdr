@@ -183,6 +183,10 @@ pub(super) fn peephole_optimize<'a>(mut p: Program<'a>) -> Program<'a> {
                     Expr::mk_let_tuple(idents.clone(), body, cont)
                 }
             }
+            ExprKind::CallNamedFun(name, exprs) => {
+                let exprs = exprs.iter().map(f).collect();
+                Expr::mk_call_named_fun(name, exprs)
+            }
         }
     }
 
@@ -227,6 +231,10 @@ pub(super) fn peephole_optimize<'a>(mut p: Program<'a>) -> Program<'a> {
                 simplify_constraints(body),
                 simplify_constraints(cont),
             ),
+            ExprKind::CallNamedFun(name, e) => {
+                let exprs = e.iter().map(simplify_constraints).collect();
+                Expr::mk_call_named_fun(name, exprs)
+            }
         }
     }
     fn translate_expr(e: &Expr) -> Expr {

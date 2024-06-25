@@ -91,6 +91,7 @@ pub enum ExprKind {
         cont: Expr,
     },
     Op(Op),
+    CallNamedFun(&'static str, Vec<Expr>),
 }
 pub type Expr = P<ExprKind>;
 
@@ -101,7 +102,9 @@ impl Precedence for Expr {
             ExprKind::Constraint(c) => c.precedence(),
             ExprKind::Or(_, _) => PrecedenceKind::Disj,
             ExprKind::And(_, _) => PrecedenceKind::Conj,
-            ExprKind::App(_, _) | ExprKind::IApp(_, _) => PrecedenceKind::App,
+            ExprKind::App(_, _) | ExprKind::IApp(_, _) | ExprKind::CallNamedFun(_, _) => {
+                PrecedenceKind::App
+            }
             ExprKind::Fun { .. } => PrecedenceKind::Abs,
             ExprKind::If { .. } => PrecedenceKind::If,
             ExprKind::LetRand { .. } => PrecedenceKind::Abs,
@@ -201,6 +204,11 @@ impl Fv for Expr {
             ExprKind::Op(o) => {
                 o.fv_with_vec(fvs);
             }
+            ExprKind::CallNamedFun(_, exprs) => {
+                for e in exprs {
+                    e.fv_with_vec(fvs);
+                }
+            }
         }
     }
 }
@@ -275,6 +283,9 @@ impl Expr {
     pub fn mk_op(o: Op) -> Self {
         P::new(ExprKind::Op(o))
     }
+    pub fn mk_call_named_fun(name: &'static str, exprs: Vec<Expr>) -> Self {
+        P::new(ExprKind::CallNamedFun(name, exprs))
+    }
     pub fn subst(&self, ident: Ident, e: Expr) -> Self {
         match self.kind() {
             ExprKind::Var(x) if *x == ident => e,
@@ -330,6 +341,10 @@ impl Expr {
                     cont.subst(ident, e)
                 };
                 Expr::mk_let_tuple(idents.clone(), body, cont)
+            }
+            ExprKind::CallNamedFun(name, exprs) => {
+                let exprs = exprs.iter().map(|e2| e2.subst(ident, e.clone())).collect();
+                Expr::mk_call_named_fun(name, exprs)
             }
         }
     }
@@ -395,6 +410,10 @@ impl Expr {
                 Expr::mk_let_tuple(idents.clone(), body, cont)
             }
             ExprKind::Op(o) => Expr::mk_op(o.subst(&ident, &e)),
+            ExprKind::CallNamedFun(name, exprs) => {
+                let exprs = exprs.iter().map(|e2| e2.isubst(ident, e.clone())).collect();
+                Expr::mk_call_named_fun(name, exprs)
+            }
         }
     }
     /// checks if self is the expression of the form `if cond then raise True else ()`

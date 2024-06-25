@@ -296,6 +296,14 @@ impl DumpML for Expr {
                 cont.dump_ml(f, ctx)
             }
             ExprKind::Op(o) => o.dump_ml(f, ctx),
+            ExprKind::CallNamedFun(name, exprs) => {
+                write!(f, "{}", name)?;
+                for e in exprs.iter() {
+                    write!(f, " ")?;
+                    paren(f, self.precedence(), e, ctx)?;
+                }
+                Ok(())
+            }
         }
     }
 }

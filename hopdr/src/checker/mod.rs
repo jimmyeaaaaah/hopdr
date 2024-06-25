@@ -13,6 +13,13 @@ use mode::{Mode, ModeEnv};
 
 use std::collections::HashMap;
 
+// trace functions
+const T_MK_APP: &str = "mk_app";
+const T_MK_CONJ: &str = "mk_conj";
+const T_MK_DISJ: &str = "mk_disj";
+const T_MK_UNIV: &str = "mk_univ";
+const T_MK_EMPTY_TRACE: &str = "mk_empty_trace";
+
 #[derive(Clone)]
 pub struct Config {
     context: Context,
@@ -33,6 +40,7 @@ impl Config {
 struct Translator {
     config: Config,
     clause_idents: HashMap<Ident, HFLType>,
+    track_trace: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -93,6 +101,10 @@ impl Aux {
 type GoalM = GoalBase<Constraint, Aux>;
 type ProblemM = ProblemBase<Constraint, Aux>;
 
+fn mk_empty_trace() -> Expr {
+    Expr::mk_call_named_fun(T_MK_EMPTY_TRACE, vec![Expr::mk_unit()])
+}
+
 impl<'a> Translator {
     fn new(config: Config, problem: &Problem<Constraint>) -> Self {
         Self {
@@ -102,6 +114,7 @@ impl<'a> Translator {
                 .iter()
                 .map(|x| (x.head.id, x.head.ty.clone()))
                 .collect(),
+            track_trace: false,
         }
     }
     #[cfg(test)]
@@ -109,6 +122,7 @@ impl<'a> Translator {
         Self {
             config,
             clause_idents,
+            track_trace: false,
         }
     }
     fn translate_type_arg(&self, arg: &Mode, t: &HFLType) -> SType {
@@ -366,6 +380,14 @@ impl<'a> Translator {
         let c = Constraint::mk_eq(Op::mk_var(ident), Op::zero());
         let body = Expr::mk_if(Expr::mk_constraint(c), e1, e2);
         Expr::mk_let_bool_rand(ident, body)
+    }
+
+    fn handle_trace(&self, e: Expr) -> Expr {
+        if self.track_trace {
+            unimplemented!()
+        } else {
+            e
+        }
     }
 
     fn translate_goalm(&mut self, goal: &GoalM, cont: Expr) -> Expr {
