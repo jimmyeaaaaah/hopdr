@@ -304,6 +304,26 @@ impl DumpML for Expr {
                 }
                 Ok(())
             }
+            ExprKind::Tag(tag) => write!(f, "{}", tag),
+            ExprKind::List(l) => {
+                write!(f, "[")?;
+                let mut first = true;
+                for e in l.iter() {
+                    if first {
+                        first = false;
+                    } else {
+                        write!(f, "; ")?;
+                    }
+                    paren(f, PrecedenceKind::Sequential, e, ctx)?;
+                }
+                write!(f, "]")
+            }
+            ExprKind::LetTag(name, body, cont) => {
+                write!(f, "let {} = ", name)?;
+                body.dump_ml(f, ctx)?;
+                write!(f, " in ")?;
+                cont.dump_ml(f, ctx)
+            }
         }
     }
 }
