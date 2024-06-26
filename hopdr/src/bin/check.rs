@@ -120,7 +120,13 @@ fn report_result(result: checker::ExecResult) {
     print!("Verification Result: ");
     match result {
         checker::ExecResult::Unknown => println!("Unknown"),
-        checker::ExecResult::Invalid => println!("Invalid"),
+        checker::ExecResult::Invalid(s) => {
+            println!("Invalid");
+            match s {
+                Some(s) => println!("Trace: {s}"),
+                None => (),
+            }
+        }
         checker::ExecResult::Fail(s) => println!("Fail\nReason: {s}"),
     }
 }
@@ -148,8 +154,8 @@ fn run_multiple(
 
         while let Some(res) = set.join_next().await {
             match res {
-                Ok(checker::ExecResult::Invalid) => {
-                    return checker::ExecResult::Invalid;
+                Ok(checker::ExecResult::Invalid(s)) => {
+                    return checker::ExecResult::Invalid(s);
                 }
                 Ok(checker::ExecResult::Unknown) => {
                     info!("result: unknown");
@@ -209,7 +215,7 @@ fn handle_chc_data(
 ) {
     let (chcs, vmap) = match parse::parse_chc(&data, do_hoice_preprocess) {
         Ok(x) => x,
-        Err(r) if r.is_unsat() => return report_result(checker::ExecResult::Invalid),
+        Err(r) if r.is_unsat() => return report_result(checker::ExecResult::Invalid(None)),
         Err(r) => panic!("parse error: {:?}", r),
     };
     let ctx = generate_context_for_chc(&vmap);

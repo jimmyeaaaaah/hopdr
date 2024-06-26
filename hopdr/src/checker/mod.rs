@@ -45,10 +45,6 @@ fn mk_univ_trace(v: Expr, cur: Expr) -> Expr {
     Expr::mk_call_named_fun(T_MK_UNIV, values)
 }
 
-fn mk_empty_trace() -> Expr {
-    Expr::mk_call_named_fun(T_MK_EMPTY_TRACE, vec![Expr::mk_unit()])
-}
-
 #[derive(Clone)]
 pub struct Config {
     context: Context,
@@ -539,7 +535,6 @@ impl<'a> Translator {
                 }
             }
             GoalKind::Disj(g1, g2) => {
-                println!("disj");
                 let e1 = self.translate_goalm2(g1);
                 let e1 = Expr::mk_app(e1, Expr::mk_var(p));
                 let e2 = self.translate_goalm2(g2);

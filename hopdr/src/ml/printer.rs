@@ -251,7 +251,7 @@ impl DumpML for Expr {
             ExprKind::Assert(c) => {
                 write!(f, "if  ")?;
                 paren(f, self.precedence(), c, ctx)?;
-                write!(f, "then () else raise TrueExc")
+                write!(f, " then () else raise TrueExc")
             }
             ExprKind::Unit => write!(f, "()"),
             ExprKind::Raise => write!(f, "(raise TrueExc)"),

@@ -20,29 +20,34 @@ let mk_disj t1 t2 = TDisj (t1, t2)
 let mk_univ v t = TUniv (v, t)
 let mk_app f vs t = TApp (f, vs, t)
 
-let rec print_trace t =
-  match t with
-  | TEmpty -> Printf.printf "()"
-  | TConj (x, t) ->
-      Printf.printf "(conj %d " x;
-      print_trace t;
-      Printf.printf ")"
-  | TDisj (t1, t2) ->
-      Printf.printf "(disj ";
-      print_trace t1;
-      Printf.printf " ";
-      print_trace t2;
-      Printf.printf ")"
-  | TUniv (v, t) ->
-      Printf.printf "(univ %d " v;
-      print_trace t;
-      Printf.printf ")"
-  | TApp (f, vs, t) ->
-      Printf.printf "(app %s [" f;
-      List.iter (fun v -> Printf.printf "%d " v) vs;
-      Printf.printf "] ";
-      print_trace t;
-      Printf.printf ")"
+let print_trace t =
+  let rec go t =
+    match t with
+    | TEmpty -> Printf.printf "()"
+    | TConj (x, t) ->
+        Printf.printf "(conj %d " x;
+        go t;
+        Printf.printf ")"
+    | TDisj (t1, t2) ->
+        Printf.printf "(disj ";
+        go t1;
+        Printf.printf " ";
+        go t2;
+        Printf.printf ")"
+    | TUniv (v, t) ->
+        Printf.printf "(univ %d " v;
+        go t;
+        Printf.printf ")"
+    | TApp (f, vs, t) ->
+        Printf.printf "(app %s (" f;
+        List.iter (fun v -> Printf.printf "%d " v) vs;
+        Printf.printf ") ";
+        go t;
+        Printf.printf ")"
+  in
+  Printf.printf "[[trace]]\n";
+  go t;
+  Printf.printf "\n"
 
 (* random generator *)
 let check_mx = ref 100000
