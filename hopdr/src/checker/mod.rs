@@ -10,7 +10,6 @@ use crate::preprocess::Context;
 use crate::stat::check::stat;
 use crate::util::Pretty;
 pub use executor::ExecResult;
-use hoice::common::keywords::op::ge_;
 use mode::{Mode, ModeEnv};
 
 use std::collections::HashMap;
@@ -21,14 +20,14 @@ const T_MK_CONJ: &str = "mk_conj";
 const T_MK_DISJ: &str = "mk_disj";
 const T_MK_UNIV: &str = "mk_univ";
 const T_MK_EMPTY_TRACE: &str = "mk_empty_trace";
-const TRACE_VARIABLE: &str = "check_trace_variable";
+const T_PRINT_TRACE: &str = "print_trace";
 
 const TRACE_CONJ_LEFT: i64 = 0;
 const TRACE_CONJ_RIGHT: i64 = 1;
 
-fn mk_app_trace(name: String, args: Expr) -> Expr {
+fn mk_app_trace(name: String, args: Expr, cur: Expr) -> Expr {
     let tag = Expr::mk_tag(name);
-    let values = vec![tag, args, Expr::mk_tag(TRACE_VARIABLE.to_string())];
+    let values = vec![tag, args, cur];
     Expr::mk_call_named_fun(T_MK_APP, values)
 }
 fn mk_conj_trace(idx: i64, cur: Expr) -> Expr {
@@ -55,14 +54,21 @@ pub struct Config {
     context: Context,
     print_check_log: bool,
     no_mode_analysis: bool,
+    track_trace: bool,
 }
 
 impl Config {
-    pub fn new(context: &Context, print_check_log: bool, no_mode_analysis: bool) -> Self {
+    pub fn new(
+        context: &Context,
+        print_check_log: bool,
+        no_mode_analysis: bool,
+        track_trace: bool,
+    ) -> Self {
         Config {
             context: context.clone(),
             print_check_log,
             no_mode_analysis,
+            track_trace,
         }
     }
 }
@@ -70,7 +76,6 @@ impl Config {
 struct Translator {
     config: Config,
     clause_idents: HashMap<Ident, HFLType>,
-    track_trace: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -140,19 +145,13 @@ impl<'a> Translator {
                 .iter()
                 .map(|x| (x.head.id, x.head.ty.clone()))
                 .collect(),
-            track_trace: false,
         }
     }
     #[cfg(test)]
-    fn new_with_clause_idents(
-        config: Config,
-        clause_idents: HashMap<Ident, HFLType>,
-        track_trace: bool,
-    ) -> Self {
+    fn new_with_clause_idents(config: Config, clause_idents: HashMap<Ident, HFLType>) -> Self {
         Self {
             config,
             clause_idents,
-            track_trace,
         }
     }
     fn translate_type_arg(&self, arg: &Mode, t: &HFLType) -> SType {
@@ -416,7 +415,7 @@ impl<'a> Translator {
     where
         F: FnOnce(Expr) -> Expr,
     {
-        if self.track_trace {
+        if self.config.track_trace {
             let x = Ident::fresh();
             let cont = f(Expr::mk_var(x));
             Expr::mk_let(x, e, cont)
@@ -425,7 +424,7 @@ impl<'a> Translator {
         }
     }
     fn with_empty_trace(&self, e: Expr) -> Expr {
-        if self.track_trace {
+        if self.config.track_trace {
             Expr::mk_sequential(
                 e,
                 Expr::mk_call_named_fun(T_MK_EMPTY_TRACE, vec![Expr::mk_unit()]),
@@ -461,7 +460,7 @@ impl<'a> Translator {
             | GoalKind::Conj(_, _)
             | GoalKind::Disj(_, _)
             | GoalKind::Univ(_, _)
-            | GoalKind::ITE(_, _, _) => panic!("program error"),
+            | GoalKind::ITE(_, _, _) => panic!("program error: {}", goal),
         }
     }
     fn handle_app2(&mut self, goal: &GoalM, p: Ident) -> Expr {
@@ -470,12 +469,18 @@ impl<'a> Translator {
         let mut memos = Vec::new();
         loop {
             match pred.kind() {
+                GoalKind::App(g1, g2) if g2.aux.mode.is_int() => {
+                    let o: Op = g2.clone().into();
+                    let arg = Expr::mk_op(o);
+                    if g2.aux.mode.is_int() {
+                        memos.push(arg.clone());
+                    }
+                    args.push(arg.clone());
+                    pred = g1.clone();
+                }
                 GoalKind::App(g1, g2) => {
                     let arg = self.translate_predicates2(g2);
                     args.push(arg.clone());
-                    if g2.aux.mode.is_int() {
-                        memos.push(arg);
-                    }
                     pred = g1.clone();
                 }
                 _ => break,
@@ -486,14 +491,14 @@ impl<'a> Translator {
             body = Expr::mk_app(body, arg);
         }
         body = Expr::mk_app(body, Expr::mk_var(p));
-        let tr = match pred.kind() {
-            GoalKind::Var(x) => match self.config.context.inverse_map.get(x) {
-                Some(c) => mk_app_trace(c.clone(), Expr::mk_list(memos)),
-                None => mk_empty_trace(),
-            },
-            _ => mk_empty_trace(),
+        let v = match pred.kind() {
+            GoalKind::Var(x) => self.config.context.inverse_map.get(x),
+            _ => None,
         };
-        Expr::mk_sequential(body, tr)
+        self.destruct_trace(body, |x| {
+            v.map(|c| mk_app_trace(c.clone(), Expr::mk_list(memos), x.clone()))
+                .unwrap_or(x)
+        })
     }
 
     // * = trace
@@ -518,9 +523,11 @@ impl<'a> Translator {
                 let g1 = self.translate_goalm2(g1_fml);
                 let g1 = Expr::mk_app(g1, Expr::mk_var(p));
                 let g1 = self.destruct_trace(g1, |x| mk_conj_trace(TRACE_CONJ_LEFT, x));
-                let g2 = self.translate_goalm2(g1_fml);
+
+                let g2 = self.translate_goalm2(g2_fml);
                 let g2 = Expr::mk_app(g2, Expr::mk_var(p));
                 let g2 = self.destruct_trace(g2, |x| mk_conj_trace(TRACE_CONJ_RIGHT, x));
+
                 let left = Expr::mk_try_with(g1.clone(), g2.clone());
                 let right = Expr::mk_try_with(g2.clone(), g2.clone());
                 if Into::<Option<Constraint>>::into(g1_fml.clone()).is_some() {
@@ -649,6 +656,13 @@ impl<'a> Translator {
             }
         })
     }
+    fn finalize_trace(&mut self, expr: Expr) -> Expr {
+        if self.config.track_trace {
+            self.destruct_trace(expr, |x| Expr::mk_call_named_fun(T_PRINT_TRACE, vec![x]))
+        } else {
+            expr
+        }
+    }
     fn translate(&mut self, problem: ProblemM) -> Program {
         let functions: Vec<_> = problem
             .clauses
@@ -656,7 +670,7 @@ impl<'a> Translator {
             .map(|c| {
                 let name = c.head.id;
                 let ty = self.translate_type(&c.body.aux.mode, &c.head.ty);
-                if self.track_trace {
+                if self.config.track_trace {
                     let body = self.translate_predicates2(&c.body);
                     Function { name, ty, body }
                 } else {
@@ -665,12 +679,14 @@ impl<'a> Translator {
                 }
             })
             .collect();
-        let main = if self.track_trace {
+        let main = if self.config.track_trace {
             self.translate_goalm2(&problem.top)
         } else {
             self.translate_goalm(&problem.top, Expr::mk_unit())
         };
         let main = Expr::mk_app(main, Expr::mk_unit());
+        let main = self.finalize_trace(main);
+
         Program {
             functions,
             main,
@@ -789,7 +805,7 @@ fn test_translate_predicate() {
     let g8 = gen_fml_for_test();
     let ctx = Context::empty();
     let mut tr =
-        Translator::new_with_clause_idents(Config::new(&ctx, true, false), HashMap::new(), false);
+        Translator::new_with_clause_idents(Config::new(&ctx, true, false, false), HashMap::new());
     let e = tr.translate_predicates(&g8, Vec::new());
     println!("{}", e.print_expr(&ctx));
 }
@@ -883,7 +899,7 @@ fn test_translate_predicate_trace() {
     );
 
     let mut tr =
-        Translator::new_with_clause_idents(Config::new(&ctx, true, false), HashMap::new(), true);
+        Translator::new_with_clause_idents(Config::new(&ctx, true, false, true), HashMap::new());
     let e = tr.translate_predicates2(&g6);
     println!("\nclause 2: {}", g6.pretty_display());
     println!("{}", e.print_expr(&ctx));
@@ -896,7 +912,7 @@ pub async fn run(problem: Problem<Constraint>, config: Config) -> executor::Exec
     }
     let mut trans = Translator::new(config.clone(), &problem);
     let problem_with_mode = stat("mode infer", || {
-        mode_infer::infer(problem, config.no_mode_analysis)
+        mode_infer::infer(problem, config.no_mode_analysis || config.track_trace)
     });
     let prog = stat("translate", || trans.translate(problem_with_mode));
 

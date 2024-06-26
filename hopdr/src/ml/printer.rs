@@ -249,8 +249,9 @@ impl DumpML for Expr {
                 body.dump_ml(f, ctx)
             }
             ExprKind::Assert(c) => {
-                write!(f, "assert ")?;
-                paren(f, self.precedence(), c, ctx)
+                write!(f, "if  ")?;
+                paren(f, self.precedence(), c, ctx)?;
+                write!(f, "then () else raise TrueExc")
             }
             ExprKind::Unit => write!(f, "()"),
             ExprKind::Raise => write!(f, "(raise TrueExc)"),
@@ -304,7 +305,7 @@ impl DumpML for Expr {
                 }
                 Ok(())
             }
-            ExprKind::Tag(tag) => write!(f, "{}", tag),
+            ExprKind::Tag(tag) => write!(f, "\"{}\"", tag),
             ExprKind::List(l) => {
                 write!(f, "[")?;
                 let mut first = true;
