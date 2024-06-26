@@ -498,7 +498,7 @@ impl<'a> Translator {
 
     // * = trace
     fn translate_goalm2(&mut self, goal: &GoalM) -> Expr {
-        println!("translating: {}", goal.pretty_display());
+        debug!("translate_goalm2: {}", goal);
         use crate::formula::Negation;
         Self::gen_prop(|p| match goal.kind() {
             GoalKind::Constr(c) => {
@@ -516,8 +516,10 @@ impl<'a> Translator {
             GoalKind::App(_, _) => self.handle_app2(goal, p),
             GoalKind::Conj(g1_fml, g2_fml) => {
                 let g1 = self.translate_goalm2(g1_fml);
+                let g1 = Expr::mk_app(g1, Expr::mk_var(p));
                 let g1 = self.destruct_trace(g1, |x| mk_conj_trace(TRACE_CONJ_LEFT, x));
                 let g2 = self.translate_goalm2(g1_fml);
+                let g2 = Expr::mk_app(g2, Expr::mk_var(p));
                 let g2 = self.destruct_trace(g2, |x| mk_conj_trace(TRACE_CONJ_RIGHT, x));
                 let left = Expr::mk_try_with(g1.clone(), g2.clone());
                 let right = Expr::mk_try_with(g2.clone(), g2.clone());
@@ -532,17 +534,28 @@ impl<'a> Translator {
             GoalKind::Disj(g1, g2) => {
                 println!("disj");
                 let e1 = self.translate_goalm2(g1);
+                let e1 = Expr::mk_app(e1, Expr::mk_var(p));
                 let e2 = self.translate_goalm2(g2);
+                let e2 = Expr::mk_app(e2, Expr::mk_var(p));
                 self.destruct_trace(e1, |x| self.destruct_trace(e2, |y| mk_disj_trace(x, y)))
             }
             GoalKind::Univ(v, g) => {
+                assert!(v.ty.is_int() || v.ty.is_bit());
+                let mut range = ai::analyze(v.id, g);
+                if v.ty.is_bit() {
+                    range = range.meet(Range::boolean())
+                }
                 let body = self.translate_goalm2(g);
-                self.destruct_trace(body, |x| mk_univ_trace(Expr::mk_var(v.id), x))
+                let body = Expr::mk_app(body, Expr::mk_var(p));
+                let body = self.destruct_trace(body, |x| mk_univ_trace(Expr::mk_var(v.id), x));
+                Expr::mk_letrand(v.id, range, body)
             }
             GoalKind::ITE(c, g1, g2) => {
                 let e1 = self.translate_goalm2(g1);
+                let e1 = Expr::mk_app(e1, Expr::mk_var(p));
                 let g1 = self.destruct_trace(e1, |x| mk_conj_trace(TRACE_CONJ_LEFT, x));
                 let e2 = self.translate_goalm2(g2);
+                let e2 = Expr::mk_app(e2, Expr::mk_var(p));
                 let g2 = self.destruct_trace(e2, |x| mk_conj_trace(TRACE_CONJ_RIGHT, x));
                 Expr::mk_if(Expr::mk_constraint(c.clone()), g1, g2)
             }
@@ -601,7 +614,6 @@ impl<'a> Translator {
                 GoalKind::Univ(v, g) => {
                     let body = Expr::mk_app(self.translate_goalm(g, cont), Expr::mk_var(p));
                     let m = goal.aux.get_univ_mode();
-                    let body = self.destruct_trace(body, |x| mk_univ_trace(Expr::mk_var(v.id), x));
                     match m.kind() {
                         mode::ModeKind::Out => {
                             // TODO: assert(!body.fv().contains(&v.id));
@@ -787,7 +799,7 @@ fn test_translate_predicate_trace() {
     //let g8 = gen_fml_for_test();
 
     let ctx = Context::empty();
-    /// Currently, mode out is not supported in the trace mode
+    // Currently, mode out is not supported in the trace mode
     //let mut tr =
     //    Translator::new_with_clause_idents(Config::new(&ctx, true, false), HashMap::new(), true);
     //let e = tr.translate_predicates2(&g8);
