@@ -10,10 +10,10 @@ use crate::preprocess::Context;
 use crate::stat::check::stat;
 use crate::util::Pretty;
 pub use executor::ExecResult;
+use hoice::common::keywords::op::ge_;
 use mode::{Mode, ModeEnv};
 
 use std::collections::HashMap;
-use std::vec;
 
 // trace functions
 const T_MK_APP: &str = "mk_app";
@@ -26,28 +26,28 @@ const TRACE_VARIABLE: &str = "check_trace_variable";
 const TRACE_CONJ_LEFT: i64 = 0;
 const TRACE_CONJ_RIGHT: i64 = 1;
 
-fn push_trace(trace: Expr, cont: Expr) -> Expr {
-    Expr::mk_let_tag(TRACE_VARIABLE.to_string(), trace, cont)
-}
-
-fn mk_app_trace(name: String, args: Expr, body: Expr) -> Expr {
+fn mk_app_trace(name: String, args: Expr) -> Expr {
     let tag = Expr::mk_tag(name);
     let values = vec![tag, args, Expr::mk_tag(TRACE_VARIABLE.to_string())];
-    push_trace(Expr::mk_call_named_fun(T_MK_APP, values), body)
+    Expr::mk_call_named_fun(T_MK_APP, values)
 }
-fn mk_conj_trace(idx: i64, body: Expr) -> Expr {
+fn mk_conj_trace(idx: i64, cur: Expr) -> Expr {
     let idx = Expr::mk_op(Op::mk_const(idx));
-    let values = vec![idx, Expr::mk_tag(TRACE_VARIABLE.to_string())];
-    push_trace(Expr::mk_call_named_fun(T_MK_CONJ, values), body)
+    let values = vec![idx, cur];
+    Expr::mk_call_named_fun(T_MK_CONJ, values)
 }
 
-fn mk_disj_trace(left: Expr, right: Expr, body: Expr) -> Expr {
-    push_trace(Expr::mk_call_named_fun(T_MK_DISJ, vec![left, right]), body)
+fn mk_disj_trace(left: Expr, right: Expr) -> Expr {
+    Expr::mk_call_named_fun(T_MK_DISJ, vec![left, right])
 }
 
-fn mk_univ_trace(v: Expr, body: Expr) -> Expr {
-    let values = vec![v, Expr::mk_tag(TRACE_VARIABLE.to_string())];
-    push_trace(Expr::mk_call_named_fun(T_MK_UNIV, values), body)
+fn mk_univ_trace(v: Expr, cur: Expr) -> Expr {
+    let values = vec![v, cur];
+    Expr::mk_call_named_fun(T_MK_UNIV, values)
+}
+
+fn mk_empty_trace() -> Expr {
+    Expr::mk_call_named_fun(T_MK_EMPTY_TRACE, vec![Expr::mk_unit()])
 }
 
 #[derive(Clone)]
@@ -213,7 +213,7 @@ impl<'a> Translator {
             self.translate_predicates(&goal, Vec::new())
         }
     }
-    fn handle_app(&mut self, goal: GoalM, p: Ident) -> Expr {
+    fn handle_app(&mut self, goal: GoalM, p: Ident, cont: Expr) -> Expr {
         fn handle_out_arg(g: &GoalM, rets: &mut Vec<Ident>, env: &ModeEnv) -> Option<(Ident, Op)> {
             let o = match g.kind() {
                 GoalKind::Var(v) => {
@@ -303,7 +303,7 @@ impl<'a> Translator {
         }
         // case for handling subsumption (passing input variables as the output)
         body = Expr::mk_app(body, Expr::mk_var(p));
-        let mut cont = Expr::mk_tuple(goal.aux.env.iter().filter(|(_, m)| m.is_out()))
+        let mut cont = cont;
         if checks.len() > 0 {
             let check = checks
                 .into_iter()
@@ -330,17 +330,7 @@ impl<'a> Translator {
                 let exprs = variables.into_iter().map(|x| Expr::mk_var(x)).collect();
                 Expr::mk_tuple(exprs)
             };
-            return if self.track_trace {
-                let cont = Expr::mk_tuple(vec![cont, Expr::mk_tag(TRACE_VARIABLE.to_string())]);
-                let r = self.translate_goalm(goal, cont);
-                Expr::mk_let_tag(
-                    TRACE_VARIABLE.to_string(),
-                    Expr::mk_call_named_fun(T_MK_EMPTY_TRACE, vec![Expr::mk_unit()]),
-                    r,
-                )
-            } else {
-                self.translate_goalm(goal, cont)
-            };
+            return self.translate_goalm(goal, cont);
         }
         match goal.kind() {
             GoalKind::Var(x) => Expr::mk_var(*x),
@@ -381,12 +371,14 @@ impl<'a> Translator {
         }
     }
 
-    fn handle_constr(&self, c: &Constraint, env: &ModeEnv) -> Expr {
-        use crate::formula::Negation;
-        Expr::mk_assert(Expr::mk_constraint(c.negate().unwrap()))
+    fn handle_constr(&self, c: &Constraint, cont: Expr, env: &ModeEnv) -> Expr {
+        let fvs = c.fv();
+        assert!(!fvs.iter().any(|x| env.get(x).unwrap().is_out()));
+
+        Expr::mk_if(Expr::mk_constraint(c.clone()), Expr::mk_raise(), cont)
     }
 
-    fn handle_neq(&mut self, o1: &Op, o2: &Op, env: &ModeEnv) -> Expr {
+    fn handle_neq(&mut self, o1: &Op, o2: &Op, cont: Expr, env: &ModeEnv) -> Expr {
         let mut fvs = o1.fv();
         o2.fv_with_vec(&mut fvs);
         let v: Vec<&Ident> = fvs
@@ -394,41 +386,26 @@ impl<'a> Translator {
             .filter(|x| matches!(env.get(x).unwrap().kind(), mode::ModeKind::Out))
             .collect();
         if v.len() == 0 {
-            return self.handle_constr(&Constraint::mk_neq(o1.clone(), o2.clone()), env);
+            return self.handle_constr(&Constraint::mk_neq(o1.clone(), o2.clone()), cont, env);
         }
         assert_eq!(v.len(), 1);
 
         let v = v[0];
 
         let o = Op::solve_for(v, o1, o2).unwrap();
-        Expr::mk_op(o)
+        Expr::mk_let(*v, Expr::mk_op(o), cont)
     }
 
-    fn with_empty_trace(&self, e: Expr) -> Expr {
-        if self.track_trace {
-            Expr::mk_tuple(vec![
-                e,
-                Expr::mk_call_named_fun(T_MK_EMPTY_TRACE, vec![Expr::mk_unit()]),
-            ])
-        } else {
-            e
+    fn translate_constraintm(&mut self, c: &Constraint, cont: Expr, env: &ModeEnv) -> Expr {
+        match c.kind() {
+            crate::formula::ConstraintExpr::Pred(PredKind::Neq, l) if l.len() == 2 => {
+                self.handle_neq(&l[0], &l[1], cont, env)
+            }
+            _ => self.handle_constr(c, cont, env),
         }
     }
 
-    fn translate_constraintm(&mut self, c: &Constraint, env: &ModeEnv) -> Expr {
-        let e = match c.kind() {
-            crate::formula::ConstraintExpr::Pred(PredKind::Neq, l) if l.len() == 2 => {
-                self.handle_neq(&l[0], &l[1], env)
-            }
-            _ => self.handle_constr(c, env),
-        };
-
-        self.with_empty_trace(e)
-    }
-
     fn mk_demonic_branch(&self, e1: Expr, e2: Expr) -> Expr {
-        let e1 = mk_conj_trace(0, e1);
-        let e2 = mk_conj_trace(0, e2);
         let ident = Ident::fresh();
         let c = Constraint::mk_eq(Op::mk_var(ident), Op::zero());
         let body = Expr::mk_if(Expr::mk_constraint(c), e1, e2);
@@ -437,28 +414,150 @@ impl<'a> Translator {
 
     fn destruct_trace<F>(&self, e: Expr, f: F) -> Expr
     where
-        F: Fn(Expr) -> Expr,
+        F: FnOnce(Expr) -> Expr,
     {
         if self.track_trace {
             let x = Ident::fresh();
-            let y = Ident::fresh();
-            let new_trace = f(Expr::mk_var(y));
-            let cont = Expr::mk_tuple(vec![Expr::mk_var(x), new_trace]);
-            Expr::mk_let_tuple(vec![x, y], e, cont)
+            let cont = f(Expr::mk_var(x));
+            Expr::mk_let(x, e, cont)
+        } else {
+            e
+        }
+    }
+    fn with_empty_trace(&self, e: Expr) -> Expr {
+        if self.track_trace {
+            Expr::mk_sequential(
+                e,
+                Expr::mk_call_named_fun(T_MK_EMPTY_TRACE, vec![Expr::mk_unit()]),
+            )
         } else {
             e
         }
     }
 
-    fn translate_goalm(&mut self, goal: &GoalM) -> Expr {
+    // TODO: merge predicate2 and predicate
+    fn translate_predicates2(&mut self, goal: &GoalM) -> Expr {
+        let m = &goal.aux.mode;
+        if m.is_prop() {
+            return self.translate_goalm2(goal);
+        }
+        match goal.kind() {
+            GoalKind::Var(x) => Expr::mk_var(*x),
+            GoalKind::Abs(v, g) if v.ty.is_int() => {
+                let arg = m.is_fun().unwrap().0;
+                let v = Variable::mk(v.id, self.translate_type_arg(arg, &v.ty));
+                let body = self.translate_predicates2(g);
+                Expr::mk_fun(v, body)
+            }
+            GoalKind::Abs(v, g) => {
+                let arg = m.is_fun().unwrap().0;
+                let v = Variable::mk(v.id, self.translate_type(arg, &v.ty));
+                let body = self.translate_predicates2(g);
+                Expr::mk_fun(v, body)
+            }
+            GoalKind::App(_, _) => panic!("eta expansiton fails?"),
+            GoalKind::Constr(_)
+            | GoalKind::Op(_)
+            | GoalKind::Conj(_, _)
+            | GoalKind::Disj(_, _)
+            | GoalKind::Univ(_, _)
+            | GoalKind::ITE(_, _, _) => panic!("program error"),
+        }
+    }
+    fn handle_app2(&mut self, goal: &GoalM, p: Ident) -> Expr {
+        let mut pred = goal.clone();
+        let mut args = Vec::new();
+        let mut memos = Vec::new();
+        loop {
+            match pred.kind() {
+                GoalKind::App(g1, g2) => {
+                    let arg = self.translate_predicates2(g2);
+                    args.push(arg.clone());
+                    if g2.aux.mode.is_int() {
+                        memos.push(arg);
+                    }
+                    pred = g1.clone();
+                }
+                _ => break,
+            }
+        }
+        let mut body = self.translate_predicates2(&pred);
+        for arg in args.into_iter().rev() {
+            body = Expr::mk_app(body, arg);
+        }
+        body = Expr::mk_app(body, Expr::mk_var(p));
+        let tr = match pred.kind() {
+            GoalKind::Var(x) => match self.config.context.inverse_map.get(x) {
+                Some(c) => mk_app_trace(c.clone(), Expr::mk_list(memos)),
+                None => mk_empty_trace(),
+            },
+            _ => mk_empty_trace(),
+        };
+        Expr::mk_sequential(body, tr)
+    }
+
+    // * = trace
+    fn translate_goalm2(&mut self, goal: &GoalM) -> Expr {
+        println!("translating: {}", goal.pretty_display());
+        use crate::formula::Negation;
+        Self::gen_prop(|p| match goal.kind() {
+            GoalKind::Constr(c) => {
+                self.with_empty_trace(Expr::mk_assert(Expr::mk_constraint(c.negate().unwrap())))
+            }
+            GoalKind::Op(_) => panic!("program error"),
+            GoalKind::Var(x) => {
+                let v = Expr::mk_var(*x);
+                let body = Expr::mk_unit();
+                self.with_empty_trace(Expr::mk_app(v, body))
+            }
+            GoalKind::Abs(_, _) => {
+                panic!("program error")
+            }
+            GoalKind::App(_, _) => self.handle_app2(goal, p),
+            GoalKind::Conj(g1_fml, g2_fml) => {
+                let g1 = self.translate_goalm2(g1_fml);
+                let g1 = self.destruct_trace(g1, |x| mk_conj_trace(TRACE_CONJ_LEFT, x));
+                let g2 = self.translate_goalm2(g1_fml);
+                let g2 = self.destruct_trace(g2, |x| mk_conj_trace(TRACE_CONJ_RIGHT, x));
+                let left = Expr::mk_try_with(g1.clone(), g2.clone());
+                let right = Expr::mk_try_with(g2.clone(), g2.clone());
+                if Into::<Option<Constraint>>::into(g1_fml.clone()).is_some() {
+                    left
+                } else if Into::<Option<Constraint>>::into(g2_fml.clone()).is_some() {
+                    right
+                } else {
+                    self.mk_demonic_branch(left, right)
+                }
+            }
+            GoalKind::Disj(g1, g2) => {
+                println!("disj");
+                let e1 = self.translate_goalm2(g1);
+                let e2 = self.translate_goalm2(g2);
+                self.destruct_trace(e1, |x| self.destruct_trace(e2, |y| mk_disj_trace(x, y)))
+            }
+            GoalKind::Univ(v, g) => {
+                let body = self.translate_goalm2(g);
+                self.destruct_trace(body, |x| mk_univ_trace(Expr::mk_var(v.id), x))
+            }
+            GoalKind::ITE(c, g1, g2) => {
+                let e1 = self.translate_goalm2(g1);
+                let g1 = self.destruct_trace(e1, |x| mk_conj_trace(TRACE_CONJ_LEFT, x));
+                let e2 = self.translate_goalm2(g2);
+                let g2 = self.destruct_trace(e2, |x| mk_conj_trace(TRACE_CONJ_RIGHT, x));
+                Expr::mk_if(Expr::mk_constraint(c.clone()), g1, g2)
+            }
+        })
+    }
+
+    fn translate_goalm(&mut self, goal: &GoalM, cont: Expr) -> Expr {
         debug!("tranlsate goal: {}: {}", goal, goal.aux.mode);
         Self::gen_prop(|p| {
             match goal.kind() {
-                GoalKind::Constr(c) => self.translate_constraintm(c, &goal.aux.env),
+                GoalKind::Constr(c) => self.translate_constraintm(c, cont, &goal.aux.env),
                 GoalKind::Var(x) => {
-                    self.with_empty_trace(Expr::mk_app(Expr::mk_var(*x), Expr::mk_var(p)))
+                    Expr::mk_sequential(Expr::mk_app(Expr::mk_var(*x), Expr::mk_var(p)), cont)
                 }
-                GoalKind::App(_, _) => self.handle_app(goal.clone(), p),
+                GoalKind::App(_, _) => self.handle_app(goal.clone(), p, cont),
                 GoalKind::Conj(g1_fml, g2_fml) => {
                     let fvs: Vec<Ident> = cont
                         .fv()
@@ -545,11 +644,20 @@ impl<'a> Translator {
             .map(|c| {
                 let name = c.head.id;
                 let ty = self.translate_type(&c.body.aux.mode, &c.head.ty);
-                let body = self.translate_predicates(&c.body, Vec::new());
-                Function { name, ty, body }
+                if self.track_trace {
+                    let body = self.translate_predicates2(&c.body);
+                    Function { name, ty, body }
+                } else {
+                    let body = self.translate_predicates(&c.body, Vec::new());
+                    Function { name, ty, body }
+                }
             })
             .collect();
-        let main = self.translate_goalm(&problem.top, Expr::mk_unit());
+        let main = if self.track_trace {
+            self.translate_goalm2(&problem.top)
+        } else {
+            self.translate_goalm(&problem.top, Expr::mk_unit())
+        };
         let main = Expr::mk_app(main, Expr::mk_unit());
         Program {
             functions,
@@ -676,14 +784,15 @@ fn test_translate_predicate() {
 
 #[test]
 fn test_translate_predicate_trace() {
-    let g8 = gen_fml_for_test();
+    //let g8 = gen_fml_for_test();
 
     let ctx = Context::empty();
-    let mut tr =
-        Translator::new_with_clause_idents(Config::new(&ctx, true, false), HashMap::new(), true);
-    let e = tr.translate_predicates(&g8, Vec::new());
-    println!("clause 1: {}", g8.pretty_display());
-    println!("{}", e.print_expr(&ctx));
+    /// Currently, mode out is not supported in the trace mode
+    //let mut tr =
+    //    Translator::new_with_clause_idents(Config::new(&ctx, true, false), HashMap::new(), true);
+    //let e = tr.translate_predicates2(&g8);
+    //println!("clause 1: {}", g8.pretty_display());
+    //println!("{}", e.print_expr(&ctx));
 
     // P = \x. \y. ∀w. x < y \/ y < w
     let x = Ident::fresh();
@@ -761,15 +870,15 @@ fn test_translate_predicate_trace() {
         },
     );
 
-    Translator::new_with_clause_idents(Config::new(&ctx, true, false), HashMap::new(), true);
-    let e = tr.translate_predicates(&g6, Vec::new());
+    let mut tr =
+        Translator::new_with_clause_idents(Config::new(&ctx, true, false), HashMap::new(), true);
+    let e = tr.translate_predicates2(&g6);
     println!("\nclause 2: {}", g6.pretty_display());
     println!("{}", e.print_expr(&ctx));
 }
 
 pub async fn run(problem: Problem<Constraint>, config: Config) -> executor::ExecResult {
     if config.print_check_log {
-        use crate::util::Pretty;
         println!("translated nu hflz");
         println!("{}", problem.pretty_display_with_context(&config.context));
     }
