@@ -91,6 +91,10 @@ pub enum ExprKind {
         cont: Expr,
     },
     Op(Op),
+    CallNamedFun(&'static str, Vec<Expr>),
+    Tag(String),
+    LetTag(String, Expr, Expr),
+    List(Vec<Expr>),
 }
 pub type Expr = P<ExprKind>;
 
@@ -101,7 +105,9 @@ impl Precedence for Expr {
             ExprKind::Constraint(c) => c.precedence(),
             ExprKind::Or(_, _) => PrecedenceKind::Disj,
             ExprKind::And(_, _) => PrecedenceKind::Conj,
-            ExprKind::App(_, _) | ExprKind::IApp(_, _) => PrecedenceKind::App,
+            ExprKind::App(_, _) | ExprKind::IApp(_, _) | ExprKind::CallNamedFun(_, _) => {
+                PrecedenceKind::App
+            }
             ExprKind::Fun { .. } => PrecedenceKind::Abs,
             ExprKind::If { .. } => PrecedenceKind::If,
             ExprKind::LetRand { .. } => PrecedenceKind::Abs,
@@ -113,6 +119,9 @@ impl Precedence for Expr {
             ExprKind::Tuple(_) => PrecedenceKind::Atom,
             ExprKind::LetTuple { .. } => PrecedenceKind::Abs,
             ExprKind::Op(o) => o.precedence(),
+            ExprKind::Tag(_) => PrecedenceKind::Atom,
+            ExprKind::List(_) => PrecedenceKind::Atom,
+            ExprKind::LetTag(_, _, _) => PrecedenceKind::Abs,
         }
     }
 }
@@ -201,6 +210,21 @@ impl Fv for Expr {
             ExprKind::Op(o) => {
                 o.fv_with_vec(fvs);
             }
+            ExprKind::CallNamedFun(_, exprs) => {
+                for e in exprs {
+                    e.fv_with_vec(fvs);
+                }
+            }
+            ExprKind::Tag(_) => {}
+            ExprKind::List(exprs) => {
+                for e in exprs {
+                    e.fv_with_vec(fvs);
+                }
+            }
+            ExprKind::LetTag(_, body, cont) => {
+                body.fv_with_vec(fvs);
+                cont.fv_with_vec(fvs);
+            }
         }
     }
 }
@@ -275,10 +299,24 @@ impl Expr {
     pub fn mk_op(o: Op) -> Self {
         P::new(ExprKind::Op(o))
     }
+    pub fn mk_call_named_fun(name: &'static str, exprs: Vec<Expr>) -> Self {
+        P::new(ExprKind::CallNamedFun(name, exprs))
+    }
+    pub fn mk_tag(s: String) -> Self {
+        P::new(ExprKind::Tag(s))
+    }
+    pub fn mk_list(exprs: Vec<Expr>) -> Self {
+        P::new(ExprKind::List(exprs))
+    }
+    pub fn mk_let_tag(name: String, body: Expr, cont: Expr) -> Self {
+        P::new(ExprKind::LetTag(name, body, cont))
+    }
     pub fn subst(&self, ident: Ident, e: Expr) -> Self {
         match self.kind() {
             ExprKind::Var(x) if *x == ident => e,
-            ExprKind::Var(_) | ExprKind::Op(_) | ExprKind::Constraint(_) => self.clone(),
+            ExprKind::Var(_) | ExprKind::Op(_) | ExprKind::Constraint(_) | ExprKind::Tag(_) => {
+                self.clone()
+            }
             ExprKind::Or(lhs, rhs) => Expr::mk_or(lhs.subst(ident, e.clone()), rhs.subst(ident, e)),
             ExprKind::And(lhs, rhs) => {
                 Expr::mk_and(lhs.subst(ident, e.clone()), rhs.subst(ident, e))
@@ -331,12 +369,25 @@ impl Expr {
                 };
                 Expr::mk_let_tuple(idents.clone(), body, cont)
             }
+            ExprKind::CallNamedFun(name, exprs) => {
+                let exprs = exprs.iter().map(|e2| e2.subst(ident, e.clone())).collect();
+                Expr::mk_call_named_fun(name, exprs)
+            }
+            ExprKind::List(exprs) => {
+                let exprs = exprs.iter().map(|e2| e2.subst(ident, e.clone())).collect();
+                Expr::mk_list(exprs)
+            }
+            ExprKind::LetTag(name, body, cont) => Expr::mk_let_tag(
+                name.clone(),
+                body.subst(ident, e.clone()),
+                cont.subst(ident, e),
+            ),
         }
     }
     pub fn isubst(&self, ident: Ident, e: Op) -> Self {
         match self.kind() {
             ExprKind::Var(x) if *x == ident => panic!("program error"),
-            ExprKind::Var(_) => self.clone(),
+            ExprKind::Var(_) | ExprKind::Tag(_) => self.clone(),
             ExprKind::Constraint(c) => Expr::mk_constraint(c.subst(&ident, &e)),
             ExprKind::Or(lhs, rhs) => {
                 Expr::mk_or(lhs.isubst(ident, e.clone()), rhs.isubst(ident, e))
@@ -395,6 +446,19 @@ impl Expr {
                 Expr::mk_let_tuple(idents.clone(), body, cont)
             }
             ExprKind::Op(o) => Expr::mk_op(o.subst(&ident, &e)),
+            ExprKind::CallNamedFun(name, exprs) => {
+                let exprs = exprs.iter().map(|e2| e2.isubst(ident, e.clone())).collect();
+                Expr::mk_call_named_fun(name, exprs)
+            }
+            ExprKind::List(exprs) => {
+                let exprs = exprs.iter().map(|e2| e2.isubst(ident, e.clone())).collect();
+                Expr::mk_list(exprs)
+            }
+            ExprKind::LetTag(name, body, cont) => Expr::mk_let_tag(
+                name.clone(),
+                body.isubst(ident, e.clone()),
+                cont.isubst(ident, e),
+            ),
         }
     }
     /// checks if self is the expression of the form `if cond then raise True else ()`

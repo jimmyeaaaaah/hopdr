@@ -98,7 +98,8 @@ pub(super) fn peephole_optimize<'a>(mut p: Program<'a>) -> Program<'a> {
             | ExprKind::Constraint(_)
             | ExprKind::Raise
             | ExprKind::Unit
-            | ExprKind::Op(_) => s.clone(),
+            | ExprKind::Op(_)
+            | ExprKind::Tag(_) => s.clone(),
             ExprKind::Or(c1, c2) => {
                 let c1 = f(c1);
                 let c2 = f(c2);
@@ -183,13 +184,26 @@ pub(super) fn peephole_optimize<'a>(mut p: Program<'a>) -> Program<'a> {
                     Expr::mk_let_tuple(idents.clone(), body, cont)
                 }
             }
+            ExprKind::CallNamedFun(name, exprs) => {
+                let exprs = exprs.iter().map(f).collect();
+                Expr::mk_call_named_fun(name, exprs)
+            }
+            ExprKind::List(exprs) => {
+                let exprs = exprs.iter().map(f).collect();
+                Expr::mk_list(exprs)
+            }
+            ExprKind::LetTag(name, body, cont) => {
+                let body = f(body);
+                let cont = f(cont);
+                Expr::mk_let_tag(name.clone(), body, cont)
+            }
         }
     }
 
     // simplify constraints
     fn simplify_constraints(e: &Expr) -> Expr {
         match e.kind() {
-            ExprKind::Var(_) | ExprKind::Raise | ExprKind::Unit => e.clone(),
+            ExprKind::Var(_) | ExprKind::Raise | ExprKind::Unit | ExprKind::Tag(_) => e.clone(),
             ExprKind::Constraint(c) => Expr::mk_constraint(c.simplify()),
             ExprKind::Or(e1, e2) => Expr::mk_or(simplify_constraints(e1), simplify_constraints(e2)),
             ExprKind::And(e1, e2) => {
@@ -224,6 +238,19 @@ pub(super) fn peephole_optimize<'a>(mut p: Program<'a>) -> Program<'a> {
             }
             ExprKind::LetTuple { idents, body, cont } => Expr::mk_let_tuple(
                 idents.clone(),
+                simplify_constraints(body),
+                simplify_constraints(cont),
+            ),
+            ExprKind::CallNamedFun(name, e) => {
+                let exprs = e.iter().map(simplify_constraints).collect();
+                Expr::mk_call_named_fun(name, exprs)
+            }
+            ExprKind::List(exprs) => {
+                let exprs = exprs.iter().map(simplify_constraints).collect();
+                Expr::mk_list(exprs)
+            }
+            ExprKind::LetTag(name, body, cont) => Expr::mk_let_tag(
+                name.clone(),
                 simplify_constraints(body),
                 simplify_constraints(cont),
             ),

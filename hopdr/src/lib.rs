@@ -28,6 +28,7 @@ pub struct Configuration {
     pub remove_disjunction: bool,
     pub wait_every_step: bool,
     pub ultimate: bool,
+    pub trace: bool,
 }
 
 impl Default for Configuration {
@@ -37,6 +38,7 @@ impl Default for Configuration {
             remove_disjunction: false,
             wait_every_step: false,
             ultimate: true,
+            trace: false,
         }
     }
 }
@@ -67,6 +69,12 @@ impl Configuration {
     /// set ultimate is enabled during the preprocess from CHC to HES
     pub fn ultimate(mut self, ultimate: bool) -> Self {
         self.ultimate = ultimate;
+        self
+    }
+
+    /// enable tracking traces
+    pub fn trace(mut self, trace: bool) -> Self {
+        self.trace = trace;
         self
     }
 }

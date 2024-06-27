@@ -249,8 +249,9 @@ impl DumpML for Expr {
                 body.dump_ml(f, ctx)
             }
             ExprKind::Assert(c) => {
-                write!(f, "assert ")?;
-                paren(f, self.precedence(), c, ctx)
+                write!(f, "if  ")?;
+                paren(f, self.precedence(), c, ctx)?;
+                write!(f, " then () else raise TrueExc")
             }
             ExprKind::Unit => write!(f, "()"),
             ExprKind::Raise => write!(f, "(raise TrueExc)"),
@@ -296,6 +297,34 @@ impl DumpML for Expr {
                 cont.dump_ml(f, ctx)
             }
             ExprKind::Op(o) => o.dump_ml(f, ctx),
+            ExprKind::CallNamedFun(name, exprs) => {
+                write!(f, "{}", name)?;
+                for e in exprs.iter() {
+                    write!(f, " ")?;
+                    paren(f, self.precedence(), e, ctx)?;
+                }
+                Ok(())
+            }
+            ExprKind::Tag(tag) => write!(f, "\"{}\"", tag),
+            ExprKind::List(l) => {
+                write!(f, "[")?;
+                let mut first = true;
+                for e in l.iter() {
+                    if first {
+                        first = false;
+                    } else {
+                        write!(f, "; ")?;
+                    }
+                    paren(f, PrecedenceKind::Sequential, e, ctx)?;
+                }
+                write!(f, "]")
+            }
+            ExprKind::LetTag(name, body, cont) => {
+                write!(f, "let {} = ", name)?;
+                body.dump_ml(f, ctx)?;
+                write!(f, " in ")?;
+                cont.dump_ml(f, ctx)
+            }
         }
     }
 }

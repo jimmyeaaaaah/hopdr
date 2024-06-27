@@ -956,7 +956,7 @@ fn test_generate_template() {
 
     let ctx = super::Context::empty();
     let mut tr = super::Translator::new_with_clause_idents(
-        super::Config::new(&ctx, true, false),
+        super::Config::new(&ctx, true, false, false),
         HashMap::new(),
     );
     let e = tr.translate_predicates(&translated.clauses[0].body.clone(), Vec::new());

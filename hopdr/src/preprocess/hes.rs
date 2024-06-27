@@ -185,6 +185,7 @@ pub struct Config {
     unpack_constr: bool,
     is_checker: bool,
     lightweight_find_ite: bool,
+    trace: bool,
 }
 
 impl Config {
@@ -197,6 +198,9 @@ impl Config {
             .unpack_constr(true)
             .is_checker(true)
             .lightweight_find_ite(false)
+    }
+    pub fn checker_with_trace_default() -> Config {
+        Config::new().unpack_constr(true).trace(true)
     }
     pub fn find_ite(mut self, val: bool) -> Self {
         self.find_ite = val;
@@ -214,6 +218,10 @@ impl Config {
         self.lightweight_find_ite = val;
         self
     }
+    pub fn trace(mut self, val: bool) -> Self {
+        self.trace = val;
+        self
+    }
 }
 
 pub fn preprocess_for_typed_problem(
@@ -221,22 +229,26 @@ pub fn preprocess_for_typed_problem(
     config: &Config,
 ) -> hes::Problem<formula::Constraint> {
     info!("[problem]\n{}\n", problem);
-    let problem = safety::transform(problem);
+    let mut problem = safety::transform(problem);
     debug!("[safety::transform]\n{}\n", problem);
-    let problem = eta::transform(problem);
-    let problem = prenex_norm::transform(problem);
-    let problem = forall_pass::transform(problem);
-    let problem = reorder_conj::transform(problem);
-    let mut problem = simplify_constr_op::transform(problem);
+    problem = eta::transform(problem);
+    if !config.trace {
+        problem = prenex_norm::transform(problem);
+        problem = forall_pass::transform(problem);
+        problem = reorder_conj::transform(problem);
+        problem = simplify_constr_op::transform(problem);
+    }
     //let problem = ite_expand::transform(problem);
-    if config.find_ite {
+    if config.find_ite && !config.trace {
         problem = reorder_disj::transform(problem);
+    }
+    if config.find_ite {
         problem = find_ite::transform(problem, config.lightweight_find_ite);
     }
     if config.unpack_constr {
         problem = unpack_constr::transform(problem);
     }
-    if config.is_checker {
+    if config.is_checker && !config.trace {
         problem = remove_tmp_var::transform(problem);
         problem = boolean_expand::transform(problem);
         //        problem = inline_leaf_call::transform(problem);

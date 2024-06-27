@@ -6,7 +6,7 @@ use tempfile::NamedTempFile;
 
 pub enum ExecResult {
     Unknown,
-    Invalid,
+    Invalid(Option<String>),
     Fail(String),
 }
 
@@ -14,9 +14,22 @@ pub(super) fn save_prog(prog: String) -> NamedTempFile {
     util::save_to_file(prog)
 }
 
+fn parse_trace(s: &str) -> Option<String> {
+    let mut flag = false;
+    for line in s.lines() {
+        if flag {
+            return Some(line.to_string());
+        }
+        if line.starts_with("[[trace]]") {
+            flag = true;
+        }
+    }
+    None
+}
+
 fn parse(s: &str) -> ExecResult {
     if s.contains("FalseExc") {
-        ExecResult::Invalid
+        ExecResult::Invalid(parse_trace(s))
     } else if s.contains(FAIL_STRING) {
         ExecResult::Unknown
     } else {

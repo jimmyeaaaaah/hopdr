@@ -47,19 +47,31 @@ struct Args {
     do_hoice_preprocess: bool,
     #[clap(long)]
     no_mode_analysis: bool,
+    #[clap(long)]
+    /// Enables tracing. Note that this option may slow down the procedure.
+    trace: bool,
 }
 
 fn gen_configuration_from_args(args: &Args) -> hopdr::Configuration {
-    hopdr::Configuration::new()
+    let cfg = hopdr::Configuration::new()
         .inlining(!args.no_inlining)
         //.remove_disjunction(args.remove_disjunction)
         .remove_disjunction(false)
         .wait_every_step(false)
-        .ultimate(!args.no_ultimate)
+        .ultimate(!args.no_ultimate);
+    if args.trace {
+        cfg.trace(true).inlining(false)
+    } else {
+        cfg
+    }
 }
 
 fn get_preprocess_config() -> hopdr::preprocess::hes::Config {
     hopdr::preprocess::hes::Config::checker_default()
+}
+
+fn get_tracing_config() -> hopdr::preprocess::hes::Config {
+    hopdr::preprocess::hes::Config::checker_with_trace_default()
 }
 
 fn generate_context_for_chc(vmap: &crate::util::info::VariableMap) -> hopdr::preprocess::Context {
@@ -92,7 +104,12 @@ fn get_problem(
         }
     }
     title!("proprocessed");
-    let (vc, ctx) = preprocess::hes::preprocess(f, &get_preprocess_config());
+    let conf = if config.trace {
+        get_tracing_config()
+    } else {
+        get_preprocess_config()
+    };
+    let (vc, ctx) = preprocess::hes::preprocess(f, &conf);
     for fml in vc.clauses.iter() {
         debug!("{}", fml);
     }
@@ -103,7 +120,13 @@ fn report_result(result: checker::ExecResult) {
     print!("Verification Result: ");
     match result {
         checker::ExecResult::Unknown => println!("Unknown"),
-        checker::ExecResult::Invalid => println!("Invalid"),
+        checker::ExecResult::Invalid(s) => {
+            println!("Invalid");
+            match s {
+                Some(s) => println!("Trace: {s}"),
+                None => (),
+            }
+        }
         checker::ExecResult::Fail(s) => println!("Fail\nReason: {s}"),
     }
 }
@@ -116,6 +139,7 @@ fn run_multiple(
     )>,
     print_check_log: bool,
     no_mode_analysis: bool,
+    track_trace: bool,
 ) -> checker::ExecResult {
     info!("run parallel");
     let rt = runtime::Runtime::new().unwrap();
@@ -123,15 +147,15 @@ fn run_multiple(
         let mut set = JoinSet::new();
 
         for (problem, ctx) in problems {
-            let config = checker::Config::new(&ctx, print_check_log, no_mode_analysis);
+            let config = checker::Config::new(&ctx, print_check_log, no_mode_analysis, track_trace);
             let t = checker::run(problem, config.clone());
             set.spawn(t);
         }
 
         while let Some(res) = set.join_next().await {
             match res {
-                Ok(checker::ExecResult::Invalid) => {
-                    return checker::ExecResult::Invalid;
+                Ok(checker::ExecResult::Invalid(s)) => {
+                    return checker::ExecResult::Invalid(s);
                 }
                 Ok(checker::ExecResult::Unknown) => {
                     info!("result: unknown");
@@ -156,12 +180,13 @@ fn run_multiple(
     )>,
     print_check_log: bool,
     no_mode_analysis: bool,
+    track_trace: bool,
 ) -> checker::ExecResult {
     info!("run sequentially");
     let rt = runtime::Runtime::new().unwrap();
     rt.block_on(async {
         for (problem, ctx) in problems {
-            let config = checker::Config::new(&ctx, print_check_log, no_mode_analysis);
+            let config = checker::Config::new(&ctx, print_check_log, no_mode_analysis, track_trace);
             let t = checker::run(problem, config.clone()).await;
             match t {
                 checker::ExecResult::Invalid => {
@@ -190,7 +215,7 @@ fn handle_chc_data(
 ) {
     let (chcs, vmap) = match parse::parse_chc(&data, do_hoice_preprocess) {
         Ok(x) => x,
-        Err(r) if r.is_unsat() => return report_result(checker::ExecResult::Invalid),
+        Err(r) if r.is_unsat() => return report_result(checker::ExecResult::Invalid(None)),
         Err(r) => panic!("parse error: {:?}", r),
     };
     let ctx = generate_context_for_chc(&vmap);
@@ -280,6 +305,7 @@ fn check_main(args: Args) {
         vcs,
         args.print_check_log,
         args.no_mode_analysis,
+        args.trace,
     ))
 }
 
