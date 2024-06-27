@@ -597,9 +597,9 @@ impl<'a> Translator {
                     let left = Expr::mk_try_with(g1.clone(), g2.clone());
                     let right = Expr::mk_try_with(g2, g1);
                     let body = if Into::<Option<Constraint>>::into(g1_fml.clone()).is_some() {
-                        mk_conj_trace(0, left)
+                        left
                     } else if Into::<Option<Constraint>>::into(g2_fml.clone()).is_some() {
-                        mk_conj_trace(1, right)
+                        right
                     } else {
                         self.mk_demonic_branch(left, right)
                     };
