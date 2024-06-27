@@ -1,5 +1,5 @@
 
-# HoPDR: a collection of higher-order fixpoint solvers
+# HoPDR: a collection of nuHFL(Z) solvers
 
 This repository contains some nuHFL(Z) (aka higher-order CHC) solvers, a fixpoint logic for higher-order program verification:
 - HoPDR: A higher-order extension of Property-Directed Reachability
