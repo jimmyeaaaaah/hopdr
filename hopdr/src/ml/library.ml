@@ -40,7 +40,7 @@ let print_trace t =
         Printf.printf ")"
     | TApp (f, vs, t) ->
         Printf.printf "(app %s (" f;
-        List.iter (fun v -> Printf.printf "%d " v) vs;
+        if vs <> [] then List.iter (fun v -> Printf.printf "%d " v) vs;
         Printf.printf ") ";
         go t;
         Printf.printf ")"
