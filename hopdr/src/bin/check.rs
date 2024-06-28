@@ -8,11 +8,11 @@ extern crate ctrlc;
 use crate::formula::hes;
 use hopdr::util::Pretty;
 use hopdr::*;
-use nom::error::VerboseError;
 
 use clap::Parser;
 use colored::Colorize;
-
+use nom::error::VerboseError;
+use std::fs;
 use tokio::runtime;
 use tokio::task::JoinSet;
 
@@ -90,8 +90,11 @@ fn get_problem(
     hopdr::formula::hes::Problem<hopdr::formula::Constraint>,
     hopdr::preprocess::Context,
 ) {
-    let contents =
-        preprocess::hfl_preprocessor::open_file_with_preprocess(&filename, &config).unwrap();
+    let contents = if config.trace {
+        fs::read_to_string(filename).expect("input file not found")
+    } else {
+        preprocess::hfl_preprocessor::open_file_with_preprocess(&filename, &config).unwrap()
+    };
     debug!("starting Checker...");
     let (_, f) = parse::parse::<VerboseError<&str>>(&contents).unwrap();
     title!("problem");
