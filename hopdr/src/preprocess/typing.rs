@@ -189,16 +189,18 @@ impl ExprTmp {
                 env.mk_prop()
             }
             ExprKind::Univ(x, e) => {
+                let old = env.clone();
                 env.add(&x.id, env.mk_int());
                 let t = e.append_constraints(env, constraints);
-                env.del(&x.id);
+                *env = old;
                 constraints.add(t, env.mk_prop());
                 env.mk_prop()
             }
             ExprKind::Abs(x, e) => {
+                let old = env.clone();
                 env.add(&x.id, x.ty.clone());
                 let t = e.append_constraints(env, constraints);
-                env.del(&x.id);
+                *env = old;
                 TmpType::mk_arrow(x.ty.clone(), t)
             }
         }
