@@ -304,9 +304,6 @@ impl<'a> Environment<'a> {
     fn add(&mut self, id: &'a str, ty: TmpType) {
         self.map = self.map.insert(id, ty);
     }
-    fn del(&mut self, id: &'a str) {
-        self.map = self.map.remove(id);
-    }
     fn get(&self, id: &'a str) -> Option<TmpType> {
         self.map.get(id).cloned()
     }
