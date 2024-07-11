@@ -88,7 +88,7 @@ fn op2<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, OpKind, E
 }
 fn parse_neg<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, Expr, E> {
     let (input, _) = preceded(sp, char('-'))(input)?;
-    let (input, e) = parse_arith(input)?;
+    let (input, e) = parse_atom(input)?;
     Ok((input, Expr::mk_op(OpKind::Sub, Expr::mk_num(0), e)))
 }
 
@@ -292,4 +292,32 @@ fn test_parse() {
             assert_eq!(toplevel, vc.toplevel);
         }
     }
+}
+
+#[test]
+fn test_edge_case() {
+    let s = "
+    %HES
+    Sentry =v RF 1 (-1) 0 (-1) 0.
+    RF x r =v r <> -x + 2.
+    ";
+    use nom::error::VerboseError;
+    let (_, f) = parse::<VerboseError<&str>>(s).unwrap();
+    let Problem::NuHFLZValidityChecking(vc) = f;
+
+    assert_eq!(vc.formulas.len(), 1);
+
+    let rf = &vc.formulas[0];
+    let rf_body = Expr::mk_pred(
+        PredKind::Neq,
+        Expr::mk_var("r".to_string()),
+        Expr::mk_op(
+            OpKind::Add,
+            Expr::mk_op(OpKind::Sub, Expr::mk_num(0), Expr::mk_var("x".to_string())),
+            Expr::mk_num(2),
+        ),
+    );
+    println!("{}", rf_body);
+    println!("{}", rf.expr);
+    assert_eq!(rf.expr, rf_body);
 }
