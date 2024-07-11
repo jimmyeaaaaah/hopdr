@@ -1,0 +1,164 @@
+import numpy as np
+import sympy as sp
+import pulp
+import os
+import re
+import sys
+import subprocess
+import concurrent.futures
+
+n_constraints = 0
+args = []
+n_iter = 1
+problem = None
+variables = []
+
+def apply_new_ranking_function(filename, ranking_function, is_first=False):
+    print(f"ranking function for iter {n_iter} : {ranking_function}")
+    try:
+        with open(filename, 'r') as file:
+            lines = file.readlines()
+    except FileNotFoundError:
+        print(f"Error: File '{filename}' not found.")
+        sys.exit(1)
+    rf_line = lines[-1]
+    left = rf_line.split("<>")[0]
+    new_rf_line = f"{left}<> {ranking_function}."
+    lines[-1] = new_rf_line
+    with open(filename, 'w') as file:
+        file.writelines(lines)
+
+    # RFの引数の変数のリストを取得する
+    if is_first:
+        rf_line_terms = rf_line.split()
+        for term in rf_line_terms:
+            if term.startswith("RF"):
+                continue
+            if term == "=v":
+                break
+            args.append(term)
+
+
+def run_rethfl(filename):
+    rethfl_cmd = f"rethfl {filename}"
+    try:
+        result = subprocess.run(rethfl_cmd, capture_output=True, text=True, check=True, shell=True)
+        result = result.stdout.splitlines()[-3].strip()
+        return result
+    except subprocess.CalledProcessError as e:
+        print("Error running rethfl:")
+        print(e.stderr)
+        sys.exit(1)
+
+def run_show_trace(filename):
+    env = os.environ.copy()
+    env['PATH'] = f"{os.getcwd()}/bin:{env['PATH']}"
+    show_trace_cmd = ['./target/release/check', '--trace', '--input', filename]
+    try:
+        result = subprocess.run(show_trace_cmd, capture_output=True, text=True, check=True, env=env)
+        return result.stdout
+    except subprocess.CalledProcessError as e:
+        print("Error running show_trace:")
+        print(e.stderr)
+        sys.exit(1)
+
+def solve_nuhfl(filename):
+    rethfl_result = run_rethfl(filename)
+    if rethfl_result == "Valid":
+        print("ReTHFL result : Valid")
+        sys.exit(0)
+    elif rethfl_result == "Invalid":
+        print("ReTHFL result : Invalid")
+        print("run show_trace")
+        return run_show_trace(filename)
+    else:
+        print("ReTHFL result : Unknown")
+        sys.exit(1)
+
+def parse_result(result):
+    trace = result.split("Trace: ")[-1]
+    last_wf = re.findall(r"WF \([0-9 -]+\)", trace)[-1]
+    print(f"call sequence for WF : {last_wf}")
+    args_of_wf = re.search(r"WF \(([0-9 -]+)\)", last_wf).group(1).split()
+    call_sequence = [int(s) for s in args_of_wf]
+    n_args = len(call_sequence)
+    call_sequence = np.array(call_sequence).reshape(2, int(n_args/2))
+    constant_term_coe = np.ones((call_sequence.shape[0], 1), dtype=int)  # 定数項に対応する係数1を設定
+    call_sequence = np.concatenate((call_sequence, constant_term_coe), axis=1)
+    return call_sequence
+
+def set_constraints(coes, problem, variables):
+    global n_constraints
+    n_term = len(coes[0])
+    for i in range(len(coes) - 1):
+        coe1 = coes[i]
+        coe2 = coes[i+1]
+        coe = coe1 - coe2
+        problem += sum(coe[j] * variables[j] for j in range(n_term)) >= 1, f"Constraint_diff{n_constraints}"
+        n_constraints+=1
+        problem += sum(coe1[j] * variables[j] for j in range(n_term)) >= 0, f"Constraint_posi{n_constraints}"
+        n_constraints+=1
+    problem += sum(coes[-1][j] * variables[j] for j in range(n_term)) >= 0, f"Constraint_posi{n_constraints}"
+    n_constraints+=1
+
+def update_ranking_function(problem, variables):
+    n_variable = len(variables)
+    if pulp.LpStatus[problem.status] == 'Optimal':
+        new_rf = ""
+        for i in range(n_variable):
+            new_coe = variables[i].varValue
+            if(new_coe == None or int(new_coe) == 0):
+                continue
+            if(i != n_variable-1):
+                new_rf += f"({int(new_coe)}) * {args[i]} + "
+            else:
+                new_rf += f"({int(new_coe)}) + "
+        new_rf = new_rf[:-3]
+        new_rf = str(sp.sympify(new_rf))
+    else:
+        raise RuntimeError("No solution found.")
+    return new_rf
+
+def iteration(filename, rf):
+    global n_iter
+    if(n_iter == 1):
+        is_first = True
+    else:
+        is_first = False
+    # ranking functionの初期値を設定
+    apply_new_ranking_function(filename, rf, is_first=is_first)
+
+    # rethfl/show_traceを実行して結果を取得
+    result = solve_nuhfl(filename)
+
+    # show_traceの結果をparseして、呼び出し列を2次元arrayに変換
+    call_sequence = parse_result(result)
+
+    if is_first:
+        # LpProblemを用意
+        global problem, variables
+        n_variable = len(call_sequence[0])
+        problem = pulp.LpProblem("solve_inequalities", pulp.LpMaximize)
+        variables = [pulp.LpVariable(f'x{i}', lowBound=None, cat='Integer') for i in range(1, n_variable+1)]
+        problem += 0, "Objective_Function"      # 目的関数は無し
+
+    # 制約をset
+    set_constraints(call_sequence, problem, variables)
+    # 不等式制約を解く
+    solver = pulp.PULP_CBC_CMD(msg=False)   # ログを非表示
+    problem.solve(solver)
+
+    # ranking_functionを更新
+    new_rf = update_ranking_function(problem, variables)
+    print("")
+    n_iter+=1
+    return new_rf
+
+def main():
+    filename = sys.argv[1]
+    rf = "1"
+    while n_iter <= 20:
+        rf = iteration(filename, rf)
+        
+if __name__ == "__main__":
+    main()
