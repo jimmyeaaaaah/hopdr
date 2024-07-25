@@ -129,7 +129,9 @@ def update_ranking_function(problem, variables):
     new_rf = ""
     n_variable = len(variables)
 
-     # 不等式制約を解く
+    # print(problem)
+
+    # 不等式制約を解く
     solver = pulp.PULP_CBC_CMD(msg=False)   # ログを非表示
     problem.solve(solver)
 
