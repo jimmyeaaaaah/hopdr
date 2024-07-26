@@ -4,6 +4,7 @@ from z3 import *
 import os
 import re
 import sys
+import multiprocessing
 import subprocess
 import time
 
@@ -57,44 +58,73 @@ def apply_new_ranking_function(filename, ranking_functions, args, is_first=False
                         break
                     args[rf_idx].append(term)
 
-def run_rethfl(filename):
+def run_rethfl(filename, queue):
     rethfl_cmd = f"rethfl --remove-disjunction {filename}"
     try:
         result = subprocess.run(rethfl_cmd, capture_output=True, text=True, check=True, shell=True)
         result = result.stdout.splitlines()[-3].strip()
-        return result
+        queue.put(('rethfl', result))
     except subprocess.CalledProcessError as e:
         print("Error running rethfl:")
-        print(e.stderr)
-        sys.exit(1)
+        print(e.stdout)
+        queue.put(('rethfl', 'error'))
 
-def run_show_trace(filename):
+def run_show_trace(filename, queue):
     env = os.environ.copy()
     env['PATH'] = f"{os.getcwd()}/bin:{env['PATH']}"
     show_trace_cmd = ['./target/release/check', '--trace', '--input', filename]
     try:
         result = subprocess.run(show_trace_cmd, capture_output=True, text=True, check=True, env=env)
-        return result.stdout
+        queue.put(('show_trace', result.stdout))
     except subprocess.CalledProcessError as e:
         print("Error running show_trace:")
         print(e.stderr)
-        sys.exit(1)
+        queue.put(('show_trace', 'error'))
 
-def solve_nuhfl(filename):
-    rethfl_result = run_rethfl(filename)
-    if rethfl_result == "Valid":
-        print("ReTHFL result : Valid")
-        end_time = time.perf_counter_ns()
-        elapsed_time = (end_time - start_time)/ 1_000_000_000
-        print(f"\ntotal: {elapsed_time:.6f} sec")
-        sys.exit(0)
-    elif rethfl_result == "Invalid":
-        print("ReTHFL result : Invalid")
-        print("run show_trace")
-        return run_show_trace(filename)
-    else:
-        print("ReTHFL result : Unknown")
-        sys.exit(1)
+def solve_nuhfl(filename, start_time):
+    queue = multiprocessing.Queue()
+    result_queue = multiprocessing.Queue()
+
+    process1 = multiprocessing.Process(target=run_rethfl, args=[filename, queue])
+    process2 = multiprocessing.Process(target=run_show_trace, args=[filename, queue])
+
+    process1.start()
+    process2.start()
+
+    while True:
+        message = queue.get()
+        if message[0] == "rethfl":
+            if message[1] == "Valid":
+                process1.terminate()
+                process2.terminate()
+                print("ReTHFL result : Valid")
+                end_time = time.perf_counter_ns()
+                elapsed_time = (end_time - start_time)/ 1_000_000_000
+                print(f"\ntotal: {elapsed_time:.6f} sec")
+                result_queue.put("Valid")
+                sys.exit(0)
+            elif message[1] != "Invalid":
+                process1.terminate()
+                process2.terminate()
+                print("terminated because of ReTHFL error")
+                sys.exit(1)
+        elif message[0] == "show_trace":
+            if message[1] == "error":
+                process1.terminate()
+                process2.terminate()
+                sys.exit(1)
+            elif message[1] == 'Fail\n':
+                process1.terminate()
+                process2.terminate()
+                print("show_trace failed")
+                sys.exit(1)
+            else:
+                process1.terminate()
+                process2.terminate()
+                return message[1]
+
+    process1.join()
+    process2.join()
 
 def parse_result(result):
     trace = result.split("Trace: ")[-1]
@@ -155,7 +185,7 @@ def update_ranking_function(problem, variables, args):
 
     return new_rf
 
-def iteration(filename, rf_list, n_rf, unseen_rf, problems, variables_list, args):
+def iteration(filename, rf_list, n_rf, unseen_rf, problems, variables_list, args, start_time):
     global n_iter
     if(n_iter == 1):
         is_first = True
@@ -165,7 +195,7 @@ def iteration(filename, rf_list, n_rf, unseen_rf, problems, variables_list, args
     apply_new_ranking_function(filename, rf_list, args, is_first=is_first)
 
     # rethfl/show_traceを実行して結果を取得
-    result = solve_nuhfl(filename)
+    result = solve_nuhfl(filename, start_time)
 
     # show_traceの結果をparseして、呼び出し列を2次元arrayに変換
     rf_idx, call_sequence = parse_result(result)
@@ -194,6 +224,7 @@ def iteration(filename, rf_list, n_rf, unseen_rf, problems, variables_list, args
 def main():
     global n_rf
     filename = sys.argv[1]
+    start_time = time.perf_counter_ns()
 
     n_rf = get_n_rf(filename)
     rf_list = ["1"] * n_rf
@@ -203,8 +234,7 @@ def main():
     args = [[] for _ in range(n_rf)]
 
     while n_iter <= 100:
-        rf_list = iteration(filename, rf_list, n_rf, unseen_rf, problems, variables_list, args)
+        rf_list = iteration(filename, rf_list, n_rf, unseen_rf, problems, variables_list, args, start_time)
         
 if __name__ == "__main__":
-    start_time = time.perf_counter_ns()
     main()
