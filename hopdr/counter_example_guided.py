@@ -68,6 +68,8 @@ def run_rethfl(filename, queue):
         print("Error running rethfl:")
         print(e.stdout)
         queue.put(('rethfl', 'error'))
+    except KeyboardInterrupt:
+        queue.put(('rethfl', 'interrupted'))
 
 def run_show_trace(filename, queue):
     env = os.environ.copy()
@@ -80,6 +82,8 @@ def run_show_trace(filename, queue):
         print("Error running show_trace:")
         print(e.stderr)
         queue.put(('show_trace', 'error'))
+    except KeyboardInterrupt:
+        queue.put(('rethfl', 'interrupted'))
 
 def solve_nuhfl(filename, start_time):
     queue = multiprocessing.Queue()
@@ -91,37 +95,52 @@ def solve_nuhfl(filename, start_time):
     process1.start()
     process2.start()
 
-    while True:
-        message = queue.get()
-        if message[0] == "rethfl":
-            if message[1] == "Valid":
-                process1.terminate()
-                process2.terminate()
-                print("ReTHFL result : Valid")
-                end_time = time.perf_counter_ns()
-                elapsed_time = (end_time - start_time)/ 1_000_000_000
-                print(f"\ntotal: {elapsed_time:.6f} sec")
-                result_queue.put("Valid")
-                sys.exit(0)
-            elif message[1] != "Invalid":
-                process1.terminate()
-                process2.terminate()
-                print("terminated because of ReTHFL error")
-                sys.exit(1)
-        elif message[0] == "show_trace":
-            if message[1] == "error":
-                process1.terminate()
-                process2.terminate()
-                sys.exit(1)
-            elif message[1] == 'Fail\n':
-                process1.terminate()
-                process2.terminate()
-                print("show_trace failed")
-                sys.exit(1)
-            else:
-                process1.terminate()
-                process2.terminate()
-                return message[1]
+    try:
+        while True:
+            message = queue.get()
+            if message[0] == "rethfl":
+                if message[1] == "Valid":
+                    process1.terminate()
+                    process2.terminate()
+                    print("ReTHFL result : Valid")
+                    end_time = time.perf_counter_ns()
+                    elapsed_time = (end_time - start_time)/ 1_000_000_000
+                    print(f"\ntotal: {elapsed_time:.6f} sec")
+                    result_queue.put("Valid")
+                    sys.exit(0)
+                elif message[1] == "interrupted":
+                    process1.terminate()
+                    process2.terminate()
+                    sys.exit(1)
+                elif message[1] != "Invalid":
+                    process1.terminate()
+                    process2.terminate()
+                    print("terminated because of ReTHFL error")
+                    sys.exit(1)
+                
+            elif message[0] == "show_trace":
+                if message[1] == "error":
+                    process1.terminate()
+                    process2.terminate()
+                    sys.exit(1)
+                elif message[1] == 'Fail\n':
+                    process1.terminate()
+                    process2.terminate()
+                    print("show_trace failed")
+                    sys.exit(1)
+                elif message[1] == "interrupted":
+                    process1.terminate()
+                    process2.terminate()
+                    sys.exit(1)
+                else:
+                    process1.terminate()
+                    process2.terminate()
+                    return message[1]
+    except KeyboardInterrupt:
+        print("Keyboard interrupted.")
+        process1.terminate()
+        process2.terminate()
+        sys.exit(1)
 
     process1.join()
     process2.join()
