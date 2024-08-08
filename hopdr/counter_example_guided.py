@@ -172,14 +172,15 @@ def set_constraints(coes, problem, variables):
     # problem.add(Sum([coes[-1][j] * variables[j] for j in range(n_term)]) >= 0)
     n_constraints+=1
 
-def update_ranking_function(problem, variables, args, start_time):
+def update_ranking_function(problem, opt, variables, args, start_time):
     new_rf = ""
     n_variable = len(variables)
 
+    opt.add(problem.assertions())
 
     # 不等式制約を解く
-    if problem.check() == sat:
-        model = problem.model()
+    if opt.check() == sat:
+        model = opt.model()
         for i in range(n_variable):
             new_coe = model[variables[i]]
             if(new_coe == None or new_coe.as_long() == 0):
@@ -199,7 +200,7 @@ def update_ranking_function(problem, variables, args, start_time):
 
     return new_rf
 
-def iteration(filename, rf_list, n_rf, unseen_rf, problems, variables_list, args, start_time):
+def iteration(filename, rf_list, n_rf, unseen_rf, problems, opts, variables_list, args, start_time):
     global n_iter
     if(n_iter == 1):
         is_first = True
@@ -219,8 +220,14 @@ def iteration(filename, rf_list, n_rf, unseen_rf, problems, variables_list, args
         n_variable = len(call_sequence[0])
         problem = Solver()
         variables = [Int(f'x{i}') for i in range(1, n_variable+1)]
-
+        abs_variables =  [Int(f'abs_x{i}') for i in range(1, n_variable+1)]
+        for i in range(len(variables)):
+            problem.add(abs_variables[i] >= variables[i])
+            problem.add(abs_variables[i] >= -1 * variables[i])
+        opt = Optimize()
+        opt.minimize(sum(abs_variables))
         problems[rf_idx] = problem
+        opts[rf_idx] = opt
         variables_list[rf_idx] = variables
         unseen_rf[rf_idx] = False
 
@@ -228,7 +235,7 @@ def iteration(filename, rf_list, n_rf, unseen_rf, problems, variables_list, args
     set_constraints(call_sequence, problems[rf_idx], variables_list[rf_idx])
    
     # 不等式を解いてranking_functionを更新
-    new_rf = update_ranking_function(problems[rf_idx], variables_list[rf_idx], args[rf_idx], start_time)
+    new_rf = update_ranking_function(problems[rf_idx], opts[rf_idx], variables_list[rf_idx], args[rf_idx], start_time)
     rf_list[rf_idx] = new_rf
     print("")
     n_iter+=1
@@ -243,11 +250,12 @@ def main():
     rf_list = ["1"] * n_rf
     unseen_rf = [True] * n_rf
     problems = [False] * n_rf
+    opts = [False] * n_rf
     variables_list = [False] * n_rf
     args = [[] for _ in range(n_rf)]
 
     while n_iter <= 100:
-        rf_list = iteration(filename, rf_list, n_rf, unseen_rf, problems, variables_list, args, start_time)
+        rf_list = iteration(filename, rf_list, n_rf, unseen_rf, problems, opts, variables_list, args, start_time)
         
 if __name__ == "__main__":
     main()
