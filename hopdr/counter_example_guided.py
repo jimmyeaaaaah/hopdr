@@ -59,7 +59,7 @@ def apply_new_ranking_function(filename, ranking_functions, args, is_first=False
                     args[rf_idx].append(term)
 
 def run_rethfl(filename, queue):
-    rethfl_cmd = f"rethfl --remove-disjunction {filename}"
+    rethfl_cmd = f"rethfl {filename}"
     try:
         result = subprocess.run(rethfl_cmd, capture_output=True, text=True, check=True, shell=True)
         result = result.stdout.splitlines()[-3].strip()
@@ -99,51 +99,47 @@ def solve_nuhfl(filename, start_time):
         while True:
             message = queue.get()
             if message[0] == "rethfl":
-                if message[1] == "Valid":
-                    process1.terminate()
-                    process2.terminate()
-                    print("ReTHFL result : Valid")
-                    end_time = time.perf_counter_ns()
-                    elapsed_time = (end_time - start_time)/ 1_000_000_000
-                    print(f"\ntotal: {elapsed_time:.6f} sec")
-                    result_queue.put("Valid")
-                    sys.exit(0)
-                elif message[1] == "interrupted":
-                    process1.terminate()
-                    process2.terminate()
-                    sys.exit(1)
-                elif message[1] != "Invalid":
-                    process1.terminate()
-                    process2.terminate()
-                    print("terminated because of ReTHFL error")
-                    sys.exit(1)
-                
-            elif message[0] == "show_trace":
-                if message[1] == "error":
-                    process1.terminate()
-                    process2.terminate()
-                    sys.exit(1)
-                elif message[1] == 'Fail\n':
-                    process1.terminate()
-                    process2.terminate()
-                    print("show_trace failed")
-                    sys.exit(1)
-                elif message[1] == "interrupted":
-                    process1.terminate()
-                    process2.terminate()
-                    sys.exit(1)
+                if message[1] == "Invalid":
+                    continue
                 else:
                     process1.terminate()
                     process2.terminate()
+                    process1.join()
+                    process2.join()
+                    if message[1] == "Valid":
+                        print("ReTHFL result : Valid")
+                        end_time = time.perf_counter_ns()
+                        elapsed_time = (end_time - start_time)/ 1_000_000_000
+                        print(f"\ntotal: {elapsed_time:.6f} sec")
+                        result_queue.put("Valid")
+                        sys.exit(0)
+                    elif message[1] == "interrupted":
+                        sys.exit(1)
+                    else:
+                        print("terminated because of ReTHFL error")
+                        sys.exit(1)
+            elif message[0] == "show_trace":
+                process1.terminate()
+                process2.terminate()
+                process1.join()
+                process2.join()
+                if message[1] == "error":
+                    print("terminated because of show_trace error")
+                    sys.exit(1)
+                elif message[1] == "Fail":
+                    print("terminated because show_trace failed")
+                    sys.exit(1)
+                elif message[1] == "interrupted":
+                    sys.exit(1)
+                else:
                     return message[1]
     except KeyboardInterrupt:
         print("Keyboard interrupted.")
         process1.terminate()
         process2.terminate()
+        process1.join()
+        process2.join()
         sys.exit(1)
-
-    process1.join()
-    process2.join()
 
 def parse_result(result):
     trace = result.split("Trace: ")[-1]
@@ -173,14 +169,13 @@ def set_constraints(coes, problem, variables):
         n_constraints+=1
         problem.add(Sum([coe1[j] * variables[j] for j in range(n_term)]) >= 0)
         n_constraints+=1
-    problem.add(Sum([coes[-1][j] * variables[j] for j in range(n_term)]) >= 0)
+    # problem.add(Sum([coes[-1][j] * variables[j] for j in range(n_term)]) >= 0)
     n_constraints+=1
 
-def update_ranking_function(problem, variables, args):
+def update_ranking_function(problem, variables, args, start_time):
     new_rf = ""
     n_variable = len(variables)
 
-    # print(problem)
 
     # 不等式制約を解く
     if problem.check() == sat:
@@ -222,7 +217,6 @@ def iteration(filename, rf_list, n_rf, unseen_rf, problems, variables_list, args
     if unseen_rf[rf_idx]:
         # LpProblemをranking functionの個数分用意
         n_variable = len(call_sequence[0])
-        problem_name = f"RF{rf_idx}"
         problem = Solver()
         variables = [Int(f'x{i}') for i in range(1, n_variable+1)]
 
@@ -234,7 +228,7 @@ def iteration(filename, rf_list, n_rf, unseen_rf, problems, variables_list, args
     set_constraints(call_sequence, problems[rf_idx], variables_list[rf_idx])
    
     # 不等式を解いてranking_functionを更新
-    new_rf = update_ranking_function(problems[rf_idx], variables_list[rf_idx], args[rf_idx])
+    new_rf = update_ranking_function(problems[rf_idx], variables_list[rf_idx], args[rf_idx], start_time)
     rf_list[rf_idx] = new_rf
     print("")
     n_iter+=1
