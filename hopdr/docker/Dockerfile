@@ -1,6 +1,6 @@
 FROM ubuntu:22.04
 
-RUN apt update && apt upgrade -y && apt install -y opam wget zip curl openjdk-11-jdk z3 libglpk-dev bubblewrap
+RUN apt update && apt upgrade -y && apt install -y opam wget zip curl openjdk-11-jdk z3 libglpk-dev bubblewrap python3 python3-pip
 
 RUN opam init -a -y && eval $(opam env)
 
