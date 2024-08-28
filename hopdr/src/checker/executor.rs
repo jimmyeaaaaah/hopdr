@@ -115,6 +115,5 @@ pub async fn executor(s: String) -> (ExecResult, Option<CounterStats>) {
     let s = String::from_utf8(out).unwrap();
     debug!("result: {s}");
     let stats = parse_counter_stats(&s);
-    println!("stats: {:?}", stats);
     (parse(&s), stats)
 }

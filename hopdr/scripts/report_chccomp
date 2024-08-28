@@ -3,7 +3,7 @@
 root=`dirname "${BASH_SOURCE[0]}"`/
 cd $root
 
-TIMEOUT=10
+TIMEOUT=180
 prefix="pdr-check"
 current_date=$(date +"%Y-%m-%d-%H")
 filename="$prefix-$current_date.json"
