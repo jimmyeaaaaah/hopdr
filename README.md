@@ -25,6 +25,8 @@ op := + | - | *
 pred := < | <= | > | >= | != | =
 ```
 
+Examples: https://github.com/moratorium08/hopdr/blob/main/hopdr/inputs
+
 ## HoPDR
 
 
