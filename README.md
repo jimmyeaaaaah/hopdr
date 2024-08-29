@@ -25,7 +25,7 @@ op := + | - | *
 pred := < | <= | > | >= | != | =
 ```
 
-[Examples](blob/main/hopdr/inputs)
+[Examples](hopdr/inputs)
 
 ## HoPDR
 

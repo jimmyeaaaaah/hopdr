@@ -41,7 +41,19 @@ ENV PATH="/root/bin":$PATH
 RUN git clone https://github.com/hopv/hoice /misc/hoice\
     && cd /misc/hoice && git checkout v1.10.0 \
     && cargo build --release \
-    && cp /misc/hoice/target/release/hoice /root/bin/hoice
+    && cp /misc/hoice/target/release/hoice /root/bin/hoice \
+    && rm -rf /misc/hoice /root/.cargo /root/.rustup
+
+# hfl-preprocessor
+RUN git clone https://github.com/moratorium08/hfl-preprocessor /misc/hfl-preprocessor \
+    && cd /misc/hfl-preprocessor \
+    && eval $(opam env) \
+    && opam switch create 4.08.1 \
+    && eval $(opam env --switch=4.08.1) \
+    && opam install -y dune cmdliner core fmt logs lwt menhirLib ppx_compare ppx_deriving ppx_deriving_cmdliner ppx_let ppx_sexp_conv menhir \
+    && dune build \
+    && cp _build/default/bin/main.exe /root/bin/hfl-preprocessor \
+    && opam switch remove 4.08.1
 
 # for hopdr's bin
 ENV PATH="/work/bin":$PATH
