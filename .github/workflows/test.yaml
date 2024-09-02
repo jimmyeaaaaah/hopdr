@@ -12,7 +12,7 @@ env:
 jobs:
   test:
     runs-on: ubuntu-latest
-    container: moratorium08/hopdr
+    container: moratorium08/hopdr:aplas24
     steps:
     - uses: actions/checkout@v2
       with:

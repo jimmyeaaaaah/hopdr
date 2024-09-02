@@ -143,6 +143,7 @@ fn run_multiple(
     print_check_log: bool,
     no_mode_analysis: bool,
     track_trace: bool,
+    print_stat: bool,
 ) -> checker::ExecResult {
     info!("run parallel");
     let rt = runtime::Runtime::new().unwrap();
@@ -150,7 +151,13 @@ fn run_multiple(
         let mut set = JoinSet::new();
 
         for (problem, ctx) in problems {
-            let config = checker::Config::new(&ctx, print_check_log, no_mode_analysis, track_trace);
+            let config = checker::Config::new(
+                &ctx,
+                print_check_log,
+                no_mode_analysis,
+                track_trace,
+                print_stat,
+            );
             let t = checker::run(problem, config.clone());
             set.spawn(t);
         }
@@ -184,16 +191,23 @@ fn run_multiple(
     print_check_log: bool,
     no_mode_analysis: bool,
     track_trace: bool,
+    print_stat: bool,
 ) -> checker::ExecResult {
     info!("run sequentially");
     let rt = runtime::Runtime::new().unwrap();
     rt.block_on(async {
         for (problem, ctx) in problems {
-            let config = checker::Config::new(&ctx, print_check_log, no_mode_analysis, track_trace);
+            let config = checker::Config::new(
+                &ctx,
+                print_check_log,
+                no_mode_analysis,
+                track_trace,
+                print_stat,
+            );
             let t = checker::run(problem, config.clone()).await;
             match t {
-                checker::ExecResult::Invalid => {
-                    return checker::ExecResult::Invalid;
+                checker::ExecResult::Invalid(x) => {
+                    return checker::ExecResult::Invalid(x);
                 }
                 checker::ExecResult::Unknown => {
                     info!("result: unknown");
@@ -304,11 +318,16 @@ fn check_main(args: Args) {
         vec![(problem, ctx)]
     };
 
+    let print_stat = false;
+    #[cfg(feature = "stat")]
+    let print_stat = args.print_stat;
+
     report_result(run_multiple(
         vcs,
         args.print_check_log,
         args.no_mode_analysis,
         args.trace,
+        print_stat,
     ))
 }
 

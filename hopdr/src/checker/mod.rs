@@ -51,6 +51,7 @@ pub struct Config {
     print_check_log: bool,
     no_mode_analysis: bool,
     track_trace: bool,
+    print_stat: bool,
 }
 
 impl Config {
@@ -59,12 +60,14 @@ impl Config {
         print_check_log: bool,
         no_mode_analysis: bool,
         track_trace: bool,
+        print_stat: bool,
     ) -> Self {
         Config {
             context: context.clone(),
             print_check_log,
             no_mode_analysis,
             track_trace,
+            print_stat,
         }
     }
 }
@@ -525,7 +528,7 @@ impl<'a> Translator {
                 let g2 = self.destruct_trace(g2, |x| mk_conj_trace(TRACE_CONJ_RIGHT, x));
 
                 let left = Expr::mk_try_with(g1.clone(), g2.clone());
-                let right = Expr::mk_try_with(g2.clone(), g2.clone());
+                let right = Expr::mk_try_with(g2.clone(), g1.clone());
                 if Into::<Option<Constraint>>::into(g1_fml.clone()).is_some() {
                     left
                 } else if Into::<Option<Constraint>>::into(g2_fml.clone()).is_some() {
@@ -799,8 +802,10 @@ fn gen_fml_for_test() -> GoalM {
 fn test_translate_predicate() {
     let g8 = gen_fml_for_test();
     let ctx = Context::empty();
-    let mut tr =
-        Translator::new_with_clause_idents(Config::new(&ctx, true, false, false), HashMap::new());
+    let mut tr = Translator::new_with_clause_idents(
+        Config::new(&ctx, true, false, false, false),
+        HashMap::new(),
+    );
     let e = tr.translate_predicates(&g8, Vec::new());
     println!("{}", e.print_expr(&ctx));
 }
@@ -893,8 +898,10 @@ fn test_translate_predicate_trace() {
         },
     );
 
-    let mut tr =
-        Translator::new_with_clause_idents(Config::new(&ctx, true, false, true), HashMap::new());
+    let mut tr = Translator::new_with_clause_idents(
+        Config::new(&ctx, true, false, true, false),
+        HashMap::new(),
+    );
     let e = tr.translate_predicates2(&g6);
     println!("\nclause 2: {}", g6.pretty_display());
     println!("{}", e.print_expr(&ctx));
@@ -917,7 +924,15 @@ pub async fn run(problem: Problem<Constraint>, config: Config) -> executor::Exec
         println!("(* Generated Program *)");
         println!("{s}");
     }
-    stat("execute", || executor::executor(s)).await
+    let (r, stats) = stat("execute", || executor::executor(s)).await;
+    match stats {
+        Some(stats) if config.print_stat => {
+            println!("[[Random Testing Stats]]");
+            println!("{}", stats);
+        }
+        _ => (),
+    }
+    r
 }
 
 /// This function is used to calculate the difficulty score of the problem.

@@ -13,15 +13,15 @@ class ParseError(Exception):
 project_root = os.path.realpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../'))
 base = os.path.join(project_root, './benchmark')
 TARGET = '../target/release/check'
-#cmd_template = TARGET + ' {} --do-hoice-preprocess --print-stat --input {}'  # <option> <filename>
-cmd_template = TARGET + ' {} --no-mode-analysis --do-hoice-preprocess --input {}'  # <option> <filename>
+cmd_template = TARGET + ' {} --do-hoice-preprocess --print-stat --input {}'  # <option> <filename>
+#cmd_template = TARGET + ' {} --no-mode-analysis --do-hoice-preprocess --input {}'  # <option> <filename>
 
 cfg = None
 
 
 def pre_cmd():
-    #return 'cargo build --features stat --features "no_simplify_by_finding_eq" --bin check --release'
-    return 'cargo build --features "no_simplify_by_finding_eq" --bin check --release'
+    return 'cargo build --features stat --features "no_simplify_by_finding_eq" --bin check --release'
+    #return 'cargo build --features "no_simplify_by_finding_eq" --bin check --release'
 
 
 def config(c):
@@ -70,6 +70,27 @@ def parse_preprocess_stat(data):
 
 def parse_check_stat(data):
     return parse_dict_stat("[Check]", data)
+
+def parse_random_testing_stats(data):
+    ls = data.split("\n")
+    idx = 0
+    target = None
+    while idx < len(ls):
+        l = ls[idx]
+        if l.startswith("[[Random Testing Stats]]"):
+            target = idx + 1
+            break
+        idx += 1
+    if target is None:
+        return None
+    
+    line = ls[target].replace(" ", "")
+    d = {}
+    for x in line.split(","):
+        xs = x.split(":")
+        d[xs[0]] = int(xs[1])
+    return d
+
 
 def parse_stat(data, title, keys):
     l = data.split("\n")
@@ -120,6 +141,9 @@ def parse_stdout(stdout):
     qe = parse_stat(stdout, "[QE]", chc_keys)
     if qe is not None:
         result_data['qe'] = qe
+    count_stat = parse_random_testing_stats(stdout)
+    if count_stat is not None:
+        result_data['count_stat'] = count_stat
     return result_data
 
 def p(file, result):
