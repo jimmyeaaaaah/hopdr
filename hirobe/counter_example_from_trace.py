@@ -22,9 +22,33 @@ class CounterExample:
     def __repr__(self):
         return f"CounterExample( \n pred_name = {self.pred_name} \n pred_args = {self.pred_args} \n s_exp = {self.s_exp}\n)"
 
+# 述語ごとに改行された形にする
+def format_nuhfl(content):
+    content = content.replace(".", " . ")
+    terms = content.split()
+    new_lines = []
+    new_line = []
+    quantifier = 0
+    for term in terms:
+        if term == "%HES":
+            new_lines.append(term)
+            continue
+        if term == ".":
+            if quantifier == 0:
+                new_line.append(".")
+                new_lines.append(" ".join(new_line))
+                new_line = []
+                continue
+            else:
+                quantifier -= 1
+        if term == "∀" or term == "∃":
+            quantifier += 1
+        new_line.append(term)
+    return new_lines
+
+
+
 # 最後に呼び出されている述語(失敗したWFが呼び出されている述語)のみ抜き出す
-
-
 def extract_and_format_trace(trace):
     tokens = trace.replace("(", " ( ").replace(")", " ) ").split()
     formatted_trace = ""
@@ -139,6 +163,7 @@ def get_wf_from_trace_tree(formatted_trace, original_nuhfl_file):
     # WFの引数に、失敗パスで呼び出した値を代入
     wf_name = wf[0]
     wf_args = " ".join(wf[1:]).replace("+", " + ").replace("-", " - ").split()
+    wf_args = wf_args[1:] if wf_args[0].startswith("RF") else wf_args
     wf_assigned_values = assign_value(wf_args, assigned_values)
     return {"wf_name": wf_name, "assigned_values": wf_assigned_values}
 
@@ -167,6 +192,7 @@ def assign_value(wf_args, assigned_values):
 def scan_exp_with_tracetree(exp_terms, root, assigned_values_forall):
     # 外側についている括弧 "( x < 0 /\ y > 0 )"を取り除く
     exp_terms = remove_outer_paren(exp_terms)
+
     if exp_terms[0].startswith("WF"):
         return [exp_terms, assigned_values_forall]
     if root.value == "univ":
@@ -202,7 +228,7 @@ def scan_exp_with_tracetree(exp_terms, root, assigned_values_forall):
         else:
             return scan_exp_with_tracetree(left, root.left, assigned_values_forall)
     elif root.value == "conj":
-        select_left = root.left == "0"
+        select_left = root.left.value == "0"
         left = []
         right = []
         is_left = True
@@ -221,7 +247,7 @@ def scan_exp_with_tracetree(exp_terms, root, assigned_values_forall):
             else:
                 right.append(term)
         if select_left:
-            return scan_exp_with_tracetree(left, root.left, assigned_values_forall)
+            return scan_exp_with_tracetree(left, root.right, assigned_values_forall)
         else:
             return scan_exp_with_tracetree(right, root.right, assigned_values_forall)
     else:
@@ -263,7 +289,7 @@ def main():
     trace_file = sys.argv[2]
     try:
         with open(original_nuhfl_file, 'r') as file:
-            lines = file.readlines()
+            content = file.read()
     except FileNotFoundError:
         print(f"Error: File '{original_nuhfl_file}' not found.")
         sys.exit(1)
@@ -273,6 +299,8 @@ def main():
     except FileNotFoundError:
         print(f"Error: File '{trace_file}' not found.")
         sys.exit(1)
+    lines = format_nuhfl(content)
+    print(lines)
     wf_info = analyze_trace(trace, lines)   # {"name": "WF1", "assigned_values": [1,0,1,2]}
     sys.stdout.write(json.dumps(wf_info) + "\n")
 

@@ -9,6 +9,7 @@ def substitute(rf_idx, rf_args, wf_args, rf):
         rf = rf.replace(original_arg, replaced_arg)
     return rf
 
+# WF x ( x + 1 ), RF x r =v r <> x + 1 を (x + 1 >= 0 /\ x + 1 > x + 1)に置き換え
 def wf_to_rf(wf_args, rf_args, rf):
     wf_args = np.array(wf_args)
     wf_args = np.resize(wf_args, (2, len(wf_args) // 2))
@@ -20,7 +21,7 @@ def wf_to_rf(wf_args, rf_args, rf):
 def inlining(lines):
     n_rf = lines[-1].split()[0][2:] 
     n_rf = int(n_rf) if n_rf != "" else 1
-    rf_args = [[]]*n_rf
+    rf_args = [[] for _ in range(n_rf)]
     rfs = [""]*n_rf
     # 各RFの引数とrfの中身を取得
     for line in lines:
@@ -41,6 +42,7 @@ def inlining(lines):
                     continue
                 if is_args:
                     if term != "r":
+                        
                         rf_args[rf_index].append(term)
                 if is_rf:
                     rfs[rf_index] = rfs[rf_index] + ' ' + term
@@ -90,9 +92,10 @@ def inlining(lines):
                     else:
                         is_wf = False
                         # ここでwf_idxとwf_argsからWFを展開する処理
-                        rf = rf = wf_to_rf(wf_args, rf_args[wf_index], rfs[wf_index])
+                        rf = wf_to_rf(wf_args, rf_args[wf_index], rfs[wf_index])
                         wf_args = []
                         new_line.append(rf)
+                        new_line.append(term)
             else:
                 new_line.append(term)
         new_line = " ".join(new_line).replace("  ", " ")
