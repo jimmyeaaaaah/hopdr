@@ -528,7 +528,7 @@ impl<'a> Translator {
                 let g2 = self.destruct_trace(g2, |x| mk_conj_trace(TRACE_CONJ_RIGHT, x));
 
                 let left = Expr::mk_try_with(g1.clone(), g2.clone());
-                let right = Expr::mk_try_with(g2.clone(), g2.clone());
+                let right = Expr::mk_try_with(g2.clone(), g1.clone());
                 if Into::<Option<Constraint>>::into(g1_fml.clone()).is_some() {
                     left
                 } else if Into::<Option<Constraint>>::into(g2_fml.clone()).is_some() {
