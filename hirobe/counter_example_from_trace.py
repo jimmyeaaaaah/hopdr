@@ -2,6 +2,7 @@ import re
 import sys
 import json
 
+
 class TreeNode:
     def __init__(self, value):
         self.value = value
@@ -23,6 +24,8 @@ class CounterExample:
         return f"CounterExample( \n pred_name = {self.pred_name} \n pred_args = {self.pred_args} \n s_exp = {self.s_exp}\n)"
 
 # 述語ごとに改行された形にする
+
+
 def format_nuhfl(content):
     content = content.replace(".", " . ")
     terms = content.split()
@@ -45,7 +48,6 @@ def format_nuhfl(content):
             quantifier += 1
         new_line.append(term)
     return new_lines
-
 
 
 # 最後に呼び出されている述語(失敗したWFが呼び出されている述語)のみ抜き出す
@@ -175,7 +177,7 @@ def assign_value(wf_args, assigned_values):
     for term in wf_args:
         if term == "(":
             paren += 1
-        elif term == ")" :
+        elif term == ")":
             paren -= 1
         else:
             if re.fullmatch(r'^[a-z][0-9a-z]*$', term):      # termが変数名
@@ -187,14 +189,23 @@ def assign_value(wf_args, assigned_values):
             current_value = ""
     return wf_assigned_values
 
+def is_arithmetic(exp_terms):
+    for term in exp_terms:
+        if term == "\\/" or term == "/\\" or term == "∀":
+            return False
+    return True
 
 # WFを探す
 def scan_exp_with_tracetree(exp_terms, root, assigned_values_forall):
     # 外側についている括弧 "( x < 0 /\ y > 0 )"を取り除く
     exp_terms = remove_outer_paren(exp_terms)
-
+    print(exp_terms)
     if exp_terms[0].startswith("WF"):
         return [exp_terms, assigned_values_forall]
+    if is_arithmetic(exp_terms):
+        return [None, None]
+    if len(exp_terms) == 0:
+        return [None, None]
     if root.value == "univ":
         paren = 0
         for i in range(len(exp_terms)):
@@ -223,10 +234,12 @@ def scan_exp_with_tracetree(exp_terms, root, assigned_values_forall):
                 left.append(term)
             else:
                 right.append(term)
-        if root.left is None:
-            return scan_exp_with_tracetree(right, root.right, assigned_values_forall)
-        else:
-            return scan_exp_with_tracetree(left, root.left, assigned_values_forall)
+
+        right_result = scan_exp_with_tracetree(
+            right, root.right, assigned_values_forall)
+        left_result = scan_exp_with_tracetree(
+            left, root.left, assigned_values_forall)
+        return right_result if left_result[0] is None else left_result
     elif root.value == "conj":
         select_left = root.left.value == "0"
         left = []
@@ -275,6 +288,7 @@ def remove_outer_paren(exp_terms):
         exp_terms = exp_terms[n_outer_paren: -n_outer_paren]
     return exp_terms
 
+
 def analyze_trace(trace, lines):
     formatted_trace = extract_and_format_trace(trace)
     print(formatted_trace)
@@ -301,8 +315,10 @@ def main():
         sys.exit(1)
     lines = format_nuhfl(content)
     print(lines)
-    wf_info = analyze_trace(trace, lines)   # {"name": "WF1", "assigned_values": [1,0,1,2]}
+    # {"name": "WF1", "assigned_values": [1,0,1,2]}
+    wf_info = analyze_trace(trace, lines)
     sys.stdout.write(json.dumps(wf_info) + "\n")
+
 
 if __name__ == "__main__":
     main()

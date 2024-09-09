@@ -301,7 +301,7 @@ def main(filename, inlining=False):
     variables_list = [False] * n_rf
     args = [[] for _ in range(n_rf)]
 
-    while n_iter <= 100:
+    while n_iter <= 500:
         rf_list = iteration(filename, rf_list, n_rf, unseen_rf,
                             problems, opts, variables_list, args, start_time, inlining)
 
