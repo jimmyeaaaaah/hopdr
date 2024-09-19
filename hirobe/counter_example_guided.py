@@ -271,7 +271,7 @@ def iteration(filename, rf_list, n_rf, unseen_rf, problems, opts, variables_list
             problem.add(abs_variables[i] >= variables[i])
             problem.add(abs_variables[i] >= -1 * variables[i])
         opt = Optimize()
-        opt.minimize(sum(abs_variables))
+        opt.minimize(sum(abs_variables))    # L1ノルムを最小化
         problems[rf_idx] = problem
         opts[rf_idx] = opt
         variables_list[rf_idx] = variables

@@ -3,13 +3,18 @@ import re
 import numpy as np
 
 def substitute(rf_idx, rf_args, wf_args, rf):
-    for i in range(len(rf_args)):
-        original_arg = rf_args[i]
-        replaced_arg = wf_args[rf_idx][i]
-        rf = rf.replace(original_arg, replaced_arg)
-    return rf
+    rf = rf.replace("(", " ( ").replace(")", " ) ").replace("-", " - ").replace("+", " + ").replace("*", " * ")
+    new_rf = []
+    for term in rf.split():
+        if term in rf_args:
+            arg_idx = rf_args.index(term)
+            new_rf.append(wf_args[rf_idx][arg_idx])
+        else:
+            new_rf.append(term)
+    new_rf = " ".join(new_rf)
+    return new_rf
 
-# WF x ( x + 1 ), RF x r =v r <> x + 1 を (x + 1 >= 0 /\ x + 1 > x + 1)に置き換え
+# WF x ( x + 1 ), RF x r =v r <> x + 1 を (x + 1 >= 0 /\ x + 1 > x + 2)に置き換え
 def wf_to_rf(wf_args, rf_args, rf):
     wf_args = np.array(wf_args)
     wf_args = np.resize(wf_args, (2, len(wf_args) // 2))
@@ -66,7 +71,7 @@ def inlining(lines):
             if is_wf:
                 if term.startswith("RF"):
                     continue
-                if re.fullmatch(r'^[0-9a-z+-]+$', term):
+                if re.fullmatch(r'^[0-9a-z\+\-\*]+$', term):
                     if wf_paren == 0:
                         wf_args.append(term)
                     else:

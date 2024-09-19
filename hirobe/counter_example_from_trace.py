@@ -199,12 +199,11 @@ def is_arithmetic(exp_terms):
 def scan_exp_with_tracetree(exp_terms, root, assigned_values_forall):
     # 外側についている括弧 "( x < 0 /\ y > 0 )"を取り除く
     exp_terms = remove_outer_paren(exp_terms)
-    print(exp_terms)
+    if len(exp_terms) == 0 or root is None:
+        return [None, None]
     if exp_terms[0].startswith("WF"):
         return [exp_terms, assigned_values_forall]
     if is_arithmetic(exp_terms):
-        return [None, None]
-    if len(exp_terms) == 0:
         return [None, None]
     if root.value == "univ":
         paren = 0
