@@ -105,7 +105,6 @@ def s_exp_to_binary_tree(s_expr):
     tokens = s_expr.replace("(", " ( ").replace(")", " ) ").split()
     return build_tree(tokens)
 
-
 def build_tree(tokens):
     if len(tokens) == 2:    # tokens = ["(", ")"]
         return None
@@ -134,7 +133,7 @@ def build_tree(tokens):
     node.right = build_tree(right_tokens)
     return node
 
-
+# trace treeを辿って、inline前のnuHFLにおける失敗したWFを取得する
 def get_wf_from_trace_tree(formatted_trace, original_nuhfl_file):
     pred = ""
     for line in original_nuhfl_file:
@@ -168,7 +167,6 @@ def get_wf_from_trace_tree(formatted_trace, original_nuhfl_file):
     wf_args = wf_args[1:] if wf_args[0].startswith("RF") else wf_args
     wf_assigned_values = assign_value(wf_args, assigned_values)
     return {"wf_name": wf_name, "assigned_values": wf_assigned_values}
-
 
 def assign_value(wf_args, assigned_values):
     wf_assigned_values = []

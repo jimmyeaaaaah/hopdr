@@ -15,8 +15,64 @@ n_iter = 1
 n_rf = 0
 
 
-def get_n_rf(filename):
-    n_rf = 0
+class TreeNode:
+    def __init__(self, value):
+        self.value = value
+        self.left = None
+        self.right = None
+
+    def __repr__(self):
+        return f"TreeNode({self.value})"
+
+
+def print_tree(root, level=0, prefix="Root: "):
+    if root is not None:
+        print(" " * (level * 4) + prefix + str(root.value))
+        if root.left is not None or root.right is not None:
+            if root.left:
+                print_tree(root.left, level + 1, "L--- ")
+            else:
+                print(" " * ((level + 1) * 4) + "L--- None")
+            if root.right:
+                print_tree(root.right, level + 1, "R--- ")
+            else:
+                print(" " * ((level + 1) * 4) + "R--- None")
+
+# nuhflファイルを読み込み、述語(="."で区切られた各行)をリストに格納
+
+
+def format_nuhfl_by_pred(filename):
+    try:
+        with open(filename, 'r') as file:
+            content = file.read()
+    except FileNotFoundError:
+        print(f"Error: File '{filename}' not found.")
+        sys.exit(1)
+    content = content.replace(".", " . ")
+    terms = content.split()
+    new_lines = []
+    new_line = []
+    quantifier = 0
+    for term in terms:
+        if term == "%HES":
+            new_lines.append(term)
+            continue
+        if term == ".":
+            if quantifier == 0:
+                new_line.append(".")
+                new_lines.append(" ".join(new_line))
+                new_line = []
+                continue
+            else:
+                quantifier -= 1
+        if term == "∀" or term == "∃":
+            quantifier += 1
+        new_line.append(term)
+    return new_lines
+
+
+def get_rf_names(filename):
+    rf_names = []
     try:
         with open(filename, 'r') as file:
             lines = file.readlines()
@@ -25,11 +81,11 @@ def get_n_rf(filename):
         sys.exit(1)
     for line in lines:
         if line.startswith("RF"):
-            n_rf += 1
-    return n_rf
+            rf_names.append(line.split()[0])
+    return rf_names
 
 
-def apply_new_ranking_function(filename, ranking_functions, args, is_first=False):
+def apply_new_ranking_function(filename, ranking_functions, rf_args, is_first=False):
     print(f"ranking function for iter {n_iter} : {ranking_functions}")
     try:
         with open(filename, 'r') as file:
@@ -37,30 +93,29 @@ def apply_new_ranking_function(filename, ranking_functions, args, is_first=False
     except FileNotFoundError:
         print(f"Error: File '{filename}' not found.")
         sys.exit(1)
-    n_rf = 0
     newlines = []
     for line in lines:
         if line.startswith("RF"):
             left = line.split("<>")[0]
-            line = f"{left}<> {ranking_functions[n_rf]}.\n"
-            n_rf += 1
+            rf_name = line.split()[0]
+            line = f"{left}<> {ranking_functions[rf_name]}.\n"
         newlines.append(line)
     with open(filename, 'w') as file:
         file.writelines(newlines)
 
-    # RFの引数の変数のリストを取得する
+    # RFの引数の変数のリストを取得し、argsに格納
     if is_first:
-        rf_idx = 0
         for line in lines:
             if line.startswith("RF"):
                 terms = line.split()
+                rf_name = ""
                 for term in terms:
                     if term.startswith("RF"):
-                        rf_idx = 0 if term[2:] == "" else int(term[2:])-1
+                        rf_name = term
                         continue
                     if term == "r":
                         break
-                    args[rf_idx].append(term)
+                    rf_args[rf_name].append(term)
 
 
 def run_rethfl(filename, queue):
@@ -162,17 +217,18 @@ def solve_nuhfl(filename, start_time, inlining):
         sys.exit(1)
 
 
-def parse_result(result, inlining=False, original_nuhfl_file=""):
+# inlining = Trueの場合、filenameはinline前のnuhflファイル
+def parse_result(filename, result, inlining=False):
     trace = result.split("Trace: ")[-1]
-    rf_idx = 0
+    rf_name = 0
     if inlining:
-        trace_file = '/'.join(original_nuhfl_file.split('/')
+        trace_file = '/'.join(filename.split('/')
                               [:-1]) + "/trace.txt"
         with open(trace_file, 'w') as file:
             file.write(trace)
         try:
             result = subprocess.run(['python3', 'counter_example_from_trace.py',
-                                    original_nuhfl_file, trace_file], capture_output=True, text=True)
+                                    filename, trace_file], capture_output=True, text=True)
             wf_info = json.loads(result.stdout.strip().split('\n')[-1])
             print(wf_info)
         except subprocess.CalledProcessError as e:
@@ -181,61 +237,283 @@ def parse_result(result, inlining=False, original_nuhfl_file=""):
         #     if os.path.exists(trace_file):
         #         os.remove(trace_file)
         wf_name = wf_info["wf_name"]
-        wf_args = wf_info["assigned_values"]
-        rf_idx = wf_name[2:]
-        rf_idx = 0 if rf_idx == "" else int(rf_idx) - 1
-
+        wf_values = wf_info["assigned_values"]
+        rf_name = wf_name[2:]
+        rf_name = 0 if rf_name == "" else int(rf_name) - 1
     else:
-        last_wf = re.findall(r"WF[0-9]* \([0-9 -]+\)", trace)[-1]
-        print(f"call sequence for WF : {last_wf}")
-        wf_args = re.search(r"WF[0-9]* \(([0-9 -]+)\)",
-                            last_wf).group(1).split()
-        rf_idx = last_wf.split()[0][2:]
-        rf_idx = 0 if rf_idx == "" else int(rf_idx) - 1
+        terms = trace.replace("(", " ( ").replace(")", " ) ").split()
+        wf_trace = []
+        wf_values = []
+        wf_name = ""
+        is_wf = False
+        is_wf_args = False
+        paren = 0
+        for term in terms:
+            if term.startswith("WF"):
+                is_wf = True
+                is_wf_args = True
+                wf_name = term
+                continue
+            if is_wf and is_wf_args:
+                if term == "(":
+                    paren += 1
+                elif term == ")":
+                    paren -= 1
+                    if paren == 0:
+                        is_wf_args = False
+                        continue
+                else:
+                    wf_values.append(int(term))
+                continue
+            if is_wf and not is_wf_args:
+                if term == "(":
+                    paren += 1
+                    wf_trace.append("(")
+                elif term == ")":
+                    paren -= 1
+                    wf_trace.append(")")
+                    if paren == 0:
+                        is_wf = False
+                        break
+                else:
+                    if re.fullmatch(r'^[0-9-]+$', term):
+                        wf_trace.append("(")
+                        wf_trace.append(term)
+                        wf_trace.append(")")
+                    else:
+                        wf_trace.append(term)
+        wf_trace_tree = build_tree(wf_trace)
+        lines = format_nuhfl_by_pred(filename)
+        # 目的のWFの式の、右辺のみを取得
+        wf_line_str = [line for line in lines if line.startswith(wf_name)][0].split("=v")[
+            1]
+        wf_line_terms = wf_line_str.replace(
+            "(", " ( ").replace(")", " ) ").split()
+        # ピリオドを取り除く
+        wf_line_terms = wf_line_terms[:-
+                                      1] if wf_line_terms[-1] == "." else wf_line_terms
+        arith = scan_exp_with_tracetree(wf_line_terms, wf_trace_tree)
 
     # WFの呼び出し列から、不等式制約の係数を設定
-    call_sequence = [int(s) for s in wf_args]
-    n_args = len(call_sequence)
-    call_sequence = np.array(call_sequence).reshape(2, int(n_args/2))
+    n_values = len(wf_values)
+    wf_values = np.array(wf_values).reshape(2, int(n_values/2))
     # 定数項に対応する係数1を設定
-    constant_term_coe = np.ones((call_sequence.shape[0], 1), dtype=int)
-    call_sequence = np.concatenate((call_sequence, constant_term_coe), axis=1)
-    return rf_idx, call_sequence
+    constant_coe = np.ones((wf_values.shape[0], 1), dtype=int)
+    wf_values = np.concatenate((wf_values, constant_coe), axis=1)
+    return wf_name, wf_values, arith
+
+# S式のトレースをtreeに変換
 
 
-def set_constraints(coes, problem, variables):
+def build_tree(tokens):
+    if len(tokens) == 2:    # tokens = ["(", ")"]
+        return None
+    if len(tokens) == 3:    # tokens = ["(" , "1", ")"]
+        return TreeNode(tokens[1])
+    tokens = tokens[1:-1]
+    root_token = tokens.pop(0)
+    node = TreeNode(root_token)
+
+    paren = 0
+    left_tokens = []
+    right_tokens = []
+    is_left = True
+    for token in tokens:
+        if token == "(":
+            paren += 1
+        elif token == ")":
+            paren -= 1
+        if is_left:
+            left_tokens.append(token)
+            if paren == 0:
+                is_left = False
+        else:
+            right_tokens.append(token)
+    node.left = build_tree(left_tokens)
+    node.right = build_tree(right_tokens)
+    return node
+
+
+def is_arithmetic(exp_terms):
+    res = False
+    for term in exp_terms:
+        if term == "\\/" or term == "/\\" or term == "∀":
+            return False
+        if term == "<" or term == "<=" or term == ">" or term == ">=" or term == "=" or term == "==":
+            res = True
+    return res
+
+
+def remove_outer_paren(exp_terms):
+    paren_idx_pair = []
+    paren_start_idx_queue = []
+    for i in range(len(exp_terms)):
+        term = exp_terms[i]
+        if term == "(":
+            paren_start_idx_queue.append(i)
+        elif term == ")":
+            start_idx = paren_start_idx_queue.pop()
+            paren_idx_pair.append([start_idx, i])
+    n_outer_paren = 0
+    paren_idx_pair = sorted(paren_idx_pair)
+    for pair in paren_idx_pair:
+        if (pair[0] + pair[1]) == len(exp_terms)-1:
+            n_outer_paren += 1
+        else:
+            break
+    if n_outer_paren != 0:
+        exp_terms = exp_terms[n_outer_paren: -n_outer_paren]
+    return exp_terms
+
+
+def scan_exp_with_tracetree(exp_terms, root):
+    # 外側についている括弧 "( ( x < 0 /\ y > 0 ) )"を取り除く
+    exp_terms = remove_outer_paren(exp_terms)
+    if is_arithmetic(exp_terms):
+        return exp_terms
+    if len(exp_terms) == 0 or root is None:
+        return None
+    if root.value == "univ":
+        paren = 0
+        for i in range(len(exp_terms)):
+            term = exp_terms[i]
+            if term == ".":
+                exp_terms = exp_terms[i+1:]
+                break
+        return scan_exp_with_tracetree(exp_terms, root.right)
+    elif root.value == "disj":
+        left = []
+        right = []
+        is_left = True
+        paren = 0
+        for term in exp_terms:
+            if term == "(":
+                paren += 1
+            elif term == ")":
+                paren -= 1
+            elif term == "\\/":
+                if paren == 0:
+                    is_left = False
+                    continue
+            if is_left:
+                left.append(term)
+            else:
+                right.append(term)
+        right_result = scan_exp_with_tracetree(right, root.right)
+        left_result = scan_exp_with_tracetree(left, root.left)
+        return left_result if right_result[0] is None else right_result
+    elif root.value == "conj":
+        select_left = root.left.value == "0"
+        left = []
+        right = []
+        is_left = True
+        paren = 0
+        for term in exp_terms:
+            if term == "(":
+                paren += 1
+            elif term == ")":
+                paren -= 1
+            elif term == "/\\":
+                if paren == 0:
+                    is_left = False
+                    continue
+            if is_left:
+                left.append(term)
+            else:
+                right.append(term)
+        if select_left:
+            return scan_exp_with_tracetree(left, root.right)
+        else:
+            return scan_exp_with_tracetree(right, root.right)
+    else:
+        raise ValueError("trace tree is invalud format")
+
+
+def rf_to_z3exp(term, rf1_variable, rf2_variable, rf1_assigned_values, rf2_assigned_values):
+    if term == "r1":
+        return Sum([rf1_variable[j] * rf1_assigned_values[j] for j in range(len(rf1_variable))])
+    elif term == "r2":
+        return Sum([rf1_variable[j] * rf2_assigned_values[j] for j in range(len(rf1_variable))])
+    elif term == "r3":
+        return Sum([rf2_variable[j] * rf1_assigned_values[j] for j in range(len(rf2_variable))])
+    elif term == "r4":
+        return Sum([rf2_variable[j] * rf2_assigned_values[j] for j in range(len(rf2_variable))])
+    else:
+        return int(term)
+
+
+def set_constraints(wf_name, wf_values, arith, problem, variables_dict):
     global n_constraints
-    n_term = len(coes[0])
-    for i in range(len(coes) - 1):
-        coe1 = coes[i]
-        coe2 = coes[i+1]
-        coe = coe1 - coe2
-        problem.add(Sum([coe[j] * variables[j] for j in range(n_term)]) > 0)
-        n_constraints += 1
-        problem.add(Sum([coe1[j] * variables[j] for j in range(n_term)]) >= 0)
-        n_constraints += 1
-    # problem.add(Sum([coes[-1][j] * variables[j] for j in range(n_term)]) >= 0)
+    rf1_name = "RF_" + wf_name[3:] + "_1"
+    rf2_name = "RF_" + wf_name[3:] + "_2"
+    rf1_variable = variables_dict[rf1_name]
+    rf2_variable = variables_dict[rf2_name]
+    rf1_assigned_values = wf_values[0]
+    rf2_assigned_values = wf_values[1]
+    left = rf_to_z3exp(arith[0], rf1_variable, rf2_variable,
+                       rf1_assigned_values, rf2_assigned_values)
+    right = rf_to_z3exp(arith[2], rf1_variable, rf2_variable,
+                        rf1_assigned_values, rf2_assigned_values)
+    operand = arith[1]
+    if operand == "<":
+        problem.add(left < right)
+    elif operand == "<=":
+        problem.add(left <= right)
+    elif operand == ">":
+        problem.add(left > right)
+    elif operand == ">=":
+        problem.add(left >= right)
+    elif operand == "=" or operand == "==":
+        problem.add(left == right)
+    elif operand == "!=" or operand == "<>":
+        problem.add(left != right)
+    n_constraints += 1
+    # n_term = len(coes[0])
+    # for i in range(len(coes) - 1):
+    #     coe1 = coes[i]
+    #     coe2 = coes[i+1]
+    #     coe = coe1 - coe2
+    #     problem.add(Sum([coe[j] * variables[j] for j in range(n_term)]) > 0)
+    #     n_constraints += 1
+    #     problem.add(Sum([coe1[j] * variables[j] for j in range(n_term)]) >= 0)
+    #     n_constraints += 1
+    # # problem.add(Sum([coes[-1][j] * variables[j] for j in range(n_term)]) >= 0)
     n_constraints += 1
 
 
-def update_ranking_function(problem, opt, variables, args, start_time):
-    new_rf = ""
-    n_variable = len(variables)
+def update_ranking_function(problem, opt, rf_args, rf_variables, start_time):
+    new_rfs = {key: "" for key in rf_args.keys()}
     opt.add(problem.assertions())
-
+    print(problem.assertions())
     # 不等式制約を解く
     if opt.check() == sat:
         model = opt.model()
-        for i in range(n_variable):
-            new_coe = model[variables[i]]
-            if (new_coe == None or new_coe.as_long() == 0):
-                continue
-            if (i != n_variable-1):
-                new_rf += f"({new_coe.as_long()}) * {args[i]} + "
-            else:
-                new_rf += f"({new_coe.as_long()}) + "
-        new_rf = "1" if new_rf == "" else new_rf[:-3]
-        new_rf = str(sp.sympify(new_rf))
+        for rf_name in rf_args.keys():
+            variables = rf_variables[rf_name]
+            new_rf = ""
+            for i in range(len(variables)):
+                new_coe = model[variables[i]]
+                if (new_coe == None or new_coe.as_long() == 0):
+                    continue
+                if (i != len(variables)-1):
+                    new_rf += f"({new_coe.as_long()}) * {rf_args[rf_name][i]} + "
+                else:
+                    new_rf += f"({new_coe.as_long()}) + "
+            new_rf = "1" if new_rf == "" else new_rf[:-3]
+            new_rfs[rf_name] = str(sp.sympify(new_rf))
+    # 不等式制約を解く
+    # if opt.check() == sat:
+        # model = opt.model()
+        # for i in range(n_variable):
+        #     new_coe = model[variables[i]]
+        #     if (new_coe == None or new_coe.as_long() == 0):
+        #         continue
+        #     if (i != n_variable-1):
+        #         new_rf += f"({new_coe.as_long()}) * {args[i]} + "
+        #     else:
+        #         new_rf += f"({new_coe.as_long()}) + "
+        # new_rf = "1" if new_rf == "" else new_rf[:-3]
+        # new_rf = str(sp.sympify(new_rf))
     else:
         print("\nResult: No solution found.")
         end_time = time.perf_counter_ns()
@@ -243,67 +521,78 @@ def update_ranking_function(problem, opt, variables, args, start_time):
         print(f"total: {elapsed_time:.6f} sec")
         sys.exit(0)
 
-    return new_rf
+    return new_rfs
 
 
-def iteration(filename, rf_list, n_rf, unseen_rf, problems, opts, variables_list, args, start_time, inlining):
+def iteration(filename, rf_names, rf_list, rf_args,
+              problem, opt, variables_dict, start_time, inlining):
     global n_iter
     if (n_iter == 1):
         is_first = True
     else:
         is_first = False
     # 更新されたranking functionまたは初期値を設定
-    apply_new_ranking_function(filename, rf_list, args, is_first=is_first)
+    apply_new_ranking_function(filename, rf_list, rf_args, is_first=is_first)
 
-    # rethfl/show_traceを実行して結果を取得
+    # rethfl/show_traceを実行して結果のtrace(S式)を取得
     result = solve_nuhfl(filename, start_time, inlining)
 
     # show_traceの結果をparseして、呼び出し列を2次元arrayに変換
-    rf_idx, call_sequence = parse_result(result, inlining, filename)
+    wf_name, wf_values, arith = parse_result(filename, result, inlining)
 
-    if unseen_rf[rf_idx]:
-        # LpProblemをranking functionの個数分用意
-        n_variable = len(call_sequence[0])
-        problem = Solver()
-        variables = [Int(f'x{i}') for i in range(1, n_variable+1)]
-        abs_variables = [Int(f'abs_x{i}') for i in range(1, n_variable+1)]
-        for i in range(len(variables)):
-            problem.add(abs_variables[i] >= variables[i])
-            problem.add(abs_variables[i] >= -1 * variables[i])
-        opt = Optimize()
-        opt.minimize(sum(abs_variables))    # L1ノルムを最小化
-        problems[rf_idx] = problem
-        opts[rf_idx] = opt
-        variables_list[rf_idx] = variables
-        unseen_rf[rf_idx] = False
+    # if unseen_rf[rf_name]:
+    #     # LpProblemをranking functionの個数分用意
+    #     n_variable = len(call_sequence[0])
+    #     problem = Solver()
+    #     variables = [Int(f'x{i}') for i in range(1, n_variable+1)]
+    #     abs_variables = [Int(f'abs_x{i}') for i in range(1, n_variable+1)]
+    #     for i in range(len(variables)):
+    #         problem.add(abs_variables[i] >= variables[i])
+    #         problem.add(abs_variables[i] >= -1 * variables[i])
+    #     opt = Optimize()
+    #     opt.minimize(sum(abs_variables))    # L1ノルムを最小化
+    #     problems[rf_name] = problem
+    #     opts[rf_name] = opt
+    #     variables_list[rf_name] = variables
+    #     unseen_rf[rf_name] = False
+
+    if is_first:
+        variable_idx = 1
+        for key in rf_args.keys():
+            n_args = len(rf_args[key]) + 1
+            variables = [Int(f'x{i}') for i in range(
+                variable_idx, variable_idx + n_args)]
+            variable_idx += n_args
+            abs_variables = [Int(f'abs_x{i}') for i in range(1, n_args+1)]
+            variables_dict[key] = variables
+            for i in range(len(variables)):
+                problem.add(abs_variables[i] >= variables[i])
+                problem.add(abs_variables[i] >= -1 * variables[i])
+        opt.minimize(sum(abs_variables))
 
     # 制約をset
-    set_constraints(call_sequence, problems[rf_idx], variables_list[rf_idx])
+    set_constraints(wf_name, wf_values, arith, problem, variables_dict)
 
     # 不等式を解いてranking_functionを更新
-    new_rf = update_ranking_function(
-        problems[rf_idx], opts[rf_idx], variables_list[rf_idx], args[rf_idx], start_time)
-    rf_list[rf_idx] = new_rf
+    new_rfs = update_ranking_function(
+        problem, opt, rf_args, variables_dict, start_time)
     print("")
     n_iter += 1
-    return rf_list
+    return new_rfs
 
 
 def main(filename, inlining=False):
     start_time = time.perf_counter_ns()
-
     global n_rf
-    n_rf = get_n_rf(filename)
-    rf_list = ["1"] * n_rf
-    unseen_rf = [True] * n_rf
-    problems = [False] * n_rf
-    opts = [False] * n_rf
-    variables_list = [False] * n_rf
-    args = [[] for _ in range(n_rf)]
-
+    rf_names = get_rf_names(filename)
+    rf_list = {key: "1" for key in rf_names}
+    problem = Solver()
+    opt = Optimize()
+    variables_dict = {key: [] for key in rf_names}
+    rf_args = {key: [] for key in rf_names}
     while n_iter <= 500:
-        rf_list = iteration(filename, rf_list, n_rf, unseen_rf,
-                            problems, opts, variables_list, args, start_time, inlining)
+        rf_list = iteration(filename, rf_names, rf_list, rf_args,
+                            problem, opt, variables_dict, start_time, inlining)
 
 
 if __name__ == "__main__":
