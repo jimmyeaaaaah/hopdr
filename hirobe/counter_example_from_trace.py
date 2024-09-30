@@ -23,11 +23,23 @@ class CounterExample:
     def __repr__(self):
         return f"CounterExample( \n pred_name = {self.pred_name} \n pred_args = {self.pred_args} \n s_exp = {self.s_exp}\n)"
 
+
+def print_tree(root, level=0, prefix="Root: "):
+    if root is not None:
+        print(" " * (level * 4) + prefix + str(root.value))
+        if root.left is not None or root.right is not None:
+            if root.left:
+                print_tree(root.left, level + 1, "L--- ")
+            else:
+                print(" " * ((level + 1) * 4) + "L--- None")
+            if root.right:
+                print_tree(root.right, level + 1, "R--- ")
+            else:
+                print(" " * ((level + 1) * 4) + "R--- None")
+
 # 述語ごとに改行された形にする
-
-
 def format_nuhfl(content):
-    content = content.replace(".", " . ")
+    content = content.replace(".", " . ").replace("∀", " ∀ ").replace("∃", " ∃ ")
     terms = content.split()
     new_lines = []
     new_line = []
@@ -134,13 +146,12 @@ def build_tree(tokens):
     return node
 
 # trace treeを辿って、inline前のnuHFLにおける失敗したWFを取得する
-def get_wf_from_trace_tree(formatted_trace, original_nuhfl_file):
+def get_wf_info_from_trace_tree(formatted_trace, original_nuhfl_file):
     pred = ""
     for line in original_nuhfl_file:
-        if line.startswith(formatted_trace.pred_name):
+        if line.split()[0] == formatted_trace.pred_name:
             pred = line
             break
-
     # 述語の引数と、それに代入された値のmap
     assigned_values = {}
     pred_left = pred.split("=v")[0]
@@ -156,17 +167,25 @@ def get_wf_from_trace_tree(formatted_trace, original_nuhfl_file):
     exp_terms = exp_str.replace("(", " ( ").replace(")", " ) ").split()
     # ピリオドを取り除く
     exp_terms = exp_terms[:-1] if exp_terms[-1] == "." else exp_terms
-    wf, assigned_values_forall = scan_exp_with_tracetree(
+
+    # WFを取得
+    wf, wf_trace, assigned_values_forall = get_wf_from_trace_tree(
         exp_terms, formatted_trace.tree, assigned_values_forall)
+    print(wf, wf_trace, assigned_values_forall)
     assigned_values.update(assigned_values_forall)
-    print(f'wf: {" ".join(wf)}, assigned_values: {assigned_values}')
+    wf_name = wf[0]
+
+    # WFの中に含まれる算術式を取得
+    wf_str = "( r1 >= 0 /\ r3 >= 0 ) /\ ( r1 > r2 \/ ( r1 = r2 /\ ( r3 > r4 ) ) )"
+    wf_terms = wf_str.split()
+    arith = get_arith_in_wf_from_trace_tree(wf_terms, wf_trace)
+    arith = " ".join(arith)
 
     # WFの引数に、失敗パスで呼び出した値を代入
-    wf_name = wf[0]
-    wf_args = " ".join(wf[1:]).replace("+", " + ").replace("-", " - ").split()
-    wf_args = wf_args[1:] if wf_args[0].startswith("RF") else wf_args
+    wf_args = " ".join(wf[3:]).replace("+", " + ").replace("-", " - ").split()
+    print(wf_args, assigned_values)
     wf_assigned_values = assign_value(wf_args, assigned_values)
-    return {"wf_name": wf_name, "assigned_values": wf_assigned_values}
+    return {"wf_name": wf_name, "assigned_values": wf_assigned_values, "failed_arith": arith}
 
 def assign_value(wf_args, assigned_values):
     wf_assigned_values = []
@@ -188,19 +207,24 @@ def assign_value(wf_args, assigned_values):
     return wf_assigned_values
 
 def is_arithmetic(exp_terms):
+    res = False
     for term in exp_terms:
         if term == "\\/" or term == "/\\" or term == "∀":
             return False
-    return True
+        if term == "<" or term == "<=" or term == ">" or term == ">=" or term == "=" or term == "==":
+            res = True
+    return res
 
 # WFを探す
-def scan_exp_with_tracetree(exp_terms, root, assigned_values_forall):
+def get_wf_from_trace_tree(exp_terms, root, assigned_values_forall):
+    # print(exp_terms)
+    # print(root)
     # 外側についている括弧 "( x < 0 /\ y > 0 )"を取り除く
     exp_terms = remove_outer_paren(exp_terms)
     if len(exp_terms) == 0 or root is None:
-        return [None, None]
+        return [None, None, None]
     if exp_terms[0].startswith("WF"):
-        return [exp_terms, assigned_values_forall]
+        return [exp_terms, root, assigned_values_forall]
     if is_arithmetic(exp_terms):
         return [None, None]
     if root.value == "univ":
@@ -212,7 +236,7 @@ def scan_exp_with_tracetree(exp_terms, root, assigned_values_forall):
             if term == ".":
                 exp_terms = exp_terms[i+1:]
                 break
-        return scan_exp_with_tracetree(exp_terms, root.right, assigned_values_forall)
+        return get_wf_from_trace_tree(exp_terms, root.right, assigned_values_forall)
     elif root.value == "disj":
         left = []
         right = []
@@ -223,7 +247,7 @@ def scan_exp_with_tracetree(exp_terms, root, assigned_values_forall):
                 paren += 1
             elif term == ")":
                 paren -= 1
-            elif term == "\\/":
+            elif is_left and term == "\\/":
                 if paren == 0:
                     is_left = False
                     continue
@@ -232,9 +256,9 @@ def scan_exp_with_tracetree(exp_terms, root, assigned_values_forall):
             else:
                 right.append(term)
 
-        right_result = scan_exp_with_tracetree(
+        right_result = get_wf_from_trace_tree(
             right, root.right, assigned_values_forall)
-        left_result = scan_exp_with_tracetree(
+        left_result = get_wf_from_trace_tree(
             left, root.left, assigned_values_forall)
         return right_result if left_result[0] is None else left_result
     elif root.value == "conj":
@@ -257,12 +281,74 @@ def scan_exp_with_tracetree(exp_terms, root, assigned_values_forall):
             else:
                 right.append(term)
         if select_left:
-            return scan_exp_with_tracetree(left, root.right, assigned_values_forall)
+            return get_wf_from_trace_tree(left, root.right, assigned_values_forall)
         else:
-            return scan_exp_with_tracetree(right, root.right, assigned_values_forall)
+            return get_wf_from_trace_tree(right, root.right, assigned_values_forall)
     else:
         raise ValueError("trace tree is invalud format")
 
+# WFの中に含まれる算術式を取得
+def get_arith_in_wf_from_trace_tree(exp_terms, root):
+    # 外側についている括弧 "( ( x < 0 /\ y > 0 ) )"を取り除く
+    exp_terms = remove_outer_paren(exp_terms)
+    if is_arithmetic(exp_terms):
+        return exp_terms
+    if len(exp_terms) == 0 or root is None:
+        return None
+    if root.value == "univ":
+        paren = 0
+        for i in range(len(exp_terms)):
+            term = exp_terms[i]
+            if term == ".":
+                exp_terms = exp_terms[i+1:]
+                break
+        return get_arith_in_wf_from_trace_tree(exp_terms, root.right)
+    elif root.value == "disj":
+        left = []
+        right = []
+        is_left = True
+        paren = 0
+        for term in exp_terms:
+            if term == "(":
+                paren += 1
+            elif term == ")":
+                paren -= 1
+            elif term == "\\/":
+                if paren == 0:
+                    is_left = False
+                    continue
+            if is_left:
+                left.append(term)
+            else:
+                right.append(term)
+        right_result = get_arith_in_wf_from_trace_tree(right, root.right)
+        left_result = get_arith_in_wf_from_trace_tree(left, root.left)
+        return left_result if right_result[0] is None else right_result
+    elif root.value == "conj":
+        select_left = root.left.value == "0"
+        left = []
+        right = []
+        is_left = True
+        paren = 0
+        for term in exp_terms:
+            if term == "(":
+                paren += 1
+            elif term == ")":
+                paren -= 1
+            elif term == "/\\":
+                if paren == 0:
+                    is_left = False
+                    continue
+            if is_left:
+                left.append(term)
+            else:
+                right.append(term)
+        if select_left:
+            return get_arith_in_wf_from_trace_tree(left, root.right)
+        else:
+            return get_arith_in_wf_from_trace_tree(right, root.right)
+    else:
+        raise ValueError("trace tree is invalud format")
 
 def remove_outer_paren(exp_terms):
     paren_idx_pair = []
@@ -276,9 +362,11 @@ def remove_outer_paren(exp_terms):
             paren_idx_pair.append([start_idx, i])
     n_outer_paren = 0
     paren_idx_pair = sorted(paren_idx_pair)
+    paren_idx = 0
     for pair in paren_idx_pair:
-        if (pair[0] + pair[1]) == len(exp_terms)-1:
+        if pair[0] == paren_idx and (pair[0] + pair[1]) == len(exp_terms)-1:
             n_outer_paren += 1
+            paren_idx += 1
         else:
             break
     if n_outer_paren != 0:
@@ -288,15 +376,16 @@ def remove_outer_paren(exp_terms):
 
 def analyze_trace(trace, lines):
     formatted_trace = extract_and_format_trace(trace)
-    print(formatted_trace)
     trace_tree = s_exp_to_binary_tree(formatted_trace.s_exp)
     formatted_trace.tree = trace_tree
-    wf_info = get_wf_from_trace_tree(formatted_trace, lines)
+    wf_info = get_wf_info_from_trace_tree(formatted_trace, lines)
     return wf_info  # {"name": "WF1", "assigned_values": [1,0,1,2]}
 
 
 def main():
+    # inlining前のnuHFLファイル
     original_nuhfl_file = sys.argv[1]
+    # inlining後のnuHFLのトレース
     trace_file = sys.argv[2]
     try:
         with open(original_nuhfl_file, 'r') as file:
@@ -311,9 +400,9 @@ def main():
         print(f"Error: File '{trace_file}' not found.")
         sys.exit(1)
     lines = format_nuhfl(content)
-    print(lines)
-    # {"name": "WF1", "assigned_values": [1,0,1,2]}
+    # {"name": "WF1", "assigned_values": [1,0,1,2], "failed_arith": "r3 < r4"}
     wf_info = analyze_trace(trace, lines)
+    print(wf_info)
     sys.stdout.write(json.dumps(wf_info) + "\n")
 
 

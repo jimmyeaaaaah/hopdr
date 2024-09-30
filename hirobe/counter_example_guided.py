@@ -238,8 +238,7 @@ def parse_result(filename, result, inlining=False):
         #         os.remove(trace_file)
         wf_name = wf_info["wf_name"]
         wf_values = wf_info["assigned_values"]
-        rf_name = wf_name[2:]
-        rf_name = 0 if rf_name == "" else int(rf_name) - 1
+        arith = wf_info["failed_arith"].split()
     else:
         terms = trace.replace("(", " ( ").replace(")", " ) ").split()
         wf_trace = []
@@ -456,17 +455,19 @@ def set_constraints(wf_name, wf_values, arith, problem, variables_dict):
                         rf1_assigned_values, rf2_assigned_values)
     operand = arith[1]
     if operand == "<":
-        problem.add(left < right)
+        constraint = left < right
     elif operand == "<=":
-        problem.add(left <= right)
+        constraint = left <= right
     elif operand == ">":
-        problem.add(left > right)
+        constraint = left > right
     elif operand == ">=":
-        problem.add(left >= right)
+        constraint = left >= right
     elif operand == "=" or operand == "==":
-        problem.add(left == right)
+        constraint = left == right
     elif operand == "!=" or operand == "<>":
-        problem.add(left != right)
+        constraint = left != right
+    problem.add(constraint)
+    print(constraint)
     n_constraints += 1
     # n_term = len(coes[0])
     # for i in range(len(coes) - 1):
@@ -484,7 +485,6 @@ def set_constraints(wf_name, wf_values, arith, problem, variables_dict):
 def update_ranking_function(problem, opt, rf_args, rf_variables, start_time):
     new_rfs = {key: "" for key in rf_args.keys()}
     opt.add(problem.assertions())
-    print(problem.assertions())
     # 不等式制約を解く
     if opt.check() == sat:
         model = opt.model()
@@ -501,19 +501,6 @@ def update_ranking_function(problem, opt, rf_args, rf_variables, start_time):
                     new_rf += f"({new_coe.as_long()}) + "
             new_rf = "1" if new_rf == "" else new_rf[:-3]
             new_rfs[rf_name] = str(sp.sympify(new_rf))
-    # 不等式制約を解く
-    # if opt.check() == sat:
-        # model = opt.model()
-        # for i in range(n_variable):
-        #     new_coe = model[variables[i]]
-        #     if (new_coe == None or new_coe.as_long() == 0):
-        #         continue
-        #     if (i != n_variable-1):
-        #         new_rf += f"({new_coe.as_long()}) * {args[i]} + "
-        #     else:
-        #         new_rf += f"({new_coe.as_long()}) + "
-        # new_rf = "1" if new_rf == "" else new_rf[:-3]
-        # new_rf = str(sp.sympify(new_rf))
     else:
         print("\nResult: No solution found.")
         end_time = time.perf_counter_ns()
@@ -536,25 +523,10 @@ def iteration(filename, rf_names, rf_list, rf_args,
 
     # rethfl/show_traceを実行して結果のtrace(S式)を取得
     result = solve_nuhfl(filename, start_time, inlining)
+    print(result)
 
-    # show_traceの結果をparseして、呼び出し列を2次元arrayに変換
+    # show_traceの結果をparseして、失敗している不等式制約を取得
     wf_name, wf_values, arith = parse_result(filename, result, inlining)
-
-    # if unseen_rf[rf_name]:
-    #     # LpProblemをranking functionの個数分用意
-    #     n_variable = len(call_sequence[0])
-    #     problem = Solver()
-    #     variables = [Int(f'x{i}') for i in range(1, n_variable+1)]
-    #     abs_variables = [Int(f'abs_x{i}') for i in range(1, n_variable+1)]
-    #     for i in range(len(variables)):
-    #         problem.add(abs_variables[i] >= variables[i])
-    #         problem.add(abs_variables[i] >= -1 * variables[i])
-    #     opt = Optimize()
-    #     opt.minimize(sum(abs_variables))    # L1ノルムを最小化
-    #     problems[rf_name] = problem
-    #     opts[rf_name] = opt
-    #     variables_list[rf_name] = variables
-    #     unseen_rf[rf_name] = False
 
     if is_first:
         variable_idx = 1

@@ -1,6 +1,5 @@
 import sys
 
-
 def reform(lines):
     contents = ' '.join(line.strip() for line in lines)
     quantifier_stack = []
@@ -43,21 +42,27 @@ def get_arg_map(lines):
     return arg_map
 
 
-def create_wf_rf(pred, args):
+def create_wf_rf(pred, args, n_rf = 2):
     args1 = [s+"1" for s in args]
     args2 = [s+"2" for s in args]
     args_str = " ".join(args)
     args1_str = " ".join(args1)
     args2_str = " ".join(args2)
-    wf = f"WF_{pred} " + " ".join([f"rf{idx}" for idx in range(1, len(args)+1)]) + f" {args1_str} {args2_str}"
-    forall_r = "".join([f"∀ r{idx}. " for idx in range(1, len(args)*2+1)])
-    r_disjunction = "".join([f"rf{rf_idx} {args1_str} r{rf_idx*2-1} \/ rf{rf_idx} {args2_str} r{rf_idx*2} \/ " for rf_idx in range(1, len(args)+1)])
-    r_positive = "".join([f"r{idx*2-1} >= 0 /\ " for idx in range(1, len(args)+1)])
-    lexicographic = ["( r1 > r2 "] + [f"\/ ( r{idx*2-1} = r{idx*2} /\ ( r{idx*2+1} > r{idx*2+2} " for idx in range(1, len(args))] + [") " for idx in range(1, len(args)*2)]
-    lexicographic = "".join(lexicographic)
-    wf_line = wf + " =v " + forall_r + r_disjunction + "( " + r_positive + lexicographic + ")."
-    rf_line = f"{args_str} r =v r <> 1."
-    rf_lines = [f"RF_{pred}_{idx} " + rf_line for idx in range(1, len(args)+1)]
+    if n_rf == 2:
+        wf = f"WF_{pred} " + " ".join([f"rf{idx}" for idx in range(1, 3)]) + f" {args1_str} {args2_str}"
+        wf_line = f"{wf} =v ∀ r1. ∀ r2. ∀ r3. ∀ r4. ( rf1 {args1_str} r1 \/ ( rf1 {args2_str} r2 \/ ( rf2 {args1_str} r3 \/ ( rf2 {args2_str} r4 \/ ( ( r1 >= 0 /\ r3 >= 0 ) /\ ( r1 > r2 \/ ( r1 = r2 /\ ( r3 > r4 ) ) ) ) ) ) ) )."
+        rf_line = f"{args_str} r =v r <> 1."
+        rf_lines = [f"RF_{pred}_{idx} " + rf_line for idx in range(1, 3)]
+    else:
+        wf = f"WF_{pred} " + " ".join([f"rf{idx}" for idx in range(1, len(args)+1)]) + f" {args1_str} {args2_str}"
+        forall_r = "".join([f"∀ r{idx}. " for idx in range(1, len(args)*2+1)])
+        r_disjunction = "".join([f"( rf{rf_idx} {args1_str} r{rf_idx*2-1} \/ ( rf{rf_idx} {args2_str} r{rf_idx*2} \/ " for rf_idx in range(1, len(args)+1)])
+        r_positive = " /\ ".join([f"r{idx*2-1} >= 0" for idx in range(1, len(args)+1)])
+        lexicographic = ["( r1 > r2 "] + [f"\/ ( r{idx*2-1} = r{idx*2} /\ ( r{idx*2+1} > r{idx*2+2} " for idx in range(1, len(args))] + [") " for idx in range(1, len(args)*2)]
+        lexicographic = "".join(lexicographic)
+        wf_line = wf + " =v " + forall_r + r_disjunction + "( ( " + r_positive + " ) /\\ " + lexicographic + ") "*len(args)*2 + ")."
+        rf_line = f"{args_str} r =v r <> 1."
+        rf_lines = [f"RF_{pred}_{idx} " + rf_line for idx in range(1, len(args)+1)]
     return wf_line, rf_lines
 
 
@@ -101,7 +106,7 @@ def add_ranking_function(lines, arg_map):
                             paren.append(term)
                     if (len(arg_map[pred]) == len(args_called)):
                         new_line = new_line + \
-                            [f"/\ WF_{pred}"] + [f"RF_{pred}_{idx}" for idx in range(1, len(arg_map[pred])+1)] + \
+                            [f"/\ WF_{pred}"] + [f"RF_{pred}_{idx}" for idx in range(1, 3)] + \
                             arg_map[pred] + args_called
                         if pred not in has_wf:
                             wf, rfs = create_wf_rf(pred, arg_map[pred])
