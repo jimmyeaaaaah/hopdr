@@ -15,7 +15,7 @@ def substitute(wf_args, rf_args, rf):
     return new_rf
 
 # WF RF1 RF2 x ( x + 1 ), RF1 x r =v r <> x + 1, RF2 x r =v r <> 2*x + 3 を 
-# ( ( x + 1 >= 0 /\ 2*x + 3 >= 0) /\ ( x + 1 > (x + 1) + 1 \/ ( x + 1 = (x + 1) + 1) /\ ( 2*x + 3 > 2*(x + 1) + 3 ) ) ) に置き換え
+# ( ( isDummy = 1 \/ ( px + 1 >= 1 /\ px + 1 > x + 1) ) \/ ( 2*px + 3 >= 0 /\ 2*px + 3 > 2*x + 3 ) )
 def wf_to_rf(wf_name, wf_args, rf_args, rf):
     rf_name1 = wf_name.replace("WF", "RF") + "_1"
     rf_name2 = wf_name.replace("WF", "RF") + "_2"
@@ -28,19 +28,32 @@ def wf_to_rf(wf_name, wf_args, rf_args, rf):
     replaced_rf = f"( ( {r1} >= 0 /\ {r3} >= 0 ) /\ ( {r1} > {r2} \/ ( {r1} = {r2} /\ ( {r3} > {r4} ) ) ) )"
     return replaced_rf
 
+def d_to_arith(rf_args, rfs):
+    d_str = "( isDummy = 1 "
+    for i in range(len(rf_args)):
+        args = rf_args[i]
+        p_args = [f"p{arg}" for arg in args]
+        rf1_str = substitute(p_args, rf_args[i], rfs[i])
+        rf2_str = substitute(args, rf_args[i], rfs[i])
+        d_str += f"\/ ( {rf1_str} >= 0 /\ {rf1_str} >= {rf2_str} ) "
+    d_str += " )"
+    return d_str
+
 def inlining(lines):
-    rf_args = {}
-    rfs = {}
+    rf_args = []
+    rfs = []
     # 各RFの引数とrfの中身を取得
+    rf_idx = -1
     for line in lines:
         if line.startswith("RF"):
-            rf_name = 0
             is_args = True
             is_rf = False
             terms = line.split()
             for term in terms:
                 if term.startswith("RF"):
-                    rf_name = term
+                    rf_idx += 1
+                    rf_args.append([])
+                    rfs.append("")
                     continue
                 if term == "=v":
                     is_args = False
@@ -50,64 +63,30 @@ def inlining(lines):
                     continue
                 if is_args:
                     if term != "r":
-                        if rf_name not in rf_args.keys():
-                            rf_args[rf_name] = []
-                        rf_args[rf_name].append(term)
+                        rf_args[rf_idx].append(term)
                 if is_rf:
-                    if rf_name not in rfs.keys():
-                        rfs[rf_name] = ""
-                    rfs[rf_name] = rfs[rf_name] + ' ' + term
-            rfs[rf_name] = rfs[rf_name].rstrip(".")
-
+                    rfs[rf_idx] = rfs[rf_idx] + ' ' + term
+            rfs[rf_idx] = rfs[rf_idx].rstrip(".")
     new_lines = []
     for line in lines:
-        new_line = []
-        if line.startswith("WF"):
+        if line.startswith("%HES") or line.startswith("Sentry"):
+            new_lines.append(line.strip())
+            continue
+        if line.startswith("D") or line.startswith("WF") or line.startswith("RF"):
             break
-        line = line.replace("(", " ( ").replace(")", " ) ")
-        terms = line.split()
-        is_wf = False
-        wf_paren = 0
-        wf_args = []
+        new_line = []
+        terms = line.replace("(", " ( ").replace(")", " ) ").strip().split()
+        is_d = False
         for term in terms:
-            if term.startswith("WF"):
-                is_wf = True
-                wf_paren = 0
-                wf_name = term
-                continue
-            if is_wf:
-                if term.startswith("RF"):
+            if term == "D":
+                is_d = True
+                arith = d_to_arith(rf_args, rfs)
+                new_line.append(arith)
+            if is_d:
+                if term == "/\\":
+                    is_d = False
+                    new_line.append(term)
                     continue
-                if re.fullmatch(r'^[0-9a-z\+\-\*\_]+$', term):
-                    if wf_paren == 0:
-                        wf_args.append(term)
-                    else:
-                        wf_args[-1] = wf_args[-1] + term
-                else:
-                    if term == "(":
-                        if wf_paren == 0:
-                            wf_args.append(term)
-                        else:
-                            wf_args[-1] = wf_args[-1] + term
-                        wf_paren += 1
-                    elif term == ")":
-                        if wf_paren == 0:   # WFから抜けている
-                            is_wf = False
-                            # ここでwf_idxとwf_argsからWFを展開する処理
-                            rf = wf_to_rf(wf_name, wf_args, rf_args, rfs)
-                            wf_args = []
-                            new_line.append(rf)
-                            new_line.append(term)
-                        else:
-                            wf_paren -= 1
-                            wf_args[-1] = wf_args[-1] + term
-                    else:
-                        is_wf = False
-                        # ここでwf_idxとwf_argsからWFを展開する処理
-                        rf = wf_to_rf(wf_name, wf_args, rf_args, rfs)
-                        wf_args = []
-                        new_line.append(rf)
-                        new_line.append(term)
             else:
                 new_line.append(term)
         new_line = " ".join(new_line).replace("  ", " ")
@@ -125,7 +104,7 @@ def main():
         sys.exit(1)
     lines = inlining(lines)
     content = "\n".join(lines)
-    output_file = "/".join(filename.split("/")[:-1]) + "/rf_lexico_inlined.in"
+    output_file = "/".join(filename.split("/")[:-1]) + "/disjunctive_wf_inlined.in"
     with open(output_file, 'w') as file:
         file.write(content)
     sys.stdout.write(output_file + '\n')

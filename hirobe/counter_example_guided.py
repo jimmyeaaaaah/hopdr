@@ -218,8 +218,9 @@ def solve_nuhfl(filename, start_time, inlining):
 
 
 # inlining = Trueの場合、filenameはinline前のnuhflファイル
+# d_args = [2, 2, 1, 0]など(isDummyを除く)、failed_arith = ["r1 > r2", "r1 >= 0"]など
 def parse_result(filename, result, inlining=False):
-    trace = result.split("Trace: ")[-1]
+    trace = result.split("Trace: ")[-1].replace("(", " ( ").replace(")", " ) ").split()
     rf_name = 0
     if inlining:
         trace_file = '/'.join(filename.split('/')
@@ -240,246 +241,58 @@ def parse_result(filename, result, inlining=False):
         wf_values = wf_info["assigned_values"]
         arith = wf_info["failed_arith"].split()
     else:
-        terms = trace.replace("(", " ( ").replace(")", " ) ").split()
-        wf_trace = []
-        wf_values = []
-        wf_name = ""
-        is_wf = False
-        is_wf_args = False
-        paren = 0
-        for term in terms:
-            if term.startswith("WF"):
-                is_wf = True
-                is_wf_args = True
-                wf_name = term
+        d_trace = []
+        failed_arith = []
+        paren = 1
+        is_d = False
+        for term in trace:
+            if term == "D":
+                is_d = True
+                d_trace.append(term)
                 continue
-            if is_wf and is_wf_args:
+            if is_d:
                 if term == "(":
                     paren += 1
                 elif term == ")":
                     paren -= 1
-                    if paren == 0:
-                        is_wf_args = False
-                        continue
-                else:
-                    wf_values.append(int(term))
-                continue
-            if is_wf and not is_wf_args:
-                if term == "(":
-                    paren += 1
-                    wf_trace.append("(")
-                elif term == ")":
-                    paren -= 1
-                    wf_trace.append(")")
-                    if paren == 0:
-                        is_wf = False
-                        break
-                else:
-                    if re.fullmatch(r'^[0-9-]+$', term):
-                        wf_trace.append("(")
-                        wf_trace.append(term)
-                        wf_trace.append(")")
-                    else:
-                        wf_trace.append(term)
-        wf_trace_tree = build_tree(wf_trace)
-        lines = format_nuhfl_by_pred(filename)
-        # 目的のWFの式の、右辺のみを取得
-        wf_line_str = [line for line in lines if line.startswith(wf_name)][0].split("=v")[
-            1]
-        wf_line_terms = wf_line_str.replace(
-            "(", " ( ").replace(")", " ) ").split()
-        # ピリオドを取り除く
-        wf_line_terms = wf_line_terms[:-
-                                      1] if wf_line_terms[-1] == "." else wf_line_terms
-        arith = scan_exp_with_tracetree(wf_line_terms, wf_trace_tree)
-
-    # WFの呼び出し列から、不等式制約の係数を設定
-    n_values = len(wf_values)
-    wf_values = np.array(wf_values).reshape(2, int(n_values/2))
-    # 定数項に対応する係数1を設定
-    constant_coe = np.ones((wf_values.shape[0], 1), dtype=int)
-    wf_values = np.concatenate((wf_values, constant_coe), axis=1)
-    return wf_name, wf_values, arith
-
-# S式のトレースをtreeに変換
-
-
-def build_tree(tokens):
-    if len(tokens) == 2:    # tokens = ["(", ")"]
-        return None
-    if len(tokens) == 3:    # tokens = ["(" , "1", ")"]
-        return TreeNode(tokens[1])
-    tokens = tokens[1:-1]
-    root_token = tokens.pop(0)
-    node = TreeNode(root_token)
-
-    paren = 0
-    left_tokens = []
-    right_tokens = []
-    is_left = True
-    for token in tokens:
-        if token == "(":
-            paren += 1
-        elif token == ")":
-            paren -= 1
-        if is_left:
-            left_tokens.append(token)
-            if paren == 0:
-                is_left = False
-        else:
-            right_tokens.append(token)
-    node.left = build_tree(left_tokens)
-    node.right = build_tree(right_tokens)
-    return node
-
-
-def is_arithmetic(exp_terms):
-    res = False
-    for term in exp_terms:
-        if term == "\\/" or term == "/\\" or term == "∀":
-            return False
-        if term == "<" or term == "<=" or term == ">" or term == ">=" or term == "=" or term == "==":
-            res = True
-    return res
-
-
-def remove_outer_paren(exp_terms):
-    paren_idx_pair = []
-    paren_start_idx_queue = []
-    for i in range(len(exp_terms)):
-        term = exp_terms[i]
-        if term == "(":
-            paren_start_idx_queue.append(i)
-        elif term == ")":
-            start_idx = paren_start_idx_queue.pop()
-            paren_idx_pair.append([start_idx, i])
-    n_outer_paren = 0
-    paren_idx_pair = sorted(paren_idx_pair)
-    for pair in paren_idx_pair:
-        if (pair[0] + pair[1]) == len(exp_terms)-1:
-            n_outer_paren += 1
-        else:
-            break
-    if n_outer_paren != 0:
-        exp_terms = exp_terms[n_outer_paren: -n_outer_paren]
-    return exp_terms
-
-
-def scan_exp_with_tracetree(exp_terms, root):
-    # 外側についている括弧 "( ( x < 0 /\ y > 0 ) )"を取り除く
-    exp_terms = remove_outer_paren(exp_terms)
-    if is_arithmetic(exp_terms):
-        return exp_terms
-    if len(exp_terms) == 0 or root is None:
-        return None
-    if root.value == "univ":
-        paren = 0
-        for i in range(len(exp_terms)):
-            term = exp_terms[i]
-            if term == ".":
-                exp_terms = exp_terms[i+1:]
-                break
-        return scan_exp_with_tracetree(exp_terms, root.right)
-    elif root.value == "disj":
-        left = []
-        right = []
-        is_left = True
-        paren = 0
-        for term in exp_terms:
-            if term == "(":
-                paren += 1
-            elif term == ")":
-                paren -= 1
-            elif term == "\\/":
                 if paren == 0:
-                    is_left = False
-                    continue
-            if is_left:
-                left.append(term)
-            else:
-                right.append(term)
-        right_result = scan_exp_with_tracetree(right, root.right)
-        left_result = scan_exp_with_tracetree(left, root.left)
-        return left_result if right_result[0] is None else right_result
-    elif root.value == "conj":
-        select_left = root.left.value == "0"
-        left = []
-        right = []
-        is_left = True
-        paren = 0
-        for term in exp_terms:
-            if term == "(":
-                paren += 1
-            elif term == ")":
-                paren -= 1
-            elif term == "/\\":
-                if paren == 0:
-                    is_left = False
-                    continue
-            if is_left:
-                left.append(term)
-            else:
-                right.append(term)
-        if select_left:
-            return scan_exp_with_tracetree(left, root.right)
-        else:
-            return scan_exp_with_tracetree(right, root.right)
-    else:
-        raise ValueError("trace tree is invalud format")
+                    break
+                d_trace.append(term)
+        for idx, term in enumerate(d_trace):
+            if term == "conj":
+                flag = d_trace[idx+1]
+                if flag == "0":
+                    failed_arith.append("r1 >= 0")
+                elif flag == "1":
+                    failed_arith.append("r1 > r2")
+                else:
+                    raise ValueError("invalid flag")
+        d_trace_str = " ".join(d_trace)
+        d_args = re.split(r'[()]', d_trace_str)[1].split()[1:]
+        d_args = [int(val) for val in d_args]
+        return d_args, failed_arith
 
-
-def rf_to_z3exp(term, rf1_variable, rf2_variable, rf1_assigned_values, rf2_assigned_values):
-    if term == "r1":
-        return Sum([rf1_variable[j] * rf1_assigned_values[j] for j in range(len(rf1_variable))])
-    elif term == "r2":
-        return Sum([rf1_variable[j] * rf2_assigned_values[j] for j in range(len(rf1_variable))])
-    elif term == "r3":
-        return Sum([rf2_variable[j] * rf1_assigned_values[j] for j in range(len(rf2_variable))])
-    elif term == "r4":
-        return Sum([rf2_variable[j] * rf2_assigned_values[j] for j in range(len(rf2_variable))])
-    else:
-        return int(term)
-
-
-def set_constraints(wf_name, wf_values, arith, problem, variables_dict):
+def set_constraints(d_args, failed_arith, problem, variables_dict):
     global n_constraints
-    rf1_name = "RF_" + wf_name[3:] + "_1"
-    rf2_name = "RF_" + wf_name[3:] + "_2"
-    rf1_variable = variables_dict[rf1_name]
-    rf2_variable = variables_dict[rf2_name]
-    rf1_assigned_values = wf_values[0]
-    rf2_assigned_values = wf_values[1]
-    left = rf_to_z3exp(arith[0], rf1_variable, rf2_variable,
-                       rf1_assigned_values, rf2_assigned_values)
-    right = rf_to_z3exp(arith[2], rf1_variable, rf2_variable,
-                        rf1_assigned_values, rf2_assigned_values)
-    operand = arith[1]
-    if operand == "<":
-        constraint = left < right
-    elif operand == "<=":
-        constraint = left <= right
-    elif operand == ">":
-        constraint = left > right
-    elif operand == ">=":
-        constraint = left >= right
-    elif operand == "=" or operand == "==":
-        constraint = left == right
-    elif operand == "!=" or operand == "<>":
-        constraint = left != right
-    problem.add(constraint)
+    d_args = np.array(d_args).reshape(2, -1)
+    d_args = np.column_stack((d_args, np.ones(d_args.shape[0])))
+    constraints = []
+    for i in range(len(failed_arith)): 
+        rf_name = f"RF{i+1}"
+        rf_variable = variables_dict[rf_name]
+        r1 = Sum([rf_variable[j] * d_args[0][j] for j in range(len(rf_variable))])
+        r2 = Sum([rf_variable[j] * d_args[1][j] for j in range(len(rf_variable))])
+        arith = failed_arith[i]
+        if arith == "r1 > r2":
+            constraint = r1 > r2
+        elif arith == "r1 >= 0":
+            constraint = r1 >= 0
+        else:
+            raise ValueError("invalid arithmetic")
+        constraints.append(constraint)
+    problem.add(Or(*constraints))
+    n_constraints += 1
     print(constraint)
-    n_constraints += 1
-    # n_term = len(coes[0])
-    # for i in range(len(coes) - 1):
-    #     coe1 = coes[i]
-    #     coe2 = coes[i+1]
-    #     coe = coe1 - coe2
-    #     problem.add(Sum([coe[j] * variables[j] for j in range(n_term)]) > 0)
-    #     n_constraints += 1
-    #     problem.add(Sum([coe1[j] * variables[j] for j in range(n_term)]) >= 0)
-    #     n_constraints += 1
-    # # problem.add(Sum([coes[-1][j] * variables[j] for j in range(n_term)]) >= 0)
-    n_constraints += 1
 
 
 def update_ranking_function(problem, opt, rf_args, rf_variables, start_time):
@@ -526,7 +339,7 @@ def iteration(filename, rf_names, rf_list, rf_args,
     print(result)
 
     # show_traceの結果をparseして、失敗している不等式制約を取得
-    wf_name, wf_values, arith = parse_result(filename, result, inlining)
+    d_args, failed_arith = parse_result(filename, result, inlining)
 
     if is_first:
         variable_idx = 1
@@ -543,7 +356,7 @@ def iteration(filename, rf_names, rf_list, rf_args,
         opt.minimize(sum(abs_variables))
 
     # 制約をset
-    set_constraints(wf_name, wf_values, arith, problem, variables_dict)
+    set_constraints(d_args, failed_arith, problem, variables_dict)
 
     # 不等式を解いてranking_functionを更新
     new_rfs = update_ranking_function(
