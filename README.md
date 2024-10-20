@@ -74,5 +74,8 @@ check --input <filename>
 ```
 
 
+### Artifact for APLAS24
+
+Artifact (docker image) for APLAS24 is available at [zenodo](https://zenodo.org/uploads/13484589).
 
 
