@@ -81,7 +81,6 @@ def extract_and_format_trace(trace):
         elif token == "app":
             start_app_idx = i
             end_app = len(parens)
-
     # 得られたtraceについて、述語の名前、引数、右側の式を抽出
     tokens = formatted_trace.split()
     if tokens[0] != "app":
@@ -175,17 +174,17 @@ def get_wf_info_from_trace_tree(formatted_trace, original_nuhfl_file):
     assigned_values.update(assigned_values_forall)
     wf_name = wf[0]
 
-    # WFの中に含まれる算術式を取得
-    wf_str = "( r1 >= 0 /\ r3 >= 0 ) /\ ( r1 > r2 \/ ( r1 = r2 /\ ( r3 > r4 ) ) )"
-    wf_terms = wf_str.split()
-    arith = get_arith_in_wf_from_trace_tree(wf_terms, wf_trace)
-    arith = " ".join(arith)
+    # # WFの中に含まれる算術式を取得
+    # wf_str = "( r1 >= 0 /\ r3 >= 0 ) /\ ( r1 > r2 \/ ( r1 = r2 /\ ( r3 > r4 ) ) )"
+    # wf_terms = wf_str.split()
+    # arith = get_arith_in_wf_from_trace_tree(wf_terms, wf_trace)
+    # arith = " ".join(arith)
 
     # WFの引数に、失敗パスで呼び出した値を代入
     wf_args = " ".join(wf[3:]).replace("+", " + ").replace("-", " - ").split()
     print(wf_args, assigned_values)
     wf_assigned_values = assign_value(wf_args, assigned_values)
-    return {"wf_name": wf_name, "assigned_values": wf_assigned_values, "failed_arith": arith}
+    return {"wf_name": wf_name, "assigned_values": wf_assigned_values}
 
 def assign_value(wf_args, assigned_values):
     wf_assigned_values = []

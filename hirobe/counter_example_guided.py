@@ -86,24 +86,14 @@ def get_rf_names(filename):
 
 
 def apply_new_ranking_function(filename, ranking_functions, rf_args, is_first=False):
-    print(f"ranking function for iter {n_iter} : {ranking_functions}")
     try:
         with open(filename, 'r') as file:
             lines = file.readlines()
     except FileNotFoundError:
         print(f"Error: File '{filename}' not found.")
         sys.exit(1)
-    newlines = []
-    for line in lines:
-        if line.startswith("RF"):
-            left = line.split("<>")[0]
-            rf_name = line.split()[0]
-            line = f"{left}<> {ranking_functions[rf_name]}.\n"
-        newlines.append(line)
-    with open(filename, 'w') as file:
-        file.writelines(newlines)
-
     # RFの引数の変数のリストを取得し、argsに格納
+    # さらに、ranking_functionsにrf_argsの引数を適当に追加
     if is_first:
         for line in lines:
             if line.startswith("RF"):
@@ -116,7 +106,19 @@ def apply_new_ranking_function(filename, ranking_functions, rf_args, is_first=Fa
                     if term == "r":
                         break
                     rf_args[rf_name].append(term)
+        # for key, value in rf_args.items():
+        #     ranking_functions[key] = str(value[0])
 
+    print(f"ranking function for iter {n_iter} : {ranking_functions}")
+    newlines = []
+    for line in lines:
+        if line.startswith("RF"):
+            left = line.split("<>")[0]
+            rf_name = line.split()[0]
+            line = f"{left}<> {ranking_functions[rf_name]}.\n"
+        newlines.append(line)
+    with open(filename, 'w') as file:
+        file.writelines(newlines)
 
 def run_rethfl(filename, queue):
     rethfl_cmd = f"rethfl {filename}"
@@ -233,12 +235,9 @@ def parse_result(filename, result, inlining=False):
             print(wf_info)
         except subprocess.CalledProcessError as e:
             print(f"Error while analyzing trace from inlined nuhfl: {e}")
-        # finally:
-        #     if os.path.exists(trace_file):
-        #         os.remove(trace_file)
         wf_name = wf_info["wf_name"]
         wf_values = wf_info["assigned_values"]
-        arith = wf_info["failed_arith"].split()
+        # arith = wf_info["failed_arith"].split()
     else:
         terms = trace.replace("(", " ( ").replace(")", " ) ").split()
         wf_trace = []
@@ -291,7 +290,7 @@ def parse_result(filename, result, inlining=False):
         # ピリオドを取り除く
         wf_line_terms = wf_line_terms[:-
                                       1] if wf_line_terms[-1] == "." else wf_line_terms
-        arith = scan_exp_with_tracetree(wf_line_terms, wf_trace_tree)
+        # arith = scan_exp_with_tracetree(wf_line_terms, wf_trace_tree)
 
     # WFの呼び出し列から、不等式制約の係数を設定
     n_values = len(wf_values)
@@ -299,10 +298,7 @@ def parse_result(filename, result, inlining=False):
     # 定数項に対応する係数1を設定
     constant_coe = np.ones((wf_values.shape[0], 1), dtype=int)
     wf_values = np.concatenate((wf_values, constant_coe), axis=1)
-    return wf_name, wf_values, arith
-
-# S式のトレースをtreeに変換
-
+    return wf_name, wf_values
 
 def build_tree(tokens):
     if len(tokens) == 2:    # tokens = ["(", ")"]
@@ -428,20 +424,15 @@ def scan_exp_with_tracetree(exp_terms, root):
         raise ValueError("trace tree is invalud format")
 
 
-def rf_to_z3exp(term, rf1_variable, rf2_variable, rf1_assigned_values, rf2_assigned_values):
-    if term == "r1":
-        return Sum([rf1_variable[j] * rf1_assigned_values[j] for j in range(len(rf1_variable))])
-    elif term == "r2":
-        return Sum([rf1_variable[j] * rf2_assigned_values[j] for j in range(len(rf1_variable))])
-    elif term == "r3":
-        return Sum([rf2_variable[j] * rf1_assigned_values[j] for j in range(len(rf2_variable))])
-    elif term == "r4":
-        return Sum([rf2_variable[j] * rf2_assigned_values[j] for j in range(len(rf2_variable))])
-    else:
-        return int(term)
+def rf_to_z3exp(rf1_variable, rf2_variable, rf1_assigned_values, rf2_assigned_values):
+    rf_exp_list = []
+    rf_exp_list.append(Sum([rf1_variable[j] * rf1_assigned_values[j] for j in range(len(rf1_variable))]))
+    rf_exp_list.append(Sum([rf1_variable[j] * rf2_assigned_values[j] for j in range(len(rf1_variable))]))
+    rf_exp_list.append(Sum([rf2_variable[j] * rf1_assigned_values[j] for j in range(len(rf2_variable))]))
+    rf_exp_list.append(Sum([rf2_variable[j] * rf2_assigned_values[j] for j in range(len(rf2_variable))]))
+    return rf_exp_list
 
-
-def set_constraints(wf_name, wf_values, arith, problem, variables_dict):
+def set_constraints(wf_name, wf_values, problem, variables_dict):
     global n_constraints
     rf1_name = "RF_" + wf_name[3:] + "_1"
     rf2_name = "RF_" + wf_name[3:] + "_2"
@@ -449,36 +440,11 @@ def set_constraints(wf_name, wf_values, arith, problem, variables_dict):
     rf2_variable = variables_dict[rf2_name]
     rf1_assigned_values = wf_values[0]
     rf2_assigned_values = wf_values[1]
-    left = rf_to_z3exp(arith[0], rf1_variable, rf2_variable,
-                       rf1_assigned_values, rf2_assigned_values)
-    right = rf_to_z3exp(arith[2], rf1_variable, rf2_variable,
-                        rf1_assigned_values, rf2_assigned_values)
-    operand = arith[1]
-    if operand == "<":
-        constraint = left < right
-    elif operand == "<=":
-        constraint = left <= right
-    elif operand == ">":
-        constraint = left > right
-    elif operand == ">=":
-        constraint = left >= right
-    elif operand == "=" or operand == "==":
-        constraint = left == right
-    elif operand == "!=" or operand == "<>":
-        constraint = left != right
+    rf_exp_list = rf_to_z3exp(rf1_variable, rf2_variable, rf1_assigned_values, rf2_assigned_values)
+    constraint = Or( And(rf_exp_list[0] > rf_exp_list[1], rf_exp_list[0] >= 0), 
+                    And(rf_exp_list[0] == rf_exp_list[1], rf_exp_list[2] > rf_exp_list[3], rf_exp_list[0] >= 0, rf_exp_list[2] >= 0))
     problem.add(constraint)
     print(constraint)
-    n_constraints += 1
-    # n_term = len(coes[0])
-    # for i in range(len(coes) - 1):
-    #     coe1 = coes[i]
-    #     coe2 = coes[i+1]
-    #     coe = coe1 - coe2
-    #     problem.add(Sum([coe[j] * variables[j] for j in range(n_term)]) > 0)
-    #     n_constraints += 1
-    #     problem.add(Sum([coe1[j] * variables[j] for j in range(n_term)]) >= 0)
-    #     n_constraints += 1
-    # # problem.add(Sum([coes[-1][j] * variables[j] for j in range(n_term)]) >= 0)
     n_constraints += 1
 
 
@@ -526,7 +492,7 @@ def iteration(filename, rf_names, rf_list, rf_args,
     print(result)
 
     # show_traceの結果をparseして、失敗している不等式制約を取得
-    wf_name, wf_values, arith = parse_result(filename, result, inlining)
+    wf_name, wf_values = parse_result(filename, result, inlining)
 
     if is_first:
         variable_idx = 1
@@ -543,7 +509,7 @@ def iteration(filename, rf_names, rf_list, rf_args,
         opt.minimize(sum(abs_variables))
 
     # 制約をset
-    set_constraints(wf_name, wf_values, arith, problem, variables_dict)
+    set_constraints(wf_name, wf_values, problem, variables_dict)
 
     # 不等式を解いてranking_functionを更新
     new_rfs = update_ranking_function(

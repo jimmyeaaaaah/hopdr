@@ -50,7 +50,7 @@ def create_wf_rf(pred, args, n_rf = 2):
     args2_str = " ".join(args2)
     if n_rf == 2:
         wf = f"WF_{pred} " + " ".join([f"rf{idx}" for idx in range(1, 3)]) + f" {args1_str} {args2_str}"
-        wf_line = f"{wf} =v ∀ r1. ∀ r2. ∀ r3. ∀ r4. ( rf1 {args1_str} r1 \/ ( rf1 {args2_str} r2 \/ ( rf2 {args1_str} r3 \/ ( rf2 {args2_str} r4 \/ ( ( r1 >= 0 /\ r3 >= 0 ) /\ ( r1 > r2 \/ ( r1 = r2 /\ ( r3 > r4 ) ) ) ) ) ) ) )."
+        wf_line = f"{wf} =v ∀ r1. ∀ r2. ∀ r3. ∀ r4. ( rf1 {args1_str} r1 \/ ( rf1 {args2_str} r2 \/ ( rf2 {args1_str} r3 \/ ( rf2 {args2_str} r4 \/ ( ( r1 >= 0  ) /\ ( r1 > r2 \/ ( r1 = r2 /\ ( r3 > r4 /\ r3 >= 0 ) ) ) ) ) ) ) )."
         rf_line = f"{args_str} r =v r <> 1."
         rf_lines = [f"RF_{pred}_{idx} " + rf_line for idx in range(1, 3)]
     else:

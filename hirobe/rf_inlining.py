@@ -25,7 +25,7 @@ def wf_to_rf(wf_name, wf_args, rf_args, rf):
     r2 = substitute(wf_args[1], rf_args[rf_name1], rf[rf_name1])
     r3 = substitute(wf_args[0], rf_args[rf_name2], rf[rf_name2])
     r4 = substitute(wf_args[1], rf_args[rf_name2], rf[rf_name2])
-    replaced_rf = f"( ( {r1} >= 0 /\ {r3} >= 0 ) /\ ( {r1} > {r2} \/ ( {r1} = {r2} /\ ( {r3} > {r4} ) ) ) )"
+    replaced_rf = f"( ( {r1} >= 0 ) /\ ( {r1} > {r2} \/ ( {r1} = {r2} /\ ( {r3} > {r4} /\ {r3} >= 0 ) ) ) )"
     return replaced_rf
 
 def inlining(lines):
