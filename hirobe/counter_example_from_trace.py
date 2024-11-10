@@ -160,7 +160,6 @@ def get_wf_info_from_trace_tree(formatted_trace, original_nuhfl_file):
 
     exp_str = pred.split("=v")[1]
     # conjunctionを優先するように括弧をつける？
-
     # exp_strを、formatted_trace.treeに従って走査していく
     assigned_values_forall = {}
     exp_terms = exp_str.replace("(", " ( ").replace(")", " ) ").split()
@@ -196,10 +195,10 @@ def assign_value(wf_args, assigned_values):
         elif term == ")":
             paren -= 1
         else:
-            if re.fullmatch(r'^[a-z][0-9a-z]*$', term):      # termが変数名
-                current_value += assigned_values[term]
-            else:
+            if re.fullmatch(r"[-+*]?[\d]*", term):      # termが変数でない
                 current_value += term
+            else:
+                current_value += assigned_values[term]
         if paren == 0:
             wf_assigned_values.append(eval(current_value))
             current_value = ""
@@ -216,8 +215,8 @@ def is_arithmetic(exp_terms):
 
 # WFを探す
 def get_wf_from_trace_tree(exp_terms, root, assigned_values_forall):
-    # print(exp_terms)
-    # print(root)
+    print(exp_terms)
+    print(root)
     # 外側についている括弧 "( x < 0 /\ y > 0 )"を取り除く
     exp_terms = remove_outer_paren(exp_terms)
     if len(exp_terms) == 0 or root is None:

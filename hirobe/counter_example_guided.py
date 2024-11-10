@@ -454,6 +454,8 @@ def update_ranking_function(problem, opt, rf_args, rf_variables, start_time):
     # 不等式制約を解く
     if opt.check() == sat:
         model = opt.model()
+        # for constraint in problem.assertions():
+        #     print(constraint)
         for rf_name in rf_args.keys():
             variables = rf_variables[rf_name]
             new_rf = ""
