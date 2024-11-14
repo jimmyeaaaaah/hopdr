@@ -217,8 +217,8 @@ def is_arithmetic(exp_terms):
 
 # WFを探す
 def get_wf_from_trace_tree(exp_terms, root, assigned_values_forall):
-    # print(exp_terms)
-    # print(root)
+    print(exp_terms)
+    print(root)
     # 外側についている括弧 "( x < 0 /\ y > 0 )"を取り除く
     exp_terms = remove_outer_paren(exp_terms)
     if len(exp_terms) == 0 or root is None:

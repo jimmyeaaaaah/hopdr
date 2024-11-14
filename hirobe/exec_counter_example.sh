@@ -3,7 +3,7 @@
 # ディレクトリを引数1から取得
 filename="$1"
 dir=$(dirname "$filename")
-rf_file="$dir/rf_lexico.in"
+rf_file="$dir/disjunctive_wf.in"
 
 # --inliningのオプション
 inlining=""

@@ -30,20 +30,26 @@ def wf_to_rf(wf_name, wf_args, rf_args, rf):
 
 def d_to_arith(rf_args, rfs):
     d_str = "( isDummy = 1 "
-    for i in range(len(rf_args)):
-        args = rf_args[i]
-        p_args = [f"p{arg}" for arg in args]
-        rf1_str = substitute(p_args, rf_args[i], rfs[i])
-        rf2_str = substitute(args, rf_args[i], rfs[i])
-        d_str += f"\/ ( {rf1_str} >= 0 /\ {rf1_str} >= {rf2_str} ) "
+    for i in range(len(rfs)):
+        rf = rfs[i]
+        p_args = [f"p{arg}" for arg in rf_args]
+        rf1_str = substitute(p_args, rf_args, rfs[i])
+        rf2_str = substitute(rf_args, rf_args, rfs[i])
+        d_str += f"\/ ( {rf1_str} >= 0 /\ {rf1_str} > {rf2_str} ) "
     d_str += " )"
+    # for i in range(len(rf_args)):
+    #     args = rf_args[i]
+    #     p_args = [f"p{arg}" for arg in args]
+    #     rf1_str = substitute(p_args, rf_args[i], rfs[i])
+    #     rf2_str = substitute(args, rf_args[i], rfs[i])
+    #     d_str += f"\/ ( {rf1_str} >= 0 /\ {rf1_str} > {rf2_str} ) "
+    # d_str += " )"
     return d_str
 
 def inlining(lines):
-    rf_args = []
-    rfs = []
+    rf_args = {}
+    rfs = {}
     # 各RFの引数とrfの中身を取得
-    rf_idx = -1
     for line in lines:
         if line.startswith("RF"):
             is_args = True
@@ -51,9 +57,11 @@ def inlining(lines):
             terms = line.split()
             for term in terms:
                 if term.startswith("RF"):
-                    rf_idx += 1
-                    rf_args.append([])
-                    rfs.append("")
+                    pred = ("_").join(term.split("_")[1:-1])
+                    rf_args[pred] = []
+                    if pred not in rfs.keys():
+                        rfs[pred] = []
+                    rfs[pred].append("")
                     continue
                 if term == "=v":
                     is_args = False
@@ -63,10 +71,10 @@ def inlining(lines):
                     continue
                 if is_args:
                     if term != "r":
-                        rf_args[rf_idx].append(term)
+                        rf_args[pred].append(term)
                 if is_rf:
-                    rfs[rf_idx] = rfs[rf_idx] + ' ' + term
-            rfs[rf_idx] = rfs[rf_idx].rstrip(".")
+                    rfs[pred][-1] = rfs[pred][-1] + ' ' + term
+            rfs[pred][-1] = rfs[pred][-1].rstrip(".")
     new_lines = []
     for line in lines:
         if line.startswith("%HES") or line.startswith("Sentry"):
@@ -76,11 +84,12 @@ def inlining(lines):
             break
         new_line = []
         terms = line.replace("(", " ( ").replace(")", " ) ").strip().split()
+        pred = terms[0]
         is_d = False
         for term in terms:
-            if term == "D":
+            if term.startswith("D"):
                 is_d = True
-                arith = d_to_arith(rf_args, rfs)
+                arith = d_to_arith(rf_args[pred], rfs[pred])
                 new_line.append(arith)
             if is_d:
                 if term == "/\\":

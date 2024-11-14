@@ -42,26 +42,33 @@ def get_arg_map(lines):
     return arg_map
 
 
-def create_wf_rf(args, rf_idx):
+def create_wf_rf(pred, arg_map, wf_idx):
+    args = arg_map[pred]
     args_p = ["p"+s for s in args]
     args_str = " ".join(args)
     args_p_str = " ".join(args_p)
-    wf = f"WF{rf_idx} {args_p_str} {args_str} =v ∀r1. ∀r2. RF{rf_idx} {args_p_str} r1 \/ RF{rf_idx} {args_str} r2 \/ (r1 >= 0 /\ r1 > r2)."
-    rf = f"RF{rf_idx} {args_str} r =v r <> 1."
+    wf = f"WF_{pred}_{wf_idx} {args_p_str} {args_str} =v ∀r1. ∀r2. RF_{pred}_{wf_idx} {args_p_str} r1 \/ RF_{pred}_{wf_idx} {args_str} r2 \/ (r1 >= 0 /\ r1 > r2)."
+    rf = f"RF_{pred}_{wf_idx} {args_str} r =v r <> 1."
     return wf, rf
 
-def create_d_line(args, rf_idx):
-    args_p = ["p"+s for s in args]
-    args_str = " ".join(args)
-    args_p_str = " ".join(args_p)
-    d_line = f"D isDummy {args_p_str} {args_str} =v isDummy = 1 " + " ".join([f"\/ WF{i} {args_p_str} {args_str}" for i in range(1, rf_idx)]) + "."
-    return d_line
+def create_d_line(arg_map, n_call_map):
+    d_lines = []
+    for pred in arg_map.keys():
+        args = arg_map[pred]
+        args_p = ["p"+s for s in args]
+        args_str = " ".join(args)
+        args_p_str = " ".join(args_p)
+        d_line = f"D_{pred} isDummy {args_p_str} {args_str} =v isDummy = 1 " +  \
+            " ".join([f"\/ WF_{pred}_{i} {args_p_str} {args_str}" for i in range(1, n_call_map[pred]+1)]) + "."
+        d_lines.append(d_line)
+    return d_lines
 
 def add_ranking_function(lines, arg_map):
     print(arg_map)
     new_lines = []
     wf_list = []
     rf_list = []
+    n_call_map = {}
     for line in lines:
         if line.startswith("%HES"):
             new_lines.append(line)
@@ -70,6 +77,7 @@ def add_ranking_function(lines, arg_map):
         terms = line.split()
         paren = []
         pred = ""
+        pred_parent = ""
         args_called = []
         is_left = True
         is_Sentry = False
@@ -80,18 +88,18 @@ def add_ranking_function(lines, arg_map):
                 continue
             if is_left:
                 if term[0].isupper():
-                    pred = term
+                    pred_parent = term
                     continue
                 if term == "=v":
                     is_left = False
                     if is_Sentry:
                         new_line.append("Sentry =v")
                     else:
-                        new_line.append(pred)
-                        new_args = ["isDummy"] + ["p"+arg for arg in arg_map[pred]] + arg_map[pred]
+                        new_line.append(pred_parent)
+                        new_args = ["isDummy"] + ["p"+arg for arg in arg_map[pred_parent]] + arg_map[pred_parent]
                         new_line += new_args
-                        new_line = new_line + ["=v D isDummy"] + ["p"+arg for arg in arg_map[pred]] + arg_map[pred] + ["/\\ ("]
-                        pred = ""
+                        new_line = new_line + [f"=v D_{pred_parent} isDummy"] + ["p"+arg for arg in arg_map[pred_parent]] + arg_map[pred_parent] + ["/\\ ("]
+                        n_call_map[pred_parent] = 0
                         continue
             else:
                 if term[0].isupper():
@@ -114,12 +122,12 @@ def add_ranking_function(lines, arg_map):
                             new_line = new_line + [f"{pred} 1"] + args_called + args_called
                         else:
                             new_line = new_line + \
-                                [f"( {pred} isDummy"] + ["p"+arg for arg in arg_map[pred]] + args_called + ["/\\"] + \
-                                [f"{pred} 0"] + [arg for arg in arg_map[pred]] + args_called + [")"]
-                            wf, rf = create_wf_rf(arg_map[pred], rf_idx)
+                                [f"( {pred} isDummy"] + ["p"+arg for arg in arg_map[pred_parent]] + args_called + ["/\\"] + \
+                                [f"{pred} 0"] + [arg for arg in arg_map[pred_parent]] + args_called + [")"]
+                            n_call_map[pred_parent] += 1
+                            wf, rf = create_wf_rf(pred_parent, arg_map, n_call_map[pred_parent])
                             wf_list.append(wf)
                             rf_list.append(rf)
-                            rf_idx += 1
                         pred = ""
                         args_called = []
                 else:
@@ -128,9 +136,9 @@ def add_ranking_function(lines, arg_map):
         if is_Sentry == False:
             new_line = new_line[:-1] + ")."
         new_lines.append(new_line)
-    args = arg_map[list(arg_map.keys())[0]] # そのうち直す、ほんとは共通の引数を取るべき
-    d_line = create_d_line(args, rf_idx)
-    new_lines.append(d_line)
+    # args = arg_map[list(arg_map.keys())[0]] # そのうち直す、ほんとは共通の引数を取るべき
+    d_lines = create_d_line(arg_map, n_call_map)
+    new_lines = new_lines + d_lines
     new_lines += wf_list
     new_lines += rf_list
     return new_lines
