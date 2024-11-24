@@ -2,48 +2,52 @@ import sys
 import re
 import numpy as np
 
-def substitute(wf_args, rf_args, rf):
+def reform(lines):
+    contents = ' '.join(line.strip() for line in lines)
+    quantifier_stack = []
+    new_lines = []
+    new_line = ""
+    for c in contents:
+        new_line += c
+        if c == '∀':
+            quantifier_stack.append(c)
+        if c == '.':
+            if len(quantifier_stack) == 0:
+                if new_line.startswith("%HES"):
+                    new_lines.append("%HES")
+                    new_lines.append(' '.join(new_line.split()[1:]))
+                else:
+                    new_lines.append(new_line)
+                new_line = ""
+            else:
+                quantifier_stack.pop()
+    for i in range(len(new_lines)):
+        line = new_lines[i]
+        new_lines[i] = line.replace("=u", "=v").replace(".", " .").strip()
+    return new_lines
+
+def substitute(substituted_args, rf_args, rf):
     rf = rf.replace("(", " ( ").replace(")", " ) ").replace("-", " - ").replace("+", " + ").replace("*", " * ")
     new_rf = []
     for term in rf.split():
         if term in rf_args:
             arg_idx = rf_args.index(term)
-            new_rf.append(wf_args[arg_idx])
+            new_rf.append(substituted_args[arg_idx])
         else:
             new_rf.append(term)
     new_rf = " ".join(new_rf)
     return new_rf
 
-# WF RF1 RF2 x ( x + 1 ), RF1 x r =v r <> x + 1, RF2 x r =v r <> 2*x + 3 を 
-# ( ( isDummy = 1 \/ ( px + 1 >= 1 /\ px + 1 > x + 1) ) \/ ( 2*px + 3 >= 0 /\ 2*px + 3 > 2*x + 3 ) )
-def wf_to_rf(wf_name, wf_args, rf_args, rf):
-    rf_name1 = wf_name.replace("WF", "RF") + "_1"
-    rf_name2 = wf_name.replace("WF", "RF") + "_2"
-    wf_args = np.array(wf_args)
-    wf_args = np.resize(wf_args, (2, len(wf_args) // 2))
-    r1 = substitute(wf_args[0], rf_args[rf_name1], rf[rf_name1])
-    r2 = substitute(wf_args[1], rf_args[rf_name1], rf[rf_name1])
-    r3 = substitute(wf_args[0], rf_args[rf_name2], rf[rf_name2])
-    r4 = substitute(wf_args[1], rf_args[rf_name2], rf[rf_name2])
-    replaced_rf = f"( ( {r1} >= 0 /\ {r3} >= 0 ) /\ ( {r1} > {r2} \/ ( {r1} = {r2} /\ ( {r3} > {r4} ) ) ) )"
-    return replaced_rf
 
-def d_to_arith(rf_args, rfs):
-    d_str = "( isDummy = 1 "
+def d_to_arith(pred, rf_args, rfs):
+    d_str = f"( isDummy_{pred.lower()} = 1 "
     for i in range(len(rfs)):
         rf = rfs[i]
         p_args = [f"p{arg}" for arg in rf_args]
-        rf1_str = substitute(p_args, rf_args, rfs[i])
-        rf2_str = substitute(rf_args, rf_args, rfs[i])
+        rf1_str = substitute(p_args, rf_args, rf)
+        rf2_str = substitute(rf_args, rf_args, rf)
         d_str += f"\/ ( {rf1_str} >= 0 /\ {rf1_str} > {rf2_str} ) "
     d_str += " )"
-    # for i in range(len(rf_args)):
-    #     args = rf_args[i]
-    #     p_args = [f"p{arg}" for arg in args]
-    #     rf1_str = substitute(p_args, rf_args[i], rfs[i])
-    #     rf2_str = substitute(args, rf_args[i], rfs[i])
-    #     d_str += f"\/ ( {rf1_str} >= 0 /\ {rf1_str} > {rf2_str} ) "
-    # d_str += " )"
     return d_str
 
 def inlining(lines):
@@ -89,7 +93,7 @@ def inlining(lines):
         for term in terms:
             if term.startswith("D"):
                 is_d = True
-                arith = d_to_arith(rf_args[pred], rfs[pred])
+                arith = d_to_arith(pred, rf_args[pred], rfs[pred])
                 new_line.append(arith)
             if is_d:
                 if term == "/\\":
@@ -111,6 +115,7 @@ def main():
     except FileNotFoundError:
         print(f"Error: File '{filename}' not found.")
         sys.exit(1)
+    lines = reform(lines)
     lines = inlining(lines)
     content = "\n".join(lines)
     output_file = "/".join(filename.split("/")[:-1]) + "/disjunctive_wf_inlined.in"

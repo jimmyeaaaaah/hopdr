@@ -85,6 +85,17 @@ def get_rf_names(filename):
     return rf_names
 
 
+def get_arg_list(filename):
+    try:
+        with open(filename, 'r') as file:
+            lines = file.readlines()
+    except FileNotFoundError:
+        print(f"Error: File '{filename}' not found.")
+        sys.exit(1)
+    arg_list = lines[2].split("=v")[0].split()[1:]
+    return arg_list
+
+
 def apply_new_ranking_function(filename, ranking_functions, rf_args, is_first=False):
     print(f"ranking function for iter {n_iter} : {ranking_functions}")
     try:
@@ -119,7 +130,7 @@ def apply_new_ranking_function(filename, ranking_functions, rf_args, is_first=Fa
 
 
 def run_rethfl(filename, queue):
-    rethfl_cmd = f"rethfl {filename}"
+    rethfl_cmd = f"rethfl {filename} --solver=z3"
     try:
         result = subprocess.run(
             rethfl_cmd, capture_output=True, text=True, check=True, shell=True)
@@ -178,8 +189,8 @@ def solve_nuhfl(filename, start_time, inlining):
                 else:
                     process1.terminate()
                     process2.terminate()
-                    process1.join()
-                    process2.join()
+                    process1.join(timeout=1)
+                    process2.join(timeout=1)
                     if message[1] == "Valid":
                         print("ReTHFL result : Valid")
                         end_time = time.perf_counter_ns()
@@ -211,23 +222,18 @@ def solve_nuhfl(filename, start_time, inlining):
         print("Keyboard interrupted.")
         process1.terminate()
         process2.terminate()
-        process1.join()
-        process2.join()
+        process1.join(timeout=1)
+        process2.join(timeout=1)
         sys.exit(1)
 
 
-# inlining = Trueの場合、filenameはinline前のnuhflファイル
-# d_args = [2, 2, 1, 0]など(isDummyを除く)、failed_arith = ["r1 > r2", "r1 >= 0"]など
-def parse_result(filename, result, inlining=False):
-    trace = result.split(
-        "Trace: ")[-1].replace("(", " ( ").replace(")", " ) ")
-    rf_name = 0
+def parse_result(filename, result, arg_list, inlining=False):
+    trace = result.split("Trace: ")[-1].replace("(", " ( ").replace(")", " ) ")
+    terms = trace.split()
+    pred = ""
+    failed_arith = []
+    d_args_trimmed = []
     if inlining:
-        trace_file = '/'.join(filename.split('/')
-                              [:-1]) + "/trace.txt"
-        with open(trace_file, 'w') as file:
-            file.write(trace)
-        terms = trace.split()
         pred_trace = []
         is_pred = False
         n_paren = 1
@@ -245,7 +251,6 @@ def parse_result(filename, result, inlining=False):
             if n_paren == 0:
                 is_pred = False
         d_args = []
-        failed_arith = []
         n_conj = 0
         n_paren = 0
         is_args = True
@@ -264,57 +269,47 @@ def parse_result(filename, result, inlining=False):
             if is_args:
                 d_args.append(term)
         pred = pred_trace[0]
-        d_args = d_args[1:]
-        # try:
-        #     result = subprocess.run(['python3', 'counter_example_from_trace.py',
-        #                             filename, trace_file], capture_output=True, text=True)
-        #     wf_info = json.loads(result.stdout.strip().split('\n')[-1])
-        #     print(wf_info)
-        # except subprocess.CalledProcessError as e:
-        #     print(f"Error while analyzing trace from inlined nuhfl: {e}")
-        # finally:
-        #     if os.path.exists(trace_file):
-        #         os.remove(trace_file)
-        # wf_name = wf_info["wf_name"]
-        # wf_values = wf_info["assigned_values"]
-        # arith = wf_info["failed_arith"].split()
+        for i, arg in enumerate(arg_list):
+            if not arg.startswith("isDummy") and arg.endswith(pred.lower()):
+                d_args_trimmed.append(d_args[i])
     else:
-        wf_trace = []
-        failed_arith = []
-        paren = 1
-        is_wf = False
-        for term in trace:
-            if term.startswith("WF"):
-                is_wf = True
-                wf_trace.append(term)
+        d_trace = []
+        n_paren = 1
+        is_d = False
+        for term in terms:
+            if term.startswith("D"):
+                is_d = True
+                d_trace.append(term)
                 continue
-            if is_wf:
+            if is_d:
+                d_trace.append(term)
                 if term == "(":
-                    paren += 1
+                    n_paren += 1
                 elif term == ")":
-                    paren -= 1
-                if paren == 0:
+                    n_paren -= 1
+                if n_paren == 0:
                     break
-                wf_trace.append(term)
-        for idx, term in enumerate(wf_trace):
+        for i, term in enumerate(d_trace):
             if term == "conj":
-                flag = wf_trace[idx+1]
-                if flag == "0":
+                if d_trace[i+1] == "0":
                     failed_arith.append("r1 >= 0")
-                elif flag == "1":
+                elif d_trace[i+1] == "1":
                     failed_arith.append("r1 > r2")
-                else:
-                    raise ValueError("invalid flag")
-        wf_trace_str = " ".join(wf_trace)
-        wf_args = re.split(r'[()]', wf_trace_str)[1].split()
-        wf_args = [int(val) for val in wf_args]
-    return pred, d_args, failed_arith
+        d_trace = " ".join(d_trace)
+        pred = re.split(r'[()]', d_trace)[0][2:].strip()
+        d_args_trimmed = re.split(r'[()]', d_trace)[1].split()[1:]
+    d_args_trimmed = np.array(d_args_trimmed).reshape(2, -1)
+    d_args_trimmed = np.column_stack(
+        (d_args_trimmed, np.ones(d_args_trimmed.shape[0])))
+    return pred, d_args_trimmed, failed_arith
 
 
 def set_constraints(pred, d_args, failed_arith, problem, variables_dict):
     global n_constraints
-    d_args = np.array(d_args).reshape(2, -1)
-    d_args = np.column_stack((d_args, np.ones(d_args.shape[0])))
+    # print(variables_dict)
+    # d_args = np.array(d_args).reshape(2, -1)
+    # d_args = np.column_stack((d_args, np.ones(d_args.shape[0])))
+    # print(d_args)
     constraints = []
     for i in range(len(failed_arith)):
         rf_name = f"RF_{pred}_{i+1}"
@@ -331,18 +326,20 @@ def set_constraints(pred, d_args, failed_arith, problem, variables_dict):
         else:
             raise ValueError("invalid arithmetic")
         constraints.append(constraint)
-    problem.add(Or(*constraints))
+    or_constraint = Or(*constraints)
+    problem.add(or_constraint)
+    print(or_constraint)
     n_constraints += 1
 
 
 def update_ranking_function(problem, opt, rf_args, rf_variables, start_time):
     new_rfs = {key: "" for key in rf_args.keys()}
+    # for assertion in problem.assertions():
+    #     print(assertion)
     opt.add(problem.assertions())
     # 不等式制約を解く
     if opt.check() == sat:
         model = opt.model()
-        for assertion in opt.assertions():
-            print(assertion)
         for rf_name in rf_args.keys():
             variables = rf_variables[rf_name]
             new_rf = ""
@@ -366,7 +363,7 @@ def update_ranking_function(problem, opt, rf_args, rf_variables, start_time):
     return new_rfs
 
 
-def iteration(filename, rf_names, rf_list, rf_args,
+def iteration(filename, rf_names, rf_list, rf_args, arg_list,
               problem, opt, variables_dict, start_time, inlining):
     global n_iter
     if (n_iter == 1):
@@ -381,7 +378,8 @@ def iteration(filename, rf_names, rf_list, rf_args,
     print(result)
 
     # show_traceの結果をparseして、失敗している不等式制約を取得
-    pred, d_args, failed_arith = parse_result(filename, result, inlining)
+    pred, d_args, failed_arith = parse_result(
+        filename, result, arg_list, inlining)
 
     if is_first:
         variable_idx = 1
@@ -412,12 +410,13 @@ def main(filename, inlining=False):
     global n_rf
     rf_names = get_rf_names(filename)
     rf_list = {key: "1" for key in rf_names}
+    arg_list = get_arg_list(filename)
     problem = Solver()
     opt = Optimize()
     variables_dict = {key: [] for key in rf_names}
     rf_args = {key: [] for key in rf_names}
     while n_iter <= 500:
-        rf_list = iteration(filename, rf_names, rf_list, rf_args,
+        rf_list = iteration(filename, rf_names, rf_list, rf_args, arg_list,
                             problem, opt, variables_dict, start_time, inlining)
 
 
