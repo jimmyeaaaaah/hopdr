@@ -10,6 +10,7 @@ import subprocess
 import time
 import json
 import signal
+import psutil
 
 n_constraints = 0
 n_iter = 1
@@ -120,6 +121,16 @@ def apply_new_ranking_function(filename, ranking_functions, rf_args, is_first=Fa
         newlines.append(line)
     with open(filename, 'w') as file:
         file.writelines(newlines)
+
+def check_cpu_load(threshold=90, wait_time=1):
+    while psutil.cpu_percent(interval=0.1) > threshold:
+        print(f"High CPU load detected. Waiting for {wait_time} seconds...")
+        time.sleep(wait_time)
+
+def check_process_count(max_processes=5, wait_time=1):
+    while len(multiprocessing.active_children()) > max_processes:
+        print(f"Too many multiprocessing processes running ({len(multiprocessing.active_children())}). Waiting for {wait_time} seconds...")
+        time.sleep(wait_time)
 
 def run_rethfl(filename, queue):
     os.setsid()
