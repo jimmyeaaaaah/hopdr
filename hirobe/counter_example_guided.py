@@ -136,7 +136,7 @@ def run_rethfl(filename, queue):
 
 
 def run_show_trace(filename, queue):
-    hopdr_path = os.path.expanduser("../hopdr")
+    hopdr_path = "/Users/hirobeyurika/Desktop/研究/hopdr/hopdr"
     env = os.environ.copy()
     env['PATH'] = f"{hopdr_path}/bin:{env['PATH']}"
     show_trace_cmd = [f'{hopdr_path}/target/release/check',
@@ -156,10 +156,11 @@ def run_show_trace(filename, queue):
 def solve_nuhfl(filename, start_time, inlining):
     queue = multiprocessing.Queue()
     result_queue = multiprocessing.Queue()
+    python_dir = "/Users/hirobeyurika/Desktop/研究/hopdr/hirobe"
     if inlining:
         try:
             result = subprocess.run(
-                ['python3', 'rf_inlining.py', filename], check=True, capture_output=True, text=True)
+                ['python3', f'{python_dir}/rf_inlining.py', filename], check=True, capture_output=True, text=True)
             filename = result.stdout.strip()
         except subprocess.CalledProcessError as e:
             print(f"Error while inlining nuhfl with rf: {e}")
@@ -222,14 +223,13 @@ def solve_nuhfl(filename, start_time, inlining):
 # inlining = Trueの場合、filenameはinline前のnuhflファイル
 def parse_result(filename, result, inlining=False):
     trace = result.split("Trace: ")[-1]
-    rf_name = 0
     if inlining:
-        trace_file = '/'.join(filename.split('/')
-                              [:-1]) + "/trace.txt"
+        trace_file = '/'.join(filename.split('/')[:-1]) + "/trace.txt"
+        python_dir = "/Users/hirobeyurika/Desktop/研究/hopdr/hirobe"
         with open(trace_file, 'w') as file:
             file.write(trace)
         try:
-            result = subprocess.run(['python3', 'counter_example_from_trace.py',
+            result = subprocess.run(['python3', f'{python_dir}/counter_example_from_trace.py',
                                     filename, trace_file], capture_output=True, text=True)
             wf_info = json.loads(result.stdout.strip().split('\n')[-1])
             print(wf_info)

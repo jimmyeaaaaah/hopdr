@@ -12,7 +12,7 @@ if [[ "$#" -eq 2 && "$2" == "--inlining" ]]; then
 fi
 
 # hflzをranking function のnuhflに変換
-python3 transform_hflz_with_rf.py "$filename" 
+python3 transform_hflz_with_rf.py "$filename" --inlining
 
 # 変換したファイルを使ってpythonを実行
 python3 counter_example_guided.py "$rf_file" $inlining

@@ -294,9 +294,10 @@ def main():
     lines = reform(lines)
     arg_map = get_arg_map(lines)
     if args.inlining:
-        lines = inlining(lines, arg_map)
+        if len(arg_map) > 1:
+            lines = inlining(lines, arg_map)
         content = "\n".join(lines)
-        output_file_inlined = args.filename.strip(".in") + "_inlined.in"
+        output_file_inlined = args.filename[:-3] + "_inlined.in"
         with open(output_file_inlined, 'w') as file:
             file.write(content)
     lines = add_ranking_function(lines, arg_map)
