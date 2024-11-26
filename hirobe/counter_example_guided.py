@@ -9,6 +9,7 @@ import multiprocessing
 import subprocess
 import time
 import json
+import signal
 
 n_constraints = 0
 n_iter = 1
@@ -121,7 +122,8 @@ def apply_new_ranking_function(filename, ranking_functions, rf_args, is_first=Fa
         file.writelines(newlines)
 
 def run_rethfl(filename, queue):
-    rethfl_cmd = f"rethfl {filename}"
+    os.setsid()
+    rethfl_cmd = f"rethfl {filename} --solver=z3"
     try:
         result = subprocess.run(
             rethfl_cmd, capture_output=True, text=True, check=True, shell=True)
@@ -136,7 +138,8 @@ def run_rethfl(filename, queue):
 
 
 def run_show_trace(filename, queue):
-    hopdr_path = "/Users/hirobeyurika/Desktop/研究/hopdr/hopdr"
+    os.setsid()
+    hopdr_path = "/Users/hirobeyurika/Desktop/研究/hopdr/hopdr"    
     env = os.environ.copy()
     env['PATH'] = f"{hopdr_path}/bin:{env['PATH']}"
     show_trace_cmd = [f'{hopdr_path}/target/release/check',
@@ -159,12 +162,10 @@ def solve_nuhfl(filename, start_time, inlining):
     python_dir = "/Users/hirobeyurika/Desktop/研究/hopdr/hirobe"
     if inlining:
         try:
-            result = subprocess.run(
-                ['python3', f'{python_dir}/rf_inlining.py', filename], check=True, capture_output=True, text=True)
+            result = subprocess.run(['python3', f'{python_dir}/rf_inlining.py', filename], check=True, capture_output=True, text=True)
             filename = result.stdout.strip()
         except subprocess.CalledProcessError as e:
             print(f"Error while inlining nuhfl with rf: {e}")
-
     process1 = multiprocessing.Process(
         target=run_rethfl, args=[filename, queue])
     process2 = multiprocessing.Process(
@@ -172,18 +173,19 @@ def solve_nuhfl(filename, start_time, inlining):
 
     process1.start()
     process2.start()
-
     try:
         while True:
+            check_cpu_load()
+            check_process_count()
             message = queue.get()
             if message[0] == "rethfl":
                 if message[1] == "Invalid":
                     continue
                 else:
-                    process1.terminate()
-                    process2.terminate()
-                    process1.join()
-                    process2.join()
+                    os.killpg(process1.pid, signal.SIGKILL)
+                    os.killpg(process2.pid, signal.SIGKILL)
+                    process1.join(timeout=1)
+                    process2.join(timeout=1)
                     if message[1] == "Valid":
                         print("ReTHFL result : Valid")
                         end_time = time.perf_counter_ns()
@@ -197,8 +199,8 @@ def solve_nuhfl(filename, start_time, inlining):
                         print("terminated because of ReTHFL error")
                         sys.exit(1)
             elif message[0] == "show_trace":
-                process1.terminate()
-                process2.terminate()
+                os.killpg(process1.pid, signal.SIGKILL)
+                os.killpg(process2.pid, signal.SIGKILL)
                 process1.join()
                 process2.join()
                 if message[1] == "error":
@@ -213,10 +215,10 @@ def solve_nuhfl(filename, start_time, inlining):
                     return message[1]
     except KeyboardInterrupt:
         print("Keyboard interrupted.")
-        process1.terminate()
-        process2.terminate()
-        process1.join()
-        process2.join()
+        os.killpg(process1.pid, signal.SIGKILL)
+        os.killpg(process2.pid, signal.SIGKILL)
+        process1.join(timeout=1)
+        process2.join(timeout=1)
         sys.exit(1)
 
 
