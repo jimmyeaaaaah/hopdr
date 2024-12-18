@@ -225,11 +225,13 @@ impl Config {
 }
 
 pub fn preprocess_for_typed_problem(
-    problem: hes::Problem<formula::Constraint>,
+    mut problem: hes::Problem<formula::Constraint>,
     config: &Config,
 ) -> hes::Problem<formula::Constraint> {
     info!("[problem]\n{}\n", problem);
-    let mut problem = safety::transform(problem);
+    if !config.trace {
+        problem = safety::transform(problem);
+    }
     debug!("[safety::transform]\n{}\n", problem);
     problem = eta::transform(problem);
     if !config.trace {
