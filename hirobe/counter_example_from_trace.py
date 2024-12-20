@@ -111,7 +111,6 @@ def extract_and_format_trace(trace):
     counter_example = CounterExample(pred_name, pred_args, pred_exp)
     return counter_example
 
-
 def s_exp_to_binary_tree(s_expr):
     tokens = s_expr.replace("(", " ( ").replace(")", " ) ").split()
     return build_tree(tokens)
@@ -215,10 +214,12 @@ def is_arithmetic(exp_terms):
 
 # WFを探す
 def get_wf_from_trace_tree(exp_terms, root, assigned_values_forall):
-    print(exp_terms)
-    print(root)
     # 外側についている括弧 "( x < 0 /\ y > 0 )"を取り除く
     exp_terms = remove_outer_paren(exp_terms)
+    print(" ".join(exp_terms))
+    print(root)
+    if root is not None:
+        print(root.left, root.right)
     if len(exp_terms) == 0 or root is None:
         return [None, None, None]
     if exp_terms[0].startswith("WF"):

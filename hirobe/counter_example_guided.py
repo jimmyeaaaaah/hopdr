@@ -150,7 +150,7 @@ def run_rethfl(filename, queue):
 
 def run_show_trace(filename, queue):
     os.setsid()
-    hopdr_path = "/Users/hirobeyurika/Desktop/研究/hopdr/hopdr"    
+    hopdr_path = "/home/yurikahirobe/hopdr/hopdr"    
     env = os.environ.copy()
     env['PATH'] = f"{hopdr_path}/bin:{env['PATH']}"
     show_trace_cmd = [f'{hopdr_path}/target/release/check',
@@ -167,16 +167,16 @@ def run_show_trace(filename, queue):
         queue.put(('rethfl', 'interrupted'))
 
 
-def solve_nuhfl(filename, start_time, inlining):
+def solve_nuhfl(filename, start_time, nuhfl_inlining):
     queue = multiprocessing.Queue()
     result_queue = multiprocessing.Queue()
-    python_dir = "/Users/hirobeyurika/Desktop/研究/hopdr/hirobe"
-    if inlining:
+    python_dir = "/home/yurikahirobe/hopdr/hirobe"
+    if nuhfl_inlining:
         try:
-            result = subprocess.run(['python3', f'{python_dir}/rf_inlining.py', filename], check=True, capture_output=True, text=True)
-            filename = result.stdout.strip()
+            nuhfl_inlined = subprocess.run(['python3', f'{python_dir}/rf_inlining.py', filename], check=True, capture_output=True, text=True)
+            filename = nuhfl_inlined.stdout.strip()
         except subprocess.CalledProcessError as e:
-            print(f"Error while inlining nuhfl with rf: {e}")
+            print(f"Error while nuhfl_inlining nuhfl with rf: {e}")
     process1 = multiprocessing.Process(
         target=run_rethfl, args=[filename, queue])
     process2 = multiprocessing.Process(
@@ -193,10 +193,10 @@ def solve_nuhfl(filename, start_time, inlining):
                 if message[1] == "Invalid":
                     continue
                 else:
-                    os.killpg(process1.pid, signal.SIGKILL)
-                    os.killpg(process2.pid, signal.SIGKILL)
-                    process1.join(timeout=1)
-                    process2.join(timeout=1)
+                    if process1.is_alive():
+                        os.killpg(process1.pid, signal.SIGKILL)
+                    if process2.is_alive():
+                        os.killpg(process2.pid, signal.SIGKILL)
                     if message[1] == "Valid":
                         print("ReTHFL result : Valid")
                         end_time = time.perf_counter_ns()
@@ -210,10 +210,10 @@ def solve_nuhfl(filename, start_time, inlining):
                         print("terminated because of ReTHFL error")
                         sys.exit(1)
             elif message[0] == "show_trace":
-                os.killpg(process1.pid, signal.SIGKILL)
-                os.killpg(process2.pid, signal.SIGKILL)
-                process1.join()
-                process2.join()
+                if process1.is_alive():
+                    os.killpg(process1.pid, signal.SIGKILL)
+                if process2.is_alive():
+                    os.killpg(process2.pid, signal.SIGKILL)
                 if message[1] == "error":
                     print("terminated because of show_trace error")
                     sys.exit(1)
@@ -226,19 +226,24 @@ def solve_nuhfl(filename, start_time, inlining):
                     return message[1]
     except KeyboardInterrupt:
         print("Keyboard interrupted.")
-        os.killpg(process1.pid, signal.SIGKILL)
-        os.killpg(process2.pid, signal.SIGKILL)
+        if process1.is_alive():
+            os.killpg(process1.pid, signal.SIGKILL)
+        if process2.is_alive():
+            os.killpg(process2.pid, signal.SIGKILL)
         process1.join(timeout=1)
         process2.join(timeout=1)
         sys.exit(1)
 
 
-# inlining = Trueの場合、filenameはinline前のnuhflファイル
-def parse_result(filename, result, inlining=False):
+# nuhfl_inlining = Trueの場合、filenameはinline前のnuhflファイル
+def parse_result(type, filename, result, nuhfl_inlining=False):
     trace = result.split("Trace: ")[-1]
-    if inlining:
-        trace_file = '/'.join(filename.split('/')[:-1]) + "/trace.txt"
-        python_dir = "/Users/hirobeyurika/Desktop/研究/hopdr/hirobe"
+    if nuhfl_inlining:
+        if type == "prover":
+            trace_file = '/'.join(filename.split('/')[:-1]) + "/trace_prover.txt"
+        if type == "disprover":
+            trace_file = '/'.join(filename.split('/')[:-1]) + "/trace_disprover.txt"
+        python_dir = "/home/yurikahirobe/hopdr/hirobe"
         with open(trace_file, 'w') as file:
             file.write(trace)
         try:
@@ -491,9 +496,20 @@ def update_ranking_function(problem, opt, rf_args, rf_variables, start_time):
 
     return new_rfs
 
+def iteration_entry(type, filename, start_time, nuhfl_inlining=False):
+    global n_rf
+    rf_names = get_rf_names(filename)
+    rf_list = {key: "1" for key in rf_names}
+    problem = Solver()
+    opt = Optimize()
+    variables_dict = {key: [] for key in rf_names}
+    rf_args = {key: [] for key in rf_names}
+    while n_iter <= 500:
+        rf_list = iteration(type, filename, rf_names, rf_list, rf_args,
+                            problem, opt, variables_dict, start_time, nuhfl_inlining)
 
-def iteration(filename, rf_names, rf_list, rf_args,
-              problem, opt, variables_dict, start_time, inlining):
+def iteration(type, filename, rf_names, rf_list, rf_args,
+              problem, opt, variables_dict, start_time, nuhfl_inlining):
     global n_iter
     if (n_iter == 1):
         is_first = True
@@ -503,11 +519,11 @@ def iteration(filename, rf_names, rf_list, rf_args,
     apply_new_ranking_function(filename, rf_list, rf_args, is_first=is_first)
 
     # rethfl/show_traceを実行して結果のtrace(S式)を取得
-    result = solve_nuhfl(filename, start_time, inlining)
-    print(result)
+    result = solve_nuhfl(filename, start_time, nuhfl_inlining)
+    # print(result)
 
     # show_traceの結果をparseして、失敗している不等式制約を取得
-    wf_name, wf_values = parse_result(filename, result, inlining)
+    wf_name, wf_values = parse_result(type, filename, result, nuhfl_inlining)
 
     if is_first:
         variable_idx = 1
@@ -533,27 +549,64 @@ def iteration(filename, rf_names, rf_list, rf_args,
     n_iter += 1
     return new_rfs
 
+def create_negated_hflz(hflz_file):
+    negated_hflz_file = hflz_file.replace(".in", "_negated.in")
+    command = [
+        "/home/sakayori/bin/hfl_preprocessor",
+        "--negate",
+        "--elim-exist",
+    ]
+    try:
+        with open(hflz_file, 'r') as file:
+            input_hflz = file.read()
+        result = subprocess.run(command, input=input_hflz, capture_output=True, text=True, check=True)
+        with open(negated_hflz_file, 'w') as file:
+            file.write(result.stdout)
+        return negated_hflz_file
+    except subprocess.CalledProcessError as e:
+        print(f"Error while creating negated hflz file: {e}")
+        sys.exit(1)
 
-def main(filename, inlining=False):
+def main(hflz_file, hflz_inlining=False, nuhfl_inlining=False):
     start_time = time.perf_counter_ns()
-    global n_rf
-    rf_names = get_rf_names(filename)
-    rf_list = {key: "1" for key in rf_names}
-    problem = Solver()
-    opt = Optimize()
-    variables_dict = {key: [] for key in rf_names}
-    rf_args = {key: [] for key in rf_names}
-    while n_iter <= 500:
-        rf_list = iteration(filename, rf_names, rf_list, rf_args,
-                            problem, opt, variables_dict, start_time, inlining)
+    python_dir = "/home/yurikahirobe/hopdr/hirobe"
 
+    if hflz_inlining:
+        hflz_file = subprocess.run(['python3', f'{python_dir}/hflz_inlining.py', hflz_file], capture_output=True, text=True, check=True).stdout.strip()
+    
+    negated_hflz_file = create_negated_hflz(hflz_file)
+
+    subprocess.run(['python3', f'{python_dir}/optimize_raw_hflz.py', hflz_file], capture_output=True, text=True, check=True)
+    subprocess.run(['python3', f'{python_dir}/optimize_raw_hflz.py', negated_hflz_file], capture_output=True, text=True, check=True)
+    hflz_file = hflz_file[:-3] + "_opt.in"
+    negated_hflz_file = negated_hflz_file[:-3] + "_opt.in"
+
+    nuhfl_file = subprocess.run(['python3', f'{python_dir}/transform_hflz_with_rf.py', hflz_file], capture_output=True, text=True, check=True).stdout.strip()
+    negated_nuhfl_file = subprocess.run(['python3', f'{python_dir}/transform_hflz_with_rf.py', negated_hflz_file], capture_output=True, text=True, check=True).stdout.strip()
+
+    # disjunctionやconjunctionを正しく識別できるように括弧を追加。　場所はここでいいのか要検討
+    subprocess.run(['python3', f'{python_dir}/add_paren.py', nuhfl_file], capture_output=True, text=True, check=True)
+    subprocess.run(['python3', f'{python_dir}/add_paren.py', negated_nuhfl_file], capture_output=True, text=True, check=True)
+
+    # process_prover = multiprocessing.Process(
+    #     target=iteration_entry, args=["prover", nuhfl_file, start_time, nuhfl_inlining])
+    process_disprover = multiprocessing.Process(
+        target=iteration_entry, args=["disprover",negated_nuhfl_file, start_time, nuhfl_inlining])
+    
+    # process_prover.start()
+    process_disprover.start()
+
+    # process_prover.join()
+    process_disprover.join()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Process counter-example guided verification.")
     parser.add_argument(
-        'filename', type=str, help="The name of the input nuhfl file with ranking function")
-    parser.add_argument('--inlining', action='store_true',
-                        help="Enable inlining of ranking function")
+        'hflz_file', type=str, help="The name of the input hflz file with ranking function")
+    parser.add_argument('--hflz-inlining', action='store_true',
+                        help="Enable inlining of hflz to reduce predicate")
+    parser.add_argument('--nuhfl-inlining', action='store_true',
+                        help="Enable inlining of ranking function in nuhfl")
     args = parser.parse_args()
-    main(filename=args.filename, inlining=args.inlining)
+    main(hflz_file=args.hflz_file, hflz_inlining=args.hflz_inlining, nuhfl_inlining=args.nuhfl_inlining)

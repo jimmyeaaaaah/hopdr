@@ -1,16 +1,94 @@
 import sys
 import argparse
+from collections import defaultdict
 
-max_int = sys.maxsize
+class Graph:
+    def __init__(self):
+        self.graph = defaultdict(list)
+        self.node_to_index = {}
+        self.index_to_node = {}
+        self.time = 0
+        self.current_index = 0
+
+    def add_edge(self, u, v):
+        """辺を追加する（文字列ノード対応）"""
+        if u not in self.node_to_index:
+            self.node_to_index[u] = self.current_index
+            self.index_to_node[self.current_index] = u
+            self.current_index += 1
+        if v not in self.node_to_index:
+            self.node_to_index[v] = self.current_index
+            self.index_to_node[self.current_index] = v
+            self.current_index += 1
+        self.graph[self.node_to_index[u]].append(self.node_to_index[v])
+
+    def tarjan_scc(self):
+        """Tarjanのアルゴリズムで強連結成分を見つける"""
+        vertices = self.current_index
+        disc = [-1] * vertices
+        low = [-1] * vertices
+        stack_member = [False] * vertices
+        stack = []
+        sccs = []
+
+        def scc_util(u):
+            """Tarjanの補助関数"""
+            nonlocal sccs
+            disc[u] = low[u] = self.time
+            self.time += 1
+            stack.append(u)
+            stack_member[u] = True
+
+            for v in self.graph[u]:
+                if disc[v] == -1:  # 未訪問
+                    scc_util(v)
+                    low[u] = min(low[u], low[v])
+                elif stack_member[v]:  # スタックにある
+                    low[u] = min(low[u], disc[v])
+
+            if low[u] == disc[u]:
+                scc = []
+                while True:
+                    w = stack.pop()
+                    stack_member[w] = False
+                    scc.append(self.index_to_node[w])  # インデックスを元のノード名に戻す
+                    if w == u:
+                        break
+                sccs.append(scc)
+
+        for i in range(vertices):
+            if disc[i] == -1:
+                scc_util(i)
+
+        return sccs
+
+def get_sccs(lines):
+    g = Graph()
+    for line in lines:
+        terms = line.split()
+        pred_parent = terms[0]
+        if pred_parent == "%HES":
+            continue
+        for term in terms[1:]:
+            if term[0].isupper():
+                pred = term
+                g.add_edge(pred_parent, pred)
+    sccs = g.tarjan_scc()
+    sccs_dict = {}
+    for i, scc in enumerate(sccs):
+        for pred in scc:
+            sccs_dict[pred] = i
+    return sccs_dict
 
 def reform(lines):
     contents = ' '.join(line.strip() for line in lines)
     quantifier_stack = []
     new_lines = []
     new_line = ""
+    # 改行を述語ごとに行う
     for c in contents:
         new_line += c
-        if c == '∀':
+        if c == '∀' or c == '∃':
             quantifier_stack.append(c)
         if c == '.':
             if len(quantifier_stack) == 0:
@@ -22,34 +100,10 @@ def reform(lines):
                 new_line = ""
             else:
                 quantifier_stack.pop()
-    for idx_rf in range(len(new_lines)):
-        line = new_lines[idx_rf]
-        new_lines[idx_rf] = line.replace("=u", "=v")
-    return new_lines
-
-def inlining(lines, arg_map):
-    pred_expr_map = {}
-    pred_parent_map = {}
-
-    for line in lines:
-        terms = line.split()
-        pred_parent = terms[0]
-        pred_expr_map[pred_parent] = line
-        if pred_parent == "%HES" or pred_parent == "Sentry":
-            continue
-        for term in terms[1:]:
-            if term[0].isupper():
-                if term not in pred_parent_map.keys():
-                    pred_parent_map[term] = []
-                if pred_parent not in pred_parent_map[term]:
-                    pred_parent_map[term].append(pred_parent)
-    for pred_delete in pred_parent_map.keys():
-        if len(pred_parent_map[pred_delete]) != 1:
-            continue
-        pred_expr_map = substitute(arg_map, pred_expr_map, pred_parent_map[pred_delete][0], pred_delete)
-    new_lines = []
-    for pred in pred_expr_map.keys():
-        new_lines.append(pred_expr_map[pred])
+    # スペースを適切に入れる
+    for i, line in enumerate(new_lines):
+        line = line.replace("∀", " ∀ ").replace("∃", " ∃ ").replace(".", " . ").replace("(", " ( ").replace(")", " ) ").replace("=u", "=v").replace("  ", " ")
+        new_lines[i] = line
     return new_lines
 
 def substitute(arg_map, pred_expr_map, pred_parent, pred_delete):
@@ -125,11 +179,10 @@ def create_wf_rf(pred, args, n_rf = 2):
     return wf_line, rf_lines
 
 
-def add_ranking_function(lines, arg_map):
+def add_ranking_function(lines, arg_map, sccs):
     p_arg_map = {}
     for key, value in arg_map.items():
         p_arg_map[key] = [f"p{arg}_{key.lower()}" for arg in value]
-    entry_pred = []
     new_lines = []
     wf_list = []
     rf_list = []
@@ -139,56 +192,47 @@ def add_ranking_function(lines, arg_map):
         if line.startswith("%HES"):
             new_lines.append(line)
             continue
-        if line.startswith("Sentry"):
-            terms = line.split()
-            args_called = []
-            pred = ""
-            paren = []
-            new_line = []
-            for term in terms:
-                if term[0].isupper() and term != "Sentry":
-                    pred = term
-                    continue
-                if pred != "":
-                    if term == "(":
-                        paren.append("(")
-                    elif term == ")":
-                        paren.append(")")
-                        args_called.append(" ".join(paren))
-                        paren = []
-                    else:
-                        if len(paren) == 0:
-                            args_called.append(term)
-                        else:
-                            paren.append(term)
-                    if (len(arg_map[pred]) == len(args_called)):
-                        args = []
-                        for key in arg_map.keys():
-                            if pred == key:
-                                args = args + args_called
-                            else:
-                                for value in arg_map[key]:
-                                    args.append("0")  # 初期値を0に設定
-                        new_line = new_line + [pred] + args + args_called
-                        entry_pred.append(pred)
-                        pred = ""
-                        args_called = []
-                else:
-                    new_line.append(term)
-            terms = ' '.join(new_line).split()
-            new_line = []
-            for term in terms:
-                new_line.append(term)
-                if term[0].isupper() and term != "Sentry":
-                    is_first_initial_value = ["1" for i in range(len(arg_map) - len(entry_pred))]
-                    new_line = new_line + is_first_initial_value
-                    continue
-            new_lines.append(' '.join(new_line))
-            continue
+        # if line.startswith("Sentry"):
+        #     terms = line.split()
+        #     args_called = []
+        #     pred = ""
+        #     paren = []
+        #     new_line = []
+        #     for term in terms:
+        #         if term[0].isupper() and term != "Sentry":
+        #             pred = term
+        #             continue
+        #         if pred != "":
+        #             if term == "(":
+        #                 paren.append("(")
+        #             elif term == ")":
+        #                 paren.append(")")
+        #                 args_called.append(" ".join(paren))
+        #                 paren = []
+        #             else:
+        #                 if len(paren) == 0:
+        #                     args_called.append(term)
+        #                 else:
+        #                     paren.append(term)
+        #             if (len(arg_map[pred]) == len(args_called)):
+        #                 args = []
+        #                 for key in arg_map.keys():
+        #                     if pred == key:
+        #                         args = args + args_called
+        #                     else:
+        #                         for value in arg_map[key]:
+        #                             args.append("0")  # 初期値を0に設定
+        #                 new_line = new_line + [pred] + args + args_called
+        #                 pred = ""
+        #                 args_called = []
+        #         else:
+        #             new_line.append(term)
+        #     new_lines.append(' '.join(new_line))
+        #     continue
         # Sentry以外の述語
         new_line = []
         terms = line.split()
-        pred_parent_map = ""
+        pred_parent = ""
         pred = ""
         args_called = []
         paren = []
@@ -196,19 +240,19 @@ def add_ranking_function(lines, arg_map):
         # 各述語の1つ前の値を格納する変数
         p_args = [p_arg for sublist in p_arg_map.values() for p_arg in sublist]
         # isFirstのフラグを格納する変数
-        is_first_args = [f"is_first_{pred_name.lower()}" for pred_name in arg_map.keys() if pred_name not in entry_pred]
+        is_first_args = [f"is_first_{pred_name.lower()}" for pred_name in arg_map.keys()]
         for term in terms:
             if is_left:
                 if term == "=v":
-                    # if pred_parent_map in entry_pred:
-                    #     new_line = new_line + [pred_parent_map] + ["isFirst"] + p_args + args_called + ["=v"]
-                    # else:
-                    new_line = new_line + [pred_parent_map] + is_first_args + p_args + args_called + ["=v"]
+                    if pred_parent == "Sentry":
+                        new_line = [f"{pred_parent} =v"]
+                    else:
+                        new_line = [pred_parent] + is_first_args + p_args + args_called + ["=v"]
                     is_left = False
                     args_called = []
                     continue
                 if term[0].isupper():
-                    pred_parent_map = term
+                    pred_parent = term
                 else:
                     args_called.append(term)
             else:
@@ -234,36 +278,30 @@ def add_ranking_function(lines, arg_map):
                             paren.append(term)
                     # 述語の呼び出しに対して、WFを追加
                     if (len(arg_map[pred]) == len(args_called)):
+                        # previous変数に代入する値
                         p_args_substituted = []
                         for key in p_arg_map.keys():
                             if key == pred:
                                 p_args_substituted = p_args_substituted + args_called
-                            elif key == pred_parent_map:
-                                p_args_substituted = p_args_substituted + arg_map[pred_parent_map]
+                            elif key == pred_parent:
+                                p_args_substituted = p_args_substituted + arg_map[pred_parent]
                             else:
                                 p_args_substituted = p_args_substituted + p_arg_map[key]
-                        # if pred in entry_pred:
-                        #     new_line = new_line + [f"( {pred} 0"] + p_args_substituted + args_called + \
-                        #         [f"/\ WF_{pred}"] + [f"RF_{pred}_{idx}" for idx in range(1, 3)] + \
-                        #         p_arg_map[pred] + args_called + [")"]
-                        # else:
-                        #     if pred_parent_map in entry_pred:
-                        #         new_line = new_line + [f"( {pred}"] + p_args_substituted + args_called + \
-                        #             [f"/\ ( isFirst = 1 \/ WF_{pred}"] + [f"RF_{pred}_{idx}" for idx in range(1, 3)] + \
-                        #             p_arg_map[pred] + args_called + [") )"]
-                        #     else:
-                        if pred in entry_pred:
-                            # isFirstの比較は行わない
-                            new_line = new_line + [f"( {pred}"] + is_first_args + p_args_substituted + args_called + \
-                                [f"/\ WF_{pred}"] + [f"RF_{pred}_{idx}" for idx in range(1, 3)] + \
-                                p_arg_map[pred] + args_called + [")"]
+                        # is_firstに代入する値
+                        is_first_values = []
+                        for p in arg_map.keys():
+                            if p ==pred_parent and sccs[pred_parent] == sccs[pred]:
+                                is_first_values.append("0")
+                            elif p != pred_parent and sccs[pred_parent] != sccs[pred]:
+                                is_first_values.append("1")
+                            else:
+                                is_first_values.append(f"is_first_{p.lower()}")
+                        if pred_parent == "Sentry":
+                            new_line = new_line + [f"{pred}"] + is_first_values + p_args_substituted + args_called
                         else:
-                            # 今呼び出している述語のisFirstは0にする
-                            is_first_args_substituted = ["0" if f"is_first_{pred.lower()}" == is_first_arg else is_first_arg for is_first_arg in is_first_args]
-                            new_line = new_line + [f"( {pred}"] + is_first_args_substituted + p_args_substituted + args_called + \
+                            new_line = new_line + [f"( {pred}"] + is_first_values + p_args_substituted + args_called + \
                                 [f"/\ ( is_first_{pred.lower()} = 1 \/ WF_{pred}"] + [f"RF_{pred}_{idx}" for idx in range(1, 3)] + \
                                 p_arg_map[pred] + args_called + [") )"]
-
                         if pred not in has_wf:
                             wf, rfs = create_wf_rf(pred, arg_map[pred])
                             wf_list.append(wf)
@@ -282,30 +320,26 @@ def add_ranking_function(lines, arg_map):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("filename", help="Input file name")
-    parser.add_argument("--inlining", action="store_true", help="Enable inlining")
+    parser.add_argument("hflz_filename", help="Input file name")
     args = parser.parse_args()
     try:
-        with open(args.filename, 'r') as file:
+        with open(args.hflz_filename, 'r') as file:
             lines = file.readlines()
     except FileNotFoundError:
-        print(f"Error: File '{args.filename}' not found.")
+        print(f"Error: File '{args.hflz_filename}' not found.")
         sys.exit(1)
     lines = reform(lines)
     arg_map = get_arg_map(lines)
-    if args.inlining:
-        if len(arg_map) > 1:
-            lines = inlining(lines, arg_map)
-        content = "\n".join(lines)
-        output_file_inlined = args.filename[:-3] + "_inlined.in"
-        with open(output_file_inlined, 'w') as file:
-            file.write(content)
-    lines = add_ranking_function(lines, arg_map)
+    sccs = get_sccs(lines)
+    lines = add_ranking_function(lines, arg_map, sccs)
     content = "\n".join(lines)
-    output_file = "/".join(args.filename.split("/")[:-1])+"/rf_lexico.in"
+    if args.hflz_filename.endswith("negated_opt.in"):
+        output_file = "/".join(args.hflz_filename.split("/")[:-1])+"/rf_lexico_disprover.in"
+    else:
+        output_file = "/".join(args.hflz_filename.split("/")[:-1])+"/rf_lexico_prover.in"
     with open(output_file, 'w') as file:
         file.write(content)
-
+    print(output_file)
 
 if __name__ == "__main__":
     main()

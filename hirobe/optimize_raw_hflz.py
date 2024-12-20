@@ -49,6 +49,7 @@ def pre_processing(lines):
     for line in lines:
         if line == ' ' or line == '':
             continue
+        line = re.sub(r"\+\s*-", "-", line)
         line = line + " .\n"
         pattern = re.compile(r'\s{2,}')
         line = re.sub(pattern, ' ', line)
@@ -140,7 +141,7 @@ def rename_variables(lines):
     
     newlines = []
     variable_map = {}   # 変数名のマップ (小文字)
-    func_map = {}       # 述語変数名のマップ (大文字)
+    predicate_map = {}       # 述語変数名のマップ (大文字)
     def next_variable_name(n, capitalize):
         if capitalize:
             return chr(ord('P') + n)
@@ -148,29 +149,33 @@ def rename_variables(lines):
             return chr(ord('a') + n)
         
     for line in lines:
-        line = line.rstrip()
-        words = line.split()
-        newwords = []
+        line = line.rstrip().replace("  ", " ")
+        words = line.split(" ")
+        new_words = []
         for word in words:
-            if word == "!=":
+            if word == "!=" or word == "/=":
                 word = "<>"
+            # if word.startswith("-") and len(word) > 1:
+            #     word = f"( {word} )"
+            #     new_words.append(word)
+            #     continue
             if not (word in reserved_words or is_integer(word)):
                 if word in variable_map:
-                    newwords.append(variable_map[word])
-                elif word in func_map:
-                    newwords.append(func_map[word])
+                    new_words.append(variable_map[word])
+                elif word in predicate_map:
+                    new_words.append(predicate_map[word])
                 else:
                     if len(word) > 0 and word[0].isupper():
-                        new_name = next_variable_name(len(func_map), True)
-                        func_map[word] = new_name
-                        newwords.append(new_name)
+                        new_name = next_variable_name(len(predicate_map), True)
+                        predicate_map[word] = new_name
+                        new_words.append(new_name)
                     else:
                         new_name = next_variable_name(len(variable_map), False)
                         variable_map[word] = new_name
-                        newwords.append(new_name)
+                        new_words.append(new_name)
             else:
-                newwords.append(word)
-        line = ' '.join(newwords) + '\n'
+                new_words.append(word)
+        line = ' '.join(new_words) + '\n'
         newlines.append(line)
     return newlines
 

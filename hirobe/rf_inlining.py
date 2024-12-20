@@ -125,7 +125,7 @@ def main():
         sys.exit(1)
     lines = inlining(lines)
     content = "\n".join(lines)
-    output_file = "/".join(filename.split("/")[:-1]) + "/rf_lexico_inlined.in"
+    output_file = filename.replace(".in", "_inlined.in")
     with open(output_file, 'w') as file:
         file.write(content)
     sys.stdout.write(output_file + '\n')
