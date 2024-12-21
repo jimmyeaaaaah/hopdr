@@ -192,44 +192,6 @@ def add_ranking_function(lines, arg_map, sccs):
         if line.startswith("%HES"):
             new_lines.append(line)
             continue
-        # if line.startswith("Sentry"):
-        #     terms = line.split()
-        #     args_called = []
-        #     pred = ""
-        #     paren = []
-        #     new_line = []
-        #     for term in terms:
-        #         if term[0].isupper() and term != "Sentry":
-        #             pred = term
-        #             continue
-        #         if pred != "":
-        #             if term == "(":
-        #                 paren.append("(")
-        #             elif term == ")":
-        #                 paren.append(")")
-        #                 args_called.append(" ".join(paren))
-        #                 paren = []
-        #             else:
-        #                 if len(paren) == 0:
-        #                     args_called.append(term)
-        #                 else:
-        #                     paren.append(term)
-        #             if (len(arg_map[pred]) == len(args_called)):
-        #                 args = []
-        #                 for key in arg_map.keys():
-        #                     if pred == key:
-        #                         args = args + args_called
-        #                     else:
-        #                         for value in arg_map[key]:
-        #                             args.append("0")  # 初期値を0に設定
-        #                 new_line = new_line + [pred] + args + args_called
-        #                 pred = ""
-        #                 args_called = []
-        #         else:
-        #             new_line.append(term)
-        #     new_lines.append(' '.join(new_line))
-        #     continue
-        # Sentry以外の述語
         new_line = []
         terms = line.split()
         pred_parent = ""
@@ -297,7 +259,7 @@ def add_ranking_function(lines, arg_map, sccs):
                             else:
                                 is_first_values.append(f"is_first_{p.lower()}")
                         if pred_parent == "Sentry":
-                            new_line = new_line + [f"{pred}"] + is_first_values + p_args_substituted + args_called
+                            new_line = new_line + [f"{pred}"] + is_first_values +  ["0" for _ in range(len(p_args))] + args_called
                         else:
                             new_line = new_line + [f"( {pred}"] + is_first_values + p_args_substituted + args_called + \
                                 [f"/\ ( is_first_{pred.lower()} = 1 \/ WF_{pred}"] + [f"RF_{pred}_{idx}" for idx in range(1, 3)] + \

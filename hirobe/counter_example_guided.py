@@ -87,7 +87,7 @@ def get_rf_names(filename):
     return rf_names
 
 
-def apply_new_ranking_function(filename, ranking_functions, rf_args, is_first=False):
+def apply_new_ranking_function(verifier_type, filename, ranking_functions, rf_args, is_first=False):
     try:
         with open(filename, 'r') as file:
             lines = file.readlines()
@@ -111,7 +111,7 @@ def apply_new_ranking_function(filename, ranking_functions, rf_args, is_first=Fa
         # for key, value in rf_args.items():
         #     ranking_functions[key] = str(value[0])
 
-    print(f"ranking function for iter {n_iter} : {ranking_functions}")
+    print(f"[{verifier_type}] ranking function for iter {n_iter} : {ranking_functions}")
     newlines = []
     for line in lines:
         if line.startswith("RF"):
@@ -167,7 +167,7 @@ def run_show_trace(filename, queue):
         queue.put(('rethfl', 'interrupted'))
 
 
-def solve_nuhfl(filename, start_time, nuhfl_inlining):
+def solve_nuhfl(verifier_type, queue_parent, filename, start_time, nuhfl_inlining):
     queue = multiprocessing.Queue()
     result_queue = multiprocessing.Queue()
     python_dir = "/home/yurikahirobe/hopdr/hirobe"
@@ -198,10 +198,11 @@ def solve_nuhfl(filename, start_time, nuhfl_inlining):
                     if process2.is_alive():
                         os.killpg(process2.pid, signal.SIGKILL)
                     if message[1] == "Valid":
-                        print("ReTHFL result : Valid")
+                        print(f"[{verifier_type}] ReTHFL result : Valid")
                         end_time = time.perf_counter_ns()
                         elapsed_time = (end_time - start_time) / 1_000_000_000
                         print(f"\ntotal: {elapsed_time:.6f} sec")
+                        queue_parent.put("Valid")
                         result_queue.put("Valid")
                         sys.exit(0)
                     elif message[1] == "interrupted":
@@ -236,18 +237,18 @@ def solve_nuhfl(filename, start_time, nuhfl_inlining):
 
 
 # nuhfl_inlining = Trueの場合、filenameはinline前のnuhflファイル
-def parse_result(type, filename, result, nuhfl_inlining=False):
+def parse_result(verifier_type, filename, result, nuhfl_inlining=False):
     trace = result.split("Trace: ")[-1]
     if nuhfl_inlining:
-        if type == "prover":
+        if verifier_type == "prover":
             trace_file = '/'.join(filename.split('/')[:-1]) + "/trace_prover.txt"
-        if type == "disprover":
+        if verifier_type == "disprover":
             trace_file = '/'.join(filename.split('/')[:-1]) + "/trace_disprover.txt"
         python_dir = "/home/yurikahirobe/hopdr/hirobe"
         with open(trace_file, 'w') as file:
             file.write(trace)
         try:
-            result = subprocess.run(['python3', f'{python_dir}/counter_example_from_trace.py',
+            result = subprocess.run(['python3', f'{python_dir}/inlined_trace_analysis.py',
                                     filename, trace_file], capture_output=True, text=True)
             wf_info = json.loads(result.stdout.strip().split('\n')[-1])
             print(wf_info)
@@ -496,8 +497,9 @@ def update_ranking_function(problem, opt, rf_args, rf_variables, start_time):
 
     return new_rfs
 
-def iteration_entry(type, filename, start_time, nuhfl_inlining=False):
+def iteration_entry(verifier_type, queue, filename, start_time, nuhfl_inlining=False):
     global n_rf
+    os.setsid()
     rf_names = get_rf_names(filename)
     rf_list = {key: "1" for key in rf_names}
     problem = Solver()
@@ -505,10 +507,10 @@ def iteration_entry(type, filename, start_time, nuhfl_inlining=False):
     variables_dict = {key: [] for key in rf_names}
     rf_args = {key: [] for key in rf_names}
     while n_iter <= 500:
-        rf_list = iteration(type, filename, rf_names, rf_list, rf_args,
+        rf_list = iteration(verifier_type, queue, filename, rf_names, rf_list, rf_args,
                             problem, opt, variables_dict, start_time, nuhfl_inlining)
 
-def iteration(type, filename, rf_names, rf_list, rf_args,
+def iteration(verifier_type, queue, filename, rf_names, rf_list, rf_args,
               problem, opt, variables_dict, start_time, nuhfl_inlining):
     global n_iter
     if (n_iter == 1):
@@ -516,14 +518,14 @@ def iteration(type, filename, rf_names, rf_list, rf_args,
     else:
         is_first = False
     # 更新されたranking functionまたは初期値を設定
-    apply_new_ranking_function(filename, rf_list, rf_args, is_first=is_first)
+    apply_new_ranking_function(verifier_type, filename, rf_list, rf_args, is_first=is_first)
 
     # rethfl/show_traceを実行して結果のtrace(S式)を取得
-    result = solve_nuhfl(filename, start_time, nuhfl_inlining)
+    result = solve_nuhfl(verifier_type, queue, filename, start_time, nuhfl_inlining)
     # print(result)
 
     # show_traceの結果をparseして、失敗している不等式制約を取得
-    wf_name, wf_values = parse_result(type, filename, result, nuhfl_inlining)
+    wf_name, wf_values = parse_result(verifier_type, filename, result, nuhfl_inlining)
 
     if is_first:
         variable_idx = 1
@@ -588,15 +590,32 @@ def main(hflz_file, hflz_inlining=False, nuhfl_inlining=False):
     subprocess.run(['python3', f'{python_dir}/add_paren.py', nuhfl_file], capture_output=True, text=True, check=True)
     subprocess.run(['python3', f'{python_dir}/add_paren.py', negated_nuhfl_file], capture_output=True, text=True, check=True)
 
-    # process_prover = multiprocessing.Process(
-    #     target=iteration_entry, args=["prover", nuhfl_file, start_time, nuhfl_inlining])
+    queue = multiprocessing.Queue()
+    process_prover = multiprocessing.Process(
+        target=iteration_entry, args=["prover", queue, nuhfl_file, start_time, nuhfl_inlining])
     process_disprover = multiprocessing.Process(
-        target=iteration_entry, args=["disprover",negated_nuhfl_file, start_time, nuhfl_inlining])
+        target=iteration_entry, args=["disprover", queue, negated_nuhfl_file, start_time, nuhfl_inlining])
     
-    # process_prover.start()
+    process_prover.start()
     process_disprover.start()
 
-    # process_prover.join()
+    try:
+        while True:
+            message = queue.get()
+            if message[0] == "Valid":
+                if process_prover.is_alive():
+                    os.killpg(process_prover.pid, signal.SIGKILL)
+                if process_disprover.is_alive():
+                    os.killpg(process_disprover.pid, signal.SIGKILL)
+    except KeyboardInterrupt:
+        print("Keyboard interrupted.")
+        if process_prover.is_alive():
+            os.killpg(process_prover.pid, signal.SIGKILL)
+        if process_disprover.is_alive():
+            os.killpg(process_disprover.pid, signal.SIGKILL)
+        sys.exit(1)
+
+    process_prover.join()
     process_disprover.join()
 
 if __name__ == "__main__":

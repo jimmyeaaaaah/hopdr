@@ -76,11 +76,11 @@ def extract_and_format_trace(trace):
         elif token == ")":
             if len(parens) == end_app:
                 formatted_trace = " ".join(tokens[start_app_idx:i])
-                break
             parens.pop()
         elif token == "app":
             start_app_idx = i
             end_app = len(parens)
+    print(formatted_trace)
     # 得られたtraceについて、述語の名前、引数、右側の式を抽出
     tokens = formatted_trace.split()
     if tokens[0] != "app":

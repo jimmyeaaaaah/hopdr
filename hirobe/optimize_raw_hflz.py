@@ -132,6 +132,7 @@ def rename_variables(lines):
         line = line.replace(")", " ) ")
         line = line.replace("∀", " ∀ ")
         line = line.replace(".", " . ")
+        line = line.replace("-", " - ")
         line = line.replace("  ", " ")
         newlines.append(line)
     lines = newlines
