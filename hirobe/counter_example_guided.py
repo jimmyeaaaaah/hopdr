@@ -15,6 +15,7 @@ import psutil
 n_constraints = 0
 n_iter = 1
 n_rf = 0
+processes = {}
 
 
 class TreeNode:
@@ -169,7 +170,6 @@ def run_show_trace(filename, queue):
 
 def solve_nuhfl(verifier_type, queue_parent, filename, start_time, nuhfl_inlining):
     queue = multiprocessing.Queue()
-    result_queue = multiprocessing.Queue()
     python_dir = "/home/yurikahirobe/hopdr/hirobe"
     if nuhfl_inlining:
         try:
@@ -181,9 +181,12 @@ def solve_nuhfl(verifier_type, queue_parent, filename, start_time, nuhfl_inlinin
         target=run_rethfl, args=[filename, queue])
     process2 = multiprocessing.Process(
         target=run_show_trace, args=[filename, queue])
-
+    
     process1.start()
     process2.start()
+    queue_parent.put((verifier_type, "rethfl", process1.pid))
+    queue_parent.put((verifier_type, "show_trace", process2.pid))
+
     try:
         while True:
             check_cpu_load()
@@ -193,36 +196,30 @@ def solve_nuhfl(verifier_type, queue_parent, filename, start_time, nuhfl_inlinin
                 if message[1] == "Invalid":
                     continue
                 else:
-                    if process1.is_alive():
-                        os.killpg(process1.pid, signal.SIGKILL)
-                    if process2.is_alive():
-                        os.killpg(process2.pid, signal.SIGKILL)
                     if message[1] == "Valid":
                         print(f"[{verifier_type}] ReTHFL result : Valid")
                         end_time = time.perf_counter_ns()
                         elapsed_time = (end_time - start_time) / 1_000_000_000
                         print(f"\ntotal: {elapsed_time:.6f} sec")
-                        queue_parent.put("Valid")
-                        result_queue.put("Valid")
-                        sys.exit(0)
+                        queue_parent.put((verifier_type, "Valid"))
                     elif message[1] == "interrupted":
-                        sys.exit(1)
+                        queue_parent.put((verifier_type, "interrupted"))
                     else:
+                        queue_parent.put((verifier_type, "rethfl error"))
                         print("terminated because of ReTHFL error")
-                        sys.exit(1)
             elif message[0] == "show_trace":
                 if process1.is_alive():
                     os.killpg(process1.pid, signal.SIGKILL)
                 if process2.is_alive():
                     os.killpg(process2.pid, signal.SIGKILL)
                 if message[1] == "error":
+                    queue_parent.put((verifier_type, "show_trace error"))
                     print("terminated because of show_trace error")
-                    sys.exit(1)
                 elif message[1] == "Fail":
+                    queue_parent.put((verifier_type, "show_trace error"))
                     print("terminated because show_trace failed")
-                    sys.exit(1)
                 elif message[1] == "interrupted":
-                    sys.exit(1)
+                    queue_parent.put((verifier_type, "interrupted"))
                 else:
                     return message[1]
     except KeyboardInterrupt:
@@ -237,7 +234,7 @@ def solve_nuhfl(verifier_type, queue_parent, filename, start_time, nuhfl_inlinin
 
 
 # nuhfl_inlining = Trueの場合、filenameはinline前のnuhflファイル
-def parse_result(verifier_type, filename, result, nuhfl_inlining=False):
+def parse_result(verifier_type, queue_parent, filename, result, nuhfl_inlining=False):
     trace = result.split("Trace: ")[-1]
     if nuhfl_inlining:
         if verifier_type == "prover":
@@ -251,9 +248,13 @@ def parse_result(verifier_type, filename, result, nuhfl_inlining=False):
             result = subprocess.run(['python3', f'{python_dir}/inlined_trace_analysis.py',
                                     filename, trace_file], capture_output=True, text=True)
             wf_info = json.loads(result.stdout.strip().split('\n')[-1])
-            print(wf_info)
+            # print(wf_info)
         except subprocess.CalledProcessError as e:
             print(f"Error while analyzing trace from inlined nuhfl: {e}")
+            queue_parent.put((verifier_type, "inlining error"))
+        except json.decoder.JSONDecodeError as e:
+            print(f"JSONDecodeError: {e}. Exiting program.")
+            queue_parent.put((verifier_type, "inlining error"))
         wf_name = wf_info["wf_name"]
         wf_values = wf_info["assigned_values"]
         # arith = wf_info["failed_arith"].split()
@@ -463,11 +464,11 @@ def set_constraints(wf_name, wf_values, problem, variables_dict):
     constraint = Or( And(rf_exp_list[0] > rf_exp_list[1], rf_exp_list[0] >= 0), 
                     And(rf_exp_list[0] == rf_exp_list[1], rf_exp_list[2] > rf_exp_list[3], rf_exp_list[0] >= 0, rf_exp_list[2] >= 0))
     problem.add(constraint)
-    print(constraint)
+    # print(constraint)
     n_constraints += 1
 
 
-def update_ranking_function(problem, opt, rf_args, rf_variables, start_time):
+def update_ranking_function(verifier_type, queue_parent, problem, opt, rf_args, rf_variables, start_time):
     new_rfs = {key: "" for key in rf_args.keys()}
     opt.add(problem.assertions())
     # 不等式制約を解く
@@ -493,7 +494,7 @@ def update_ranking_function(problem, opt, rf_args, rf_variables, start_time):
         end_time = time.perf_counter_ns()
         elapsed_time = (end_time - start_time) / 1_000_000_000
         print(f"total: {elapsed_time:.6f} sec")
-        sys.exit(0)
+        queue_parent.put((verifier_type, "no solution found"))
 
     return new_rfs
 
@@ -510,7 +511,7 @@ def iteration_entry(verifier_type, queue, filename, start_time, nuhfl_inlining=F
         rf_list = iteration(verifier_type, queue, filename, rf_names, rf_list, rf_args,
                             problem, opt, variables_dict, start_time, nuhfl_inlining)
 
-def iteration(verifier_type, queue, filename, rf_names, rf_list, rf_args,
+def iteration(verifier_type, queue_parent, filename, rf_names, rf_list, rf_args,
               problem, opt, variables_dict, start_time, nuhfl_inlining):
     global n_iter
     if (n_iter == 1):
@@ -521,11 +522,11 @@ def iteration(verifier_type, queue, filename, rf_names, rf_list, rf_args,
     apply_new_ranking_function(verifier_type, filename, rf_list, rf_args, is_first=is_first)
 
     # rethfl/show_traceを実行して結果のtrace(S式)を取得
-    result = solve_nuhfl(verifier_type, queue, filename, start_time, nuhfl_inlining)
+    result = solve_nuhfl(verifier_type, queue_parent, filename, start_time, nuhfl_inlining)
     # print(result)
 
     # show_traceの結果をparseして、失敗している不等式制約を取得
-    wf_name, wf_values = parse_result(verifier_type, filename, result, nuhfl_inlining)
+    wf_name, wf_values = parse_result(verifier_type, queue_parent, filename, result, nuhfl_inlining)
 
     if is_first:
         variable_idx = 1
@@ -545,8 +546,7 @@ def iteration(verifier_type, queue, filename, rf_names, rf_list, rf_args,
     set_constraints(wf_name, wf_values, problem, variables_dict)
 
     # 不等式を解いてranking_functionを更新
-    new_rfs = update_ranking_function(
-        problem, opt, rf_args, variables_dict, start_time)
+    new_rfs = update_ranking_function( verifier_type, queue_parent, problem, opt, rf_args, variables_dict, start_time)
     print("")
     n_iter += 1
     return new_rfs
@@ -570,14 +570,12 @@ def create_negated_hflz(hflz_file):
         sys.exit(1)
 
 def main(hflz_file, hflz_inlining=False, nuhfl_inlining=False):
+    global processes
     start_time = time.perf_counter_ns()
     python_dir = "/home/yurikahirobe/hopdr/hirobe"
-
     if hflz_inlining:
         hflz_file = subprocess.run(['python3', f'{python_dir}/hflz_inlining.py', hflz_file], capture_output=True, text=True, check=True).stdout.strip()
-    
     negated_hflz_file = create_negated_hflz(hflz_file)
-
     subprocess.run(['python3', f'{python_dir}/optimize_raw_hflz.py', hflz_file], capture_output=True, text=True, check=True)
     subprocess.run(['python3', f'{python_dir}/optimize_raw_hflz.py', negated_hflz_file], capture_output=True, text=True, check=True)
     hflz_file = hflz_file[:-3] + "_opt.in"
@@ -595,24 +593,55 @@ def main(hflz_file, hflz_inlining=False, nuhfl_inlining=False):
         target=iteration_entry, args=["prover", queue, nuhfl_file, start_time, nuhfl_inlining])
     process_disprover = multiprocessing.Process(
         target=iteration_entry, args=["disprover", queue, negated_nuhfl_file, start_time, nuhfl_inlining])
-    
+
     process_prover.start()
     process_disprover.start()
+    processes["prover"] = (process_prover.pid)
+    processes["disprover"] = (process_disprover.pid)
+    no_solution = []
 
     try:
         while True:
             message = queue.get()
-            if message[0] == "Valid":
-                if process_prover.is_alive():
-                    os.killpg(process_prover.pid, signal.SIGKILL)
-                if process_disprover.is_alive():
-                    os.killpg(process_disprover.pid, signal.SIGKILL)
+            if isinstance(message, tuple) and len(message) == 3:
+                verifier_type, process_name, pid = message
+                processes[(verifier_type, process_name)] = (pid)
+            if isinstance(message, tuple) and len(message) == 2:
+                if message[1] == "Valid":
+                    for pid in processes.values():
+                        try:
+                            os.killpg(pid, signal.SIGKILL)
+                        except ProcessLookupError:
+                            pass
+                    sys.exit(0)
+                elif message[1] == "no solution found":
+                    # no solutionを出した方のプロセスは全て終了
+                    kill_type = message[0]
+                    no_solution.append(message[0])
+                    for process, pid in processes.items():
+                        if process == kill_type or (isinstance(process, tuple) and process[0] == kill_type):
+                            try:
+                                os.killpg(pid, signal.SIGKILL)
+                            except ProcessLookupError:
+                                pass
+                    # proverもdisproverも no solutionを出したら正常終了
+                    if (len(no_solution) == 2):
+                        sys.exit(0)
+                else:
+                    for pid in processes.values():
+                        try:
+                            os.killpg(pid, signal.SIGKILL)
+                        except ProcessLookupError:
+                            pass
+                    sys.exit(1)
+               
     except KeyboardInterrupt:
         print("Keyboard interrupted.")
-        if process_prover.is_alive():
-            os.killpg(process_prover.pid, signal.SIGKILL)
-        if process_disprover.is_alive():
-            os.killpg(process_disprover.pid, signal.SIGKILL)
+        for pid in processes.values():
+            try:
+                os.killpg(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
         sys.exit(1)
 
     process_prover.join()
